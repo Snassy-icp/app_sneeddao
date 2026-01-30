@@ -13,119 +13,194 @@ import { createActor as createSwapRunnerActor } from 'external/swaprunner_backen
 import { canisterId as swapRunnerCanisterId } from 'external/swaprunner_backend';
 import { formatAmount } from '../utils/StringUtils';
 import { getTokenLogo, getTokenMetaForSwap } from '../utils/TokenUtils';
+import { FaRocket, FaLock, FaExchangeAlt, FaUsers, FaDollarSign, FaArrowRight, FaSpinner, FaCubes, FaBolt, FaChartLine } from 'react-icons/fa';
+
+// Custom CSS for animations
+const customAnimations = `
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes productsFloat {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-8px); }
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.products-float {
+    animation: productsFloat 3s ease-in-out infinite;
+}
+
+.products-fade-in {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.products-spin {
+    animation: spin 1s linear infinite;
+}
+`;
+
+// Page accent colors
+const productsPrimary = '#10b981';
+const productsSecondary = '#34d399';
+const sneedlockPrimary = '#8b5cf6';
+const sneedlockSecondary = '#a78bfa';
+const swaprunnerPrimary = '#f59e0b';
+const swaprunnerSecondary = '#fbbf24';
 
 const getStyles = (theme) => ({
     container: {
-        maxWidth: '1200px',
+        maxWidth: '900px',
         margin: '0 auto',
-        padding: '2rem',
+        padding: '1.25rem',
         color: theme.colors.primaryText,
     },
     heading: {
-        fontSize: '2.5rem',
-        marginBottom: '2rem',
+        fontSize: '1.75rem',
+        marginBottom: '1.5rem',
         color: theme.colors.primaryText,
         textAlign: 'center',
+        fontWeight: '700',
     },
     grid: {
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-        gap: '2rem',
-    },
-    product: {
-        background: theme.colors.cardGradient,
-        border: `1px solid ${theme.colors.border}`,
-        borderRadius: '12px',
-        padding: '2rem',
         display: 'flex',
         flexDirection: 'column',
-        height: '100%',
+        gap: '1.25rem',
+    },
+    product: (accentColor) => ({
+        background: theme.colors.cardGradient,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '16px',
+        padding: '1.5rem',
+        display: 'flex',
+        flexDirection: 'column',
         boxShadow: theme.colors.cardShadow,
         transition: 'all 0.3s ease',
-    },
-    productTitle: {
-        fontSize: '2rem',
+        position: 'relative',
+        overflow: 'hidden',
+    }),
+    productIcon: (accentColor) => ({
+        width: '56px',
+        height: '56px',
+        borderRadius: '14px',
+        background: `linear-gradient(135deg, ${accentColor}, ${accentColor}cc)`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
         marginBottom: '1rem',
-        color: theme.colors.accent,
-        fontWeight: 'bold',
+        boxShadow: `0 8px 24px ${accentColor}40`,
+    }),
+    productHeader: {
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: '1rem',
+        marginBottom: '1rem',
     },
+    productTitle: (accentColor) => ({
+        fontSize: '1.5rem',
+        margin: 0,
+        color: accentColor,
+        fontWeight: '700',
+    }),
+    productBadge: (accentColor) => ({
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '4px',
+        padding: '4px 10px',
+        borderRadius: '20px',
+        background: `${accentColor}15`,
+        color: accentColor,
+        fontSize: '0.75rem',
+        fontWeight: '600',
+        marginTop: '6px',
+    }),
     description: {
-        fontSize: '1.1rem',
+        fontSize: '0.95rem',
         lineHeight: '1.6',
         color: theme.colors.secondaryText,
-        marginBottom: '2rem',
+        marginBottom: '1.25rem',
     },
     statsSection: {
         marginTop: 'auto',
     },
     statsGrid: {
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
-        gap: '1rem',
-        marginBottom: '2rem',
+        gridTemplateColumns: 'repeat(3, 1fr)',
+        gap: '0.75rem',
+        marginBottom: '1.25rem',
     },
-    stat: {
-        background: theme.colors.tertiaryBg,
-        border: `1px solid ${theme.colors.border}`,
-        padding: '1rem',
-        borderRadius: '8px',
+    stat: (accentColor) => ({
+        background: `${accentColor}08`,
+        border: `1px solid ${accentColor}20`,
+        padding: '0.875rem',
+        borderRadius: '12px',
         textAlign: 'center',
         transition: 'all 0.3s ease',
-    },
-    statValue: {
-        fontSize: '1.5rem',
-        fontWeight: 'bold',
-        color: theme.colors.accent,
-        marginBottom: '0.5rem',
-    },
+    }),
+    statValue: (accentColor) => ({
+        fontSize: '1.25rem',
+        fontWeight: '700',
+        color: accentColor,
+        marginBottom: '0.25rem',
+        fontFamily: 'monospace',
+    }),
     statValuePending: {
-        fontSize: '1.5rem',
-        fontWeight: 'bold',
+        fontSize: '1.25rem',
+        fontWeight: '700',
         color: theme.colors.mutedText,
-        marginBottom: '0.5rem',
+        marginBottom: '0.25rem',
+        fontFamily: 'monospace',
     },
     statLabel: {
-        color: theme.colors.mutedText,
-        fontSize: '0.9rem',
+        color: theme.colors.secondaryText,
+        fontSize: '0.75rem',
+        fontWeight: '500',
     },
-    button: {
-        background: `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.accent}dd)`,
-        color: theme.colors.primaryBg,
+    button: (accentColor) => ({
+        background: `linear-gradient(135deg, ${accentColor}, ${accentColor}dd)`,
+        color: '#fff',
         border: 'none',
-        borderRadius: '8px',
-        padding: '1rem',
-        fontSize: '1.1rem',
-        fontWeight: 'bold',
+        borderRadius: '12px',
+        padding: '0.875rem 1.25rem',
+        fontSize: '1rem',
+        fontWeight: '600',
         cursor: 'pointer',
         textDecoration: 'none',
         textAlign: 'center',
         transition: 'all 0.3s ease',
-        boxShadow: theme.colors.accentShadow,
-    },
+        boxShadow: `0 4px 16px ${accentColor}40`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '8px',
+    }),
+    decorativeGlow: (accentColor) => ({
+        position: 'absolute',
+        top: '-50%',
+        right: '-20%',
+        width: '200px',
+        height: '200px',
+        background: `radial-gradient(circle, ${accentColor}10 0%, transparent 70%)`,
+        pointerEvents: 'none',
+    }),
 });
 
-const LoadingSpinner = ({ theme }) => (
-    <div style={{
-        display: 'inline-block',
-        width: '20px',
-        height: '20px',
-        border: `2px solid ${theme.colors.border}`,
-        borderTop: `2px solid ${theme.colors.accent}`,
-        borderRadius: '50%',
-        animation: 'spin 1s linear infinite',
-    }}>
-        <style>
-            {`
-                @keyframes spin {
-                    0% { transform: rotate(0deg); }
-                    100% { transform: rotate(360deg); }
-                }
-            `}
-        </style>
-    </div>
+const LoadingSpinner = ({ accentColor }) => (
+    <FaSpinner className="products-spin" size={18} style={{ color: accentColor }} />
 );
 
-function StatCard({ value, label, isLoading, isParentComplete, isFinalValue, theme }) {
+function StatCard({ value, label, isLoading, isParentComplete, isFinalValue, theme, accentColor }) {
     const [displayValue, setDisplayValue] = useState('0');
     const [isComplete, setIsComplete] = useState(false);
     const styles = getStyles(theme);
@@ -212,9 +287,9 @@ function StatCard({ value, label, isLoading, isParentComplete, isFinalValue, the
     }, [value, isLoading, label, isParentComplete, isFinalValue]);
 
     return (
-        <div style={styles.stat}>
-            <div style={isComplete ? styles.statValue : styles.statValuePending}>
-                {isLoading ? <LoadingSpinner theme={theme} /> : displayValue}
+        <div style={styles.stat(accentColor)}>
+            <div style={isComplete ? styles.statValue(accentColor) : styles.statValuePending}>
+                {isLoading ? <LoadingSpinner accentColor={accentColor} /> : displayValue}
             </div>
             <div style={styles.statLabel}>{label}</div>
         </div>
@@ -597,18 +672,100 @@ function Products() {
 
     return (
         <div className="page-container" style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <style>{customAnimations}</style>
             <Header />
-            <main style={styles.container}>
-                <h1 style={styles.heading}>Our Products</h1>
+            
+            {/* Hero Banner */}
+            <div style={{
+                background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${productsPrimary}12 50%, ${productsSecondary}08 100%)`,
+                borderBottom: `1px solid ${theme.colors.border}`,
+                padding: '2rem 1rem',
+                position: 'relative',
+                overflow: 'hidden'
+            }}>
+                {/* Background decorations */}
+                <div style={{
+                    position: 'absolute',
+                    top: '-30%',
+                    right: '-5%',
+                    width: '300px',
+                    height: '300px',
+                    background: `radial-gradient(circle, ${productsPrimary}15 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
                 
+                <div className="products-fade-in" style={{ maxWidth: '900px', margin: '0 auto', textAlign: 'center', position: 'relative', zIndex: 1 }}>
+                    <div className="products-float" style={{
+                        width: '72px',
+                        height: '72px',
+                        borderRadius: '18px',
+                        background: `linear-gradient(135deg, ${productsPrimary}, ${productsSecondary})`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        margin: '0 auto 1rem',
+                        boxShadow: `0 12px 40px ${productsPrimary}50`,
+                    }}>
+                        <FaRocket size={32} style={{ color: '#fff' }} />
+                    </div>
+                    
+                    <div style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 14px',
+                        borderRadius: '20px',
+                        background: `${productsPrimary}15`,
+                        color: productsPrimary,
+                        fontSize: '0.8rem',
+                        fontWeight: '600',
+                        marginBottom: '0.75rem'
+                    }}>
+                        <FaCubes size={12} />
+                        Sneed DAO Products
+                    </div>
+                    
+                    <h1 style={{
+                        fontSize: '1.75rem',
+                        fontWeight: '700',
+                        color: theme.colors.primaryText,
+                        margin: '0 0 0.5rem',
+                        letterSpacing: '-0.5px'
+                    }}>
+                        Our Products
+                    </h1>
+                    <p style={{
+                        fontSize: '0.95rem',
+                        color: theme.colors.secondaryText,
+                        margin: 0
+                    }}>
+                        Powerful DeFi tools built on the Internet Computer
+                    </p>
+                </div>
+            </div>
+            
+            <main style={styles.container}>
                 <div style={styles.grid}>
                     {/* SneedLock */}
-                    <div style={styles.product}>
-                        <h2 style={styles.productTitle}>SneedLock</h2>
+                    <div className="products-fade-in" style={styles.product(sneedlockPrimary)}>
+                        <div style={styles.decorativeGlow(sneedlockPrimary)} />
+                        
+                        <div style={styles.productHeader}>
+                            <div style={styles.productIcon(sneedlockPrimary)}>
+                                <FaLock size={24} style={{ color: '#fff' }} />
+                            </div>
+                            <div>
+                                <h2 style={styles.productTitle(sneedlockPrimary)}>SneedLock</h2>
+                                <div style={styles.productBadge(sneedlockPrimary)}>
+                                    <FaLock size={10} />
+                                    Token Locking
+                                </div>
+                            </div>
+                        </div>
+                        
                         <p style={styles.description}>
                             A secure and flexible token locking solution built on the Internet Computer.
                             Create customizable token locks with various vesting schedules and conditions.
-                            Perfect for team tokens, investor allocations, and liquidity management.
                         </p>
                         
                         <div style={styles.statsSection}>
@@ -618,18 +775,21 @@ function Products() {
                                     label="Token Locks"
                                     isLoading={sneedLockStats.totalTokenLocks === 0}
                                     theme={theme}
+                                    accentColor={sneedlockPrimary}
                                 />
                                 <StatCard 
                                     value={sneedLockStats.totalPositionLocks.toString()} 
                                     label="Position Locks"
                                     isLoading={sneedLockStats.totalPositionLocks === 0}
                                     theme={theme}
+                                    accentColor={sneedlockPrimary}
                                 />
                                 <StatCard 
                                     value={sneedLockStats.activeUsers.toString()} 
                                     label="Active Users"
                                     isLoading={sneedLockStats.activeUsers === 0}
                                     theme={theme}
+                                    accentColor={sneedlockPrimary}
                                 />
                                 <div ref={setTokenRef}>
                                     <StatCard 
@@ -637,6 +797,7 @@ function Products() {
                                         label="Token Locks Value"
                                         isLoading={false}
                                         theme={theme}
+                                        accentColor={sneedlockPrimary}
                                     />
                                 </div>
                                 <div ref={setPositionRef}>
@@ -646,6 +807,7 @@ function Products() {
                                         isLoading={false}
                                         isFinalValue={isLastPositionProcessed}
                                         theme={theme}
+                                        accentColor={sneedlockPrimary}
                                     />
                                 </div>
                                 <StatCard 
@@ -654,33 +816,40 @@ function Products() {
                                     isLoading={false}
                                     isParentComplete={tokenValueComplete && positionValueComplete}
                                     theme={theme}
+                                    accentColor={sneedlockPrimary}
                                 />
                             </div>
                             
                             <Link 
                                 to="/sneedlock" 
-                                style={styles.button}
-                                onMouseEnter={(e) => {
-                                    e.target.style.transform = 'translateY(-2px)';
-                                    e.target.style.boxShadow = `0 8px 25px ${theme.colors.accent}40`;
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.target.style.transform = 'translateY(0)';
-                                    e.target.style.boxShadow = theme.colors.accentShadow;
-                                }}
+                                style={styles.button(sneedlockPrimary)}
                             >
                                 Launch SneedLock
+                                <FaArrowRight size={14} />
                             </Link>
                         </div>
                     </div>
 
                     {/* SwapRunner */}
-                    <div style={styles.product}>
-                        <h2 style={styles.productTitle}>SwapRunner</h2>
+                    <div className="products-fade-in" style={{ ...styles.product(swaprunnerPrimary), animationDelay: '0.1s' }}>
+                        <div style={styles.decorativeGlow(swaprunnerPrimary)} />
+                        
+                        <div style={styles.productHeader}>
+                            <div style={styles.productIcon(swaprunnerPrimary)}>
+                                <FaExchangeAlt size={24} style={{ color: '#fff' }} />
+                            </div>
+                            <div>
+                                <h2 style={styles.productTitle(swaprunnerPrimary)}>SwapRunner</h2>
+                                <div style={styles.productBadge(swaprunnerPrimary)}>
+                                    <FaBolt size={10} />
+                                    DEX Aggregator
+                                </div>
+                            </div>
+                        </div>
+                        
                         <p style={styles.description}>
-                            A high-performance decentralized exchange (DEX) aggregator built for speed and efficiency.
-                            Experience lightning-fast token swaps with minimal slippage, powered by
-                            advanced routing algorithms and deep liquidity pools.
+                            A high-performance decentralized exchange aggregator built for speed and efficiency.
+                            Experience lightning-fast token swaps with minimal slippage.
                         </p>
                         
                         <div style={styles.statsSection}>
@@ -690,36 +859,42 @@ function Products() {
                                     label="Total Swaps"
                                     isLoading={swapRunnerStats.total_swaps === 0}
                                     theme={theme}
+                                    accentColor={swaprunnerPrimary}
                                 />
                                 <StatCard 
                                     value={swapRunnerStats.split_swaps.toString()} 
                                     label="Split Swaps"
                                     isLoading={swapRunnerStats.split_swaps === 0}
                                     theme={theme}
+                                    accentColor={swaprunnerPrimary}
                                 />
                                 <StatCard 
                                     value={swapRunnerStats.kong_swaps.toString()} 
                                     label="Kong Swaps"
                                     isLoading={swapRunnerStats.kong_swaps === 0}
                                     theme={theme}
+                                    accentColor={swaprunnerPrimary}
                                 />
                                 <StatCard 
                                     value={swapRunnerStats.icpswap_swaps.toString()} 
                                     label="ICPSwap Swaps"
                                     isLoading={swapRunnerStats.icpswap_swaps === 0}
                                     theme={theme}
+                                    accentColor={swaprunnerPrimary}
                                 />
                                 <StatCard 
                                     value={swapRunnerStats.unique_users.toString()} 
                                     label="Registered Users"
                                     isLoading={swapRunnerStats.unique_users === 0}
                                     theme={theme}
+                                    accentColor={swaprunnerPrimary}
                                 />
                                 <StatCard 
                                     value={swapRunnerStats.unique_traders.toString()} 
                                     label="Active Traders"
                                     isLoading={swapRunnerStats.unique_traders === 0}
                                     theme={theme}
+                                    accentColor={swaprunnerPrimary}
                                 />
                             </div>
                             
@@ -727,17 +902,10 @@ function Products() {
                                 href="https://swaprunner.com" 
                                 target="_blank" 
                                 rel="noopener noreferrer" 
-                                style={styles.button}
-                                onMouseEnter={(e) => {
-                                    e.target.style.transform = 'translateY(-2px)';
-                                    e.target.style.boxShadow = `0 8px 25px ${theme.colors.accent}40`;
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.target.style.transform = 'translateY(0)';
-                                    e.target.style.boxShadow = theme.colors.accentShadow;
-                                }}
+                                style={styles.button(swaprunnerPrimary)}
                             >
                                 Visit SwapRunner
+                                <FaArrowRight size={14} />
                             </a>
                         </div>
                     </div>

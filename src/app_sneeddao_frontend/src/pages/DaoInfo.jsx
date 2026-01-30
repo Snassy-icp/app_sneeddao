@@ -15,51 +15,119 @@ import {
     getTokenLogo 
 } from '../utils/TokenUtils';
 import { Link } from 'react-router-dom';
+import { FaChartPie, FaBrain, FaCoins, FaHandshake, FaRocket, FaArrowRight, FaSpinner, FaLock, FaExchangeAlt } from 'react-icons/fa';
+
+// Custom CSS for animations
+const customStyles = `
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-8px); }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.dao-info-float {
+    animation: float 3s ease-in-out infinite;
+}
+
+.dao-info-fade-in {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.dao-info-spin {
+    animation: spin 1s linear infinite;
+}
+
+@media (max-width: 900px) {
+    .sections-grid {
+        grid-template-columns: 1fr !important;
+    }
+    .metrics-grid {
+        grid-template-columns: 1fr !important;
+    }
+    .products-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+`;
+
+// Page accent colors - green/teal theme for DAO
+const daoPrimary = '#10b981';
+const daoSecondary = '#34d399';
 
 // Theme-aware styles function
 const getStyles = (theme) => ({
     container: {
-        maxWidth: '1800px',
+        maxWidth: '1200px',
         margin: '0 auto',
-        padding: '2rem',
-        color: theme.colors.primaryText,
-    },
-    heading: {
-        fontSize: '2rem',
-        marginBottom: '2rem',
+        padding: '1.5rem 1rem',
         color: theme.colors.primaryText,
     },
     sectionsGrid: {
         display: 'grid',
         gridTemplateColumns: '1fr 1fr',
-        gap: '2rem',
-        '@media (max-width: 900px)': {
-            gridTemplateColumns: '1fr',
-        },
+        gap: '1rem',
     },
     section: {
-        backgroundColor: theme.colors.secondaryBg,
-        borderRadius: '8px',
-        padding: '1.5rem',
-        minWidth: '300px',
+        backgroundColor: theme.colors.cardGradient,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '20px',
+        padding: '1.25rem',
+        boxShadow: theme.colors.cardShadow,
+    },
+    sectionHeader: {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: '1rem',
+        gap: '12px',
+        flexWrap: 'wrap',
+    },
+    sectionTitleRow: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+    },
+    sectionIcon: {
+        width: '38px',
+        height: '38px',
+        borderRadius: '10px',
+        background: `linear-gradient(135deg, ${daoPrimary}20, ${daoPrimary}10)`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
     },
     subheading: {
-        fontSize: '1.5rem',
-        marginBottom: '1.5rem',
+        fontSize: '1.1rem',
+        fontWeight: '700',
         color: theme.colors.primaryText,
+        margin: 0,
     },
     grid: {
         display: 'grid',
         gridTemplateColumns: 'repeat(2, 1fr)',
-        gap: '1rem',
-        '@media (max-width: 600px)': {
-            gridTemplateColumns: '1fr',
-        },
+        gap: '10px',
     },
     card: {
-        backgroundColor: theme.colors.tertiaryBg,
-        borderRadius: '8px',
-        padding: '1.5rem',
+        backgroundColor: `${daoPrimary}08`,
+        border: `1px solid ${daoPrimary}20`,
+        borderRadius: '14px',
+        padding: '1rem',
         display: 'flex',
         flexDirection: 'column',
     },
@@ -67,43 +135,40 @@ const getStyles = (theme) => ({
         flex: 1,
     },
     metric: {
-        fontSize: '1.8rem',
-        fontWeight: 'bold',
-        marginBottom: '0.5rem',
-        color: theme.colors.accent,
+        fontSize: '1.4rem',
+        fontWeight: '700',
+        marginBottom: '0.25rem',
+        color: daoPrimary,
     },
     label: {
         color: theme.colors.mutedText,
-        fontSize: '1rem',
+        fontSize: '0.8rem',
+        fontWeight: '500',
     },
     spinner: {
         width: '20px',
         height: '20px',
         border: `2px solid ${theme.colors.border}`,
-        borderTop: `2px solid ${theme.colors.accent}`,
+        borderTop: `2px solid ${daoPrimary}`,
         borderRadius: '50%',
         animation: 'spin 1s linear infinite',
     },
     emptySection: {
         textAlign: 'center',
-        padding: '2rem',
+        padding: '1.5rem',
         color: theme.colors.mutedText,
-        backgroundColor: theme.colors.tertiaryBg,
-        borderRadius: '8px',
-    },
-    sectionHeader: {
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: '1.5rem',
+        backgroundColor: `${daoPrimary}05`,
+        border: `1px solid ${daoPrimary}15`,
+        borderRadius: '12px',
     },
     drillDownLink: {
-        color: theme.colors.accent,
+        color: daoPrimary,
         textDecoration: 'none',
-        fontSize: '0.9rem',
-        marginTop: '1rem',
-        display: 'inline-block',
-        marginLeft: 'auto',
+        fontSize: '0.8rem',
+        fontWeight: '600',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '4px',
     },
     cardHeader: {
         display: 'flex',
@@ -116,9 +181,10 @@ const getStyles = (theme) => ({
         color: theme.colors.mutedText,
     },
     doubleWidthCard: {
-        backgroundColor: theme.colors.tertiaryBg,
-        borderRadius: '8px',
-        padding: '1.5rem',
+        backgroundColor: `${daoPrimary}08`,
+        border: `1px solid ${daoPrimary}20`,
+        borderRadius: '14px',
+        padding: '1rem',
         display: 'flex',
         flexDirection: 'column',
         gridColumn: 'span 2',
@@ -127,49 +193,44 @@ const getStyles = (theme) => ({
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        padding: '5px 0',
+        padding: '4px 0',
+        fontSize: '0.9rem',
     },
     productsGrid: {
         display: 'grid',
         gridTemplateColumns: 'repeat(2, 1fr)',
-        gap: '1rem',
+        gap: '10px',
     },
     productCard: {
-        backgroundColor: theme.colors.tertiaryBg,
-        borderRadius: '8px',
-        padding: '1.5rem',
+        backgroundColor: `${daoPrimary}08`,
+        border: `1px solid ${daoPrimary}20`,
+        borderRadius: '14px',
+        padding: '1.25rem',
         display: 'flex',
         flexDirection: 'column',
-        gap: '1rem',
+        gap: '0.75rem',
+    },
+    productIcon: {
+        width: '40px',
+        height: '40px',
+        borderRadius: '10px',
+        background: `linear-gradient(135deg, ${daoPrimary}, ${daoSecondary})`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     productTitle: {
-        fontSize: '1.4rem',
-        color: theme.colors.accent,
-        fontWeight: 'bold',
+        fontSize: '1.1rem',
+        color: theme.colors.primaryText,
+        fontWeight: '700',
     },
     productDescription: {
-        color: theme.colors.mutedText,
-        fontSize: '0.9rem',
-        lineHeight: '1.4',
+        color: theme.colors.secondaryText,
+        fontSize: '0.85rem',
+        lineHeight: '1.5',
         flex: 1,
     },
 });
-
-// Add media query styles
-const mediaStyles = `
-    @media (max-width: 900px) {
-        .sections-grid {
-            grid-template-columns: 1fr !important;
-        }
-    }
-`;
-
-// Add keyframes for spinner
-const spinKeyframes = `
-@keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-}`;
 
 function DaoInfo() {
     const { identity } = useAuth();
@@ -610,34 +671,87 @@ function DaoInfo() {
 
     return (
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <style>{customStyles}</style>
             <Header />
+            
+            {/* Hero Banner */}
+            <div style={{
+                background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${daoPrimary}12 50%, ${daoSecondary}08 100%)`,
+                borderBottom: `1px solid ${theme.colors.border}`,
+                padding: '2rem 1rem',
+                position: 'relative',
+                overflow: 'hidden'
+            }}>
+                {/* Background decorations */}
+                <div style={{
+                    position: 'absolute',
+                    top: '-30%',
+                    right: '-5%',
+                    width: '300px',
+                    height: '300px',
+                    background: `radial-gradient(circle, ${daoPrimary}15 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
+                
+                <div className="dao-info-fade-in" style={{ maxWidth: '1200px', margin: '0 auto', textAlign: 'center', position: 'relative', zIndex: 1 }}>
+                    <div className="dao-info-float" style={{
+                        width: '72px',
+                        height: '72px',
+                        borderRadius: '18px',
+                        background: `linear-gradient(135deg, ${daoPrimary}, ${daoSecondary})`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        margin: '0 auto 1rem',
+                        boxShadow: `0 12px 40px ${daoPrimary}50`,
+                    }}>
+                        <FaChartPie size={32} style={{ color: '#fff' }} />
+                    </div>
+                    
+                    <h1 style={{
+                        fontSize: '1.75rem',
+                        fontWeight: '700',
+                        color: theme.colors.primaryText,
+                        margin: '0 0 0.5rem',
+                        letterSpacing: '-0.5px'
+                    }}>
+                        DAO Dashboard
+                    </h1>
+                    <p style={{
+                        fontSize: '0.95rem',
+                        color: theme.colors.secondaryText,
+                        margin: 0
+                    }}>
+                        Real-time metrics and insights for Sneed DAO
+                    </p>
+                </div>
+            </div>
+            
             <main style={styles.container}>
-                <h1 style={styles.heading}>DAO Dashboard</h1>
-
                 <div className="sections-grid" style={styles.sectionsGrid}>
                     {/* DAO Metrics Section */}
-                    <section style={styles.section}>
+                    <section className="dao-info-fade-in" style={styles.section}>
                         <div style={styles.sectionHeader}>
-                            <h2 style={styles.subheading}>DAO Metrics</h2>
-                            <Link 
-                                to="/neurons" 
-                                style={styles.drillDownLink}
-                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                            >
-                                Drill down →
+                            <div style={styles.sectionTitleRow}>
+                                <div style={styles.sectionIcon}>
+                                    <FaBrain size={18} style={{ color: daoPrimary }} />
+                                </div>
+                                <h2 style={styles.subheading}>DAO Metrics</h2>
+                            </div>
+                            <Link to="/neurons" style={styles.drillDownLink}>
+                                Drill down <FaArrowRight size={10} />
                             </Link>
                         </div>
                         {loading.metrics ? (
                             <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
-                                <div style={styles.spinner} />
+                                <FaSpinner className="dao-info-spin" size={24} style={{ color: daoPrimary }} />
                             </div>
                         ) : error.metrics ? (
-                            <div style={{ color: theme.colors.error, padding: '20px', textAlign: 'center' }}>
+                            <div style={{ color: theme.colors.error, padding: '20px', textAlign: 'center', fontSize: '0.9rem' }}>
                                 {error.metrics}
                             </div>
                         ) : (
-                            <div style={styles.grid}>
+                            <div className="metrics-grid" style={styles.grid}>
                                 <div style={styles.card}>
                                     <div style={styles.metric}>{formatNumber(Number(daoMetrics.neuronStats.totalNeurons))}</div>
                                     <div style={styles.label}>Total Neurons</div>
@@ -685,7 +799,7 @@ function DaoInfo() {
                                 <div style={styles.card}>
                                     <div style={styles.metric}>
                                         {formatNumber(Number(daoMetrics.neuronStats.votingPower.total))}
-                                        <div style={{ fontSize: '0.7em', color: theme.colors.mutedText }}>
+                                        <div style={{ fontSize: '0.6em', color: theme.colors.mutedText }}>
                                             Min: {formatNumber(Number(daoMetrics.neuronStats.votingPower.min))}
                                             {' | '}
                                             Max: {formatNumber(Number(daoMetrics.neuronStats.votingPower.max))}
@@ -696,7 +810,7 @@ function DaoInfo() {
                                 <div style={styles.card}>
                                     <div style={styles.metric}>
                                         {formatNumber(Number(daoMetrics.neuronStats.permissions.total_hotkeys))}
-                                        <div style={{ fontSize: '0.7em', color: theme.colors.mutedText }}>
+                                        <div style={{ fontSize: '0.6em', color: theme.colors.mutedText }}>
                                             Multi-hotkey: {formatNumber(Number(daoMetrics.neuronStats.permissions.multi_hotkey_neurons))}
                                         </div>
                                     </div>
@@ -707,13 +821,8 @@ function DaoInfo() {
                                         <div style={styles.metric}>{formatNumber(daoMetrics.proposalCount)}</div>
                                         <div style={styles.label}>Total Proposals</div>
                                     </div>
-                                    <Link 
-                                        to="/proposals" 
-                                        style={styles.drillDownLink}
-                                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                                    >
-                                        Drill down →
+                                    <Link to="/proposals" style={{ ...styles.drillDownLink, marginTop: '8px' }}>
+                                        View proposals <FaArrowRight size={10} />
                                     </Link>
                                 </div>
                             </div>
@@ -721,89 +830,88 @@ function DaoInfo() {
                     </section>
 
                     {/* Tokenomics Section */}
-                    <section style={styles.section}>
+                    <section className="dao-info-fade-in" style={styles.section}>
                         <div style={styles.sectionHeader}>
-                            <h2 style={styles.subheading}>Tokenomics</h2>
-                            <Link 
-                                to="/rll_info" 
-                                style={styles.drillDownLink}
-                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                            >
-                                Drill down →
+                            <div style={styles.sectionTitleRow}>
+                                <div style={styles.sectionIcon}>
+                                    <FaCoins size={18} style={{ color: daoPrimary }} />
+                                </div>
+                                <h2 style={styles.subheading}>Tokenomics</h2>
+                            </div>
+                            <Link to="/rll_info" style={styles.drillDownLink}>
+                                Drill down <FaArrowRight size={10} />
                             </Link>
                         </div>
                         {loading.tokenomics ? (
                             <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
-                                <div style={styles.spinner} />
+                                <FaSpinner className="dao-info-spin" size={24} style={{ color: daoPrimary }} />
                             </div>
                         ) : error.tokenomics ? (
-                            <div style={{ color: theme.colors.error, padding: '20px', textAlign: 'center' }}>
+                            <div style={{ color: theme.colors.error, padding: '20px', textAlign: 'center', fontSize: '0.9rem' }}>
                                 {error.tokenomics}
                             </div>
                         ) : (
                             <>
                                 {/* Token Metadata Card */}
                                 <div style={{
-                                    backgroundColor: theme.colors.tertiaryBg,
-                                    borderRadius: '8px',
-                                    padding: '20px',
-                                    marginBottom: '20px',
+                                    backgroundColor: `${daoPrimary}08`,
+                                    border: `1px solid ${daoPrimary}20`,
+                                    borderRadius: '14px',
+                                    padding: '1rem',
+                                    marginBottom: '10px',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '20px'
+                                    gap: '14px',
+                                    flexWrap: 'wrap'
                                 }}>
                                     <img 
                                         src={tokenomics.metadata.logo} 
                                         alt={tokenomics.metadata.symbol}
                                         style={{
-                                            width: '64px',
-                                            height: '64px',
-                                            borderRadius: '50%'
+                                            width: '56px',
+                                            height: '56px',
+                                            borderRadius: '50%',
+                                            border: `2px solid ${daoPrimary}30`
                                         }}
                                     />
-                                    <div>
+                                    <div style={{ flex: '1 1 200px', minWidth: '150px' }}>
                                         <h3 style={{ 
-                                            margin: '0 0 10px 0',
+                                            margin: '0 0 6px 0',
                                             color: theme.colors.primaryText,
-                                            fontSize: '1.5em'
+                                            fontSize: '1.2rem',
+                                            fontWeight: '700'
                                         }}>
                                             {tokenomics.metadata.name}
                                         </h3>
                                         <div style={{
                                             display: 'flex',
-                                            flexDirection: 'column',
-                                            gap: '10px',
-                                            color: theme.colors.mutedText
+                                            gap: '12px',
+                                            flexWrap: 'wrap',
+                                            color: theme.colors.mutedText,
+                                            fontSize: '0.8rem'
                                         }}>
-                                            <div>
-                                                <strong>Symbol:</strong> {tokenomics.metadata.symbol}
-                                            </div>
-                                            <div>
-                                                <strong>Decimals:</strong> {tokenomics.metadata.decimals}
-                                            </div>
-                                            <div>
-                                                <strong>Fee:</strong> {(Number(tokenomics.metadata.fee) / Math.pow(10, tokenomics.metadata.decimals))} {tokenomics.metadata.symbol}
-                                            </div>
+                                            <span><strong>Symbol:</strong> {tokenomics.metadata.symbol}</span>
+                                            <span><strong>Decimals:</strong> {tokenomics.metadata.decimals}</span>
+                                            <span><strong>Fee:</strong> {(Number(tokenomics.metadata.fee) / Math.pow(10, tokenomics.metadata.decimals))} {tokenomics.metadata.symbol}</span>
                                         </div>
                                     </div>
                                 </div>
 
                                 {/* Existing Tokenomics Grid */}
-                                <div style={styles.grid}>
+                                <div className="metrics-grid" style={styles.grid}>
                                     <div style={styles.card}>
                                         <div style={styles.metric}>
                                             {formatUSD(tokenomics.price)}
-                                                                                    <div style={{ fontSize: '0.7em', color: theme.colors.mutedText }}>
-                                            {formatNumber(tokenomics.priceIcp)} ICP
-                                        </div>
+                                            <div style={{ fontSize: '0.6em', color: theme.colors.mutedText }}>
+                                                {formatNumber(tokenomics.priceIcp)} ICP
+                                            </div>
                                         </div>
                                         <div style={styles.label}>SNEED Price</div>
                                     </div>
                                     <div style={styles.card}>
                                         <div style={styles.metric}>
                                             {formatUSD(tokenomics.marketCap)}
-                                            <div style={{ fontSize: '0.7em', color: theme.colors.mutedText }}>
+                                            <div style={{ fontSize: '0.6em', color: theme.colors.mutedText }}>
                                                 {formatNumber(tokenomics.marketCapIcp)} ICP
                                             </div>
                                         </div>
@@ -816,7 +924,7 @@ function DaoInfo() {
                                     <div style={styles.card}>
                                         <div style={styles.metric}>
                                             {formatNumber(Number(daoMetrics.neuronStats.totalStaked) / 1e8)} SNEED
-                                            <div style={{ fontSize: '0.7em', color: theme.colors.mutedText }}>
+                                            <div style={{ fontSize: '0.6em', color: theme.colors.mutedText }}>
                                                 {((Number(daoMetrics.neuronStats.totalStaked) / (Number(tokenomics.totalSupply) * 1e8)) * 100).toFixed(2)}% of supply
                                             </div>
                                         </div>
@@ -824,8 +932,8 @@ function DaoInfo() {
                                     </div>
                                     <div style={styles.doubleWidthCard}>
                                         <div style={styles.cardContent}>
-                                            <div style={styles.metric}>
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                            <div style={{ ...styles.metric, fontSize: '1.1rem' }}>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                                     {Object.entries(tokenomics.tokenDistributions || {}).map(([tokenId, data]) => {
                                                         const { amount, metadata } = data;
                                                         const symbol = metadata?.symbol || tokenId;
@@ -835,7 +943,7 @@ function DaoInfo() {
                                                         
                                                         return (
                                                             <div key={tokenId} style={styles.tokenRow}>
-                                                                <div>{tokenAmount} {symbol}</div>
+                                                                <div style={{ color: theme.colors.primaryText }}>{tokenAmount} {symbol}</div>
                                                                 <div style={{ color: theme.colors.mutedText }}>
                                                                     {formatUSD(usdValue)}
                                                                 </div>
@@ -843,13 +951,14 @@ function DaoInfo() {
                                                         );
                                                     })}
                                                     <div style={{ 
-                                                        borderTop: `1px solid ${theme.colors.border}`,
-                                                        paddingTop: '10px',
-                                                        marginTop: '5px',
+                                                        borderTop: `1px solid ${daoPrimary}30`,
+                                                        paddingTop: '8px',
+                                                        marginTop: '4px',
                                                         display: 'flex',
                                                         justifyContent: 'space-between',
                                                         alignItems: 'center',
-                                                        color: theme.colors.accent
+                                                        color: daoPrimary,
+                                                        fontWeight: '700'
                                                     }}>
                                                         <div>Total</div>
                                                         <div>{formatUSD(tokenomics.totalDistributionsUsd)}</div>
@@ -858,13 +967,8 @@ function DaoInfo() {
                                             </div>
                                             <div style={styles.label}>Total Rewards Distributed</div>
                                         </div>
-                                        <Link 
-                                            to="/rll" 
-                                            style={styles.drillDownLink}
-                                            onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                            onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                                        >
-                                            Drill down →
+                                        <Link to="/rll" style={{ ...styles.drillDownLink, marginTop: '8px' }}>
+                                            View rewards <FaArrowRight size={10} />
                                         </Link>
                                     </div>
                                 </div>
@@ -873,16 +977,16 @@ function DaoInfo() {
                     </section>
 
                     {/* Partners Section */}
-                    <section style={styles.section}>
+                    <section className="dao-info-fade-in" style={styles.section}>
                         <div style={styles.sectionHeader}>
-                            <h2 style={styles.subheading}>Partners</h2>
-                            <Link 
-                                to="/partners" 
-                                style={styles.drillDownLink}
-                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                            >
-                                Drill down →
+                            <div style={styles.sectionTitleRow}>
+                                <div style={styles.sectionIcon}>
+                                    <FaHandshake size={18} style={{ color: daoPrimary }} />
+                                </div>
+                                <h2 style={styles.subheading}>Partners</h2>
+                            </div>
+                            <Link to="/partners" style={styles.drillDownLink}>
+                                View all <FaArrowRight size={10} />
                             </Link>
                         </div>
                         {partners.length === 0 ? (
@@ -892,9 +996,8 @@ function DaoInfo() {
                         ) : (
                             <div style={{
                                 display: 'grid',
-                                gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))',
-                                gap: '15px',
-                                padding: '10px'
+                                gridTemplateColumns: 'repeat(auto-fill, minmax(70px, 1fr))',
+                                gap: '10px',
                             }}>
                                 {partners.map((partner) => {
                                     const handleClick = () => {
@@ -916,28 +1019,29 @@ function DaoInfo() {
                                                 flexDirection: 'column',
                                                 alignItems: 'center',
                                                 padding: '10px',
-                                                borderRadius: '8px',
-                                                backgroundColor: theme.colors.tertiaryBg,
+                                                borderRadius: '12px',
+                                                backgroundColor: `${daoPrimary}08`,
+                                                border: `1px solid ${daoPrimary}20`,
                                                 transition: 'all 0.2s ease'
                                             }}
                                             onMouseEnter={(e) => {
-                                                e.target.style.backgroundColor = theme.colors.border;
-                                                e.target.style.transform = 'translateY(-2px)';
+                                                e.currentTarget.style.backgroundColor = `${daoPrimary}15`;
+                                                e.currentTarget.style.transform = 'translateY(-2px)';
                                             }}
                                             onMouseLeave={(e) => {
-                                                e.target.style.backgroundColor = theme.colors.tertiaryBg;
-                                                e.target.style.transform = 'translateY(0px)';
+                                                e.currentTarget.style.backgroundColor = `${daoPrimary}08`;
+                                                e.currentTarget.style.transform = 'translateY(0px)';
                                             }}
                                         >
                                             <img
                                                 src={partner.logo_url}
                                                 alt={partner.name}
                                                 style={{
-                                                    width: '60px',
-                                                    height: '60px',
+                                                    width: '48px',
+                                                    height: '48px',
                                                     borderRadius: '50%',
                                                     objectFit: 'cover',
-                                                    marginBottom: '8px'
+                                                    border: `2px solid ${daoPrimary}30`
                                                 }}
                                                 onError={(e) => {
                                                     e.target.style.display = 'none';
@@ -946,16 +1050,16 @@ function DaoInfo() {
                                             />
                                             <div
                                                 style={{
-                                                    width: '60px',
-                                                    height: '60px',
+                                                    width: '48px',
+                                                    height: '48px',
                                                     borderRadius: '50%',
-                                                    backgroundColor: theme.colors.secondaryBg,
+                                                    backgroundColor: `${daoPrimary}20`,
                                                     display: 'none',
                                                     alignItems: 'center',
                                                     justifyContent: 'center',
-                                                    marginBottom: '8px',
-                                                    fontSize: '24px',
-                                                    color: theme.colors.mutedText
+                                                    fontSize: '18px',
+                                                    color: daoPrimary,
+                                                    fontWeight: '600'
                                                 }}
                                             >
                                                 {partner.name.charAt(0).toUpperCase()}
@@ -968,38 +1072,39 @@ function DaoInfo() {
                     </section>
 
                     {/* Products Section */}
-                    <section style={styles.section}>
+                    <section className="dao-info-fade-in" style={styles.section}>
                         <div style={styles.sectionHeader}>
-                            <h2 style={styles.subheading}>Products</h2>
-                            <Link 
-                                to="/products" 
-                                style={styles.drillDownLink}
-                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                            >
-                                Drill down →
+                            <div style={styles.sectionTitleRow}>
+                                <div style={styles.sectionIcon}>
+                                    <FaRocket size={18} style={{ color: daoPrimary }} />
+                                </div>
+                                <h2 style={styles.subheading}>Products</h2>
+                            </div>
+                            <Link to="/products" style={styles.drillDownLink}>
+                                View all <FaArrowRight size={10} />
                             </Link>
                         </div>
-                        <div style={styles.productsGrid}>
+                        <div className="products-grid" style={styles.productsGrid}>
                             <div style={styles.productCard}>
+                                <div style={styles.productIcon}>
+                                    <FaLock size={18} style={{ color: '#fff' }} />
+                                </div>
                                 <div style={styles.productTitle}>SneedLock</div>
                                 <div style={styles.productDescription}>
                                     A secure and flexible token locking solution built on the Internet Computer.
-                                    Create customizable token locks with various vesting schedules and conditions.
+                                    Create customizable token locks with various vesting schedules.
                                 </div>
-                                <Link 
-                                    to="/sneedlock" 
-                                    style={styles.drillDownLink}
-                                    onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                    onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                                >
-                                    Drill down →
+                                <Link to="/sneedlock" style={styles.drillDownLink}>
+                                    Learn more <FaArrowRight size={10} />
                                 </Link>
                             </div>
                             <div style={styles.productCard}>
+                                <div style={styles.productIcon}>
+                                    <FaExchangeAlt size={18} style={{ color: '#fff' }} />
+                                </div>
                                 <div style={styles.productTitle}>SwapRunner</div>
                                 <div style={styles.productDescription}>
-                                    A high-performance decentralized exchange (DEX) aggregator built for speed and efficiency.
+                                    A high-performance DEX aggregator built for speed and efficiency.
                                     Experience lightning-fast token swaps with minimal slippage.
                                 </div>
                                 <a 
@@ -1008,17 +1113,13 @@ function DaoInfo() {
                                     rel="noopener noreferrer" 
                                     style={styles.drillDownLink}
                                 >
-                                    Drill down →
+                                    Visit site <FaArrowRight size={10} />
                                 </a>
                             </div>
                         </div>
                     </section>
                 </div>
             </main>
-            <style>
-                {spinKeyframes}
-                {mediaStyles}
-            </style>
         </div>
     );
 }

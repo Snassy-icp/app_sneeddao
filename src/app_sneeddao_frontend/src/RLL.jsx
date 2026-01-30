@@ -17,74 +17,117 @@ import { headerStyles } from './styles/HeaderStyles';
 import Header from './components/Header';
 import { fetchUserNeurons, fetchUserNeuronsForSns } from './utils/NeuronUtils';
 import { useTheme } from './contexts/ThemeContext';
+import { FaCoins, FaChartBar, FaBalanceScale, FaClock, FaDatabase, FaCog, FaHistory, FaCheckCircle, FaExclamationTriangle, FaArrowRight, FaSpinner } from 'react-icons/fa';
+
+// Custom CSS for animations
+const customAnimations = `
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes rllFloat {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-8px); }
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.rll-float {
+    animation: rllFloat 3s ease-in-out infinite;
+}
+
+.rll-fade-in {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.rll-spin {
+    animation: spin 1s linear infinite;
+}
+`;
+
+// Page accent colors - gold/amber theme for rewards
+const rllPrimary = '#f59e0b';
+const rllSecondary = '#fbbf24';
 
 // Styles
 const getStyles = (theme) => ({
     tokenBalances: {
         background: theme.colors.cardGradient,
         border: `1px solid ${theme.colors.border}`,
-        borderRadius: '8px',
-        padding: '20px',
-        marginTop: '20px',
+        borderRadius: '16px',
+        padding: '1.25rem',
+        marginTop: '16px',
         color: theme.colors.primaryText,
         boxShadow: theme.colors.cardShadow
     },
     tokenList: {
         display: 'flex',
         flexDirection: 'column',
-        gap: '15px'
+        gap: '10px'
     },
     tokenItem: {
         display: 'flex',
         alignItems: 'center',
-        padding: '15px',
-        background: theme.colors.tertiaryBg,
-        border: `1px solid ${theme.colors.border}`,
-        borderRadius: '8px',
+        padding: '12px',
+        background: `${rllPrimary}08`,
+        border: `1px solid ${rllPrimary}20`,
+        borderRadius: '12px',
         boxShadow: theme.colors.cardShadow,
         color: theme.colors.primaryText,
         transition: 'all 0.3s ease'
     },
     tokenSymbol: {
-        fontWeight: 'bold',
+        fontWeight: '600',
         marginRight: 'auto',
         color: theme.colors.primaryText
     },
     tokenBalance: {
         fontFamily: 'monospace',
-        fontSize: '1.1em',
-        color: theme.colors.primaryText,
+        fontSize: '1em',
+        color: rllPrimary,
         display: 'flex',
         alignItems: 'center',
-        gap: '10px'
+        gap: '10px',
+        fontWeight: '600'
     },
     heading: {
         color: theme.colors.primaryText,
-        marginBottom: '15px',
+        marginBottom: '12px',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: '8px'
+        gap: '8px',
+        fontSize: '1.1rem',
+        fontWeight: '700'
     },
     infoIcon: {
-        color: theme.colors.accent,
+        color: rllPrimary,
         cursor: 'help',
-        fontSize: '16px',
+        fontSize: '12px',
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
-        width: '20px',
-        height: '20px',
+        width: '18px',
+        height: '18px',
         borderRadius: '50%',
-        border: `1px solid ${theme.colors.accent}`,
-        marginLeft: 'auto',
-        transition: 'all 0.3s ease'
+        border: `1px solid ${rllPrimary}`,
+        marginLeft: '6px',
+        fontWeight: '600'
     },
     spinner: {
         width: '20px',
         height: '20px',
         border: `2px solid ${theme.colors.border}`,
-        borderTop: `2px solid ${theme.colors.accent}`,
+        borderTop: `2px solid ${rllPrimary}`,
         borderRadius: '50%',
         animation: 'spin 1s linear infinite',
     },
@@ -99,51 +142,52 @@ const getStyles = (theme) => ({
         cursor: 'pointer',
         width: '16px',
         height: '16px',
-        accentColor: theme.colors.accent
+        accentColor: rllPrimary
     },
     section: {
         background: theme.colors.cardGradient,
         border: `1px solid ${theme.colors.border}`,
-        borderRadius: '8px',
-        padding: '20px',
-        marginTop: '20px',
+        borderRadius: '16px',
+        padding: '1.25rem',
+        marginTop: '16px',
         color: theme.colors.primaryText,
         boxShadow: theme.colors.cardShadow
     },
     distributionItem: {
         display: 'flex',
         alignItems: 'center',
-        padding: '15px',
-        background: theme.colors.tertiaryBg,
-        border: `1px solid ${theme.colors.border}`,
-        borderRadius: '8px',
+        padding: '12px',
+        background: `${rllPrimary}08`,
+        border: `1px solid ${rllPrimary}20`,
+        borderRadius: '12px',
         boxShadow: theme.colors.cardShadow,
         color: theme.colors.primaryText,
         marginBottom: '10px',
         transition: 'all 0.3s ease'
     },
     distributionLabel: {
-        fontWeight: 'bold',
+        fontWeight: '600',
         marginRight: 'auto',
         color: theme.colors.primaryText
     },
     distributionValue: {
         fontFamily: 'monospace',
-        fontSize: '1.1em',
-        color: theme.colors.primaryText
+        fontSize: '1em',
+        color: rllPrimary,
+        fontWeight: '600'
     },
     eventList: {
         display: 'flex',
         flexDirection: 'column',
-        gap: '15px'
+        gap: '10px'
     },
     eventItem: {
         display: 'flex',
         flexDirection: 'column',
-        padding: '15px',
-        background: theme.colors.tertiaryBg,
-        border: `1px solid ${theme.colors.border}`,
-        borderRadius: '8px',
+        padding: '12px',
+        background: `${rllPrimary}08`,
+        border: `1px solid ${rllPrimary}20`,
+        borderRadius: '12px',
         boxShadow: theme.colors.cardShadow,
         color: theme.colors.primaryText,
         transition: 'all 0.3s ease'
@@ -151,43 +195,60 @@ const getStyles = (theme) => ({
     eventHeader: {
         display: 'flex',
         justifyContent: 'space-between',
-        marginBottom: '10px'
+        marginBottom: '8px',
+        fontWeight: '600',
+        fontSize: '0.9rem'
     },
     eventDetails: {
         display: 'flex',
         flexDirection: 'column',
-        gap: '5px'
+        gap: '4px',
+        fontSize: '0.85rem',
+        color: theme.colors.secondaryText
     },
     sectionHeader: {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: '15px'
+        marginBottom: '12px'
+    },
+    sectionIcon: {
+        width: '36px',
+        height: '36px',
+        borderRadius: '10px',
+        background: `linear-gradient(135deg, ${rllPrimary}20, ${rllPrimary}10)`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: '10px',
+        flexShrink: 0
     },
     statusGrid: {
         display: 'flex',
         flexDirection: 'column',
-        gap: '10px'
+        gap: '8px'
     },
     statusItem: {
         display: 'flex',
         justifyContent: 'space-between',
-        color: theme.colors.primaryText
+        color: theme.colors.primaryText,
+        fontSize: '0.9rem',
+        padding: '4px 0'
     },
     cycleInfo: {
         display: 'flex',
         flexDirection: 'column',
-        gap: '10px'
+        gap: '8px'
     },
     progressInfo: {
         display: 'flex',
         flexDirection: 'column',
-        gap: '10px'
+        gap: '8px'
     },
     proposalInfo: {
         display: 'flex',
         flexDirection: 'column',
-        gap: '10px'
+        gap: '8px'
     },
     reconciliationList: {
         display: 'flex',
@@ -205,22 +266,22 @@ const getStyles = (theme) => ({
         gap: '10px'
     },
     adminButton: {
-        background: `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.accent}dd)`,
-        color: theme.colors.primaryBg,
+        background: `linear-gradient(135deg, ${rllPrimary}, ${rllSecondary})`,
+        color: '#fff',
         border: 'none',
-        borderRadius: '6px',
+        borderRadius: '10px',
         padding: '10px 18px',
         cursor: 'pointer',
-        fontSize: '16px',
+        fontSize: '0.95rem',
         fontWeight: '600',
         transition: 'all 0.3s ease',
-        boxShadow: theme.colors.accentShadow
+        boxShadow: `0 4px 12px ${rllPrimary}30`
     },
     noNeuronsMessage: {
         background: theme.colors.cardGradient,
         border: `1px solid ${theme.colors.border}`,
-        padding: '20px',
-        borderRadius: '8px',
+        padding: '1.25rem',
+        borderRadius: '16px',
         color: theme.colors.primaryText,
         boxShadow: theme.colors.cardShadow
     },
@@ -230,10 +291,10 @@ const getStyles = (theme) => ({
         lineHeight: '1.6'
     },
     principalCode: {
-        background: theme.colors.tertiaryBg,
-        border: `1px solid ${theme.colors.border}`,
+        background: `${rllPrimary}10`,
+        border: `1px solid ${rllPrimary}20`,
         padding: '6px 10px',
-        borderRadius: '6px',
+        borderRadius: '8px',
         fontFamily: 'monospace',
         wordBreak: 'break-all',
         color: theme.colors.primaryText
@@ -241,10 +302,10 @@ const getStyles = (theme) => ({
     expandButton: {
         background: 'none',
         border: 'none',
-        color: theme.colors.accent,
+        color: rllPrimary,
         cursor: 'pointer',
-        fontSize: '20px',
-        padding: '0 10px',
+        fontSize: '18px',
+        padding: '0 8px',
         transition: 'all 0.3s ease'
     },
     rllLogo: {
@@ -262,15 +323,15 @@ const getStyles = (theme) => ({
     },
     claimButton: {
         background: `linear-gradient(135deg, ${theme.colors.success}, ${theme.colors.success}dd)`,
-        color: theme.colors.primaryBg,
+        color: '#fff',
         border: 'none',
-        borderRadius: '6px',
+        borderRadius: '10px',
         padding: '10px 18px',
         cursor: 'pointer',
-        fontSize: '16px',
+        fontSize: '0.95rem',
         fontWeight: '600',
         transition: 'all 0.3s ease',
-        boxShadow: theme.colors.accentShadow
+        boxShadow: `0 4px 12px ${theme.colors.success}30`
     },
     eventActions: {
         display: 'flex',
@@ -280,7 +341,14 @@ const getStyles = (theme) => ({
     claimHistory: {
         display: 'flex',
         flexDirection: 'column',
-        gap: '15px'
+        gap: '12px'
+    },
+    statsCard: {
+        background: `${rllPrimary}08`,
+        border: `1px solid ${rllPrimary}20`,
+        padding: '1rem',
+        borderRadius: '14px',
+        boxShadow: theme.colors.cardShadow
     }
 });
 
@@ -1256,29 +1324,89 @@ function RLL() {
 
     return (
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <style>{customAnimations}</style>
             <Header />
-            <main className="rll-container">
-                <h1 style={{ color: theme.colors.primaryText, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    Rewards Distribution Server
-                    <span 
-                        style={styles.infoIcon} 
-                        title="The Rewards Distribution Server manages token rewards for Sneed DAO participants based on their voting activity and neuron holdings"
-                    >
-                        i
-                    </span>
-                </h1>
+            
+            {/* Hero Banner */}
+            <div style={{
+                background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${rllPrimary}12 50%, ${rllSecondary}08 100%)`,
+                borderBottom: `1px solid ${theme.colors.border}`,
+                padding: '2rem 1rem',
+                position: 'relative',
+                overflow: 'hidden'
+            }}>
+                {/* Background decorations */}
+                <div style={{
+                    position: 'absolute',
+                    top: '-30%',
+                    right: '-5%',
+                    width: '300px',
+                    height: '300px',
+                    background: `radial-gradient(circle, ${rllPrimary}15 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
                 
-                <section style={styles.section}>
+                <div className="rll-fade-in" style={{ maxWidth: '900px', margin: '0 auto', textAlign: 'center', position: 'relative', zIndex: 1 }}>
+                    <div className="rll-float" style={{
+                        width: '72px',
+                        height: '72px',
+                        borderRadius: '18px',
+                        background: `linear-gradient(135deg, ${rllPrimary}, ${rllSecondary})`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        margin: '0 auto 1rem',
+                        boxShadow: `0 12px 40px ${rllPrimary}50`,
+                    }}>
+                        <FaCoins size={32} style={{ color: '#fff' }} />
+                    </div>
+                    
+                    <h1 style={{
+                        fontSize: '1.75rem',
+                        fontWeight: '700',
+                        color: theme.colors.primaryText,
+                        margin: '0 0 0.5rem',
+                        letterSpacing: '-0.5px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px'
+                    }}>
+                        Rewards Distribution Server
+                        <span 
+                            style={styles.infoIcon} 
+                            title="The Rewards Distribution Server manages token rewards for Sneed DAO participants based on their voting activity and neuron holdings"
+                        >
+                            i
+                        </span>
+                    </h1>
+                    <p style={{
+                        fontSize: '0.95rem',
+                        color: theme.colors.secondaryText,
+                        margin: 0
+                    }}>
+                        Manage and claim your DAO voting rewards
+                    </p>
+                </div>
+            </div>
+            
+            <main className="rll-container" style={{ padding: '1.25rem', maxWidth: '900px', margin: '0 auto' }}>
+                <section className="rll-fade-in" style={styles.section}>
                     <div style={styles.sectionHeader}>
-                        <h2 style={styles.heading}>
-                            Rewards Statistics
-                            <span 
-                                style={styles.infoIcon} 
-                                title="Overview of all Reward events including distributions and claims per token"
-                            >
-                                i
-                            </span>
-                        </h2>
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                            <div style={styles.sectionIcon}>
+                                <FaChartBar size={16} style={{ color: rllPrimary }} />
+                            </div>
+                            <h2 style={styles.heading}>
+                                Rewards Statistics
+                                <span 
+                                    style={styles.infoIcon} 
+                                    title="Overview of all Reward events including distributions and claims per token"
+                                >
+                                    i
+                                </span>
+                            </h2>
+                        </div>
                         <button 
                             onClick={() => setExpandedSections(prev => ({ ...prev, rewardsStatistics: !prev.rewardsStatistics }))}
                             style={styles.expandButton}
@@ -1287,12 +1415,14 @@ function RLL() {
                         </button>
                     </div>
                     {expandedSections.rewardsStatistics && (loadingEventStats || loadingTokens ? (
-                        <div style={styles.spinner} />
+                        <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+                            <FaSpinner className="rll-spin" size={24} style={{ color: rllPrimary }} />
+                        </div>
                     ) : eventStats && (
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px' }}>
                             {/* All Time Stats */}
-                            <div style={{ background: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, padding: '20px', borderRadius: '8px', boxShadow: theme.colors.cardShadow }}>
-                                <h3 style={{ color: theme.colors.accent, marginBottom: '15px' }}>All Time Statistics</h3>
+                            <div style={styles.statsCard}>
+                                <h3 style={{ color: rllPrimary, marginBottom: '12px', fontSize: '1rem', fontWeight: '700' }}>All Time Statistics</h3>
                                 
                                 <div style={{ marginBottom: '20px' }}>
                                     <h4 style={{ color: theme.colors.success, marginBottom: '10px' }}>Server Distributions</h4>
@@ -1362,10 +1492,12 @@ function RLL() {
                             </div>
 
                             {/* Last 24h Stats */}
-                            <div style={{ background: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow, padding: '20px', borderRadius: '8px' }}>
+                            <div style={styles.statsCard}>
                                 <h3 style={{ 
-                                    color: theme.colors.accent, 
-                                    marginBottom: '15px',
+                                    color: rllPrimary, 
+                                    marginBottom: '12px',
+                                    fontSize: '1rem',
+                                    fontWeight: '700',
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: '10px'
@@ -1483,17 +1615,22 @@ function RLL() {
                 )}
 
                 {/* Balance Reconciliation */}
-                <section style={styles.section}>
+                <section className="rll-fade-in" style={styles.section}>
                     <div style={styles.sectionHeader}>
-                        <h2 style={styles.heading}>
-                            Balance Reconciliation
-                            <span 
-                                style={styles.infoIcon} 
-                                title="Overview of token balances held by the Rewards Distribution Server for distribution, including total distributed amounts and currently claimable rewards"
-                            >
-                                i
-                            </span>
-                        </h2>
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                            <div style={styles.sectionIcon}>
+                                <FaBalanceScale size={16} style={{ color: rllPrimary }} />
+                            </div>
+                            <h2 style={styles.heading}>
+                                Balance Reconciliation
+                                <span 
+                                    style={styles.infoIcon} 
+                                    title="Overview of token balances held by the Rewards Distribution Server for distribution, including total distributed amounts and currently claimable rewards"
+                                >
+                                    i
+                                </span>
+                            </h2>
+                        </div>
                         <button 
                             onClick={() => setExpandedSections(prev => ({ ...prev, balanceReconciliation: !prev.balanceReconciliation }))}
                             style={styles.expandButton}
@@ -1557,17 +1694,22 @@ function RLL() {
                 </section>
 
                 {/* Token Distribution Limits */}
-                <section style={styles.section}>
+                <section className="rll-fade-in" style={styles.section}>
                     <div style={styles.sectionHeader}>
-                        <h2 style={styles.heading}>
-                            Token Distribution Limits
-                            <span 
-                                style={styles.infoIcon} 
-                                title="Distribution limits control token rewards: Min ensures users receive meaningful amounts (smaller rewards accumulate until min is reached), while Max caps the reward size per cycle (excess rewards carry over to future cycles)"
-                            >
-                                i
-                            </span>
-                        </h2>
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                            <div style={styles.sectionIcon}>
+                                <FaCoins size={16} style={{ color: rllPrimary }} />
+                            </div>
+                            <h2 style={styles.heading}>
+                                Token Distribution Limits
+                                <span 
+                                    style={styles.infoIcon} 
+                                    title="Distribution limits control token rewards: Min ensures users receive meaningful amounts (smaller rewards accumulate until min is reached), while Max caps the reward size per cycle (excess rewards carry over to future cycles)"
+                                >
+                                    i
+                                </span>
+                            </h2>
+                        </div>
                         <button 
                             onClick={() => setExpandedSections(prev => ({ ...prev, distributionLimits: !prev.distributionLimits }))}
                             style={styles.expandButton}
@@ -1605,17 +1747,22 @@ function RLL() {
                 </section>
 
                 {/* Distribution Cycle Status */}
-                <section style={styles.section}>
+                <section className="rll-fade-in" style={styles.section}>
                     <div style={styles.sectionHeader}>
-                        <h2 style={styles.heading}>
-                            Distribution Cycle Status
-                            <span 
-                                style={styles.infoIcon} 
-                                title="Current status of the Rewards distribution cycle, including timing information and cycle frequency"
-                            >
-                                i
-                            </span>
-                        </h2>
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                            <div style={styles.sectionIcon}>
+                                <FaClock size={16} style={{ color: rllPrimary }} />
+                            </div>
+                            <h2 style={styles.heading}>
+                                Distribution Cycle Status
+                                <span 
+                                    style={styles.infoIcon} 
+                                    title="Current status of the Rewards distribution cycle, including timing information and cycle frequency"
+                                >
+                                    i
+                                </span>
+                            </h2>
+                        </div>
                         <button 
                             onClick={() => setExpandedSections(prev => ({ ...prev, distributionCycle: !prev.distributionCycle }))}
                             style={styles.expandButton}
@@ -1670,17 +1817,22 @@ function RLL() {
 
 
                 {/* Import Status Section */}
-                <section style={styles.section}>
+                <section className="rll-fade-in" style={styles.section}>
                     <div style={styles.sectionHeader}>
-                        <h2 style={styles.heading}>
-                            Import Status
-                            <span 
-                                style={styles.infoIcon} 
-                                title="Statistics about imported data from the Sneed governance system, including neurons, owners, and proposals"
-                            >
-                                i
-                            </span>
-                        </h2>
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                            <div style={styles.sectionIcon}>
+                                <FaDatabase size={16} style={{ color: rllPrimary }} />
+                            </div>
+                            <h2 style={styles.heading}>
+                                Import Status
+                                <span 
+                                    style={styles.infoIcon} 
+                                    title="Statistics about imported data from the Sneed governance system, including neurons, owners, and proposals"
+                                >
+                                    i
+                                </span>
+                            </h2>
+                        </div>
                         <button 
                             onClick={() => setExpandedSections(prev => ({ ...prev, importStatus: !prev.importStatus }))}
                             style={styles.expandButton}
@@ -1710,17 +1862,22 @@ function RLL() {
                 {/* Admin Controls */}
                 {isAdmin && (
                     <>
-                        <section style={styles.section}>
+                        <section className="rll-fade-in" style={styles.section}>
                             <div style={styles.sectionHeader}>
-                                <h2 style={styles.heading}>
-                                    Admin Controls
-                                    <span 
-                                        style={styles.infoIcon} 
-                                        title="Administrative functions for managing the Rewards Distribution system, including cycle control and data import operations"
-                                    >
-                                        i
-                                    </span>
-                                </h2>
+                                <div style={{ display: 'flex', alignItems: 'center' }}>
+                                    <div style={styles.sectionIcon}>
+                                        <FaCog size={16} style={{ color: rllPrimary }} />
+                                    </div>
+                                    <h2 style={styles.heading}>
+                                        Admin Controls
+                                        <span 
+                                            style={styles.infoIcon} 
+                                            title="Administrative functions for managing the Rewards Distribution system, including cycle control and data import operations"
+                                        >
+                                            i
+                                        </span>
+                                    </h2>
+                                </div>
                                 <button 
                                     onClick={() => setExpandedSections(prev => ({ ...prev, adminControls: !prev.adminControls }))}
                                     style={styles.expandButton}
@@ -1967,17 +2124,22 @@ function RLL() {
                     </>
                 )}
 
-                <section style={styles.section}>
+                <section className="rll-fade-in" style={styles.section}>
                     <div style={styles.sectionHeader}>
-                        <h2 style={styles.heading}>
-                            Recent Distribution Events
-                            <span 
-                                style={styles.infoIcon} 
-                                title="History of recent token distributions, showing proposal ranges, timestamps, and distributed amounts"
-                            >
-                                i
-                            </span>
-                        </h2>
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                            <div style={styles.sectionIcon}>
+                                <FaHistory size={16} style={{ color: rllPrimary }} />
+                            </div>
+                            <h2 style={styles.heading}>
+                                Recent Distribution Events
+                                <span 
+                                    style={styles.infoIcon} 
+                                    title="History of recent token distributions, showing proposal ranges, timestamps, and distributed amounts"
+                                >
+                                    i
+                                </span>
+                            </h2>
+                        </div>
                         <button 
                             onClick={() => setExpandedSections(prev => ({ ...prev, distributionEvents: !prev.distributionEvents }))}
                             style={styles.expandButton}
@@ -2004,17 +2166,22 @@ function RLL() {
                     ))}
                 </section>
 
-                <section style={styles.section}>
+                <section className="rll-fade-in" style={styles.section}>
                     <div style={styles.sectionHeader}>
-                        <h2 style={styles.heading}>
-                            Recent Claim Events
-                            <span 
-                                style={styles.infoIcon} 
-                                title="History of recent token claims by users, including timestamps and claimed amounts"
-                            >
-                                i
-                            </span>
-                        </h2>
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                            <div style={styles.sectionIcon}>
+                                <FaCheckCircle size={16} style={{ color: rllPrimary }} />
+                            </div>
+                            <h2 style={styles.heading}>
+                                Recent Claim Events
+                                <span 
+                                    style={styles.infoIcon} 
+                                    title="History of recent token claims by users, including timestamps and claimed amounts"
+                                >
+                                    i
+                                </span>
+                            </h2>
+                        </div>
                         <button 
                             onClick={() => setExpandedSections(prev => ({ ...prev, claimEvents: !prev.claimEvents }))}
                             style={styles.expandButton}
@@ -2081,14 +2248,6 @@ function RLL() {
                 />
             )}
 
-            <style>
-                {`
-                    @keyframes spin {
-                        0% { transform: rotate(0deg); }
-                        100% { transform: rotate(360deg); }
-                    }
-                `}
-            </style>
         </div>
     );
 }

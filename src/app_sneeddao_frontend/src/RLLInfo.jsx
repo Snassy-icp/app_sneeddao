@@ -27,24 +27,60 @@ import { createActor as createRllActor, canisterId as rllCanisterId } from 'exte
 import priceService from './services/PriceService';
 import Header from './components/Header';
 import { useTheme } from './contexts/ThemeContext';
+import { FaCoins, FaChartLine, FaWallet, FaCubes, FaArrowRight, FaSpinner, FaDollarSign, FaLayerGroup } from 'react-icons/fa';
+
+// Custom CSS for animations
+const customAnimations = `
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes rllFloat {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-8px); }
+}
+
+.rll-float {
+    animation: rllFloat 3s ease-in-out infinite;
+}
+
+.rll-fade-in {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.rll-spin {
+    animation: spin 1s linear infinite;
+}
+`;
+
+// Page accent colors - gold/amber theme for tokenomics
+const rllPrimary = '#f59e0b';
+const rllSecondary = '#fbbf24';
 
 // Styles for the expandable sections
 const getStyles = (theme) => ({
     section: {
         background: theme.colors.cardGradient,
         border: `1px solid ${theme.colors.border}`,
-        borderRadius: '12px',
-        padding: '20px',
-        marginTop: '20px',
+        borderRadius: '16px',
+        padding: '1.25rem',
+        marginTop: '16px',
         color: theme.colors.primaryText,
         boxShadow: theme.colors.cardShadow
     },
     expandableHeader: {
-        background: theme.colors.tertiaryBg,
-        border: `1px solid ${theme.colors.border}`,
+        background: `${rllPrimary}08`,
+        border: `1px solid ${rllPrimary}20`,
         padding: '12px 16px',
         marginBottom: '8px',
-        borderRadius: '8px',
+        borderRadius: '12px',
         cursor: 'pointer',
         display: 'flex',
         alignItems: 'center',
@@ -64,9 +100,9 @@ const getStyles = (theme) => ({
         padding: '10px'
     },
     item: {
-        background: theme.colors.tertiaryBg,
-        border: `1px solid ${theme.colors.border}`,
-        borderRadius: '8px',
+        background: `${rllPrimary}08`,
+        border: `1px solid ${rllPrimary}20`,
+        borderRadius: '12px',
         padding: '15px',
         marginBottom: '10px',
         boxShadow: theme.colors.cardShadow,
@@ -89,18 +125,18 @@ const getStyles = (theme) => ({
         margin: '10px 0'
     },
     flowContainer: {
-        position: 'relative',  // Establish positioning context
+        position: 'relative',
         width: '100%',
         height: '600px',
         background: theme.colors.primaryBg,
         border: `1px solid ${theme.colors.border}`,
-        borderRadius: '12px',
+        borderRadius: '16px',
         boxShadow: theme.colors.cardShadow
-        // Remove the conflicting flex: '1 1 auto' from here
     },
     link: {
-        color: theme.colors.accent,
+        color: rllPrimary,
         textDecoration: 'none',
+        fontWeight: '500',
         '&:hover': {
             textDecoration: 'underline'
         }
@@ -108,22 +144,22 @@ const getStyles = (theme) => ({
     detailsSection: {
         marginTop: '10px',
         padding: '10px',
-        background: theme.colors.secondaryBg,
-        border: `1px solid ${theme.colors.border}`,
-        borderRadius: '6px'
+        background: `${rllPrimary}05`,
+        border: `1px solid ${rllPrimary}15`,
+        borderRadius: '10px'
     },
     canisterId: {
         fontFamily: 'monospace',
-        background: theme.colors.tertiaryBg,
+        background: `${rllPrimary}10`,
         color: theme.colors.primaryText,
         padding: '6px 10px',
-        borderRadius: '6px',
-        fontSize: '0.9em',
-        border: `1px solid ${theme.colors.border}`
+        borderRadius: '8px',
+        fontSize: '0.85em',
+        border: `1px solid ${rllPrimary}20`
     },
     spinner: {
-        border: `4px solid ${theme.colors.border}`,
-        borderTop: `4px solid ${theme.colors.accent}`,
+        border: `3px solid ${theme.colors.border}`,
+        borderTop: `3px solid ${rllPrimary}`,
         borderRadius: '50%',
         width: '20px',
         height: '20px',
@@ -135,17 +171,18 @@ const getStyles = (theme) => ({
         marginBottom: '5px'
     },
     infoIcon: {
-        color: theme.colors.accent,
+        color: rllPrimary,
         cursor: 'help',
-        fontSize: '16px',
+        fontSize: '12px',
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
-        width: '20px',
-        height: '20px',
+        width: '18px',
+        height: '18px',
         borderRadius: '50%',
-        border: `1px solid ${theme.colors.accent}`,
-        marginLeft: '4px'
+        border: `1px solid ${rllPrimary}`,
+        marginLeft: '6px',
+        fontWeight: '600'
     },
     heading: {
         display: 'flex',
@@ -154,20 +191,32 @@ const getStyles = (theme) => ({
         marginBottom: '20px'
     },
     sectionHeader: {
-        background: theme.colors.tertiaryBg,
-        border: `1px solid ${theme.colors.border}`,
+        background: `${rllPrimary}08`,
+        border: `1px solid ${rllPrimary}20`,
         padding: '12px 16px',
-        borderRadius: '8px',
+        borderRadius: '12px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: '20px',
-        cursor: 'pointer'
+        marginBottom: '16px',
+        cursor: 'pointer',
+        transition: 'all 0.2s ease'
+    },
+    sectionIcon: {
+        width: '36px',
+        height: '36px',
+        borderRadius: '10px',
+        background: `linear-gradient(135deg, ${rllPrimary}20, ${rllPrimary}10)`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: '12px',
+        flexShrink: 0
     },
     expandButton: {
         background: 'transparent',
         border: 'none',
-        color: theme.colors.accent,
+        color: rllPrimary,
         fontSize: '1.2em',
         cursor: 'pointer',
         padding: '0 5px',
@@ -183,7 +232,7 @@ const getStyles = (theme) => ({
         gap: '8px'
     },
     globeIcon: {
-        color: theme.colors.accent,
+        color: rllPrimary,
         cursor: 'pointer',
         fontSize: '16px',
         display: 'inline-flex',
@@ -192,6 +241,14 @@ const getStyles = (theme) => ({
         width: '20px',
         height: '20px',
         marginRight: '8px'
+    },
+    priceCard: {
+        background: `${rllPrimary}08`,
+        border: `1px solid ${rllPrimary}20`,
+        borderRadius: '14px',
+        padding: '1rem',
+        textAlign: 'center',
+        boxShadow: theme.colors.cardShadow
     },
 });
 
@@ -2975,96 +3032,153 @@ function RLLInfo() {
 
     return (
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <style>{customAnimations}</style>
             <Header />
+            
+            {/* Hero Banner */}
+            <div style={{
+                background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${rllPrimary}12 50%, ${rllSecondary}08 100%)`,
+                borderBottom: `1px solid ${theme.colors.border}`,
+                padding: '2rem 1rem',
+                position: 'relative',
+                overflow: 'hidden'
+            }}>
+                {/* Background decorations */}
+                <div style={{
+                    position: 'absolute',
+                    top: '-30%',
+                    right: '-5%',
+                    width: '300px',
+                    height: '300px',
+                    background: `radial-gradient(circle, ${rllPrimary}15 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
+                <div style={{
+                    position: 'absolute',
+                    bottom: '-50%',
+                    left: '10%',
+                    width: '200px',
+                    height: '200px',
+                    background: `radial-gradient(circle, ${rllSecondary}10 0%, transparent 70%)`,
+                    pointerEvents: 'none'
+                }} />
+                
+                <div className="rll-fade-in" style={{ maxWidth: '900px', margin: '0 auto', textAlign: 'center', position: 'relative', zIndex: 1 }}>
+                    <div className="rll-float" style={{
+                        width: '72px',
+                        height: '72px',
+                        borderRadius: '18px',
+                        background: `linear-gradient(135deg, ${rllPrimary}, ${rllSecondary})`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        margin: '0 auto 1rem',
+                        boxShadow: `0 12px 40px ${rllPrimary}50`,
+                    }}>
+                        <FaCoins size={32} style={{ color: '#fff' }} />
+                    </div>
+                    
+                    <h1 style={{
+                        fontSize: '1.75rem',
+                        fontWeight: '700',
+                        color: theme.colors.primaryText,
+                        margin: '0 0 0.5rem',
+                        letterSpacing: '-0.5px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px'
+                    }}>
+                        Tokenomics
+                        <span 
+                            style={styles.infoIcon} 
+                            title="A comprehensive system for managing DAO treasury assets, automating token distributions, and maintaining liquidity across multiple protocols"
+                        >
+                            i
+                        </span>
+                    </h1>
+                    <p style={{
+                        fontSize: '0.95rem',
+                        color: theme.colors.secondaryText,
+                        margin: 0
+                    }}>
+                        DAO treasury, token distributions, and liquidity management
+                    </p>
+                </div>
+            </div>
+            
             <main className="rllinfo-container" style={{
                 width: '100%',
                 maxWidth: '100%',
                 margin: '0 auto',
-                padding: '20px',
-                overflow: 'hidden'  // Prevent overflow issues
+                padding: '1.25rem',
+                overflow: 'hidden'
             }}>
-                <h1 style={{ 
-                    color: theme.colors.primaryText, 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: '8px',
-                    justifyContent: 'center',
-                    width: '100%',
-                    marginBottom: '30px'
-                }}>
-                    Tokenomics
-                    <span 
-                        style={styles.infoIcon} 
-                        title="A comprehensive system for managing DAO treasury assets, automating token distributions, and maintaining liquidity across multiple protocols"
-                    >
-                        i
-                    </span>
-                </h1>
-
                 {/* Price Section */}
-                <section style={{
+                <section className="rll-fade-in" style={{
                     ...styles.section,
                     width: '100%',
                     maxWidth: '800px',
-                    margin: '0 auto 30px',
-                    padding: '20px'
+                    margin: '0 auto 20px',
+                    marginTop: 0
                 }}>
-                    <div style={{ marginBottom: '20px' }}>
+                    <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '10px', 
+                        marginBottom: '16px',
+                        justifyContent: 'center'
+                    }}>
+                        <div style={styles.sectionIcon}>
+                            <FaDollarSign size={16} style={{ color: rllPrimary }} />
+                        </div>
                         <h2 style={{ 
                             color: theme.colors.primaryText, 
-                            marginTop: 0, 
-                            marginBottom: '8px',
-                            textAlign: 'center',
-                            fontSize: '1.3em'
+                            margin: 0,
+                            fontSize: '1.15rem',
+                            fontWeight: '700'
                         }}>
                             Current Prices
                         </h2>
-                        <div style={{
-                            textAlign: 'center',
-                            fontSize: '0.85em',
-                            color: theme.colors.mutedText
-                        }}>
-                            All prices from <a 
-                                href="https://icpswap.com" 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                style={{
-                                    color: theme.colors.accent,
-                                    textDecoration: 'none',
-                                    transition: 'all 0.3s ease'
-                                }}
-                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                            >
-                                ICPSwap
-                            </a>
-                        </div>
+                    </div>
+                    <div style={{
+                        textAlign: 'center',
+                        fontSize: '0.8rem',
+                        color: theme.colors.mutedText,
+                        marginBottom: '12px'
+                    }}>
+                        All prices from <a 
+                            href="https://icpswap.com" 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            style={{
+                                color: rllPrimary,
+                                textDecoration: 'none',
+                                fontWeight: '500'
+                            }}
+                        >
+                            ICPSwap
+                        </a>
                     </div>
                     <div style={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                        gap: '15px'
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                        gap: '12px'
                     }}>
                         {/* SNEED Price in ICP */}
-                        <div style={{
-                            background: theme.colors.tertiaryBg,
-                            border: `1px solid ${theme.colors.border}`,
-                            borderRadius: '8px',
-                            padding: '15px',
-                            textAlign: 'center',
-                            boxShadow: theme.colors.cardShadow
-                        }}>
+                        <div style={styles.priceCard}>
                             <div style={{ 
                                 color: theme.colors.mutedText, 
-                                fontSize: '0.9em',
-                                marginBottom: '8px'
+                                fontSize: '0.8rem',
+                                marginBottom: '6px',
+                                fontWeight: '500'
                             }}>
                                 SNEED Price (ICP)
                             </div>
                             <div style={{ 
-                                color: theme.colors.primaryText, 
-                                fontSize: '1.3em',
-                                fontWeight: 'bold',
+                                color: rllPrimary, 
+                                fontSize: '1.2rem',
+                                fontWeight: '700',
                                 fontFamily: 'monospace'
                             }}>
                                 {conversionRates['ICP'] && conversionRates['SNEED'] 
@@ -3075,25 +3189,19 @@ function RLLInfo() {
                         </div>
 
                         {/* SNEED Price in USD */}
-                        <div style={{
-                            background: theme.colors.tertiaryBg,
-                            border: `1px solid ${theme.colors.border}`,
-                            borderRadius: '8px',
-                            padding: '15px',
-                            textAlign: 'center',
-                            boxShadow: theme.colors.cardShadow
-                        }}>
+                        <div style={styles.priceCard}>
                             <div style={{ 
                                 color: theme.colors.mutedText, 
-                                fontSize: '0.9em',
-                                marginBottom: '8px'
+                                fontSize: '0.8rem',
+                                marginBottom: '6px',
+                                fontWeight: '500'
                             }}>
                                 SNEED Price (USD)
                             </div>
                             <div style={{ 
-                                color: theme.colors.primaryText, 
-                                fontSize: '1.3em',
-                                fontWeight: 'bold',
+                                color: rllPrimary, 
+                                fontSize: '1.2rem',
+                                fontWeight: '700',
                                 fontFamily: 'monospace'
                             }}>
                                 ${conversionRates['SNEED'] 
@@ -3104,25 +3212,19 @@ function RLLInfo() {
                         </div>
 
                         {/* ICP Price in USD */}
-                        <div style={{
-                            background: theme.colors.tertiaryBg,
-                            border: `1px solid ${theme.colors.border}`,
-                            borderRadius: '8px',
-                            padding: '15px',
-                            textAlign: 'center',
-                            boxShadow: theme.colors.cardShadow
-                        }}>
+                        <div style={styles.priceCard}>
                             <div style={{ 
                                 color: theme.colors.mutedText, 
-                                fontSize: '0.9em',
-                                marginBottom: '8px'
+                                fontSize: '0.8rem',
+                                marginBottom: '6px',
+                                fontWeight: '500'
                             }}>
                                 ICP Price (USD)
                             </div>
                             <div style={{ 
-                                color: theme.colors.primaryText, 
-                                fontSize: '1.3em',
-                                fontWeight: 'bold',
+                                color: rllPrimary, 
+                                fontSize: '1.2rem',
+                                fontWeight: '700',
                                 fontFamily: 'monospace'
                             }}>
                                 ${conversionRates['ICP'] 
@@ -3145,7 +3247,7 @@ function RLLInfo() {
                     justifyItems: 'center'
                 }}>
                     {/* Total Assets Section */}
-                    <section style={{
+                    <section className="rll-fade-in" style={{
                         ...styles.section, 
                         gridArea: 'assets',
                         width: '100%',
@@ -3156,17 +3258,22 @@ function RLLInfo() {
                             style={styles.sectionHeader}
                             onClick={() => setExpandedSections(prev => ({ ...prev, totalAssets: !prev.totalAssets }))}
                         >
-                            <div style={{ flex: 1 }}>
-                                <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
-                                    Total Assets Overview
-                                    <span 
-                                        style={styles.infoIcon} 
-                                        title="Comprehensive overview of all DAO assets across different protocols, including treasury holdings, staked positions, LP positions, and tokens pending distribution"
-                                        onClick={(e) => e.stopPropagation()}
-                                    >
-                                        i
-                                    </span>
-                                </h2>
+                            <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
+                                <div style={styles.sectionIcon}>
+                                    <FaWallet size={16} style={{ color: rllPrimary }} />
+                                </div>
+                                <div>
+                                    <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', fontSize: '1.1rem', fontWeight: '700' }}>
+                                        Total Assets Overview
+                                        <span 
+                                            style={styles.infoIcon} 
+                                            title="Comprehensive overview of all DAO assets across different protocols, including treasury holdings, staked positions, LP positions, and tokens pending distribution"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            i
+                                        </span>
+                                    </h2>
+                                </div>
                                 <div style={{ 
                                     display: 'grid',
                                     gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
@@ -4069,7 +4176,7 @@ function RLLInfo() {
                     </section>
 
                     {/* Flow Diagram Section */}
-                    <section style={{
+                    <section className="rll-fade-in" style={{
                         ...styles.section, 
                         gridArea: 'flow',
                         width: '100%',
@@ -4083,16 +4190,21 @@ function RLLInfo() {
                             style={styles.sectionHeader}
                             onClick={() => setExpandedSections(prev => ({ ...prev, rllDiagram: !prev.rllDiagram }))}
                         >
-                            <h2 style={{ margin: 0, display: 'flex', alignItems: 'center' }}>
-                                Recursive Liquidity Loop (RLL)
-                                <span 
-                                    style={styles.infoIcon} 
-                                    title="Interactive visualization of token flows between different system components. Hover over nodes and edges for detailed information. Click nodes to visit relevant external links."
-                                    onClick={(e) => e.stopPropagation()}
-                                >
-                                    i
-                                </span>
-                            </h2>
+                            <div style={{ display: 'flex', alignItems: 'center' }}>
+                                <div style={styles.sectionIcon}>
+                                    <FaChartLine size={16} style={{ color: rllPrimary }} />
+                                </div>
+                                <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', fontSize: '1.1rem', fontWeight: '700' }}>
+                                    Recursive Liquidity Loop (RLL)
+                                    <span 
+                                        style={styles.infoIcon} 
+                                        title="Interactive visualization of token flows between different system components. Hover over nodes and edges for detailed information. Click nodes to visit relevant external links."
+                                        onClick={(e) => e.stopPropagation()}
+                                    >
+                                        i
+                                    </span>
+                                </h2>
+                            </div>
                             <button style={styles.expandButton}>
                                 {expandedSections.rllDiagram ? '▼' : '▶'}
                             </button>
@@ -4127,7 +4239,7 @@ function RLLInfo() {
                     </section>
 
                     {/* Combined Details Section */}
-                    <section style={{
+                    <section className="rll-fade-in" style={{
                         ...styles.section, 
                         gridArea: 'details',
                         width: '100%',
@@ -4138,16 +4250,21 @@ function RLLInfo() {
                             style={styles.sectionHeader}
                             onClick={() => setExpandedSections(prev => ({ ...prev, systemComponents: !prev.systemComponents }))}
                         >
-                            <h2 style={{ margin: 0, display: 'flex', alignItems: 'center' }}>
-                                System Components
-                                <span 
-                                    style={styles.infoIcon} 
-                                    title="Detailed information about each component in the system, including infrastructure nodes, token management canisters, and revenue sources"
-                                    onClick={(e) => e.stopPropagation()}
-                                >
-                                    i
-                                </span>
-                            </h2>
+                            <div style={{ display: 'flex', alignItems: 'center' }}>
+                                <div style={styles.sectionIcon}>
+                                    <FaCubes size={16} style={{ color: rllPrimary }} />
+                                </div>
+                                <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', fontSize: '1.1rem', fontWeight: '700' }}>
+                                    System Components
+                                    <span 
+                                        style={styles.infoIcon} 
+                                        title="Detailed information about each component in the system, including infrastructure nodes, token management canisters, and revenue sources"
+                                        onClick={(e) => e.stopPropagation()}
+                                    >
+                                        i
+                                    </span>
+                                </h2>
+                            </div>
                             <button style={styles.expandButton}>
                                 {expandedSections.systemComponents ? '▼' : '▶'}
                             </button>
