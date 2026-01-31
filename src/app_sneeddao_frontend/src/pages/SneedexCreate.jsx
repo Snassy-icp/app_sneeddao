@@ -2127,18 +2127,25 @@ function SneedexCreate() {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            padding: '1rem',
+            padding: '0.75rem',
             background: theme.colors.tertiaryBg,
             border: `1px solid ${theme.colors.border}`,
             borderRadius: '10px',
+            flexWrap: 'wrap',
+            gap: '0.5rem',
         },
         assetInfo: {
             display: 'flex',
             alignItems: 'center',
-            gap: '12px',
+            gap: '10px',
+            flex: '1 1 auto',
+            minWidth: 0,
+            overflow: 'hidden',
         },
         assetDetails: {
-            fontSize: '0.9rem',
+            fontSize: '0.85rem',
+            minWidth: 0,
+            overflow: 'hidden',
         },
         assetType: {
             fontWeight: '600',
@@ -2154,18 +2161,20 @@ function SneedexCreate() {
             border: 'none',
             color: theme.colors.error || '#ff4444',
             cursor: 'pointer',
-            padding: '8px',
+            padding: '6px',
             borderRadius: '6px',
             transition: 'background 0.3s ease',
+            fontSize: '0.85rem',
         },
         editButton: {
             background: 'transparent',
             border: 'none',
             color: theme.colors.accent,
             cursor: 'pointer',
-            padding: '8px',
+            padding: '6px',
             borderRadius: '6px',
             transition: 'background 0.3s ease',
+            fontSize: '0.85rem',
         },
         addAssetButton: {
             display: 'flex',
@@ -3102,7 +3111,7 @@ function SneedexCreate() {
                                             </div>
                                             
                                             {/* Verification status */}
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                                                 {verification.checking ? (
                                                     <span style={{ 
                                                         display: 'flex', 

@@ -1210,30 +1210,32 @@ function SneedexOffers() {
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
-            gap: '1rem',
+            gap: '0.5rem',
             marginTop: '2rem',
             paddingTop: '1.5rem',
             borderTop: `1px solid ${theme.colors.border}`,
             gridColumn: '1 / -1',
-            flexWrap: 'wrap',
         },
         paginationButton: {
             display: 'flex',
             alignItems: 'center',
-            gap: '6px',
-            padding: '10px 16px',
+            gap: '4px',
+            padding: '8px 12px',
             borderRadius: '8px',
             border: `1px solid ${theme.colors.border}`,
             background: theme.colors.secondaryBg,
             color: theme.colors.primaryText,
-            fontSize: '0.9rem',
+            fontSize: '0.8rem',
             fontWeight: '500',
             cursor: 'pointer',
             transition: 'all 0.2s ease',
+            whiteSpace: 'nowrap',
         },
         paginationInfo: {
             color: theme.colors.mutedText,
-            fontSize: '0.9rem',
+            fontSize: '0.8rem',
+            textAlign: 'center',
+            padding: '0 0.25rem',
         },
         advancedFilterToggle: {
             display: 'flex',
@@ -1976,10 +1978,10 @@ function SneedexOffers() {
                                     onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                                     disabled={currentPage === 1}
                                 >
-                                    <FaChevronLeft /> Previous
+                                    <FaChevronLeft /> Prev
                                 </button>
                                 <span style={styles.paginationInfo}>
-                                    Page {currentPage} of {totalPages} ({filteredOffers.length} offers)
+                                    {currentPage}/{totalPages}
                                 </span>
                                 <button
                                     style={{
@@ -2550,10 +2552,10 @@ function SneedexOffers() {
                                     onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                                     disabled={currentPage === 1}
                                 >
-                                    <FaChevronLeft /> Previous
+                                    <FaChevronLeft /> Prev
                                 </button>
                                 <span style={styles.paginationInfo}>
-                                    Page {currentPage} of {totalPages} ({filteredOffers.length} offers)
+                                    {currentPage}/{totalPages}
                                 </span>
                                 <button
                                     style={{

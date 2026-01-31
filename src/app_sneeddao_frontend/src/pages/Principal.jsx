@@ -1395,7 +1395,7 @@ export default function PrincipalPage() {
                                 {/* Activity Stats */}
                                 <div style={{
                                     display: 'grid',
-                                    gridTemplateColumns: 'repeat(4, 1fr)',
+                                    gridTemplateColumns: 'repeat(auto-fit, minmax(70px, 1fr))',
                                     gap: '0.75rem',
                                     marginBottom: '1rem'
                                 }}>
