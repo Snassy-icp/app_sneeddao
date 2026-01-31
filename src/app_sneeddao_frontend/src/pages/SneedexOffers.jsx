@@ -346,12 +346,12 @@ function SneedexOffers() {
             let fetchedOffers = [];
             
             // Build state filter based on showInactiveOffers toggle
+            // When showing inactive offers, include active and sold (Completed/Claimed) but exclude Expired
             const stateFilter = showInactiveOffers 
                 ? [
                     { Active: null }, 
                     { Completed: { winning_bid_id: 0n, completion_time: 0n } }, 
                     { Claimed: null },
-                    { Expired: null },
                     { Cancelled: null },
                     { Reclaimed: null }
                   ]
