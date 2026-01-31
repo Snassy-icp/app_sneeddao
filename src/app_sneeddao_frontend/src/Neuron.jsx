@@ -15,6 +15,7 @@ import { setNeuronNickname } from './utils/BackendUtils';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
 import { Principal } from '@dfinity/principal';
 import { HttpAgent } from '@dfinity/agent';
+import { encodeIcrcAccount } from '@dfinity/ledger-icrc';
 import { calculateVotingPower, formatVotingPower, VotingPowerCalculator } from './utils/VotingPowerUtils';
 import NeuronInput from './components/NeuronInput';
 import NeuronDisplay from './components/NeuronDisplay';
@@ -1182,6 +1183,74 @@ function Neuron() {
                                                 <FaExternalLinkAlt size={12} /> Dashboard
                                             </a>
                                         </div>
+                                        
+                                        {/* Neuron Subaccount - Account to send funds to when increasing stake */}
+                                        {(() => {
+                                            const selectedSns = getSnsById(selectedSnsRoot);
+                                            if (!selectedSns?.canisters?.governance) return null;
+                                            
+                                            // Convert neuron ID hex to bytes (the subaccount)
+                                            const neuronIdBytes = new Uint8Array(currentNeuronId.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+                                            // Pad to 32 bytes if needed
+                                            const subaccount32 = new Uint8Array(32);
+                                            subaccount32.set(neuronIdBytes, 32 - neuronIdBytes.length);
+                                            
+                                            // Encode the full ICRC-1 account (governance canister + subaccount)
+                                            const fullAccount = encodeIcrcAccount({
+                                                owner: Principal.fromText(selectedSns.canisters.governance),
+                                                subaccount: subaccount32
+                                            });
+                                            
+                                            return (
+                                                <div style={{
+                                                    marginTop: '0.75rem',
+                                                    padding: '0.75rem',
+                                                    background: theme.colors.primaryBg,
+                                                    borderRadius: '8px',
+                                                    border: `1px solid ${theme.colors.border}`
+                                                }}>
+                                                    <div style={{ 
+                                                        fontSize: '0.75rem', 
+                                                        color: theme.colors.mutedText, 
+                                                        marginBottom: '0.5rem',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.35rem'
+                                                    }}>
+                                                        <FaWallet size={11} />
+                                                        Stake Account (send tokens here to increase stake)
+                                                    </div>
+                                                    <div style={{
+                                                        fontFamily: 'monospace',
+                                                        fontSize: '0.75rem',
+                                                        color: theme.colors.secondaryText,
+                                                        wordBreak: 'break-all',
+                                                        lineHeight: '1.5',
+                                                        display: 'flex',
+                                                        alignItems: 'flex-start',
+                                                        gap: '0.5rem'
+                                                    }}>
+                                                        <span style={{ flex: 1 }}>{fullAccount}</span>
+                                                        <button
+                                                            onClick={() => navigator.clipboard.writeText(fullAccount)}
+                                                            style={{
+                                                                background: 'none',
+                                                                border: 'none',
+                                                                padding: '4px',
+                                                                cursor: 'pointer',
+                                                                color: theme.colors.mutedText,
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                flexShrink: 0
+                                                            }}
+                                                            title="Copy stake account"
+                                                        >
+                                                            <FaCopy size={12} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
                                         
                                         {/* Nickname editing */}
                                         {isAuthenticated && (
