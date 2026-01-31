@@ -1164,7 +1164,8 @@ export default function Me() {
                                                 padding: '0.75rem 1rem',
                                                 width: '100%',
                                                 maxWidth: '300px',
-                                                fontSize: '0.95rem'
+                                                fontSize: '0.95rem',
+                                                boxSizing: 'border-box'
                                             }}
                                         />
                                         {principalNameError && (
@@ -2683,7 +2684,8 @@ function NeuronCard({
                                 color: theme.colors.primaryText,
                                 padding: '0.6rem 0.75rem',
                                 width: '100%',
-                                fontSize: '0.9rem'
+                                fontSize: '0.9rem',
+                                boxSizing: 'border-box'
                             }}
                         />
                         {inputError && (
