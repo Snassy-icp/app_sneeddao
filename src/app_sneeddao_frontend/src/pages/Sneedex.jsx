@@ -3,8 +3,74 @@ import Header from '../components/Header';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { FaExchangeAlt, FaGavel, FaShieldAlt, FaCubes, FaCoins, FaBrain, FaCog, FaUnlock } from 'react-icons/fa';
+import { FaExchangeAlt, FaGavel, FaShieldAlt, FaCubes, FaCoins, FaBrain, FaCog, FaUnlock, FaChartLine, FaRocket, FaCheckCircle, FaArrowRight, FaHome, FaChevronRight } from 'react-icons/fa';
 import { createSneedexActor, formatFeeRate } from '../utils/SneedexUtils';
+
+// Custom CSS for animations
+const sneedexStyles = `
+@keyframes sneedexFadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes sneedexPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+@keyframes sneedexFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+}
+
+@keyframes sneedexGlow {
+    0%, 100% { box-shadow: 0 0 20px rgba(16, 185, 129, 0.3); }
+    50% { box-shadow: 0 0 40px rgba(16, 185, 129, 0.5); }
+}
+
+@keyframes sneedexShimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+.sneedex-animate {
+    animation: sneedexFadeInUp 0.6s ease-out forwards;
+}
+
+.sneedex-animate-delay-1 {
+    animation: sneedexFadeInUp 0.6s ease-out 0.1s forwards;
+    opacity: 0;
+}
+
+.sneedex-animate-delay-2 {
+    animation: sneedexFadeInUp 0.6s ease-out 0.2s forwards;
+    opacity: 0;
+}
+
+.sneedex-animate-delay-3 {
+    animation: sneedexFadeInUp 0.6s ease-out 0.3s forwards;
+    opacity: 0;
+}
+
+.sneedex-float {
+    animation: sneedexFloat 3s ease-in-out infinite;
+}
+
+.sneedex-glow {
+    animation: sneedexGlow 2s ease-in-out infinite;
+}
+`;
+
+// Sneedex accent colors
+const sneedexPrimary = '#10b981'; // Emerald
+const sneedexSecondary = '#059669'; // Darker emerald
+const sneedexAccent = '#34d399'; // Light emerald
 
 function Sneedex() {
     const { identity, isAuthenticated } = useAuth();
@@ -54,426 +120,469 @@ function Sneedex() {
         fetchFeeSettings();
         checkAdminStatus();
     }, [identity, fetchFeeSettings, checkAdminStatus]);
-    
-    const styles = {
-        container: {
-            maxWidth: '1200px',
-            margin: '0 auto',
-            padding: '2rem',
-            color: theme.colors.primaryText,
-        },
-        hero: {
-            textAlign: 'center',
-            marginBottom: '4rem',
-            position: 'relative',
-        },
-        heroGlow: {
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            width: '600px',
-            height: '400px',
-            background: `radial-gradient(ellipse, ${theme.colors.accent}15, transparent 70%)`,
-            zIndex: 0,
-            pointerEvents: 'none',
-        },
-        title: {
-            fontSize: '3.5rem',
-            marginBottom: '1rem',
-            background: `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.success})`,
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text',
-            fontWeight: 'bold',
-            position: 'relative',
-            zIndex: 1,
-        },
-        tagline: {
-            fontSize: '1.3rem',
-            color: theme.colors.mutedText,
-            marginBottom: '0.5rem',
-            fontStyle: 'italic',
-        },
-        subtitle: {
-            fontSize: '1.5rem',
-            color: theme.colors.secondaryText,
-            marginBottom: '2rem',
-            lineHeight: '1.5',
-            maxWidth: '800px',
-            margin: '0 auto 2rem auto',
-            position: 'relative',
-            zIndex: 1,
-        },
-        buttonRow: {
-            display: 'flex',
-            justifyContent: 'center',
-            gap: '16px',
-            marginTop: '24px',
-            flexWrap: 'wrap',
-            position: 'relative',
-            zIndex: 1,
-        },
-        primaryButton: {
-            background: `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.accent}cc)`,
-            color: theme.colors.primaryBg,
-            padding: '14px 32px',
-            borderRadius: '12px',
-            textDecoration: 'none',
-            fontSize: '1.1rem',
-            fontWeight: '700',
-            transition: 'all 0.3s ease',
-            boxShadow: `0 4px 20px ${theme.colors.accent}40`,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '10px',
-        },
-        secondaryButton: {
-            background: `${theme.colors.success}15`,
-            color: theme.colors.success,
-            border: `2px solid ${theme.colors.success}`,
-            padding: '12px 28px',
-            borderRadius: '12px',
-            textDecoration: 'none',
-            fontSize: '1rem',
-            fontWeight: '600',
-            transition: 'all 0.3s ease',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '8px',
-        },
-        section: {
-            marginBottom: '3rem',
-            background: theme.colors.cardGradient,
-            border: `1px solid ${theme.colors.border}`,
-            borderRadius: '16px',
-            padding: '2.5rem',
-            boxShadow: theme.colors.cardShadow,
-        },
-        sectionTitle: {
-            fontSize: '2rem',
-            marginBottom: '1.5rem',
-            color: theme.colors.accent,
-            fontWeight: '700',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-        },
-        text: {
-            fontSize: '1.1rem',
-            lineHeight: '1.7',
-            marginBottom: '1.5rem',
-            color: theme.colors.secondaryText,
-        },
-        assetGrid: {
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-            gap: '1.5rem',
-            marginTop: '2rem',
-        },
-        assetCard: {
-            background: `linear-gradient(145deg, ${theme.colors.tertiaryBg}, ${theme.colors.secondaryBg})`,
-            border: `1px solid ${theme.colors.border}`,
-            borderRadius: '14px',
-            padding: '1.5rem',
-            transition: 'all 0.3s ease',
-            cursor: 'pointer',
-        },
-        assetIcon: {
-            fontSize: '2.5rem',
-            marginBottom: '1rem',
-        },
-        assetTitle: {
-            fontSize: '1.3rem',
-            fontWeight: '700',
-            marginBottom: '0.75rem',
-            color: theme.colors.primaryText,
-        },
-        assetDescription: {
-            fontSize: '0.95rem',
-            color: theme.colors.mutedText,
-            lineHeight: '1.5',
-        },
-        featureList: {
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-            gap: '1.5rem',
-            marginTop: '1.5rem',
-        },
-        feature: {
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: '1rem',
-            padding: '1.25rem',
-            background: theme.colors.tertiaryBg,
-            borderRadius: '12px',
-            border: `1px solid ${theme.colors.border}`,
-        },
-        featureIcon: {
-            fontSize: '1.5rem',
-            color: theme.colors.accent,
-            flexShrink: 0,
-            marginTop: '2px',
-        },
-        featureContent: {
-            flex: 1,
-        },
-        featureTitle: {
-            fontSize: '1.1rem',
-            fontWeight: '600',
-            marginBottom: '0.5rem',
-            color: theme.colors.primaryText,
-        },
-        featureText: {
-            fontSize: '0.95rem',
-            color: theme.colors.mutedText,
-            lineHeight: '1.5',
-        },
-        statsRow: {
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-            gap: '1rem',
-            marginTop: '2rem',
-        },
-        statCard: {
-            background: theme.colors.tertiaryBg,
-            border: `1px solid ${theme.colors.border}`,
-            borderRadius: '12px',
-            padding: '1.25rem',
-            textAlign: 'center',
-        },
-        statValue: {
-            fontSize: '2rem',
-            fontWeight: '700',
-            color: theme.colors.accent,
-            marginBottom: '0.25rem',
-        },
-        statLabel: {
-            fontSize: '0.9rem',
-            color: theme.colors.mutedText,
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px',
-        },
-    };
 
     const assetTypes = [
         {
-            icon: '🏭',
+            icon: <FaCubes size={32} />,
             title: 'Canisters',
             description: 'Trade full Internet Computer canisters. Controllers are transferred atomically through escrow.',
-            color: theme.colors.accent,
+            color: sneedexPrimary,
+            gradient: `linear-gradient(135deg, ${sneedexPrimary}20, ${sneedexPrimary}05)`,
         },
         {
-            icon: '🧠',
+            icon: <FaBrain size={32} />,
             title: 'SNS Neurons',
             description: 'Buy and sell SNS governance neurons. Hotkey permissions ensure secure atomic transfers.',
-            color: theme.colors.success,
+            color: '#8B5CF6',
+            gradient: 'linear-gradient(135deg, #8B5CF620, #8B5CF605)',
         },
         {
             icon: '🏛️',
             title: 'ICP Neuron Managers',
             description: 'Trade ICP neurons via manager canisters. Full NNS voting power, liquid ownership.',
-            color: '#8B5CF6',
+            color: '#3b82f6',
+            gradient: 'linear-gradient(135deg, #3b82f620, #3b82f605)',
         },
         {
-            icon: '🪙',
+            icon: <FaCoins size={32} />,
             title: 'ICRC1 Tokens',
             description: 'Bundle fungible tokens into offers. Perfect for OTC trades and bulk transactions.',
-            color: theme.colors.warning,
+            color: '#f59e0b',
+            gradient: 'linear-gradient(135deg, #f59e0b20, #f59e0b05)',
+        },
+    ];
+
+    const steps = [
+        {
+            number: '01',
+            title: 'Create an Offer',
+            description: 'Define your terms: minimum bid, buyout price, and expiration date. Add assets to your offer.',
+            icon: <FaGavel size={20} />,
+        },
+        {
+            number: '02',
+            title: 'Escrow Your Assets',
+            description: 'Transfer asset control to Sneedex. Controllers are snapshotted, tokens moved to escrow.',
+            icon: <FaShieldAlt size={20} />,
+        },
+        {
+            number: '03',
+            title: 'Receive Bids',
+            description: 'Buyers place bids by depositing tokens. Buyout triggers instant completion.',
+            icon: <FaChartLine size={20} />,
+        },
+        {
+            number: '04',
+            title: 'Atomic Settlement',
+            description: 'Assets transfer to the winner and payment to the seller—atomically.',
+            icon: <FaCheckCircle size={20} />,
+        },
+    ];
+
+    const features = [
+        {
+            icon: '🔒',
+            title: 'Trustless Escrow',
+            description: 'Assets are held securely until the trade completes. No middleman, no trust required.',
+        },
+        {
+            icon: '⚡',
+            title: 'Atomic Transfers',
+            description: 'All assets in an offer change hands simultaneously. No partial fills.',
+        },
+        {
+            icon: '📦',
+            title: 'Asset Bundling',
+            description: 'Combine multiple canisters, neurons, and tokens into a single offer.',
+        },
+        {
+            icon: '🎯',
+            title: 'Flexible Pricing',
+            description: 'Auctions, instant buyouts, timed expirations—you choose the terms.',
         },
     ];
 
     return (
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <style>{sneedexStyles}</style>
             <Header />
-            <main style={styles.container}>
+            
+            <main style={{
+                maxWidth: '1200px',
+                margin: '0 auto',
+                padding: '0 1.5rem 3rem 1.5rem',
+            }}>
+                {/* Breadcrumb */}
+                <nav className="sneedex-animate" style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    padding: '1rem 0',
+                    fontSize: '0.9rem',
+                }}>
+                    <Link to="/" style={{ 
+                        color: theme.colors.mutedText, 
+                        textDecoration: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        transition: 'color 0.2s ease'
+                    }}>
+                        <FaHome size={14} /> Home
+                    </Link>
+                    <FaChevronRight size={10} style={{ color: theme.colors.mutedText }} />
+                    <span style={{ color: sneedexPrimary, fontWeight: '600' }}>Sneedex</span>
+                </nav>
+
                 {/* Hero Section */}
-                <div style={styles.hero}>
-                    <div style={styles.heroGlow} />
-                    <h1 style={styles.title}>Sneedex</h1>
-                    <p style={styles.tagline}>The Decentralized Exchange for Everything</p>
-                    <p style={styles.subtitle}>
-                        Trade canisters, SNS neurons, ICP Neuron Managers, and ICRC1 tokens through trustless escrow auctions.
-                        Bundle multiple assets, set your terms, and let the market decide.
-                    </p>
+                <div className="sneedex-animate" style={{
+                    background: theme.colors.cardGradient,
+                    borderRadius: '24px',
+                    border: `1px solid ${theme.colors.border}`,
+                    padding: 'clamp(1.5rem, 4vw, 3rem)',
+                    marginBottom: '2rem',
+                    position: 'relative',
+                    overflow: 'hidden',
+                    boxShadow: theme.colors.cardShadow,
+                }}>
+                    {/* Background glow */}
                     <div style={{
-                        margin: '18px auto 0 auto',
-                        maxWidth: '900px',
-                        background: `linear-gradient(135deg, ${theme.colors.accent}15, #8B5CF615)`,
-                        border: `1px solid ${theme.colors.accent}40`,
-                        borderRadius: '14px',
-                        padding: '16px 20px',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        gap: '16px',
-                        flexWrap: 'wrap'
-                    }}>
-                        <div style={{ color: theme.colors.primaryText, fontWeight: 600, flex: 1, minWidth: '200px' }}>
-                            ✨ <strong>Liquid Staking:</strong> Create tradable ICP or SNS neurons and sell them here on Sneedex!
-                        </div>
-                        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                            <Link
-                                to="/create_icp_neuron"
-                                style={{
-                                    background: theme.colors.accent,
-                                    color: theme.colors.primaryBg,
-                                    padding: '10px 14px',
-                                    borderRadius: '10px',
-                                    textDecoration: 'none',
-                                    fontWeight: 700,
-                                    whiteSpace: 'nowrap',
-                                    fontSize: '0.9rem'
-                                }}
-                            >
-                                ICP Liquid Staking →
-                            </Link>
-                            <Link
-                                to="/sns_neuron_wizard"
-                                style={{
-                                    background: '#8B5CF6',
-                                    color: '#fff',
-                                    padding: '10px 14px',
-                                    borderRadius: '10px',
-                                    textDecoration: 'none',
-                                    fontWeight: 700,
-                                    whiteSpace: 'nowrap',
-                                    fontSize: '0.9rem'
-                                }}
-                            >
-                                SNS Liquid Staking →
-                            </Link>
-                        </div>
-                    </div>
-                    {/* SNS Jailbreak Banner */}
+                        position: 'absolute',
+                        top: '-50%',
+                        right: '-20%',
+                        width: '500px',
+                        height: '500px',
+                        background: `radial-gradient(circle, ${sneedexPrimary}15 0%, transparent 70%)`,
+                        pointerEvents: 'none',
+                    }} />
                     <div style={{
-                        margin: '12px auto 0 auto',
-                        maxWidth: '900px',
-                        background: `linear-gradient(135deg, #e67e2215, #f39c1215)`,
-                        border: `1px solid #e67e2240`,
-                        borderRadius: '14px',
-                        padding: '14px 20px',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        gap: '16px',
-                        flexWrap: 'wrap'
-                    }}>
-                        <div style={{ color: theme.colors.primaryText, fontWeight: 600, flex: 1, minWidth: '200px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <FaUnlock style={{ color: '#e67e22' }} />
-                            <span><strong>SNS Jailbreak:</strong> Already have SNS neurons? Make them tradable on Sneedex!</span>
-                        </div>
-                        <Link
-                            to="/tools/sns_jailbreak"
-                            style={{
-                                background: '#e67e22',
-                                color: '#fff',
-                                padding: '10px 14px',
-                                borderRadius: '10px',
-                                textDecoration: 'none',
-                                fontWeight: 700,
-                                whiteSpace: 'nowrap',
-                                fontSize: '0.9rem',
-                                display: 'flex',
+                        position: 'absolute',
+                        bottom: '-30%',
+                        left: '-10%',
+                        width: '400px',
+                        height: '400px',
+                        background: `radial-gradient(circle, #8B5CF615 0%, transparent 70%)`,
+                        pointerEvents: 'none',
+                    }} />
+                    
+                    <div style={{ position: 'relative', zIndex: 1 }}>
+                        {/* Title area */}
+                        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+                            <div style={{
+                                display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: '6px'
-                            }}
-                        >
-                            <FaUnlock size={12} /> Jailbreak Neurons →
-                        </Link>
-                    </div>
-                    <div style={styles.buttonRow}>
-                        <Link
-                            to="/sneedex_offers"
-                            style={styles.primaryButton}
-                            onMouseEnter={(e) => {
-                                e.target.style.transform = 'translateY(-3px)';
-                                e.target.style.boxShadow = `0 8px 30px ${theme.colors.accent}50`;
-                            }}
-                            onMouseLeave={(e) => {
-                                e.target.style.transform = 'translateY(0)';
-                                e.target.style.boxShadow = `0 4px 20px ${theme.colors.accent}40`;
-                            }}
-                        >
-                            <FaExchangeAlt /> Browse Marketplace
-                        </Link>
-                        {isAuthenticated && (
+                                gap: '1rem',
+                                marginBottom: '1rem',
+                            }}>
+                                <div className="sneedex-float" style={{
+                                    width: '70px',
+                                    height: '70px',
+                                    borderRadius: '20px',
+                                    background: `linear-gradient(135deg, ${sneedexPrimary}, ${sneedexSecondary})`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    boxShadow: `0 8px 32px ${sneedexPrimary}40`,
+                                }}>
+                                    <FaExchangeAlt size={32} color="white" />
+                                </div>
+                            </div>
+                            
+                            <h1 style={{
+                                fontSize: 'clamp(2.5rem, 6vw, 4rem)',
+                                fontWeight: '800',
+                                background: `linear-gradient(135deg, ${sneedexPrimary}, ${sneedexAccent}, #8B5CF6)`,
+                                WebkitBackgroundClip: 'text',
+                                WebkitTextFillColor: 'transparent',
+                                backgroundClip: 'text',
+                                margin: '0 0 0.75rem 0',
+                                letterSpacing: '-0.02em',
+                            }}>
+                                Sneedex
+                            </h1>
+                            
+                            <p style={{
+                                fontSize: 'clamp(1rem, 2.5vw, 1.35rem)',
+                                color: theme.colors.mutedText,
+                                fontStyle: 'italic',
+                                margin: '0 0 1rem 0',
+                            }}>
+                                The Decentralized Exchange for Everything
+                            </p>
+                            
+                            <p style={{
+                                fontSize: 'clamp(0.95rem, 2vw, 1.15rem)',
+                                color: theme.colors.secondaryText,
+                                maxWidth: '750px',
+                                margin: '0 auto',
+                                lineHeight: '1.7',
+                            }}>
+                                Trade canisters, SNS neurons, ICP Neuron Managers, and ICRC1 tokens through trustless escrow auctions.
+                                Bundle multiple assets, set your terms, and let the market decide.
+                            </p>
+                        </div>
+
+                        {/* CTA Buttons */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'center',
+                            gap: '1rem',
+                            flexWrap: 'wrap',
+                            marginBottom: '2rem',
+                        }}>
                             <Link
-                                to="/sneedex_create"
-                                style={styles.secondaryButton}
-                                onMouseEnter={(e) => {
-                                    e.target.style.background = theme.colors.success;
-                                    e.target.style.color = theme.colors.primaryBg;
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.target.style.background = `${theme.colors.success}15`;
-                                    e.target.style.color = theme.colors.success;
-                                }}
-                            >
-                                <FaGavel /> Create Offer
-                            </Link>
-                        )}
-                        {isAuthenticated && (
-                            <Link
-                                to="/sneedex_my"
+                                to="/sneedex_offers"
                                 style={{
-                                    ...styles.secondaryButton,
-                                    background: `${theme.colors.accent}15`,
-                                    color: theme.colors.accent,
-                                    borderColor: theme.colors.accent,
+                                    background: `linear-gradient(135deg, ${sneedexPrimary}, ${sneedexSecondary})`,
+                                    color: 'white',
+                                    padding: '1rem 2rem',
+                                    borderRadius: '14px',
+                                    textDecoration: 'none',
+                                    fontSize: '1.1rem',
+                                    fontWeight: '700',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.75rem',
+                                    boxShadow: `0 4px 20px ${sneedexPrimary}40`,
+                                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                                 }}
                                 onMouseEnter={(e) => {
-                                    e.target.style.background = theme.colors.accent;
-                                    e.target.style.color = theme.colors.primaryBg;
+                                    e.currentTarget.style.transform = 'translateY(-3px)';
+                                    e.currentTarget.style.boxShadow = `0 8px 30px ${sneedexPrimary}50`;
                                 }}
                                 onMouseLeave={(e) => {
-                                    e.target.style.background = `${theme.colors.accent}15`;
-                                    e.target.style.color = theme.colors.accent;
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                    e.currentTarget.style.boxShadow = `0 4px 20px ${sneedexPrimary}40`;
                                 }}
                             >
-                                📋 My Offers & Bids
+                                <FaExchangeAlt /> Browse Marketplace
                             </Link>
-                        )}
+                            
+                            {isAuthenticated && (
+                                <Link
+                                    to="/sneedex_create"
+                                    style={{
+                                        background: theme.colors.tertiaryBg,
+                                        color: sneedexPrimary,
+                                        padding: '1rem 2rem',
+                                        borderRadius: '14px',
+                                        textDecoration: 'none',
+                                        fontSize: '1.1rem',
+                                        fontWeight: '700',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '0.75rem',
+                                        border: `2px solid ${sneedexPrimary}`,
+                                        transition: 'all 0.3s ease',
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.currentTarget.style.background = sneedexPrimary;
+                                        e.currentTarget.style.color = 'white';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.currentTarget.style.background = theme.colors.tertiaryBg;
+                                        e.currentTarget.style.color = sneedexPrimary;
+                                    }}
+                                >
+                                    <FaGavel /> Create Offer
+                                </Link>
+                            )}
+                            
+                            {isAuthenticated && (
+                                <Link
+                                    to="/sneedex_my"
+                                    style={{
+                                        background: theme.colors.tertiaryBg,
+                                        color: '#8B5CF6',
+                                        padding: '1rem 2rem',
+                                        borderRadius: '14px',
+                                        textDecoration: 'none',
+                                        fontSize: '1.1rem',
+                                        fontWeight: '700',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '0.75rem',
+                                        border: `2px solid #8B5CF6`,
+                                        transition: 'all 0.3s ease',
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.currentTarget.style.background = '#8B5CF6';
+                                        e.currentTarget.style.color = 'white';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.currentTarget.style.background = theme.colors.tertiaryBg;
+                                        e.currentTarget.style.color = '#8B5CF6';
+                                    }}
+                                >
+                                    📋 My Offers & Bids
+                                </Link>
+                            )}
+                        </div>
+
+                        {/* Liquid Staking Banner */}
+                        <div style={{
+                            background: `linear-gradient(135deg, ${sneedexPrimary}10, #8B5CF610)`,
+                            border: `1px solid ${sneedexPrimary}30`,
+                            borderRadius: '16px',
+                            padding: '1.25rem 1.5rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '1rem',
+                            flexWrap: 'wrap',
+                            marginBottom: '1rem',
+                        }}>
+                            <div style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '0.75rem',
+                                flex: 1,
+                                minWidth: '200px',
+                            }}>
+                                <span style={{ fontSize: '1.5rem' }}>✨</span>
+                                <div>
+                                    <div style={{ 
+                                        color: theme.colors.primaryText, 
+                                        fontWeight: '700',
+                                        fontSize: '1rem',
+                                    }}>
+                                        Liquid Staking
+                                    </div>
+                                    <div style={{ 
+                                        color: theme.colors.secondaryText, 
+                                        fontSize: '0.85rem',
+                                    }}>
+                                        Create tradable ICP or SNS neurons and sell them here!
+                                    </div>
+                                </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                                <Link
+                                    to="/create_icp_neuron"
+                                    style={{
+                                        background: `linear-gradient(135deg, ${sneedexPrimary}, ${sneedexSecondary})`,
+                                        color: 'white',
+                                        padding: '0.6rem 1rem',
+                                        borderRadius: '10px',
+                                        textDecoration: 'none',
+                                        fontWeight: '600',
+                                        fontSize: '0.85rem',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem',
+                                        whiteSpace: 'nowrap',
+                                    }}
+                                >
+                                    ICP Staking <FaArrowRight size={12} />
+                                </Link>
+                                <Link
+                                    to="/sns_neuron_wizard"
+                                    style={{
+                                        background: 'linear-gradient(135deg, #8B5CF6, #7c3aed)',
+                                        color: 'white',
+                                        padding: '0.6rem 1rem',
+                                        borderRadius: '10px',
+                                        textDecoration: 'none',
+                                        fontWeight: '600',
+                                        fontSize: '0.85rem',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem',
+                                        whiteSpace: 'nowrap',
+                                    }}
+                                >
+                                    SNS Staking <FaArrowRight size={12} />
+                                </Link>
+                            </div>
+                        </div>
+
+                        {/* SNS Jailbreak Banner */}
+                        <div style={{
+                            background: 'linear-gradient(135deg, #f5730010, #ea580c10)',
+                            border: '1px solid #f5730030',
+                            borderRadius: '16px',
+                            padding: '1rem 1.5rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '1rem',
+                            flexWrap: 'wrap',
+                        }}>
+                            <div style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '0.75rem',
+                                flex: 1,
+                                minWidth: '200px',
+                            }}>
+                                <FaUnlock size={20} style={{ color: '#f57300' }} />
+                                <div>
+                                    <div style={{ 
+                                        color: theme.colors.primaryText, 
+                                        fontWeight: '700',
+                                        fontSize: '0.95rem',
+                                    }}>
+                                        SNS Jailbreak
+                                    </div>
+                                    <div style={{ 
+                                        color: theme.colors.secondaryText, 
+                                        fontSize: '0.85rem',
+                                    }}>
+                                        Already have SNS neurons? Make them tradable!
+                                    </div>
+                                </div>
+                            </div>
+                            <Link
+                                to="/tools/sns_jailbreak"
+                                style={{
+                                    background: 'linear-gradient(135deg, #f57300, #ea580c)',
+                                    color: 'white',
+                                    padding: '0.6rem 1rem',
+                                    borderRadius: '10px',
+                                    textDecoration: 'none',
+                                    fontWeight: '600',
+                                    fontSize: '0.85rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                    whiteSpace: 'nowrap',
+                                }}
+                            >
+                                <FaUnlock size={12} /> Jailbreak <FaArrowRight size={12} />
+                            </Link>
+                        </div>
                     </div>
                 </div>
 
-                {/* What is Sneedex */}
-                <section style={styles.section}>
-                    <h2 style={styles.sectionTitle}>
-                        <FaShieldAlt style={{ color: theme.colors.accent }} />
-                        What is Sneedex?
-                    </h2>
-                    <p style={styles.text}>
-                        Sneedex is a trustless marketplace for trading unique Internet Computer assets. 
-                        Unlike traditional DEXes that only handle fungible tokens, Sneedex enables 
-                        atomic trades of <strong>canisters</strong>, <strong>SNS neurons</strong>, and 
-                        <strong> ICRC1 tokens</strong>—all through secure escrow.
-                    </p>
-                    <p style={styles.text}>
-                        Create offers with flexible pricing: set a minimum bid for auctions, a buyout 
-                        price for instant sales, or both. Bundle multiple assets into a single offer, 
-                        and let buyers compete through trustless bidding.
-                    </p>
-                </section>
-
-                {/* Supported Assets */}
-                <section style={styles.section}>
-                    <h2 style={styles.sectionTitle}>
-                        <FaCubes style={{ color: theme.colors.success }} />
-                        Supported Asset Types
-                    </h2>
-                    <p style={styles.text}>
-                        Sneedex supports four types of assets, with more coming in the future:
-                    </p>
-                    <div style={styles.assetGrid}>
-                        {assetTypes.map((asset, index) => (
+                {/* Live Stats */}
+                {stats && (
+                    <div className="sneedex-animate-delay-1" style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                        gap: '1rem',
+                        marginBottom: '2rem',
+                    }}>
+                        {[
+                            { label: 'Active Offers', value: Number(stats.active_offers), color: sneedexPrimary },
+                            { label: 'Total Offers', value: Number(stats.total_offers), color: '#8B5CF6' },
+                            { label: 'Completed', value: Number(stats.completed_offers), color: '#22c55e' },
+                            { label: 'Total Bids', value: Number(stats.total_bids), color: '#f59e0b' },
+                            ...(feeRate !== null ? [{ label: 'Marketplace Fee', value: formatFeeRate(feeRate), color: '#ec4899', isText: true }] : []),
+                        ].map((stat, index) => (
                             <div
                                 key={index}
-                                style={styles.assetCard}
+                                style={{
+                                    background: theme.colors.cardGradient,
+                                    border: `1px solid ${theme.colors.border}`,
+                                    borderRadius: '16px',
+                                    padding: '1.5rem',
+                                    textAlign: 'center',
+                                    transition: 'all 0.3s ease',
+                                }}
                                 onMouseEnter={(e) => {
-                                    e.currentTarget.style.transform = 'translateY(-5px)';
-                                    e.currentTarget.style.borderColor = asset.color;
-                                    e.currentTarget.style.boxShadow = `0 10px 30px ${asset.color}20`;
+                                    e.currentTarget.style.transform = 'translateY(-4px)';
+                                    e.currentTarget.style.borderColor = stat.color;
+                                    e.currentTarget.style.boxShadow = `0 8px 25px ${stat.color}20`;
                                 }}
                                 onMouseLeave={(e) => {
                                     e.currentTarget.style.transform = 'translateY(0)';
@@ -481,195 +590,498 @@ function Sneedex() {
                                     e.currentTarget.style.boxShadow = 'none';
                                 }}
                             >
-                                <div style={styles.assetIcon}>{asset.icon}</div>
-                                <h3 style={{ ...styles.assetTitle, color: asset.color }}>{asset.title}</h3>
-                                <p style={styles.assetDescription}>{asset.description}</p>
+                                <div style={{
+                                    fontSize: stat.isText ? '1.5rem' : '2.25rem',
+                                    fontWeight: '800',
+                                    color: stat.color,
+                                    marginBottom: '0.25rem',
+                                    letterSpacing: '-0.02em',
+                                }}>
+                                    {stat.value}
+                                </div>
+                                <div style={{
+                                    fontSize: '0.8rem',
+                                    color: theme.colors.mutedText,
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.5px',
+                                    fontWeight: '600',
+                                }}>
+                                    {stat.label}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {/* What is Sneedex */}
+                <section className="sneedex-animate-delay-1" style={{
+                    background: theme.colors.cardGradient,
+                    border: `1px solid ${theme.colors.border}`,
+                    borderRadius: '20px',
+                    padding: 'clamp(1.5rem, 4vw, 2.5rem)',
+                    marginBottom: '2rem',
+                    boxShadow: theme.colors.cardShadow,
+                }}>
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '1rem',
+                        marginBottom: '1.5rem',
+                    }}>
+                        <div style={{
+                            width: '48px',
+                            height: '48px',
+                            borderRadius: '14px',
+                            background: `linear-gradient(135deg, ${sneedexPrimary}20, ${sneedexPrimary}10)`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                        }}>
+                            <FaShieldAlt size={22} color={sneedexPrimary} />
+                        </div>
+                        <h2 style={{
+                            fontSize: 'clamp(1.5rem, 3vw, 1.85rem)',
+                            fontWeight: '700',
+                            color: theme.colors.primaryText,
+                            margin: 0,
+                        }}>
+                            What is Sneedex?
+                        </h2>
+                    </div>
+                    
+                    <p style={{
+                        fontSize: '1.05rem',
+                        lineHeight: '1.8',
+                        color: theme.colors.secondaryText,
+                        marginBottom: '1.25rem',
+                    }}>
+                        Sneedex is a <strong style={{ color: sneedexPrimary }}>trustless marketplace</strong> for trading unique Internet Computer assets. 
+                        Unlike traditional DEXes that only handle fungible tokens, Sneedex enables 
+                        atomic trades of <strong>canisters</strong>, <strong>SNS neurons</strong>, and 
+                        <strong> ICRC1 tokens</strong>—all through secure escrow.
+                    </p>
+                    <p style={{
+                        fontSize: '1.05rem',
+                        lineHeight: '1.8',
+                        color: theme.colors.secondaryText,
+                        margin: 0,
+                    }}>
+                        Create offers with flexible pricing: set a minimum bid for auctions, a buyout 
+                        price for instant sales, or both. Bundle multiple assets into a single offer, 
+                        and let buyers compete through trustless bidding.
+                    </p>
+                </section>
+
+                {/* Supported Asset Types */}
+                <section className="sneedex-animate-delay-2" style={{
+                    background: theme.colors.cardGradient,
+                    border: `1px solid ${theme.colors.border}`,
+                    borderRadius: '20px',
+                    padding: 'clamp(1.5rem, 4vw, 2.5rem)',
+                    marginBottom: '2rem',
+                    boxShadow: theme.colors.cardShadow,
+                }}>
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '1rem',
+                        marginBottom: '1.5rem',
+                    }}>
+                        <div style={{
+                            width: '48px',
+                            height: '48px',
+                            borderRadius: '14px',
+                            background: 'linear-gradient(135deg, #8B5CF620, #8B5CF610)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                        }}>
+                            <FaCubes size={22} color="#8B5CF6" />
+                        </div>
+                        <div>
+                            <h2 style={{
+                                fontSize: 'clamp(1.5rem, 3vw, 1.85rem)',
+                                fontWeight: '700',
+                                color: theme.colors.primaryText,
+                                margin: 0,
+                            }}>
+                                Supported Asset Types
+                            </h2>
+                            <p style={{
+                                fontSize: '0.9rem',
+                                color: theme.colors.mutedText,
+                                margin: '0.25rem 0 0 0',
+                            }}>
+                                Four asset types, with more coming
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+                        gap: '1.25rem',
+                    }}>
+                        {assetTypes.map((asset, index) => (
+                            <div
+                                key={index}
+                                style={{
+                                    background: asset.gradient,
+                                    border: `1px solid ${theme.colors.border}`,
+                                    borderRadius: '16px',
+                                    padding: '1.5rem',
+                                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                    cursor: 'default',
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(-5px)';
+                                    e.currentTarget.style.borderColor = asset.color;
+                                    e.currentTarget.style.boxShadow = `0 12px 35px ${asset.color}20`;
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                    e.currentTarget.style.borderColor = theme.colors.border;
+                                    e.currentTarget.style.boxShadow = 'none';
+                                }}
+                            >
+                                <div style={{
+                                    color: asset.color,
+                                    marginBottom: '1rem',
+                                }}>
+                                    {typeof asset.icon === 'string' ? (
+                                        <span style={{ fontSize: '2rem' }}>{asset.icon}</span>
+                                    ) : (
+                                        asset.icon
+                                    )}
+                                </div>
+                                <h3 style={{
+                                    fontSize: '1.2rem',
+                                    fontWeight: '700',
+                                    color: asset.color,
+                                    marginBottom: '0.5rem',
+                                }}>
+                                    {asset.title}
+                                </h3>
+                                <p style={{
+                                    fontSize: '0.9rem',
+                                    color: theme.colors.secondaryText,
+                                    lineHeight: '1.6',
+                                    margin: 0,
+                                }}>
+                                    {asset.description}
+                                </p>
                             </div>
                         ))}
                     </div>
                 </section>
 
                 {/* How It Works */}
-                <section style={styles.section}>
-                    <h2 style={styles.sectionTitle}>
-                        <FaGavel style={{ color: theme.colors.warning }} />
-                        How It Works
-                    </h2>
-                    <div style={styles.featureList}>
-                        <div style={styles.feature}>
-                            <div style={styles.featureIcon}>1️⃣</div>
-                            <div style={styles.featureContent}>
-                                <h4 style={styles.featureTitle}>Create an Offer</h4>
-                                <p style={styles.featureText}>
-                                    Define your terms: minimum bid, buyout price, and/or expiration date. 
-                                    Add assets (canisters, neurons, tokens) to your offer.
+                <section className="sneedex-animate-delay-2" style={{
+                    background: theme.colors.cardGradient,
+                    border: `1px solid ${theme.colors.border}`,
+                    borderRadius: '20px',
+                    padding: 'clamp(1.5rem, 4vw, 2.5rem)',
+                    marginBottom: '2rem',
+                    boxShadow: theme.colors.cardShadow,
+                }}>
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '1rem',
+                        marginBottom: '2rem',
+                    }}>
+                        <div style={{
+                            width: '48px',
+                            height: '48px',
+                            borderRadius: '14px',
+                            background: 'linear-gradient(135deg, #f59e0b20, #f59e0b10)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                        }}>
+                            <FaRocket size={22} color="#f59e0b" />
+                        </div>
+                        <h2 style={{
+                            fontSize: 'clamp(1.5rem, 3vw, 1.85rem)',
+                            fontWeight: '700',
+                            color: theme.colors.primaryText,
+                            margin: 0,
+                        }}>
+                            How It Works
+                        </h2>
+                    </div>
+                    
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+                        gap: '1.5rem',
+                    }}>
+                        {steps.map((step, index) => (
+                            <div
+                                key={index}
+                                style={{
+                                    background: theme.colors.tertiaryBg,
+                                    border: `1px solid ${theme.colors.border}`,
+                                    borderRadius: '16px',
+                                    padding: '1.5rem',
+                                    position: 'relative',
+                                    transition: 'all 0.3s ease',
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.borderColor = sneedexPrimary;
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.borderColor = theme.colors.border;
+                                }}
+                            >
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.75rem',
+                                    marginBottom: '1rem',
+                                }}>
+                                    <span style={{
+                                        fontSize: '1.75rem',
+                                        fontWeight: '800',
+                                        color: sneedexPrimary,
+                                        opacity: 0.3,
+                                    }}>
+                                        {step.number}
+                                    </span>
+                                    <div style={{
+                                        width: '36px',
+                                        height: '36px',
+                                        borderRadius: '10px',
+                                        background: `linear-gradient(135deg, ${sneedexPrimary}20, ${sneedexPrimary}10)`,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        color: sneedexPrimary,
+                                    }}>
+                                        {step.icon}
+                                    </div>
+                                </div>
+                                <h4 style={{
+                                    fontSize: '1.1rem',
+                                    fontWeight: '700',
+                                    color: theme.colors.primaryText,
+                                    marginBottom: '0.5rem',
+                                }}>
+                                    {step.title}
+                                </h4>
+                                <p style={{
+                                    fontSize: '0.9rem',
+                                    color: theme.colors.secondaryText,
+                                    lineHeight: '1.6',
+                                    margin: 0,
+                                }}>
+                                    {step.description}
                                 </p>
                             </div>
-                        </div>
-                        <div style={styles.feature}>
-                            <div style={styles.featureIcon}>2️⃣</div>
-                            <div style={styles.featureContent}>
-                                <h4 style={styles.featureTitle}>Escrow Your Assets</h4>
-                                <p style={styles.featureText}>
-                                    Transfer asset control to Sneedex. Controllers are snapshotted, 
-                                    tokens moved to escrow subaccounts. Your assets are safe.
-                                </p>
-                            </div>
-                        </div>
-                        <div style={styles.feature}>
-                            <div style={styles.featureIcon}>3️⃣</div>
-                            <div style={styles.featureContent}>
-                                <h4 style={styles.featureTitle}>Receive Bids</h4>
-                                <p style={styles.featureText}>
-                                    Buyers place bids by depositing tokens. Bids must exceed the minimum 
-                                    and beat existing bids. Buyout triggers instant completion.
-                                </p>
-                            </div>
-                        </div>
-                        <div style={styles.feature}>
-                            <div style={styles.featureIcon}>4️⃣</div>
-                            <div style={styles.featureContent}>
-                                <h4 style={styles.featureTitle}>Atomic Settlement</h4>
-                                <p style={styles.featureText}>
-                                    When the offer completes, assets transfer to the winner and payment 
-                                    to the seller—atomically. Losing bids are refunded.
-                                </p>
-                            </div>
-                        </div>
+                        ))}
                     </div>
                 </section>
 
                 {/* Key Features */}
-                <section style={styles.section}>
-                    <h2 style={styles.sectionTitle}>
-                        <FaCoins style={{ color: theme.colors.accent }} />
-                        Key Features
-                    </h2>
-                    <div style={styles.featureList}>
-                        <div style={styles.feature}>
-                            <div style={styles.featureIcon}>🔒</div>
-                            <div style={styles.featureContent}>
-                                <h4 style={styles.featureTitle}>Trustless Escrow</h4>
-                                <p style={styles.featureText}>
-                                    Assets are held securely until the trade completes. No middleman, 
-                                    no trust required—just code.
-                                </p>
-                            </div>
+                <section className="sneedex-animate-delay-3" style={{
+                    background: theme.colors.cardGradient,
+                    border: `1px solid ${theme.colors.border}`,
+                    borderRadius: '20px',
+                    padding: 'clamp(1.5rem, 4vw, 2.5rem)',
+                    marginBottom: '2rem',
+                    boxShadow: theme.colors.cardShadow,
+                }}>
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '1rem',
+                        marginBottom: '1.5rem',
+                    }}>
+                        <div style={{
+                            width: '48px',
+                            height: '48px',
+                            borderRadius: '14px',
+                            background: `linear-gradient(135deg, ${sneedexPrimary}20, ${sneedexPrimary}10)`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                        }}>
+                            <FaCoins size={22} color={sneedexPrimary} />
                         </div>
-                        <div style={styles.feature}>
-                            <div style={styles.featureIcon}>⚡</div>
-                            <div style={styles.featureContent}>
-                                <h4 style={styles.featureTitle}>Atomic Transfers</h4>
-                                <p style={styles.featureText}>
-                                    All assets in an offer change hands simultaneously. No partial 
-                                    fills, no race conditions.
-                                </p>
+                        <h2 style={{
+                            fontSize: 'clamp(1.5rem, 3vw, 1.85rem)',
+                            fontWeight: '700',
+                            color: theme.colors.primaryText,
+                            margin: 0,
+                        }}>
+                            Key Features
+                        </h2>
+                    </div>
+                    
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                        gap: '1.25rem',
+                    }}>
+                        {features.map((feature, index) => (
+                            <div
+                                key={index}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'flex-start',
+                                    gap: '1rem',
+                                    padding: '1.25rem',
+                                    background: theme.colors.tertiaryBg,
+                                    borderRadius: '14px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    transition: 'all 0.3s ease',
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.borderColor = sneedexPrimary + '60';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.borderColor = theme.colors.border;
+                                }}
+                            >
+                                <span style={{
+                                    fontSize: '1.75rem',
+                                    flexShrink: 0,
+                                }}>
+                                    {feature.icon}
+                                </span>
+                                <div>
+                                    <h4 style={{
+                                        fontSize: '1.05rem',
+                                        fontWeight: '700',
+                                        color: theme.colors.primaryText,
+                                        marginBottom: '0.35rem',
+                                    }}>
+                                        {feature.title}
+                                    </h4>
+                                    <p style={{
+                                        fontSize: '0.9rem',
+                                        color: theme.colors.secondaryText,
+                                        lineHeight: '1.55',
+                                        margin: 0,
+                                    }}>
+                                        {feature.description}
+                                    </p>
+                                </div>
                             </div>
-                        </div>
-                        <div style={styles.feature}>
-                            <div style={styles.featureIcon}>📦</div>
-                            <div style={styles.featureContent}>
-                                <h4 style={styles.featureTitle}>Asset Bundling</h4>
-                                <p style={styles.featureText}>
-                                    Combine multiple canisters, neurons, and tokens into a single 
-                                    offer for complex deals.
-                                </p>
-                            </div>
-                        </div>
-                        <div style={styles.feature}>
-                            <div style={styles.featureIcon}>🎯</div>
-                            <div style={styles.featureContent}>
-                                <h4 style={styles.featureTitle}>Flexible Pricing</h4>
-                                <p style={styles.featureText}>
-                                    Auctions with minimum bids, instant buyouts, timed expirations, 
-                                    or combinations—you choose.
-                                </p>
-                            </div>
-                        </div>
+                        ))}
                     </div>
                 </section>
-
-                {/* Live Stats */}
-                {stats && (
-                    <section style={styles.section}>
-                        <h2 style={styles.sectionTitle}>
-                            📊 Marketplace Stats
-                        </h2>
-                        <div style={styles.statsRow}>
-                            <div style={styles.statCard}>
-                                <div style={styles.statValue}>{Number(stats.active_offers)}</div>
-                                <div style={styles.statLabel}>Active Offers</div>
-                            </div>
-                            <div style={styles.statCard}>
-                                <div style={styles.statValue}>{Number(stats.total_offers)}</div>
-                                <div style={styles.statLabel}>Total Offers</div>
-                            </div>
-                            <div style={styles.statCard}>
-                                <div style={styles.statValue}>{Number(stats.completed_offers)}</div>
-                                <div style={styles.statLabel}>Completed</div>
-                            </div>
-                            <div style={styles.statCard}>
-                                <div style={styles.statValue}>{Number(stats.total_bids)}</div>
-                                <div style={styles.statLabel}>Total Bids</div>
-                            </div>
-                            {feeRate !== null && (
-                                <div style={styles.statCard}>
-                                    <div style={{ ...styles.statValue, color: theme.colors.warning }}>
-                                        {formatFeeRate(feeRate)}
-                                    </div>
-                                    <div style={styles.statLabel}>Marketplace Fee</div>
-                                </div>
-                            )}
-                        </div>
-                    </section>
-                )}
                 
                 {/* Admin Link */}
                 {isAdmin && (
-                    <section style={{ ...styles.section, borderColor: theme.colors.warning }}>
+                    <section className="sneedex-animate-delay-3" style={{
+                        background: theme.colors.cardGradient,
+                        border: `2px solid #f59e0b40`,
+                        borderRadius: '20px',
+                        padding: '1.5rem 2rem',
+                        marginBottom: '2rem',
+                        boxShadow: theme.colors.cardShadow,
+                    }}>
                         <Link
                             to="/admin/sneedex"
                             style={{
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: '12px',
+                                gap: '1rem',
                                 textDecoration: 'none',
-                                color: theme.colors.primaryText,
                             }}
                         >
-                            <FaCog style={{ color: theme.colors.warning, fontSize: '1.5rem' }} />
+                            <div style={{
+                                width: '48px',
+                                height: '48px',
+                                borderRadius: '14px',
+                                background: 'linear-gradient(135deg, #f59e0b20, #f59e0b10)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                            }}>
+                                <FaCog size={22} color="#f59e0b" />
+                            </div>
                             <div>
-                                <h2 style={{ ...styles.sectionTitle, marginBottom: '0.25rem' }}>
+                                <h3 style={{
+                                    fontSize: '1.2rem',
+                                    fontWeight: '700',
+                                    color: theme.colors.primaryText,
+                                    margin: '0 0 0.25rem 0',
+                                }}>
                                     Admin Settings
-                                </h2>
-                                <p style={{ color: theme.colors.mutedText, margin: 0, fontSize: '0.95rem' }}>
-                                    Manage marketplace fees, admins, and configuration →
+                                </h3>
+                                <p style={{ 
+                                    color: theme.colors.mutedText, 
+                                    margin: 0, 
+                                    fontSize: '0.9rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                }}>
+                                    Manage marketplace fees, admins, and configuration 
+                                    <FaArrowRight size={12} />
                                 </p>
                             </div>
                         </Link>
                     </section>
                 )}
 
-                {/* CTA */}
-                <section style={{ ...styles.section, textAlign: 'center', background: `linear-gradient(135deg, ${theme.colors.accent}15, ${theme.colors.success}15)` }}>
-                    <h2 style={{ ...styles.sectionTitle, justifyContent: 'center' }}>
+                {/* CTA Section */}
+                <section className="sneedex-animate-delay-3" style={{
+                    background: `linear-gradient(135deg, ${sneedexPrimary}15, #8B5CF615)`,
+                    border: `1px solid ${sneedexPrimary}30`,
+                    borderRadius: '20px',
+                    padding: 'clamp(2rem, 5vw, 3rem)',
+                    textAlign: 'center',
+                }}>
+                    <h2 style={{
+                        fontSize: 'clamp(1.5rem, 3vw, 2rem)',
+                        fontWeight: '700',
+                        color: theme.colors.primaryText,
+                        marginBottom: '1rem',
+                    }}>
                         Ready to Trade?
                     </h2>
-                    <p style={{ ...styles.text, maxWidth: '600px', margin: '0 auto 2rem auto' }}>
+                    <p style={{
+                        fontSize: '1.05rem',
+                        color: theme.colors.secondaryText,
+                        maxWidth: '550px',
+                        margin: '0 auto 2rem auto',
+                        lineHeight: '1.7',
+                    }}>
                         Browse active offers, create your own, or manage your existing trades. 
                         The decentralized marketplace awaits.
                     </p>
-                    <div style={styles.buttonRow}>
+                    <div style={{
+                        display: 'flex',
+                        justifyContent: 'center',
+                        gap: '1rem',
+                        flexWrap: 'wrap',
+                    }}>
                         <Link
                             to="/sneedex_offers"
-                            style={styles.primaryButton}
+                            style={{
+                                background: `linear-gradient(135deg, ${sneedexPrimary}, ${sneedexSecondary})`,
+                                color: 'white',
+                                padding: '1rem 2.5rem',
+                                borderRadius: '14px',
+                                textDecoration: 'none',
+                                fontSize: '1.1rem',
+                                fontWeight: '700',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.75rem',
+                                boxShadow: `0 4px 20px ${sneedexPrimary}40`,
+                                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                            }}
                             onMouseEnter={(e) => {
-                                e.target.style.transform = 'translateY(-3px)';
-                                e.target.style.boxShadow = `0 8px 30px ${theme.colors.accent}50`;
+                                e.currentTarget.style.transform = 'translateY(-3px)';
+                                e.currentTarget.style.boxShadow = `0 8px 30px ${sneedexPrimary}50`;
                             }}
                             onMouseLeave={(e) => {
-                                e.target.style.transform = 'translateY(0)';
-                                e.target.style.boxShadow = `0 4px 20px ${theme.colors.accent}40`;
+                                e.currentTarget.style.transform = 'translateY(0)';
+                                e.currentTarget.style.boxShadow = `0 4px 20px ${sneedexPrimary}40`;
                             }}
                         >
                             <FaExchangeAlt /> Explore Marketplace
@@ -682,4 +1094,3 @@ function Sneedex() {
 }
 
 export default Sneedex;
-
