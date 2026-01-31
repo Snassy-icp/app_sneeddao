@@ -135,6 +135,7 @@ function Neuron() {
     const [isFolloweesExpanded, setIsFolloweesExpanded] = useState(false);
     const [showDissolveDelayDialog, setShowDissolveDelayDialog] = useState(false);
     const [activeNeuronTab, setActiveNeuronTab] = useState('details'); // 'details' or 'transactions'
+    const [showSplitAccountFormat, setShowSplitAccountFormat] = useState(false); // Toggle for stake account display format
     const [dissolveDelayInput, setDissolveDelayInput] = useState('');
     
     // Dialog state for confirmations and alerts
@@ -1203,6 +1204,9 @@ function Neuron() {
                                                 subaccount: subaccount32
                                             });
                                             
+                                            // Subaccount as hex string
+                                            const subaccountHex = uint8ArrayToHex(subaccount32);
+                                            
                                             return (
                                                 <div style={{
                                                     marginTop: '0.75rem',
@@ -1217,39 +1221,132 @@ function Neuron() {
                                                         marginBottom: '0.5rem',
                                                         display: 'flex',
                                                         alignItems: 'center',
-                                                        gap: '0.35rem'
+                                                        justifyContent: 'space-between'
                                                     }}>
-                                                        <FaWallet size={11} />
-                                                        Stake Account (send tokens here to increase stake)
-                                                    </div>
-                                                    <div style={{
-                                                        fontFamily: 'monospace',
-                                                        fontSize: '0.75rem',
-                                                        color: theme.colors.secondaryText,
-                                                        wordBreak: 'break-all',
-                                                        lineHeight: '1.5',
-                                                        display: 'flex',
-                                                        alignItems: 'flex-start',
-                                                        gap: '0.5rem'
-                                                    }}>
-                                                        <span style={{ flex: 1 }}>{fullAccount}</span>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                                            <FaWallet size={11} />
+                                                            Stake Account (send tokens here to increase stake)
+                                                        </div>
                                                         <button
-                                                            onClick={() => navigator.clipboard.writeText(fullAccount)}
+                                                            onClick={() => setShowSplitAccountFormat(!showSplitAccountFormat)}
                                                             style={{
                                                                 background: 'none',
                                                                 border: 'none',
-                                                                padding: '4px',
+                                                                padding: '2px 6px',
                                                                 cursor: 'pointer',
                                                                 color: theme.colors.mutedText,
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                flexShrink: 0
+                                                                fontSize: '0.65rem',
+                                                                opacity: 0.7,
+                                                                borderRadius: '4px',
+                                                                transition: 'all 0.15s ease'
                                                             }}
-                                                            title="Copy stake account"
+                                                            onMouseEnter={(e) => { e.target.style.opacity = '1'; e.target.style.background = theme.colors.tertiaryBg; }}
+                                                            onMouseLeave={(e) => { e.target.style.opacity = '0.7'; e.target.style.background = 'none'; }}
+                                                            title={showSplitAccountFormat ? 'Show as encoded account' : 'Show as principal + subaccount'}
                                                         >
-                                                            <FaCopy size={12} />
+                                                            {showSplitAccountFormat ? 'encoded' : 'split'}
                                                         </button>
                                                     </div>
+                                                    
+                                                    {!showSplitAccountFormat ? (
+                                                        // Full encoded ICRC-1 account format
+                                                        <div style={{
+                                                            fontFamily: 'monospace',
+                                                            fontSize: '0.75rem',
+                                                            color: theme.colors.secondaryText,
+                                                            wordBreak: 'break-all',
+                                                            lineHeight: '1.5',
+                                                            display: 'flex',
+                                                            alignItems: 'flex-start',
+                                                            gap: '0.5rem'
+                                                        }}>
+                                                            <span style={{ flex: 1 }}>{fullAccount}</span>
+                                                            <button
+                                                                onClick={() => navigator.clipboard.writeText(fullAccount)}
+                                                                style={{
+                                                                    background: 'none',
+                                                                    border: 'none',
+                                                                    padding: '4px',
+                                                                    cursor: 'pointer',
+                                                                    color: theme.colors.mutedText,
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    flexShrink: 0
+                                                                }}
+                                                                title="Copy stake account"
+                                                            >
+                                                                <FaCopy size={12} />
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        // Split format: Principal + Subaccount (hex)
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                                            <div>
+                                                                <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, marginBottom: '0.15rem' }}>
+                                                                    Principal
+                                                                </div>
+                                                                <div style={{
+                                                                    fontFamily: 'monospace',
+                                                                    fontSize: '0.75rem',
+                                                                    color: theme.colors.secondaryText,
+                                                                    wordBreak: 'break-all',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '0.5rem'
+                                                                }}>
+                                                                    <span style={{ flex: 1 }}>{selectedSns.canisters.governance}</span>
+                                                                    <button
+                                                                        onClick={() => navigator.clipboard.writeText(selectedSns.canisters.governance)}
+                                                                        style={{
+                                                                            background: 'none',
+                                                                            border: 'none',
+                                                                            padding: '4px',
+                                                                            cursor: 'pointer',
+                                                                            color: theme.colors.mutedText,
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            flexShrink: 0
+                                                                        }}
+                                                                        title="Copy principal"
+                                                                    >
+                                                                        <FaCopy size={10} />
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                            <div>
+                                                                <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, marginBottom: '0.15rem' }}>
+                                                                    Subaccount (hex)
+                                                                </div>
+                                                                <div style={{
+                                                                    fontFamily: 'monospace',
+                                                                    fontSize: '0.75rem',
+                                                                    color: theme.colors.secondaryText,
+                                                                    wordBreak: 'break-all',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '0.5rem'
+                                                                }}>
+                                                                    <span style={{ flex: 1 }}>{subaccountHex}</span>
+                                                                    <button
+                                                                        onClick={() => navigator.clipboard.writeText(subaccountHex)}
+                                                                        style={{
+                                                                            background: 'none',
+                                                                            border: 'none',
+                                                                            padding: '4px',
+                                                                            cursor: 'pointer',
+                                                                            color: theme.colors.mutedText,
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            flexShrink: 0
+                                                                        }}
+                                                                        title="Copy subaccount"
+                                                                    >
+                                                                        <FaCopy size={10} />
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             );
                                         })()}

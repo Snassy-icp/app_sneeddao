@@ -13,7 +13,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useSearchParams } from 'react-router-dom';
 import { subaccountToHex } from '../utils/StringUtils';
 import { getRelativeTime, getFullDate } from '../utils/DateUtils';
-import { FaExchangeAlt, FaCoins, FaFire, FaCheckCircle, FaSearch, FaFilter, FaDownload, FaChevronLeft, FaChevronRight, FaArrowUp, FaArrowDown, FaSort } from 'react-icons/fa';
+import { FaExchangeAlt, FaCoins, FaFire, FaCheckCircle, FaSearch, FaFilter, FaDownload, FaChevronLeft, FaChevronRight, FaArrowUp, FaArrowDown, FaSort, FaWallet } from 'react-icons/fa';
 
 const PAGE_SIZES = [10, 20, 50, 100];
 const FETCH_SIZE = 100;
@@ -47,6 +47,7 @@ function TransactionList({
     ledgerCanisterId: providedLedgerCanisterId = null, 
     principalId = null,
     subaccount = null, // Optional subaccount as Uint8Array or array of bytes - used with principalId for account-specific transactions
+    showSubaccountFilter = false, // If true, show dropdown to filter by subaccount (fetches available subaccounts)
     isCollapsed = false, 
     onToggleCollapse = () => {},
     showHeader = true,
@@ -74,6 +75,10 @@ function TransactionList({
     const [toFilter, setToFilter] = useState('');
     const [filterOperator, setFilterOperator] = useState('and');
     const [totalTransactions, setTotalTransactions] = useState(0);
+    // Subaccount filter state
+    const [availableSubaccounts, setAvailableSubaccounts] = useState([]);
+    const [selectedSubaccount, setSelectedSubaccount] = useState(null); // null = all, or Uint8Array
+    const [loadingSubaccounts, setLoadingSubaccounts] = useState(false);
     // Only read from URL params if not embedded - embedded components shouldn't use URL state
     const [startTxIndex, setStartTxIndex] = useState(() => {
         if (embedded) return 0;
@@ -218,6 +223,30 @@ function TransactionList({
         }
     };
 
+    // Fetch available subaccounts for the principal
+    const fetchAvailableSubaccounts = async () => {
+        if (!indexCanisterId || !principalId || !showSubaccountFilter) return;
+        
+        setLoadingSubaccounts(true);
+        try {
+            const indexActor = createSnsIndexActor(indexCanisterId);
+            const subaccounts = await indexActor.list_subaccounts({
+                owner: Principal.fromText(principalId),
+                start: []
+            });
+            // Convert blobs to Uint8Arrays and filter out empty subaccounts
+            const validSubaccounts = subaccounts
+                .map(sub => new Uint8Array(sub))
+                .filter(sub => sub.some(byte => byte !== 0)); // Filter out all-zero subaccounts
+            setAvailableSubaccounts(validSubaccounts);
+        } catch (err) {
+            console.warn('Failed to fetch subaccounts:', err);
+            setAvailableSubaccounts([]);
+        } finally {
+            setLoadingSubaccounts(false);
+        }
+    };
+
     const fetchLedgerTransactions = async () => {
         if (!ledgerCanisterId) return;
 
@@ -276,10 +305,15 @@ function TransactionList({
         
         try {
             const indexActor = createSnsIndexActor(indexCanisterId);
+            // Determine which subaccount to use:
+            // - If showSubaccountFilter is enabled and a subaccount is selected, use that
+            // - Otherwise, use the prop subaccount (for neuron transactions etc.)
+            const effectiveSubaccount = showSubaccountFilter ? selectedSubaccount : subaccount;
+            
             // Build account with optional subaccount
             const account = {
                 owner: Principal.fromText(principalId),
-                subaccount: subaccount ? [Array.from(subaccount)] : []
+                subaccount: effectiveSubaccount ? [Array.from(effectiveSubaccount)] : []
             };
             
             let allTxs = [];
@@ -535,6 +569,13 @@ function TransactionList({
         fetchCanisterIds();
     }, [snsRootCanisterId, providedLedgerCanisterId]);
 
+    // Fetch available subaccounts when index is available and filter is enabled
+    useEffect(() => {
+        if (indexCanisterId && principalId && showSubaccountFilter) {
+            fetchAvailableSubaccounts();
+        }
+    }, [indexCanisterId, principalId, showSubaccountFilter]);
+
     useEffect(() => {
         if (!ledgerCanisterId) return;
         
@@ -550,7 +591,7 @@ function TransactionList({
         
         // No principalId - fetch all transactions from ledger
         fetchLedgerTransactions();
-    }, [ledgerCanisterId, indexCanisterId, principalId, subaccount, page, pageSize]);
+    }, [ledgerCanisterId, indexCanisterId, principalId, subaccount, selectedSubaccount, page, pageSize]);
 
     useEffect(() => {
         if (principalId && allTransactions.length > 0) {
@@ -965,6 +1006,83 @@ function TransactionList({
                                 </button>
                             </div>
                         </div>
+                        
+                        {/* Subaccount filter dropdown - only show when enabled and has subaccounts */}
+                        {showSubaccountFilter && (
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.75rem',
+                                padding: '0.75rem 1rem',
+                                background: theme.colors.primaryBg,
+                                borderRadius: '12px',
+                                border: `1px solid ${theme.colors.border}`,
+                                marginBottom: '0.75rem'
+                            }}>
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                    color: theme.colors.mutedText,
+                                    fontSize: '0.8rem',
+                                    fontWeight: '500',
+                                    whiteSpace: 'nowrap'
+                                }}>
+                                    <FaWallet size={12} />
+                                    Subaccount
+                                </div>
+                                <select
+                                    value={selectedSubaccount ? subaccountToHex(selectedSubaccount) : 'all'}
+                                    onChange={(e) => {
+                                        if (e.target.value === 'all') {
+                                            setSelectedSubaccount(null);
+                                        } else {
+                                            // Convert hex back to Uint8Array
+                                            const hex = e.target.value;
+                                            const bytes = new Uint8Array(hex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+                                            setSelectedSubaccount(bytes);
+                                        }
+                                        setPage(0); // Reset to first page when changing filter
+                                    }}
+                                    style={{
+                                        flex: 1,
+                                        padding: '0.5rem 0.75rem',
+                                        borderRadius: '8px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        background: theme.colors.secondaryBg,
+                                        color: theme.colors.primaryText,
+                                        fontSize: '0.85rem',
+                                        cursor: 'pointer',
+                                        outline: 'none',
+                                        maxWidth: '400px',
+                                        fontFamily: selectedSubaccount ? 'monospace' : 'inherit'
+                                    }}
+                                    disabled={loadingSubaccounts}
+                                >
+                                    <option value="all">
+                                        {loadingSubaccounts ? 'Loading...' : 'All subaccounts (main + others)'}
+                                    </option>
+                                    {availableSubaccounts.map((sub, idx) => {
+                                        const hex = subaccountToHex(sub);
+                                        const shortHex = hex.length > 16 ? `${hex.substring(0, 8)}...${hex.substring(hex.length - 8)}` : hex;
+                                        return (
+                                            <option key={idx} value={hex} style={{ fontFamily: 'monospace' }}>
+                                                {shortHex}
+                                            </option>
+                                        );
+                                    })}
+                                </select>
+                                {availableSubaccounts.length > 0 && (
+                                    <span style={{
+                                        fontSize: '0.75rem',
+                                        color: theme.colors.mutedText,
+                                        whiteSpace: 'nowrap'
+                                    }}>
+                                        {availableSubaccounts.length} subaccount{availableSubaccounts.length !== 1 ? 's' : ''}
+                                    </span>
+                                )}
+                            </div>
+                        )}
                         
                         {/* Address filter row */}
                         <div style={{

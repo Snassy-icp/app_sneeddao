@@ -2333,6 +2333,7 @@ export default function PrincipalPage() {
                                 principalId={stablePrincipalId.current?.toString()}
                                 showHeader={false}
                                 embedded={true}
+                                showSubaccountFilter={true}
                             />
                         </div>
                     )}
