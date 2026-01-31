@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Principal } from '@dfinity/principal';
+import { decodeIcrcAccount } from '@dfinity/ledger-icrc';
 import { createActor as createSnsRootActor } from 'external/sns_root';
 import { createActor as createSnsArchiveActor } from 'external/sns_archive';
 import { createActor as createSnsLedgerActor } from 'external/icrc1_ledger';
@@ -13,7 +14,48 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useSearchParams } from 'react-router-dom';
 import { subaccountToHex } from '../utils/StringUtils';
 import { getRelativeTime, getFullDate } from '../utils/DateUtils';
-import { FaExchangeAlt, FaCoins, FaFire, FaCheckCircle, FaSearch, FaFilter, FaDownload, FaChevronLeft, FaChevronRight, FaArrowUp, FaArrowDown, FaSort, FaWallet } from 'react-icons/fa';
+import { FaExchangeAlt, FaCoins, FaFire, FaCheckCircle, FaSearch, FaFilter, FaDownload, FaChevronLeft, FaChevronRight, FaArrowUp, FaArrowDown, FaSort, FaWallet, FaTimes } from 'react-icons/fa';
+
+// Helper to parse ICRC-1 account from filter string (returns { principal, subaccount } or null)
+const parseFilterAsAccount = (filter) => {
+    if (!filter || typeof filter !== 'string') return null;
+    const trimmed = filter.trim();
+    if (!trimmed) return null;
+    
+    // Try to parse as ICRC-1 extended account format (contains '.')
+    if (trimmed.includes('.')) {
+        try {
+            const decoded = decodeIcrcAccount(trimmed);
+            if (decoded && decoded.owner) {
+                return {
+                    principal: decoded.owner,
+                    subaccount: decoded.subaccount ? new Uint8Array(decoded.subaccount) : null
+                };
+            }
+        } catch (e) {
+            // Not a valid ICRC account, fall through
+        }
+    }
+    
+    // Try to parse as plain principal
+    try {
+        const principal = Principal.fromText(trimmed);
+        return { principal, subaccount: null };
+    } catch (e) {
+        return null;
+    }
+};
+
+// Helper to compare subaccounts (Uint8Arrays)
+const subaccountsEqual = (sub1, sub2) => {
+    if (!sub1 && !sub2) return true;
+    if (!sub1 || !sub2) return false;
+    if (sub1.length !== sub2.length) return false;
+    for (let i = 0; i < sub1.length; i++) {
+        if (sub1[i] !== sub2[i]) return false;
+    }
+    return true;
+};
 
 const PAGE_SIZES = [10, 20, 50, 100];
 const FETCH_SIZE = 100;
@@ -79,6 +121,10 @@ function TransactionList({
     const [availableSubaccounts, setAvailableSubaccounts] = useState([]);
     const [selectedSubaccount, setSelectedSubaccount] = useState(null); // null = all, or Uint8Array
     const [loadingSubaccounts, setLoadingSubaccounts] = useState(false);
+    const [subaccountInput, setSubaccountInput] = useState(''); // Text input for combo-box
+    const [showSubaccountDropdown, setShowSubaccountDropdown] = useState(false);
+    const subaccountInputRef = useRef(null);
+    const subaccountDropdownRef = useRef(null);
     // Only read from URL params if not embedded - embedded components shouldn't use URL state
     const [startTxIndex, setStartTxIndex] = useState(() => {
         if (embedded) return 0;
@@ -126,6 +172,18 @@ function TransactionList({
             const style = document.getElementById('transaction-responsive-css');
             if (style) style.remove();
         };
+    }, []);
+
+    // Click outside handler for subaccount dropdown
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (subaccountDropdownRef.current && !subaccountDropdownRef.current.contains(event.target)) {
+                setShowSubaccountDropdown(false);
+            }
+        };
+        
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
     // URL sync effects - only when not embedded
@@ -372,6 +430,36 @@ function TransactionList({
         return null;
     };
 
+    // Get subaccount from transaction's "from" account
+    const getFromSubaccount = (tx) => {
+        const transaction = tx.transaction || tx;
+        if (transaction.transfer?.[0]?.from?.subaccount?.[0]) {
+            return new Uint8Array(transaction.transfer[0].from.subaccount[0]);
+        }
+        if (transaction.burn?.[0]?.from?.subaccount?.[0]) {
+            return new Uint8Array(transaction.burn[0].from.subaccount[0]);
+        }
+        if (transaction.approve?.[0]?.from?.subaccount?.[0]) {
+            return new Uint8Array(transaction.approve[0].from.subaccount[0]);
+        }
+        return null;
+    };
+
+    // Get subaccount from transaction's "to" account
+    const getToSubaccount = (tx) => {
+        const transaction = tx.transaction || tx;
+        if (transaction.transfer?.[0]?.to?.subaccount?.[0]) {
+            return new Uint8Array(transaction.transfer[0].to.subaccount[0]);
+        }
+        if (transaction.mint?.[0]?.to?.subaccount?.[0]) {
+            return new Uint8Array(transaction.mint[0].to.subaccount[0]);
+        }
+        if (transaction.approve?.[0]?.spender?.subaccount?.[0]) {
+            return new Uint8Array(transaction.approve[0].spender.subaccount[0]);
+        }
+        return null;
+    };
+
     const getTransactionAmount = (tx) => {
         const transaction = tx.transaction || tx;
         if (transaction.transfer?.[0]?.amount) return BigInt(transaction.transfer[0].amount);
@@ -393,13 +481,28 @@ function TransactionList({
         return new Date(Number(timestamp) / 1_000_000).toLocaleString();
     };
 
-    const matchesPrincipalFilter = (principal, filter, displayInfo) => {
+    // Enhanced filter matching - supports ICRC-1 account strings with subaccounts
+    const matchesPrincipalFilter = (principal, txSubaccount, filter, displayInfo) => {
         if (!filter) return true;
         if (!principal) return false;
 
         const filterLower = filter.toLowerCase();
         const principalStr = principal.toString().toLowerCase();
 
+        // First, try to parse the filter as an ICRC-1 account (may include subaccount)
+        const parsedAccount = parseFilterAsAccount(filter);
+        if (parsedAccount) {
+            // Filter is a valid account - match both principal and subaccount
+            const principalMatches = principal.toString() === parsedAccount.principal.toString();
+            if (parsedAccount.subaccount) {
+                // Filter includes a subaccount - must match both
+                return principalMatches && subaccountsEqual(txSubaccount, parsedAccount.subaccount);
+            }
+            // Filter is just a principal - match if principal matches (any subaccount)
+            if (principalMatches) return true;
+        }
+
+        // Fall back to string matching (partial match support)
         if (principalStr.includes(filterLower)) return true;
 
         if (displayInfo) {
@@ -602,8 +705,10 @@ function TransactionList({
             filtered = filtered.filter(tx => {
                 const fromPrincipal = getFromPrincipal(tx);
                 const toPrincipal = getToPrincipal(tx);
-                const fromMatches = matchesPrincipalFilter(fromPrincipal, fromFilter, fromPrincipal ? principalDisplayInfo.get(fromPrincipal.toString()) : null);
-                const toMatches = matchesPrincipalFilter(toPrincipal, toFilter, toPrincipal ? principalDisplayInfo.get(toPrincipal.toString()) : null);
+                const fromSubaccount = getFromSubaccount(tx);
+                const toSubaccount = getToSubaccount(tx);
+                const fromMatches = matchesPrincipalFilter(fromPrincipal, fromSubaccount, fromFilter, fromPrincipal ? principalDisplayInfo.get(fromPrincipal.toString()) : null);
+                const toMatches = matchesPrincipalFilter(toPrincipal, toSubaccount, toFilter, toPrincipal ? principalDisplayInfo.get(toPrincipal.toString()) : null);
                 return filterOperator === 'and' ? (fromMatches && toMatches) : (fromMatches || toMatches);
             });
 
@@ -622,8 +727,10 @@ function TransactionList({
                 filteredTxs = filteredTxs.filter(tx => {
                     const fromPrincipal = getFromPrincipal(tx);
                     const toPrincipal = getToPrincipal(tx);
-                    const fromMatches = matchesPrincipalFilter(fromPrincipal, fromFilter, fromPrincipal ? principalDisplayInfo.get(fromPrincipal.toString()) : null);
-                    const toMatches = matchesPrincipalFilter(toPrincipal, toFilter, toPrincipal ? principalDisplayInfo.get(toPrincipal.toString()) : null);
+                    const fromSubaccount = getFromSubaccount(tx);
+                    const toSubaccount = getToSubaccount(tx);
+                    const fromMatches = matchesPrincipalFilter(fromPrincipal, fromSubaccount, fromFilter, fromPrincipal ? principalDisplayInfo.get(fromPrincipal.toString()) : null);
+                    const toMatches = matchesPrincipalFilter(toPrincipal, toSubaccount, toFilter, toPrincipal ? principalDisplayInfo.get(toPrincipal.toString()) : null);
                     return filterOperator === 'and' ? (fromMatches && toMatches) : (fromMatches || toMatches);
                 });
             }
@@ -1007,7 +1114,7 @@ function TransactionList({
                             </div>
                         </div>
                         
-                        {/* Subaccount filter dropdown - only show when enabled and has subaccounts */}
+                        {/* Subaccount filter combo-box - only show when enabled */}
                         {showSubaccountFilter && (
                             <div style={{
                                 display: 'flex',
@@ -1031,54 +1138,195 @@ function TransactionList({
                                     <FaWallet size={12} />
                                     Subaccount
                                 </div>
-                                <select
-                                    value={selectedSubaccount ? subaccountToHex(selectedSubaccount) : 'all'}
-                                    onChange={(e) => {
-                                        if (e.target.value === 'all') {
-                                            setSelectedSubaccount(null);
-                                        } else {
-                                            // Convert hex back to Uint8Array
-                                            const hex = e.target.value;
-                                            const bytes = new Uint8Array(hex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
-                                            setSelectedSubaccount(bytes);
-                                        }
-                                        setPage(0); // Reset to first page when changing filter
-                                    }}
-                                    style={{
-                                        flex: 1,
-                                        padding: '0.5rem 0.75rem',
-                                        borderRadius: '8px',
-                                        border: `1px solid ${theme.colors.border}`,
-                                        background: theme.colors.secondaryBg,
-                                        color: theme.colors.primaryText,
-                                        fontSize: '0.85rem',
-                                        cursor: 'pointer',
-                                        outline: 'none',
-                                        maxWidth: '400px',
-                                        fontFamily: selectedSubaccount ? 'monospace' : 'inherit'
-                                    }}
-                                    disabled={loadingSubaccounts}
-                                >
-                                    <option value="all">
-                                        {loadingSubaccounts ? 'Loading...' : 'All subaccounts (main + others)'}
-                                    </option>
-                                    {availableSubaccounts.map((sub, idx) => {
-                                        const hex = subaccountToHex(sub);
-                                        const shortHex = hex.length > 16 ? `${hex.substring(0, 8)}...${hex.substring(hex.length - 8)}` : hex;
-                                        return (
-                                            <option key={idx} value={hex} style={{ fontFamily: 'monospace' }}>
-                                                {shortHex}
-                                            </option>
-                                        );
-                                    })}
-                                </select>
+                                <div style={{ position: 'relative', flex: 1, maxWidth: '400px' }} ref={subaccountDropdownRef}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <input
+                                            ref={subaccountInputRef}
+                                            type="text"
+                                            value={subaccountInput}
+                                            onChange={(e) => {
+                                                setSubaccountInput(e.target.value);
+                                                setShowSubaccountDropdown(true);
+                                            }}
+                                            onFocus={() => setShowSubaccountDropdown(true)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    const trimmed = subaccountInput.trim();
+                                                    if (!trimmed) {
+                                                        setSelectedSubaccount(null);
+                                                    } else {
+                                                        // Try to parse as hex
+                                                        try {
+                                                            const cleanHex = trimmed.replace(/^0x/i, '').replace(/\s/g, '');
+                                                            if (/^[0-9a-fA-F]+$/.test(cleanHex) && cleanHex.length <= 64) {
+                                                                // Pad to 32 bytes (64 hex chars)
+                                                                const paddedHex = cleanHex.padStart(64, '0');
+                                                                const bytes = new Uint8Array(paddedHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+                                                                setSelectedSubaccount(bytes);
+                                                            }
+                                                        } catch (err) {
+                                                            // Invalid hex, ignore
+                                                        }
+                                                    }
+                                                    setShowSubaccountDropdown(false);
+                                                    setPage(0);
+                                                } else if (e.key === 'Escape') {
+                                                    setShowSubaccountDropdown(false);
+                                                }
+                                            }}
+                                            placeholder={loadingSubaccounts ? 'Loading...' : 'All (type to filter or enter hex)'}
+                                            style={{
+                                                flex: 1,
+                                                padding: '0.5rem 0.75rem',
+                                                borderRadius: '8px',
+                                                border: `1px solid ${showSubaccountDropdown ? txPrimary : theme.colors.border}`,
+                                                background: theme.colors.secondaryBg,
+                                                color: theme.colors.primaryText,
+                                                fontSize: '0.85rem',
+                                                outline: 'none',
+                                                fontFamily: 'monospace',
+                                                transition: 'border-color 0.15s ease'
+                                            }}
+                                            disabled={loadingSubaccounts}
+                                        />
+                                        {(selectedSubaccount || subaccountInput) && (
+                                            <button
+                                                onClick={() => {
+                                                    setSelectedSubaccount(null);
+                                                    setSubaccountInput('');
+                                                    setPage(0);
+                                                }}
+                                                style={{
+                                                    background: 'none',
+                                                    border: 'none',
+                                                    padding: '4px',
+                                                    cursor: 'pointer',
+                                                    color: theme.colors.mutedText,
+                                                    display: 'flex',
+                                                    alignItems: 'center'
+                                                }}
+                                                title="Clear filter"
+                                            >
+                                                <FaTimes size={12} />
+                                            </button>
+                                        )}
+                                    </div>
+                                    {/* Dropdown suggestions */}
+                                    {showSubaccountDropdown && (
+                                        <div style={{
+                                            position: 'absolute',
+                                            top: '100%',
+                                            left: 0,
+                                            right: 0,
+                                            marginTop: '4px',
+                                            background: theme.colors.secondaryBg,
+                                            border: `1px solid ${theme.colors.border}`,
+                                            borderRadius: '8px',
+                                            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                                            zIndex: 100,
+                                            maxHeight: '200px',
+                                            overflowY: 'auto'
+                                        }}>
+                                            {/* "All" option */}
+                                            <div
+                                                onClick={() => {
+                                                    setSelectedSubaccount(null);
+                                                    setSubaccountInput('');
+                                                    setShowSubaccountDropdown(false);
+                                                    setPage(0);
+                                                }}
+                                                style={{
+                                                    padding: '0.5rem 0.75rem',
+                                                    cursor: 'pointer',
+                                                    fontSize: '0.85rem',
+                                                    color: !selectedSubaccount ? txPrimary : theme.colors.primaryText,
+                                                    background: !selectedSubaccount ? `${txPrimary}10` : 'transparent',
+                                                    borderBottom: `1px solid ${theme.colors.border}`
+                                                }}
+                                                onMouseEnter={(e) => e.target.style.background = `${txPrimary}15`}
+                                                onMouseLeave={(e) => e.target.style.background = !selectedSubaccount ? `${txPrimary}10` : 'transparent'}
+                                            >
+                                                All subaccounts (main + others)
+                                            </div>
+                                            {/* Filter and show available subaccounts */}
+                                            {availableSubaccounts
+                                                .filter(sub => {
+                                                    if (!subaccountInput.trim()) return true;
+                                                    const hex = subaccountToHex(sub).toLowerCase();
+                                                    const search = subaccountInput.toLowerCase().replace(/^0x/i, '').replace(/\s/g, '');
+                                                    return hex.includes(search);
+                                                })
+                                                .map((sub, idx) => {
+                                                    const hex = subaccountToHex(sub);
+                                                    const shortHex = hex.length > 24 ? `${hex.substring(0, 12)}...${hex.substring(hex.length - 12)}` : hex;
+                                                    const isSelected = selectedSubaccount && subaccountsEqual(selectedSubaccount, sub);
+                                                    return (
+                                                        <div
+                                                            key={idx}
+                                                            onClick={() => {
+                                                                setSelectedSubaccount(sub);
+                                                                setSubaccountInput(hex);
+                                                                setShowSubaccountDropdown(false);
+                                                                setPage(0);
+                                                            }}
+                                                            style={{
+                                                                padding: '0.5rem 0.75rem',
+                                                                cursor: 'pointer',
+                                                                fontSize: '0.8rem',
+                                                                fontFamily: 'monospace',
+                                                                color: isSelected ? txPrimary : theme.colors.primaryText,
+                                                                background: isSelected ? `${txPrimary}10` : 'transparent'
+                                                            }}
+                                                            onMouseEnter={(e) => e.target.style.background = `${txPrimary}15`}
+                                                            onMouseLeave={(e) => e.target.style.background = isSelected ? `${txPrimary}10` : 'transparent'}
+                                                        >
+                                                            {shortHex}
+                                                        </div>
+                                                    );
+                                                })}
+                                            {/* Show hint when typing a custom subaccount */}
+                                            {subaccountInput.trim() && /^(0x)?[0-9a-fA-F]+$/.test(subaccountInput.trim().replace(/\s/g, '')) && (
+                                                <div
+                                                    onClick={() => {
+                                                        const trimmed = subaccountInput.trim();
+                                                        const cleanHex = trimmed.replace(/^0x/i, '').replace(/\s/g, '');
+                                                        if (cleanHex.length <= 64) {
+                                                            const paddedHex = cleanHex.padStart(64, '0');
+                                                            const bytes = new Uint8Array(paddedHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+                                                            setSelectedSubaccount(bytes);
+                                                            setSubaccountInput(paddedHex);
+                                                            setShowSubaccountDropdown(false);
+                                                            setPage(0);
+                                                        }
+                                                    }}
+                                                    style={{
+                                                        padding: '0.5rem 0.75rem',
+                                                        cursor: 'pointer',
+                                                        fontSize: '0.8rem',
+                                                        color: txAccent,
+                                                        borderTop: `1px solid ${theme.colors.border}`,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.5rem'
+                                                    }}
+                                                    onMouseEnter={(e) => e.target.style.background = `${txAccent}10`}
+                                                    onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                                                >
+                                                    <FaSearch size={10} />
+                                                    Use "{subaccountInput.trim().substring(0, 16)}{subaccountInput.trim().length > 16 ? '...' : ''}" as subaccount
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
                                 {availableSubaccounts.length > 0 && (
                                     <span style={{
                                         fontSize: '0.75rem',
                                         color: theme.colors.mutedText,
                                         whiteSpace: 'nowrap'
                                     }}>
-                                        {availableSubaccounts.length} subaccount{availableSubaccounts.length !== 1 ? 's' : ''}
+                                        {availableSubaccounts.length} found
                                     </span>
                                 )}
                             </div>
@@ -1114,7 +1362,7 @@ function TransactionList({
                                 <PrincipalInput
                                     value={fromFilter}
                                     onChange={setFromFilter}
-                                    placeholder="From address..."
+                                    placeholder="From (principal or account)..."
                                 />
                             </div>
                             
@@ -1164,7 +1412,7 @@ function TransactionList({
                                 <PrincipalInput
                                     value={toFilter}
                                     onChange={setToFilter}
-                                    placeholder="To address..."
+                                    placeholder="To (principal or account)..."
                                 />
                             </div>
                             
