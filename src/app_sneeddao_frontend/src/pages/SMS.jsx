@@ -77,7 +77,7 @@ const customStyles = `
 }
 
 .sms-new-glow {
-    animation: newMessageGlow 2s ease-in-out 3;
+    animation: fadeInUp 0.5s ease-out forwards, newMessageGlow 2s ease-in-out 3;
 }
 
 .sms-tab {
