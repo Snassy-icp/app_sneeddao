@@ -1761,9 +1761,6 @@ export default function CanistersPage() {
                                         confirmRemoveCanister={confirmRemoveCanister}
                                         setConfirmRemoveCanister={setConfirmRemoveCanister}
                                         handleRemoveCanister={handleRemoveCanister}
-                                        canisterGroups={canisterGroups}
-                                        handleMoveCanister={handleMoveCanister}
-                                        handleMoveFromGroups={handleMoveFromGroups}
                                     />
                                 ))}
                             </div>
@@ -2023,8 +2020,7 @@ export default function CanistersPage() {
     const CanisterCard = ({ 
         canisterId, groupId, styles, theme, canisterStatus, cycleSettings,
         principalNames, principalNicknames, isAuthenticated,
-        confirmRemoveCanister, setConfirmRemoveCanister, handleRemoveCanister,
-        canisterGroups, handleMoveCanister, handleMoveFromGroups
+        confirmRemoveCanister, setConfirmRemoveCanister, handleRemoveCanister
     }) => {
         // react-dnd drag hook
         const [{ isDragging }, drag] = useDrag(() => ({
@@ -2041,26 +2037,6 @@ export default function CanistersPage() {
         const memory = status?.memory;
         const isController = status?.isController;
         const isConfirming = confirmRemoveCanister?.canisterId === canisterId && confirmRemoveCanister?.groupId === groupId;
-
-        // Collect all groups for the move dropdown
-        const collectGroups = (groups, prefix = '') => {
-            let result = [];
-            for (const g of groups) {
-                result.push({ id: g.id, name: prefix + g.name });
-                result = result.concat(collectGroups(g.subgroups, prefix + g.name + ' / '));
-            }
-            return result;
-        };
-        const allGroups = [
-            { id: 'ungrouped', name: 'Ungrouped' },
-            ...collectGroups(canisterGroups.groups)
-        ].filter(g => g.id !== groupId);
-        
-        // Special destinations
-        const specialDestinations = [
-            { id: 'wallet', name: '💼 Wallet' },
-            { id: 'neuron_managers', name: '🧠 Neuron Managers' }
-        ];
 
         return (
             <div 
@@ -2139,43 +2115,6 @@ export default function CanistersPage() {
                     )}
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
-                    {/* Move to group dropdown */}
-                    <select
-                        onChange={(e) => {
-                            if (e.target.value) {
-                                const dest = e.target.value;
-                                if (dest === 'wallet' || dest === 'neuron_managers') {
-                                    handleMoveFromGroups(canisterId, groupId, dest);
-                                } else {
-                                    handleMoveCanister(canisterId, groupId, dest);
-                                }
-                                e.target.value = '';
-                            }
-                        }}
-                        style={{
-                            padding: '6px 8px',
-                            borderRadius: '6px',
-                            border: `1px solid ${theme.colors.border}`,
-                            backgroundColor: theme.colors.secondaryBg,
-                            color: theme.colors.secondaryText,
-                            fontSize: '11px',
-                            cursor: 'pointer',
-                            maxWidth: '110px',
-                        }}
-                        defaultValue=""
-                    >
-                        <option value="" disabled>Move to...</option>
-                        <optgroup label="Special">
-                            {specialDestinations.map(d => (
-                                <option key={d.id} value={d.id}>{d.name}</option>
-                            ))}
-                        </optgroup>
-                        <optgroup label="Groups">
-                            {allGroups.map(g => (
-                                <option key={g.id} value={g.id}>{g.name}</option>
-                            ))}
-                        </optgroup>
-                    </select>
                     <Link
                         to={`/canister?id=${canisterId}`}
                         style={styles.viewLink}
@@ -3306,9 +3245,6 @@ export default function CanistersPage() {
                                                                     confirmRemoveCanister={confirmRemoveCanister}
                                                                     setConfirmRemoveCanister={setConfirmRemoveCanister}
                                                                     handleRemoveCanister={handleRemoveCanister}
-                                                                    canisterGroups={canisterGroups}
-                                                                    handleMoveCanister={handleMoveCanister}
-                                                                    handleMoveFromGroups={handleMoveFromGroups}
                                                                 />
                                                             ))}
                                                         </div>
@@ -3553,20 +3489,6 @@ export default function CanistersPage() {
                                                 // Get health status for this canister
                                                 const canisterHealth = getCanisterHealthStatus(canisterId, trackedCanisterStatus, cycleSettings);
                                                 const canisterLampColor = getStatusLampColor(canisterHealth);
-                                                
-                                                // Build move destinations
-                                                const collectGroups = (groups, prefix = '') => {
-                                                    let result = [];
-                                                    for (const g of groups) {
-                                                        result.push({ id: g.id, name: prefix + g.name });
-                                                        result = result.concat(collectGroups(g.subgroups, prefix + g.name + ' / '));
-                                                    }
-                                                    return result;
-                                                };
-                                                const allMoveDestinations = [
-                                                    { id: 'ungrouped', name: 'Ungrouped' },
-                                                    ...collectGroups(canisterGroups.groups)
-                                                ];
 
                                                 return (
                                                     <DraggableItem
@@ -3658,36 +3580,6 @@ export default function CanistersPage() {
                                                             )}
                                                         </div>
                                                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                                            {/* Move to dropdown */}
-                                                            <select
-                                                                onChange={(e) => {
-                                                                    if (e.target.value) {
-                                                                        handleMoveFromWallet(canisterId, e.target.value);
-                                                                        e.target.value = '';
-                                                                    }
-                                                                }}
-                                                                style={{
-                                                                    padding: '6px 8px',
-                                                                    borderRadius: '6px',
-                                                                    border: `1px solid ${theme.colors.border}`,
-                                                                    backgroundColor: theme.colors.secondaryBg,
-                                                                    color: theme.colors.secondaryText,
-                                                                    fontSize: '11px',
-                                                                    cursor: 'pointer',
-                                                                    maxWidth: '110px',
-                                                                }}
-                                                                defaultValue=""
-                                                            >
-                                                                <option value="" disabled>Move to...</option>
-                                                                <optgroup label="Special">
-                                                                    <option value="neuron_managers">🧠 Neuron Managers</option>
-                                                                </optgroup>
-                                                                <optgroup label="Groups">
-                                                                    {allMoveDestinations.map(g => (
-                                                                        <option key={g.id} value={g.id}>{g.name}</option>
-                                                                    ))}
-                                                                </optgroup>
-                                                            </select>
                                                             <Link
                                                                 to={`/canister?id=${canisterId}`}
                                                                 style={styles.viewLink}
@@ -3988,20 +3880,6 @@ export default function CanistersPage() {
                                             const managerHealth = getManagerHealthStatus(manager, neuronManagerCycleSettings);
                                             const managerLampColor = getStatusLampColor(managerHealth);
                                             
-                                            // Build move destinations for neuron managers
-                                            const collectGroups = (groups, prefix = '') => {
-                                                let result = [];
-                                                for (const g of groups) {
-                                                    result.push({ id: g.id, name: prefix + g.name });
-                                                    result = result.concat(collectGroups(g.subgroups, prefix + g.name + ' / '));
-                                                }
-                                                return result;
-                                            };
-                                            const managerMoveDestinations = [
-                                                { id: 'ungrouped', name: 'Ungrouped' },
-                                                ...collectGroups(canisterGroups.groups)
-                                            ];
-                                            
                                             return (
                                                 <DraggableItem
                                                     key={canisterId}
@@ -4106,38 +3984,6 @@ export default function CanistersPage() {
                                                         </div>
                                                     </div>
                                                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                                        {/* Move to dropdown */}
-                                                        <select
-                                                            onChange={(e) => {
-                                                                e.stopPropagation();
-                                                                if (e.target.value) {
-                                                                    handleMoveFromNeuronManagers(manager.canisterId, e.target.value);
-                                                                    e.target.value = '';
-                                                                }
-                                                            }}
-                                                            onClick={(e) => e.stopPropagation()}
-                                                            style={{
-                                                                padding: '6px 8px',
-                                                                borderRadius: '6px',
-                                                                border: `1px solid ${theme.colors.border}`,
-                                                                backgroundColor: theme.colors.secondaryBg,
-                                                                color: theme.colors.secondaryText,
-                                                                fontSize: '11px',
-                                                                cursor: 'pointer',
-                                                                maxWidth: '110px',
-                                                            }}
-                                                            defaultValue=""
-                                                        >
-                                                            <option value="" disabled>Move to...</option>
-                                                            <optgroup label="Special">
-                                                                <option value="wallet">💼 Wallet</option>
-                                                            </optgroup>
-                                                            <optgroup label="Groups">
-                                                                {managerMoveDestinations.map(g => (
-                                                                    <option key={g.id} value={g.id}>{g.name}</option>
-                                                                ))}
-                                                            </optgroup>
-                                                        </select>
                                                         <Link
                                                             to={`/icp_neuron_manager/${canisterId}`}
                                                             style={{
