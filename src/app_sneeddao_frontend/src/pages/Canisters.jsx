@@ -2074,6 +2074,8 @@ export default function CanistersPage() {
                         showSendMessage={false}
                         showViewProfile={false}
                     />
+                </div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
                     {/* Cycles badge */}
                     {cycles !== undefined && cycles !== null && (
                         <span 
@@ -2081,7 +2083,6 @@ export default function CanistersPage() {
                                 ...styles.managerVersion,
                                 backgroundColor: `${getCyclesColor(cycles, neuronManagerCycleSettings)}20`,
                                 color: getCyclesColor(cycles, neuronManagerCycleSettings),
-                                marginLeft: '8px',
                             }}
                             title={`${cycles.toLocaleString()} cycles`}
                         >
@@ -2107,19 +2108,23 @@ export default function CanistersPage() {
                                 ...styles.managerVersion,
                                 backgroundColor: `${theme.colors.mutedText || theme.colors.secondaryText}20`,
                                 color: theme.colors.mutedText || theme.colors.secondaryText,
-                                marginLeft: '8px',
                             }}
                         >
                             ⚡ ...
                         </span>
                     )}
-                </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
                     <Link
                         to={`/canister?id=${canisterId}`}
-                        style={styles.viewLink}
+                        style={{
+                            ...styles.viewLink,
+                            padding: '6px 8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                        }}
+                        title="View details"
                     >
-                        View
+                        <FaEdit size={12} />
                     </Link>
                     {isConfirming ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -3539,6 +3544,8 @@ export default function CanistersPage() {
                                                                 showSendMessage={false}
                                                                 showViewProfile={false}
                                                             />
+                                                        </div>
+                                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
                                                             {/* Cycles badge */}
                                                             {cycles !== undefined && cycles !== null && (
                                                                 <span 
@@ -3546,7 +3553,6 @@ export default function CanistersPage() {
                                                                         ...styles.managerVersion,
                                                                         backgroundColor: `${getCyclesColor(cycles, neuronManagerCycleSettings)}20`,
                                                                         color: getCyclesColor(cycles, neuronManagerCycleSettings),
-                                                                        marginLeft: '8px',
                                                                     }}
                                                                     title={`${cycles.toLocaleString()} cycles`}
                                                                 >
@@ -3572,19 +3578,23 @@ export default function CanistersPage() {
                                                                         ...styles.managerVersion,
                                                                         backgroundColor: `${theme.colors.mutedText || theme.colors.secondaryText}20`,
                                                                         color: theme.colors.mutedText || theme.colors.secondaryText,
-                                                                        marginLeft: '8px',
                                                                     }}
                                                                 >
                                                                     ⚡ ...
                                                                 </span>
                                                             )}
-                                                        </div>
-                                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                                                             <Link
                                                                 to={`/canister?id=${canisterId}`}
-                                                                style={styles.viewLink}
+                                                                style={{
+                                                                    ...styles.viewLink,
+                                                                    padding: '6px 8px',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'center',
+                                                                }}
+                                                                title="View details"
                                                             >
-                                                                View
+                                                                <FaEdit size={12} />
                                                             </Link>
                                                             {isConfirming ? (
                                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -3983,22 +3993,34 @@ export default function CanistersPage() {
                                                             </div>
                                                         </div>
                                                     </div>
-                                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
                                                         <Link
                                                             to={`/icp_neuron_manager/${canisterId}`}
                                                             style={{
                                                                 ...styles.viewLink,
                                                                 backgroundColor: '#8b5cf615',
                                                                 color: '#8b5cf6',
+                                                                padding: '6px 8px',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
                                                             }}
+                                                            title="Manage neurons"
                                                         >
-                                                            Manage
+                                                            <FaBrain size={12} />
                                                         </Link>
                                                         <Link
                                                             to={`/canister?id=${canisterId}`}
-                                                            style={styles.viewLink}
+                                                            style={{
+                                                                ...styles.viewLink,
+                                                                padding: '6px 8px',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                            }}
+                                                            title="View details"
                                                         >
-                                                            Details
+                                                            <FaEdit size={12} />
                                                         </Link>
                                                         {confirmRemoveManager === canisterId ? (
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }} onClick={(e) => e.stopPropagation()}>

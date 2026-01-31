@@ -839,173 +839,259 @@ export default function Me() {
                         position: 'relative',
                         zIndex: 1
                     }}>
-                        {/* Profile Card */}
+                        {/* Profile Card - Modern Design */}
                         <div className="me-card-animate" style={{
-                            background: theme.colors.secondaryBg,
-                            borderRadius: '20px',
-                            padding: '1.5rem 2rem',
+                            background: `linear-gradient(135deg, ${theme.colors.secondaryBg} 0%, ${theme.colors.primaryBg} 100%)`,
+                            borderRadius: '24px',
+                            padding: '0',
                             border: `1px solid ${theme.colors.border}`,
-                            boxShadow: '0 10px 40px rgba(0, 0, 0, 0.2)'
+                            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
+                            overflow: 'hidden'
                         }}>
+                            {/* Top Banner */}
                             <div style={{
-                                display: 'flex',
-                                alignItems: 'flex-start',
-                                gap: '1.5rem',
-                                flexWrap: 'wrap'
+                                height: '80px',
+                                background: isPremium && !premiumLoading 
+                                    ? `linear-gradient(135deg, #f59e0b 0%, #eab308 50%, #f59e0b 100%)`
+                                    : `linear-gradient(135deg, ${mePrimary} 0%, ${meSecondary} 50%, ${meAccent} 100%)`,
+                                position: 'relative'
                             }}>
-                                {/* Avatar */}
+                                {/* Decorative pattern */}
                                 <div style={{
-                                    width: '72px',
-                                    height: '72px',
-                                    borderRadius: '18px',
-                                    background: isPremium && !premiumLoading 
-                                        ? `linear-gradient(135deg, #f59e0b, #eab308)` 
-                                        : `linear-gradient(135deg, ${mePrimary}, ${meSecondary})`,
+                                    position: 'absolute',
+                                    inset: 0,
+                                    opacity: 0.1,
+                                    backgroundImage: 'radial-gradient(circle at 20% 50%, white 1px, transparent 1px), radial-gradient(circle at 80% 50%, white 1px, transparent 1px)',
+                                    backgroundSize: '40px 40px'
+                                }} />
+                            </div>
+                            
+                            {/* Profile Content */}
+                            <div style={{ padding: '0 2rem 1.5rem', marginTop: '-40px', position: 'relative' }}>
+                                <div style={{
                                     display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    flexShrink: 0,
-                                    boxShadow: isPremium && !premiumLoading 
-                                        ? `0 4px 20px #f59e0b40` 
-                                        : `0 4px 20px ${mePrimary}40`
+                                    alignItems: 'flex-end',
+                                    gap: '1.25rem',
+                                    marginBottom: '1rem',
+                                    flexWrap: 'wrap'
                                 }}>
-                                    {isPremium && !premiumLoading ? (
-                                        <FaCrown size={32} color="white" />
-                                    ) : (
-                                        <FaUser size={32} color="white" />
-                                    )}
-                                </div>
-                                
-                                {/* Profile Info */}
-                                <div style={{ flex: 1, minWidth: '250px' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
-                                        {principalName && !editingPrincipalName ? (
-                                            <h1 style={{
-                                                color: theme.colors.primaryText,
-                                                fontSize: '1.75rem',
-                                                fontWeight: '700',
-                                                margin: 0,
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '0.5rem'
-                                            }}>
-                                                {principalName}
-                                                {isVerified && (
-                                                    <FaCheckCircle size={18} color={mePrimary} title="Verified name" />
-                                                )}
-                                            </h1>
+                                    {/* Avatar */}
+                                    <div style={{
+                                        width: '88px',
+                                        height: '88px',
+                                        borderRadius: '20px',
+                                        background: isPremium && !premiumLoading 
+                                            ? `linear-gradient(135deg, #f59e0b, #eab308)` 
+                                            : `linear-gradient(135deg, ${mePrimary}, ${meSecondary})`,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        flexShrink: 0,
+                                        boxShadow: isPremium && !premiumLoading 
+                                            ? `0 8px 32px #f59e0b50` 
+                                            : `0 8px 32px ${mePrimary}50`,
+                                        border: `4px solid ${theme.colors.secondaryBg}`
+                                    }}>
+                                        {isPremium && !premiumLoading ? (
+                                            <FaCrown size={36} color="white" />
                                         ) : (
-                                            <h1 style={{
-                                                color: theme.colors.primaryText,
-                                                fontSize: '1.75rem',
-                                                fontWeight: '700',
-                                                margin: 0
-                                            }}>
-                                                My Profile
-                                            </h1>
-                                        )}
-                                        {isPremium && !premiumLoading && (
-                                            <PremiumBadge size="small" />
+                                            <FaUser size={36} color="white" />
                                         )}
                                     </div>
-
-                                    {!editingPrincipalName ? (
-                                        <button
-                                            onClick={() => setEditingPrincipalName(true)}
-                                            style={{
-                                                background: `linear-gradient(135deg, ${mePrimary}, ${meSecondary})`,
-                                                color: 'white',
-                                                border: 'none',
-                                                borderRadius: '10px',
-                                                padding: '0.6rem 1.25rem',
-                                                cursor: 'pointer',
-                                                fontWeight: '600',
-                                                fontSize: '0.9rem',
-                                                transition: 'all 0.3s ease',
-                                                boxShadow: `0 4px 15px ${mePrimary}30`
-                                            }}
-                                        >
-                                            {principalName ? '✏️ Change Name' : '✏️ Set Name'}
-                                        </button>
-                                    ) : (
-                                        <div style={{
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            gap: '0.75rem'
-                                        }}>
-                                            <div>
-                                                <input
-                                                    type="text"
-                                                    value={principalNameInput}
-                                                    onChange={(e) => {
-                                                        const newValue = e.target.value;
-                                                        setPrincipalNameInput(newValue);
-                                                        setPrincipalNameError(validateNameInput(newValue));
-                                                    }}
-                                                    maxLength={32}
-                                                    placeholder="Enter your name (max 32 chars)"
-                                                    style={{
-                                                        backgroundColor: theme.colors.tertiaryBg,
-                                                        border: `1px solid ${principalNameError ? theme.colors.error : theme.colors.border}`,
-                                                        borderRadius: '10px',
-                                                        color: theme.colors.primaryText,
-                                                        padding: '0.75rem 1rem',
-                                                        width: '100%',
-                                                        maxWidth: '300px',
-                                                        fontSize: '0.95rem'
-                                                    }}
-                                                />
-                                                {principalNameError && (
-                                                    <div style={{
-                                                        color: theme.colors.error,
-                                                        fontSize: '0.8rem',
-                                                        marginTop: '0.35rem'
-                                                    }}>
-                                                        {principalNameError}
-                                                    </div>
-                                                )}
-                                            </div>
-                                            <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                                <button
-                                                    onClick={handlePrincipalNameSubmit}
-                                                    disabled={isSubmittingPrincipalName}
-                                                    style={{
-                                                        background: `linear-gradient(135deg, ${mePrimary}, ${meSecondary})`,
-                                                        color: 'white',
-                                                        border: 'none',
-                                                        borderRadius: '8px',
-                                                        padding: '0.5rem 1rem',
-                                                        cursor: isSubmittingPrincipalName ? 'not-allowed' : 'pointer',
-                                                        fontWeight: '600',
-                                                        fontSize: '0.85rem',
-                                                        opacity: isSubmittingPrincipalName ? 0.7 : 1
-                                                    }}
-                                                >
-                                                    {isSubmittingPrincipalName ? 'Setting...' : 'Set Name'}
-                                                </button>
-                                                <button
-                                                    onClick={() => {
-                                                        setEditingPrincipalName(false);
-                                                        setPrincipalNameInput('');
-                                                    }}
-                                                    disabled={isSubmittingPrincipalName}
-                                                    style={{
-                                                        background: 'transparent',
-                                                        color: theme.colors.mutedText,
-                                                        border: `1px solid ${theme.colors.border}`,
-                                                        borderRadius: '8px',
-                                                        padding: '0.5rem 1rem',
-                                                        cursor: isSubmittingPrincipalName ? 'not-allowed' : 'pointer',
-                                                        fontWeight: '500',
-                                                        fontSize: '0.85rem'
-                                                    }}
-                                                >
-                                                    Cancel
-                                                </button>
-                                            </div>
+                                    
+                                    {/* Name & Badge Row */}
+                                    <div style={{ flex: 1, minWidth: '200px', paddingBottom: '4px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                                            {principalName && !editingPrincipalName ? (
+                                                <h1 style={{
+                                                    color: theme.colors.primaryText,
+                                                    fontSize: '1.5rem',
+                                                    fontWeight: '700',
+                                                    margin: 0,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.5rem'
+                                                }}>
+                                                    {principalName}
+                                                    {isVerified && (
+                                                        <FaCheckCircle size={16} color={mePrimary} title="Verified name" />
+                                                    )}
+                                                </h1>
+                                            ) : (
+                                                <h1 style={{
+                                                    color: theme.colors.primaryText,
+                                                    fontSize: '1.5rem',
+                                                    fontWeight: '700',
+                                                    margin: 0
+                                                }}>
+                                                    My Profile
+                                                </h1>
+                                            )}
+                                            {isPremium && !premiumLoading && (
+                                                <PremiumBadge size="small" />
+                                            )}
                                         </div>
-                                    )}
+                                    </div>
                                 </div>
+
+                                {/* Principal ID Display */}
+                                {identity && (
+                                    <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.75rem',
+                                        padding: '0.75rem 1rem',
+                                        background: theme.colors.tertiaryBg,
+                                        borderRadius: '12px',
+                                        marginBottom: '1rem',
+                                        flexWrap: 'wrap'
+                                    }}>
+                                        <span style={{
+                                            fontSize: '0.75rem',
+                                            fontWeight: '600',
+                                            color: theme.colors.mutedText,
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.5px'
+                                        }}>
+                                            Principal ID
+                                        </span>
+                                        <code style={{
+                                            fontSize: '0.85rem',
+                                            color: theme.colors.secondaryText,
+                                            fontFamily: 'monospace',
+                                            wordBreak: 'break-all',
+                                            flex: 1
+                                        }}>
+                                            {identity.getPrincipal().toString()}
+                                        </code>
+                                        <button
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(identity.getPrincipal().toString());
+                                            }}
+                                            style={{
+                                                background: 'transparent',
+                                                border: 'none',
+                                                color: theme.colors.accent,
+                                                cursor: 'pointer',
+                                                padding: '4px 8px',
+                                                borderRadius: '6px',
+                                                fontSize: '0.75rem',
+                                                fontWeight: '500'
+                                            }}
+                                            title="Copy to clipboard"
+                                        >
+                                            Copy
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Name Edit Section */}
+                                {!editingPrincipalName ? (
+                                    <button
+                                        onClick={() => setEditingPrincipalName(true)}
+                                        style={{
+                                            background: `linear-gradient(135deg, ${mePrimary}, ${meSecondary})`,
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '12px',
+                                            padding: '0.75rem 1.5rem',
+                                            cursor: 'pointer',
+                                            fontWeight: '600',
+                                            fontSize: '0.9rem',
+                                            transition: 'all 0.3s ease',
+                                            boxShadow: `0 4px 20px ${mePrimary}40`,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.5rem'
+                                        }}
+                                    >
+                                        <FaUser size={14} />
+                                        {principalName ? 'Change Display Name' : 'Set Display Name'}
+                                    </button>
+                                ) : (
+                                    <div style={{
+                                        background: theme.colors.tertiaryBg,
+                                        borderRadius: '12px',
+                                        padding: '1rem',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '0.75rem'
+                                    }}>
+                                        <label style={{
+                                            fontSize: '0.8rem',
+                                            fontWeight: '600',
+                                            color: theme.colors.secondaryText
+                                        }}>
+                                            Display Name
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={principalNameInput}
+                                            onChange={(e) => {
+                                                const newValue = e.target.value;
+                                                setPrincipalNameInput(newValue);
+                                                setPrincipalNameError(validateNameInput(newValue));
+                                            }}
+                                            maxLength={32}
+                                            placeholder="Enter your name (max 32 chars)"
+                                            style={{
+                                                backgroundColor: theme.colors.secondaryBg,
+                                                border: `1px solid ${principalNameError ? theme.colors.error : theme.colors.border}`,
+                                                borderRadius: '10px',
+                                                color: theme.colors.primaryText,
+                                                padding: '0.75rem 1rem',
+                                                width: '100%',
+                                                fontSize: '0.95rem'
+                                            }}
+                                        />
+                                        {principalNameError && (
+                                            <div style={{
+                                                color: theme.colors.error,
+                                                fontSize: '0.8rem'
+                                            }}>
+                                                {principalNameError}
+                                            </div>
+                                        )}
+                                        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
+                                            <button
+                                                onClick={handlePrincipalNameSubmit}
+                                                disabled={isSubmittingPrincipalName}
+                                                style={{
+                                                    background: `linear-gradient(135deg, ${mePrimary}, ${meSecondary})`,
+                                                    color: 'white',
+                                                    border: 'none',
+                                                    borderRadius: '8px',
+                                                    padding: '0.6rem 1.25rem',
+                                                    cursor: isSubmittingPrincipalName ? 'not-allowed' : 'pointer',
+                                                    fontWeight: '600',
+                                                    fontSize: '0.85rem',
+                                                    opacity: isSubmittingPrincipalName ? 0.7 : 1
+                                                }}
+                                            >
+                                                {isSubmittingPrincipalName ? 'Saving...' : 'Save'}
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setEditingPrincipalName(false);
+                                                    setPrincipalNameInput('');
+                                                }}
+                                                disabled={isSubmittingPrincipalName}
+                                                style={{
+                                                    background: 'transparent',
+                                                    color: theme.colors.mutedText,
+                                                    border: `1px solid ${theme.colors.border}`,
+                                                    borderRadius: '8px',
+                                                    padding: '0.6rem 1.25rem',
+                                                    cursor: isSubmittingPrincipalName ? 'not-allowed' : 'pointer',
+                                                    fontWeight: '500',
+                                                    fontSize: '0.85rem'
+                                                }}
+                                            >
+                                                Cancel
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
