@@ -21,6 +21,10 @@
     padding: 10px 20px;
     background-color: #2a2a2a;
     border-bottom: 1px solid #3a3a3a;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-x: hidden;
 }
 
 .header-right {
@@ -45,10 +49,9 @@
     }
     
     .site-header {
-        padding: 10px;
+        padding: 10px 12px;
         flex-direction: column;
         gap: 10px;
-        min-width: 100%;
     }
     
     .header-right {

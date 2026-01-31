@@ -530,7 +530,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             }}
         >
             {/* Top Row: Logo, Menu Title, SNS Dropdown, Login - All on same row */}
-            <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: '15px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: '15px', boxSizing: 'border-box' }}>
                 <div ref={menuToggleRef} style={{ display: 'flex', alignItems: 'center', gap: '15px', flex: 1 }}>
                 <div style={{ position: 'relative', display: 'inline-block' }}>
                     <img
@@ -1096,7 +1096,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 width: '100%',
                 paddingTop: '8px',
                 borderTop: '1px solid rgba(255,255,255,0.1)',
-                marginTop: '8px'
+                marginTop: '8px',
+                boxSizing: 'border-box'
             }}>
                 <div style={{ 
                     display: 'flex', 
@@ -1174,6 +1175,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     overflow: 'hidden',
                     opacity: isVpBarVisible ? 1 : 0,
                     transition: 'max-height 0.3s ease, opacity 0.3s ease, padding 0.3s ease, margin 0.3s ease',
+                    boxSizing: 'border-box',
                     ...(isVpBarVisible ? {} : { paddingTop: 0, marginTop: 0, borderTop: 'none' })
                 }}>
                     {/* VP Display */}
@@ -1356,7 +1358,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     width: '100%',
                     paddingTop: '8px',
                     borderTop: '1px solid rgba(255,255,255,0.1)',
-                    marginTop: '8px'
+                    marginTop: '8px',
+                    boxSizing: 'border-box'
                 }}>
                     <div style={{
                         display: 'flex',

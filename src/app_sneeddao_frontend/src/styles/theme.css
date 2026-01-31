@@ -96,12 +96,16 @@ img[style*="border-radius: 50%"] {
   z-index: 1000;
   border-bottom: 1px solid var(--color-border);
   transition: all 0.3s ease;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 
-/* On mobile, ensure header stretches when content is wider than viewport */
+/* On mobile, ensure header doesn't overflow */
 @media (max-width: 768px) {
   .site-header {
-    min-width: 100%;
+    padding: 10px 12px;
   }
 }
 
