@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams, useLocation, Link } from 'react-router-dom';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
@@ -37,6 +37,12 @@ function Neurons() {
     
     // Get naming context
     const { neuronNames, neuronNicknames, verifiedNames } = useNaming();
+    
+    // Get current SNS info
+    const currentSnsInfo = useMemo(() => {
+        if (!selectedSnsRoot) return null;
+        return getSnsById(selectedSnsRoot);
+    }, [selectedSnsRoot]);
     
     // Accent colors for this page
     const neuronPrimary = '#6366f1'; // Indigo
@@ -939,10 +945,10 @@ function Neurons() {
                             </div>
                             <div>
                                 <h1 style={{ color: theme.colors.primaryText, fontSize: '1.75rem', fontWeight: '700', margin: 0 }}>
-                                    Neuron Explorer
+                                    {currentSnsInfo?.name || 'SNS'} Neuron Explorer
                                 </h1>
                                 <p style={{ color: theme.colors.secondaryText, fontSize: '0.95rem', margin: '0.25rem 0 0 0' }}>
-                                    Browse and analyze all neurons in the SNS governance
+                                    Browse and analyze all neurons in the {currentSnsInfo?.name || 'SNS'} governance
                                 </p>
                             </div>
                         </div>

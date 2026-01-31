@@ -1001,10 +1001,10 @@ function Neuron() {
                             </div>
                             <div>
                                 <h1 style={{ color: theme.colors.primaryText, fontSize: '1.75rem', fontWeight: '700', margin: 0 }}>
-                                    Neuron Details
+                                    {selectedSns?.name || 'SNS'} Neuron Details
                                 </h1>
                                 <p style={{ color: theme.colors.secondaryText, fontSize: '0.95rem', margin: '0.25rem 0 0 0' }}>
-                                    View and manage SNS neuron information
+                                    View and manage {selectedSns?.name || 'SNS'} neuron information
                                 </p>
                             </div>
                             <Link 
