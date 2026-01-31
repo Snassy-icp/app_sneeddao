@@ -1618,26 +1618,27 @@ function SneedexOffers() {
                     <label style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '10px',
+                        gap: '6px',
                         cursor: 'pointer',
-                        padding: '10px 16px',
+                        padding: '8px 10px',
                         borderRadius: '10px',
                         border: `1px solid ${theme.colors.border}`,
                         background: theme.colors.secondaryBg,
-                        fontSize: '0.9rem',
+                        fontSize: '0.8rem',
                         fontWeight: '500',
                         color: theme.colors.primaryText,
                         whiteSpace: 'nowrap',
+                        flexShrink: 0,
                     }}>
                         <span style={{ color: showInactiveOffers ? theme.colors.mutedText : theme.colors.primaryText }}>
-                            Active Only
+                            Active
                         </span>
                         <div 
                             onClick={() => setShowInactiveOffers(prev => !prev)}
                             style={{
-                                width: '44px',
-                                height: '24px',
-                                borderRadius: '12px',
+                                width: '36px',
+                                height: '20px',
+                                borderRadius: '10px',
                                 background: showInactiveOffers ? theme.colors.tertiaryBg : sneedexPrimary,
                                 position: 'relative',
                                 transition: 'all 0.2s ease',
@@ -1645,13 +1646,13 @@ function SneedexOffers() {
                             }}
                         >
                             <div style={{
-                                width: '18px',
-                                height: '18px',
+                                width: '14px',
+                                height: '14px',
                                 borderRadius: '50%',
                                 background: '#fff',
                                 position: 'absolute',
                                 top: '3px',
-                                left: showInactiveOffers ? '3px' : '23px',
+                                left: showInactiveOffers ? '3px' : '19px',
                                 transition: 'all 0.2s ease',
                                 boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
                             }} />

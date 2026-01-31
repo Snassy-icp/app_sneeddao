@@ -1230,20 +1230,22 @@ export default function PrincipalPage() {
                                     backgroundSize: '40px 40px'
                                 }} />
                                 
-                                {/* Nickname - center of banner */}
+                                {/* Nickname - top of banner */}
                                 {principalInfo?.nickname && (
                                     <div style={{
                                         position: 'absolute',
-                                        top: '50%',
-                                        left: '50%',
-                                        transform: 'translate(-50%, -50%)',
+                                        top: '12px',
+                                        left: '16px',
                                         color: 'white',
-                                        fontSize: '1.1rem',
+                                        fontSize: '0.95rem',
                                         fontWeight: '600',
                                         fontStyle: 'italic',
                                         textShadow: '0 2px 8px rgba(0,0,0,0.3)',
                                         opacity: 0.95,
-                                        whiteSpace: 'nowrap'
+                                        whiteSpace: 'nowrap',
+                                        maxWidth: 'calc(100% - 120px)',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis'
                                     }}>
                                         "{principalInfo.nickname}"
                                     </div>
