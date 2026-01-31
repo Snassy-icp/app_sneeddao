@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars, FaComments, FaUnlock, FaCrown, FaGift, FaBrain, FaKey, FaHandPaper } from 'react-icons/fa';
+import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars, FaComments, FaUnlock, FaCrown, FaGift, FaBrain, FaKey, FaHandPaper, FaBell, FaEnvelope, FaCoins } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { headerStyles } from '../styles/HeaderStyles';
@@ -1367,17 +1367,32 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 <div style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
-                    justifyContent: 'flex-end',
+                    justifyContent: 'space-between',
                     width: '100%',
-                    paddingTop: '8px',
-                    borderTop: '1px solid rgba(255,255,255,0.1)',
-                    marginTop: '8px',
+                    paddingTop: '10px',
+                    borderTop: '1px solid rgba(139, 92, 246, 0.2)',
+                    marginTop: '10px',
                     boxSizing: 'border-box'
                 }}>
+                    {/* Notifications Label */}
                     <div style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '12px'
+                        gap: '6px',
+                        color: theme.colors.mutedText,
+                        fontSize: '0.75rem',
+                        fontWeight: '600',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                    }}>
+                        <FaBell size={12} />
+                        <span>Notifications</span>
+                    </div>
+                    
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px'
                     }}>
                         {/* Reply Notifications */}
                         {newReplyCount > 0 && (
@@ -1386,18 +1401,30 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                 style={{
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '4px',
-                                    padding: '4px 8px',
-                                    backgroundColor: 'rgba(255, 215, 0, 0.1)',
-                                    border: `1px solid ${theme.colors.warning}`,
-                                    borderRadius: '12px',
+                                    gap: '5px',
+                                    padding: '5px 12px',
+                                    background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(139, 92, 246, 0.1))',
+                                    border: '1px solid rgba(139, 92, 246, 0.3)',
+                                    borderRadius: '16px',
                                     cursor: 'pointer',
-                                    fontSize: '11px',
-                                    color: theme.colors.warning
+                                    fontSize: '12px',
+                                    fontWeight: '600',
+                                    color: '#a78bfa',
+                                    transition: 'all 0.2s ease',
+                                    boxShadow: '0 2px 8px rgba(139, 92, 246, 0.15)'
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(-1px)';
+                                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(139, 92, 246, 0.25)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(139, 92, 246, 0.15)';
                                 }}
                                 title={`You have ${newReplyCount} new ${newReplyCount === 1 ? 'reply' : 'replies'}`}
                             >
-                                💬 {newReplyCount}
+                                <FaComments size={11} />
+                                <span>{newReplyCount}</span>
                             </div>
                         )}
                         
@@ -1408,18 +1435,30 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                 style={{
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '4px',
-                                    padding: '4px 8px',
-                                    backgroundColor: 'rgba(0, 191, 255, 0.1)',
-                                    border: `1px solid ${theme.colors.accent}`,
-                                    borderRadius: '12px',
+                                    gap: '5px',
+                                    padding: '5px 12px',
+                                    background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(59, 130, 246, 0.1))',
+                                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                                    borderRadius: '16px',
                                     cursor: 'pointer',
-                                    fontSize: '11px',
-                                    color: theme.colors.accent
+                                    fontSize: '12px',
+                                    fontWeight: '600',
+                                    color: '#60a5fa',
+                                    transition: 'all 0.2s ease',
+                                    boxShadow: '0 2px 8px rgba(59, 130, 246, 0.15)'
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(-1px)';
+                                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.25)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(59, 130, 246, 0.15)';
                                 }}
                                 title={`You have ${newMessageCount} new ${newMessageCount === 1 ? 'message' : 'messages'}`}
                             >
-                                📨 {newMessageCount}
+                                <FaEnvelope size={11} />
+                                <span>{newMessageCount}</span>
                             </div>
                         )}
                         
@@ -1430,18 +1469,30 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                 style={{
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '4px',
-                                    padding: '4px 8px',
-                                    backgroundColor: 'rgba(255, 215, 0, 0.1)',
-                                    border: `1px solid ${theme.colors.warning}`,
-                                    borderRadius: '12px',
+                                    gap: '5px',
+                                    padding: '5px 12px',
+                                    background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(245, 158, 11, 0.1))',
+                                    border: '1px solid rgba(245, 158, 11, 0.3)',
+                                    borderRadius: '16px',
                                     cursor: 'pointer',
-                                    fontSize: '11px',
-                                    color: theme.colors.warning
+                                    fontSize: '12px',
+                                    fontWeight: '600',
+                                    color: '#fbbf24',
+                                    transition: 'all 0.2s ease',
+                                    boxShadow: '0 2px 8px rgba(245, 158, 11, 0.15)'
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(-1px)';
+                                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(245, 158, 11, 0.25)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(245, 158, 11, 0.15)';
                                 }}
                                 title={`You have ${newTipCount} new ${newTipCount === 1 ? 'tip' : 'tips'}`}
                             >
-                                💰 {newTipCount}
+                                <FaCoins size={11} />
+                                <span>{newTipCount}</span>
                             </div>
                         )}
                         
@@ -1452,18 +1503,30 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                 style={{
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '4px',
-                                    padding: '4px 8px',
-                                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                                    border: '1px solid #10b981',
-                                    borderRadius: '12px',
+                                    gap: '5px',
+                                    padding: '5px 12px',
+                                    background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(16, 185, 129, 0.1))',
+                                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                                    borderRadius: '16px',
                                     cursor: 'pointer',
-                                    fontSize: '11px',
-                                    color: '#10b981'
+                                    fontSize: '12px',
+                                    fontWeight: '600',
+                                    color: '#34d399',
+                                    transition: 'all 0.2s ease',
+                                    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.15)'
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(-1px)';
+                                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.25)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(16, 185, 129, 0.15)';
                                 }}
                                 title={`You have ${collectiblesCount} ${collectiblesCount === 1 ? 'item' : 'items'} to collect (fees, rewards, maturity)`}
                             >
-                                🎁 {collectiblesCount}
+                                <FaGift size={11} />
+                                <span>{collectiblesCount}</span>
                             </div>
                         )}
                     </div>

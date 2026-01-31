@@ -1230,6 +1230,25 @@ export default function PrincipalPage() {
                                     backgroundSize: '40px 40px'
                                 }} />
                                 
+                                {/* Nickname - center of banner */}
+                                {principalInfo?.nickname && (
+                                    <div style={{
+                                        position: 'absolute',
+                                        top: '50%',
+                                        left: '50%',
+                                        transform: 'translate(-50%, -50%)',
+                                        color: 'white',
+                                        fontSize: '1.1rem',
+                                        fontWeight: '600',
+                                        fontStyle: 'italic',
+                                        textShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                                        opacity: 0.95,
+                                        whiteSpace: 'nowrap'
+                                    }}>
+                                        "{principalInfo.nickname}"
+                                    </div>
+                                )}
+                                
                                 {/* Premium Badge - top right corner */}
                                 {viewedUserIsPremium && !premiumLoading && !isCanisterPrincipal(stablePrincipalId.current?.toString() || '') && (
                                     <div style={{
@@ -1252,6 +1271,46 @@ export default function PrincipalPage() {
                                         Premium
                                     </div>
                                 )}
+                                
+                                {/* Principal ID - bottom right of banner */}
+                                <div style={{
+                                    position: 'absolute',
+                                    bottom: '8px',
+                                    right: '12px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    background: 'rgba(0,0,0,0.25)',
+                                    backdropFilter: 'blur(4px)',
+                                    padding: '4px 10px',
+                                    borderRadius: '6px'
+                                }}>
+                                    <code style={{ 
+                                        color: 'rgba(255,255,255,0.9)', 
+                                        fontSize: '0.75rem',
+                                        fontWeight: '500'
+                                    }}>
+                                        {stablePrincipalId.current?.toString().slice(0, 10)}...{stablePrincipalId.current?.toString().slice(-6)}
+                                    </code>
+                                    <button
+                                        onClick={copyPrincipal}
+                                        style={{
+                                            background: 'none',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            padding: '2px',
+                                            display: 'flex',
+                                            alignItems: 'center'
+                                        }}
+                                        title="Copy principal"
+                                    >
+                                        {copiedPrincipal ? (
+                                            <FaCheck size={11} color="rgba(255,255,255,0.9)" />
+                                        ) : (
+                                            <FaCopy size={11} color="rgba(255,255,255,0.7)" />
+                                        )}
+                                    </button>
+                                </div>
                             </div>
                             
                             {/* Profile Content */}
@@ -1296,88 +1355,37 @@ export default function PrincipalPage() {
                                     
                                     {/* Name & Badge Row */}
                                     <div style={{ flex: 1, minWidth: '150px', paddingBottom: '4px' }}>
-                                        {/* Public Name with inline nickname */}
-                                        <div style={{ 
-                                            display: 'flex',
-                                            alignItems: 'baseline',
-                                            gap: '0.5rem',
-                                            flexWrap: 'wrap',
-                                            marginBottom: '2px'
-                                        }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
                                             <h2 style={{ 
                                                 color: theme.colors.primaryText,
                                                 margin: '0',
-                                                fontSize: 'clamp(1.1rem, 4vw, 1.5rem)',
+                                                fontSize: '1.5rem',
                                                 fontWeight: '700',
-                                                display: 'inline-flex',
+                                                display: 'flex',
                                                 alignItems: 'center',
-                                                gap: '0.4rem'
+                                                gap: '0.5rem'
                                             }}>
                                                 {principalInfo?.name || (isCanisterPrincipal(stablePrincipalId.current?.toString() || '') ? 'Canister' : 'Anonymous')}
                                                 {principalInfo?.isVerified && (
-                                                    <FaCheckCircle size={14} color={principalPrimary} title="Verified name" />
+                                                    <FaCheckCircle size={16} color={principalPrimary} title="Verified name" />
                                                 )}
                                             </h2>
-                                            {/* Private Nickname - shown inline */}
-                                            {principalInfo?.nickname && principalInfo.nickname !== principalInfo?.name && (
-                                                <span style={{ 
-                                                    color: theme.colors.mutedText, 
-                                                    fontSize: '0.95rem',
-                                                    fontWeight: '400',
-                                                    fontStyle: 'italic'
-                                                }}>
-                                                    "{principalInfo.nickname}"
-                                                </span>
-                                            )}
                                             {isCanisterPrincipal(stablePrincipalId.current?.toString() || '') && (
                                                 <span style={{
                                                     background: `${principalAccent}20`,
                                                     color: principalAccent,
-                                                    padding: '3px 8px',
-                                                    borderRadius: '10px',
-                                                    fontSize: '0.7rem',
+                                                    padding: '4px 10px',
+                                                    borderRadius: '12px',
+                                                    fontSize: '0.75rem',
                                                     fontWeight: '600',
                                                     display: 'inline-flex',
                                                     alignItems: 'center',
-                                                    gap: '3px'
+                                                    gap: '4px'
                                                 }}>
-                                                    <FaCube size={9} />
+                                                    <FaCube size={10} />
                                                     Canister
                                                 </span>
                                             )}
-                                        </div>
-                                        
-                                        {/* Principal ID with copy */}
-                                        <div style={{ 
-                                            display: 'inline-flex', 
-                                            alignItems: 'center', 
-                                            gap: '8px',
-                                            background: theme.colors.primaryBg,
-                                            padding: '6px 12px',
-                                            borderRadius: '8px',
-                                            marginTop: '8px'
-                                        }}>
-                                            <code style={{ 
-                                                color: theme.colors.secondaryText, 
-                                                fontSize: '0.8rem'
-                                            }}>
-                                                {stablePrincipalId.current?.toString().slice(0, 12)}...{stablePrincipalId.current?.toString().slice(-8)}
-                                            </code>
-                                            <button
-                                                onClick={copyPrincipal}
-                                                style={{
-                                                    background: 'none',
-                                                    border: 'none',
-                                                    cursor: 'pointer',
-                                                    color: copiedPrincipal ? theme.colors.success : theme.colors.mutedText,
-                                                    padding: '4px',
-                                                    display: 'flex',
-                                                    alignItems: 'center'
-                                                }}
-                                                title="Copy principal ID"
-                                            >
-                                                {copiedPrincipal ? <FaCheck size={12} /> : <FaCopy size={12} />}
-                                            </button>
                                         </div>
                                     </div>
                                 </div>
