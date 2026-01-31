@@ -566,12 +566,13 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 <div 
                     style={{ 
                         color: theme.colors.primaryText,
-                        fontSize: '24px',
+                        fontSize: 'clamp(16px, 4vw, 24px)',
                         fontWeight: 'bold',
                         display: 'flex',
                         alignItems: 'center',
                         cursor: 'pointer',
-                        gap: '10px'
+                        gap: '8px',
+                        whiteSpace: 'nowrap'
                     }}
                     onClick={() => {
                         setIsMenuOpen(!isMenuOpen);
@@ -1094,23 +1095,24 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 alignItems: 'center', 
                 justifyContent: 'flex-start',
                 width: '100%',
-                paddingTop: '8px',
+                paddingTop: '6px',
                 borderTop: '1px solid rgba(255,255,255,0.1)',
-                marginTop: '8px',
+                marginTop: '6px',
                 boxSizing: 'border-box'
             }}>
                 <div style={{ 
                     display: 'flex', 
-                    gap: '20px', 
+                    gap: '6px',
+                    columnGap: '4px',
                     alignItems: 'center',
                     flexWrap: 'wrap',
-                    rowGap: '10px'
+                    rowGap: '4px'
                 }}>
                     {/* Show loading state if on admin page and waiting for admin check */}
                     {isOnAdminPage && adminLoading ? (
                         <div style={{
                             color: theme.colors.mutedText,
-                            fontSize: '16px',
+                            fontSize: '13px',
                             fontStyle: 'italic'
                         }}>
                             Loading...
@@ -1123,26 +1125,35 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                     key={item.name}
                                     to={item.path}
                                     style={{
-                                        color: isActive ? theme.colors.accent : theme.colors.mutedText,
+                                        color: isActive ? '#fff' : theme.colors.secondaryText,
                                         textDecoration: 'none',
-                                        fontSize: '16px',
-                                        fontWeight: isActive ? 'bold' : 'normal',
-                                        position: 'relative',
-                                        paddingBottom: '4px'
+                                        fontSize: '13px',
+                                        fontWeight: isActive ? '600' : '500',
+                                        padding: '4px 10px',
+                                        borderRadius: '14px',
+                                        background: isActive 
+                                            ? 'linear-gradient(135deg, #8b5cf6, #7c3aed)'
+                                            : 'transparent',
+                                        border: isActive 
+                                            ? 'none'
+                                            : 'none',
+                                        transition: 'all 0.15s ease',
+                                        whiteSpace: 'nowrap'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        if (!isActive) {
+                                            e.currentTarget.style.background = 'rgba(139, 92, 246, 0.15)';
+                                            e.currentTarget.style.color = theme.colors.primaryText;
+                                        }
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        if (!isActive) {
+                                            e.currentTarget.style.background = 'transparent';
+                                            e.currentTarget.style.color = theme.colors.secondaryText;
+                                        }
                                     }}
                                 >
                                     {item.name}
-                                    {isActive && (
-                                        <div style={{
-                                            position: 'absolute',
-                                            bottom: 0,
-                                            left: 0,
-                                            width: '100%',
-                                            height: '2px',
-                                            background: theme.colors.accent,
-                                            borderRadius: '2px'
-                                        }} />
-                                    )}
                                 </Link>
                             );
                         })
@@ -1150,11 +1161,14 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     {showTotalValue && (
                         <div style={{ 
                             color: theme.colors.primaryText,
-                            fontSize: '16px',
+                            fontSize: '13px',
                             fontWeight: 'bold',
-                            marginLeft: '20px'
+                            marginLeft: '8px',
+                            padding: '4px 10px',
+                            borderRadius: '14px',
+                            background: 'rgba(16, 185, 129, 0.15)'
                         }}>
-                            Total Value: ${showTotalValue}
+                            ${showTotalValue}
                         </div>
                     )}
                 </div>

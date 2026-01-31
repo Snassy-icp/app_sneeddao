@@ -1295,57 +1295,57 @@ export default function PrincipalPage() {
                                     })()}
                                     
                                     {/* Name & Badge Row */}
-                                    <div style={{ flex: 1, minWidth: '200px', paddingBottom: '4px' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                                            <h2 style={{ 
-                                                color: theme.colors.primaryText,
-                                                margin: '0',
-                                                fontSize: '1.5rem',
-                                                fontWeight: '700',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '0.5rem'
-                                            }}>
-                                                {principalInfo?.name || (isCanisterPrincipal(stablePrincipalId.current?.toString() || '') ? 'Canister' : 'Anonymous')}
-                                                {principalInfo?.isVerified && (
-                                                    <FaCheckCircle size={16} color={principalPrimary} title="Verified name" />
-                                                )}
-                                            </h2>
+                                    <div style={{ flex: 1, minWidth: '150px', paddingBottom: '4px' }}>
+                                        {/* Public Name */}
+                                        <h2 style={{ 
+                                            color: theme.colors.primaryText,
+                                            margin: '0 0 2px 0',
+                                            fontSize: 'clamp(1.1rem, 4vw, 1.5rem)',
+                                            fontWeight: '700',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.5rem',
+                                            flexWrap: 'wrap'
+                                        }}>
+                                            {principalInfo?.name || (isCanisterPrincipal(stablePrincipalId.current?.toString() || '') ? 'Canister' : 'Anonymous')}
+                                            {principalInfo?.isVerified && (
+                                                <FaCheckCircle size={14} color={principalPrimary} title="Verified name" />
+                                            )}
                                             {isCanisterPrincipal(stablePrincipalId.current?.toString() || '') && (
                                                 <span style={{
                                                     background: `${principalAccent}20`,
                                                     color: principalAccent,
-                                                    padding: '4px 10px',
-                                                    borderRadius: '12px',
-                                                    fontSize: '0.75rem',
+                                                    padding: '3px 8px',
+                                                    borderRadius: '10px',
+                                                    fontSize: '0.7rem',
                                                     fontWeight: '600',
-                                                    display: 'flex',
+                                                    display: 'inline-flex',
                                                     alignItems: 'center',
-                                                    gap: '4px'
+                                                    gap: '3px'
                                                 }}>
-                                                    <FaCube size={10} />
+                                                    <FaCube size={9} />
                                                     Canister
                                                 </span>
                                             )}
-                                        </div>
+                                        </h2>
                                         
-                                        {/* Private Nickname */}
+                                        {/* Private Nickname - shown below name */}
                                         {principalInfo?.nickname && principalInfo.nickname !== principalInfo?.name && (
                                             <div style={{ 
-                                                color: theme.colors.mutedText, 
-                                                fontSize: '0.85rem', 
-                                                marginTop: '4px',
+                                                color: theme.colors.secondaryText, 
+                                                fontSize: '0.9rem', 
+                                                marginTop: '2px',
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 gap: '6px'
                                             }}>
-                                                <span style={{ opacity: 0.7 }}>Your nickname:</span>
                                                 <span style={{ 
-                                                    color: theme.colors.secondaryText,
-                                                    fontWeight: '500',
-                                                    background: `${principalPrimary}15`,
-                                                    padding: '2px 8px',
-                                                    borderRadius: '4px'
+                                                    color: theme.colors.mutedText,
+                                                    fontSize: '0.8rem'
+                                                }}>aka</span>
+                                                <span style={{ 
+                                                    color: principalPrimary,
+                                                    fontWeight: '600'
                                                 }}>
                                                     {principalInfo.nickname}
                                                 </span>
