@@ -348,33 +348,24 @@ function SneedexOffers() {
             const actor = createSneedexActor(identity);
             let fetchedOffers = [];
             
-            // Build state filter based on toggle states
-            const stateFilter = [];
-            if (showActiveOffers) {
-                stateFilter.push({ Active: null });
-            }
-            if (showSoldOffers) {
-                stateFilter.push({ Completed: { winning_bid_id: 0n, completion_time: 0n } });
-                stateFilter.push({ Claimed: null });
-            }
-            if (showExpiredOffers) {
-                stateFilter.push({ Expired: null });
-                stateFilter.push({ Cancelled: null });
-                stateFilter.push({ Reclaimed: null });
-            }
-            // Default to Active if nothing selected
-            if (stateFilter.length === 0) {
-                stateFilter.push({ Active: null });
-            }
+            // Always fetch all states - filtering by state toggles is done client-side in filteredOffers
+            const allStates = [
+                { Active: null }, 
+                { Completed: { winning_bid_id: 0n, completion_time: 0n } }, 
+                { Claimed: null },
+                { Expired: null },
+                { Cancelled: null },
+                { Reclaimed: null }
+            ];
             
-            // Use getOfferFeed to get offers with state filtering
+            // Use getOfferFeed to get offers
             // For public tab: only public offers (public_only = true)
             // For private tab: only private offers the user has access to (public_only = false, viewer = principal)
             const feedInput = {
                 start_id: [], // Start from newest
                 length: 1000, // Get a large number
                 filter: [{
-                    states: [stateFilter],
+                    states: [allStates],
                     asset_types: [],
                     creator: [],
                     has_bids: [],
@@ -394,14 +385,6 @@ function SneedexOffers() {
                 } else if (principal) {
                     fetchedOffers = await actor.getPrivateOffersFor(principal);
                 }
-                
-                // Filter by state client-side if using fallback
-                fetchedOffers = fetchedOffers.filter(o => {
-                    if (showActiveOffers && 'Active' in o.state) return true;
-                    if (showSoldOffers && ('Completed' in o.state || 'Claimed' in o.state)) return true;
-                    if (showExpiredOffers && ('Expired' in o.state || 'Cancelled' in o.state || 'Reclaimed' in o.state)) return true;
-                    return false;
-                });
             }
             
             setOffers(fetchedOffers);
@@ -451,14 +434,14 @@ function SneedexOffers() {
         } finally {
             setLoading(false);
         }
-    }, [identity, offerTab, principal, showActiveOffers, showSoldOffers, showExpiredOffers, fetchGlobalTokenMetadata]);
+    }, [identity, offerTab, principal, fetchGlobalTokenMetadata]);
     
     // Clear offers immediately when tab or filter changes (for responsive UX)
     // This shows loading state right away instead of stale data
     useEffect(() => {
         setOffers([]);
         setLoading(true);
-    }, [offerTab, showActiveOffers, showSoldOffers, showExpiredOffers]);
+    }, [offerTab]);
     
     useEffect(() => {
         fetchOffers();
@@ -655,6 +638,15 @@ function SneedexOffers() {
     };
     
     const filteredOffers = offers.filter(offer => {
+        // Filter by state toggles (Active, Sold, Expired)
+        const effectiveShowActive = showActiveOffers || (!showActiveOffers && !showSoldOffers && !showExpiredOffers);
+        const stateMatch = (
+            (effectiveShowActive && 'Active' in offer.state) ||
+            (showSoldOffers && ('Completed' in offer.state || 'Claimed' in offer.state)) ||
+            (showExpiredOffers && ('Expired' in offer.state || 'Cancelled' in offer.state || 'Reclaimed' in offer.state))
+        );
+        if (!stateMatch) return false;
+        
         if (filterType !== 'all') {
             const hasType = offer.assets.some(a => {
                 const type = getAssetType(a.asset);
