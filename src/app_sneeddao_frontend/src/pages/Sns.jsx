@@ -694,9 +694,11 @@ function Sns() {
     const selectedLogo = selectedSnsDetails?.canisters?.governance ? snsLogos.get(selectedSnsDetails.canisters.governance) : null;
 
     return (
-        <div
-            className='page-container'
-            style={{
+        <div className='page-container'>
+            <style>{customStyles}</style>
+            <Header showSnsDropdown={true} />
+
+            <main style={{
                 background: theme.colors.primaryGradient,
                 color: theme.colors.primaryText,
                 minHeight: '100vh',
@@ -706,11 +708,7 @@ function Sns() {
                 maxWidth: '100%',
                 overflowX: 'hidden',
                 boxSizing: 'border-box'
-            }}
-        >
-            <style>{customStyles}</style>
-            <Header showSnsDropdown={true} />
-
+            }}>
             {/* Hero Banner - Full width */}
             <div style={{
                 background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${snsPrimary}15 50%, ${snsSecondary}10 100%)`,
@@ -929,7 +927,7 @@ function Sns() {
             </div>
 
             {/* Main Content - Fixed height with independent scrolling */}
-            <main style={{
+            <div style={{
                 flex: 1,
                 display: 'flex',
                 flexDirection: isMobile ? 'column' : 'row',
@@ -2254,6 +2252,7 @@ function Sns() {
                             </div>
                         )}
                     </div>
+            </div>
             </main>
         </div>
     );

@@ -1172,30 +1172,18 @@ export default function PrincipalPage() {
                 <div
                     className="principal-card-animate"
                     style={{ 
-                        background: `linear-gradient(135deg, ${theme.colors.secondaryBg} 0%, ${principalPrimary}08 100%)`,
-                        borderRadius: '20px',
-                        padding: '2rem',
+                        background: `linear-gradient(135deg, ${theme.colors.secondaryBg} 0%, ${theme.colors.primaryBg} 100%)`,
+                        borderRadius: '24px',
+                        padding: '0',
                         marginBottom: '1.5rem',
                         border: `1px solid ${theme.colors.border}`,
-                        position: 'relative',
+                        boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
                         overflow: 'hidden',
                         animationDelay: '0.2s'
                     }}
                 >
-                    {/* Background decoration */}
-                    <div style={{
-                        position: 'absolute',
-                        top: '-30%',
-                        right: '-5%',
-                        width: '300px',
-                        height: '300px',
-                        background: `radial-gradient(circle, ${principalPrimary}15 0%, transparent 70%)`,
-                        borderRadius: '50%',
-                        pointerEvents: 'none'
-                    }} />
-
                     {loading ? (
-                        <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
+                        <div style={{ textAlign: 'center', padding: '3rem', color: theme.colors.mutedText }}>
                             <div className="principal-spin" style={{
                                 width: '40px',
                                 height: '40px',
@@ -1212,67 +1200,118 @@ export default function PrincipalPage() {
                             border: `1px solid ${theme.colors.error}40`,
                             color: theme.colors.error,
                             padding: '1rem',
+                            margin: '1.5rem',
                             borderRadius: '12px'
                         }}>
                             {error}
                         </div>
                     ) : (
-                        <div style={{ position: 'relative', zIndex: 1 }}>
-                            {/* Profile Header */}
-                            <div style={{ 
-                                display: 'flex', 
-                                justifyContent: 'space-between', 
-                                alignItems: 'flex-start',
-                                flexWrap: 'wrap',
-                                gap: '1.5rem',
-                                marginBottom: '1.5rem'
+                        <>
+                            {/* Top Banner */}
+                            <div style={{
+                                height: '80px',
+                                background: (() => {
+                                    const principalStr = stablePrincipalId.current?.toString() || '';
+                                    const isCanister = isCanisterPrincipal(principalStr);
+                                    const isPremium = viewedUserIsPremium && !premiumLoading;
+                                    if (isPremium && !isCanister) {
+                                        return `linear-gradient(135deg, #f59e0b 0%, #eab308 50%, #f59e0b 100%)`;
+                                    }
+                                    return `linear-gradient(135deg, ${principalPrimary} 0%, ${principalSecondary} 50%, ${principalAccent} 100%)`;
+                                })(),
+                                position: 'relative'
                             }}>
-                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1.25rem' }}>
-                                    {/* Avatar - show crown for premium, user icon, or canister icon */}
+                                {/* Decorative pattern */}
+                                <div style={{
+                                    position: 'absolute',
+                                    inset: 0,
+                                    opacity: 0.1,
+                                    backgroundImage: 'radial-gradient(circle at 20% 50%, white 1px, transparent 1px), radial-gradient(circle at 80% 50%, white 1px, transparent 1px)',
+                                    backgroundSize: '40px 40px'
+                                }} />
+                                
+                                {/* Premium Badge - top right corner */}
+                                {viewedUserIsPremium && !premiumLoading && !isCanisterPrincipal(stablePrincipalId.current?.toString() || '') && (
+                                    <div style={{
+                                        position: 'absolute',
+                                        top: '12px',
+                                        right: '12px',
+                                        background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
+                                        color: '#1a1a2e',
+                                        padding: '6px 14px',
+                                        borderRadius: '20px',
+                                        fontSize: '0.8rem',
+                                        fontWeight: '700',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        boxShadow: `0 0 0 3px ${theme.colors.secondaryBg}, 0 4px 12px rgba(245, 158, 11, 0.4)`,
+                                        zIndex: 2
+                                    }}>
+                                        <FaCrown size={12} />
+                                        Premium
+                                    </div>
+                                )}
+                            </div>
+                            
+                            {/* Profile Content */}
+                            <div style={{ padding: '0 2rem 1.5rem', marginTop: '-40px', position: 'relative', zIndex: 1 }}>
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'flex-end',
+                                    gap: '1.25rem',
+                                    marginBottom: '1rem',
+                                    flexWrap: 'wrap'
+                                }}>
+                                    {/* Avatar */}
                                     {(() => {
-                                        const principalStr = stablePrincipalId.current.toString();
+                                        const principalStr = stablePrincipalId.current?.toString() || '';
                                         const isCanister = isCanisterPrincipal(principalStr);
                                         const isPremium = viewedUserIsPremium && !premiumLoading;
                                         
-                                        // Premium users get a golden gradient
                                         const bgGradient = isPremium && !isCanister
-                                            ? 'linear-gradient(135deg, #f59e0b, #d97706)'
-                                            : `linear-gradient(135deg, ${getPrincipalColor(principalStr)}, ${getPrincipalColor(principalStr)}aa)`;
+                                            ? 'linear-gradient(135deg, #f59e0b, #eab308)'
+                                            : `linear-gradient(135deg, ${principalPrimary}, ${principalSecondary})`;
                                         const shadowColor = isPremium && !isCanister
-                                            ? 'rgba(245, 158, 11, 0.4)'
-                                            : `${getPrincipalColor(principalStr)}40`;
+                                            ? '#f59e0b50'
+                                            : `${principalPrimary}50`;
                                         
                                         return (
                                             <div style={{
-                                                width: '72px',
-                                                height: '72px',
-                                                minWidth: '72px',
-                                                borderRadius: isCanister ? '12px' : '18px',
+                                                width: '88px',
+                                                height: '88px',
+                                                borderRadius: isCanister ? '16px' : '20px',
                                                 background: bgGradient,
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'center',
-                                                color: 'white',
-                                                boxShadow: `0 4px 20px ${shadowColor}`
+                                                flexShrink: 0,
+                                                boxShadow: `0 8px 32px ${shadowColor}`,
+                                                border: `4px solid ${theme.colors.secondaryBg}`
                                             }}>
-                                                {isCanister ? <FaCube size={32} /> : (isPremium ? <FaCrown size={32} /> : <FaUser size={32} />)}
+                                                {isCanister ? <FaCube size={36} color="white" /> : (isPremium ? <FaCrown size={36} color="white" /> : <FaUser size={36} color="white" />)}
                                             </div>
                                         );
                                     })()}
                                     
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                        {/* Public Name / Canister Type Badge */}
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px', flexWrap: 'wrap' }}>
+                                    {/* Name & Badge Row */}
+                                    <div style={{ flex: 1, minWidth: '200px', paddingBottom: '4px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
                                             <h2 style={{ 
                                                 color: theme.colors.primaryText,
                                                 margin: '0',
                                                 fontSize: '1.5rem',
                                                 fontWeight: '700',
-                                                lineHeight: '1.2'
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.5rem'
                                             }}>
-                                                {principalInfo?.name || (isCanisterPrincipal(stablePrincipalId.current.toString()) ? 'Canister' : 'Anonymous')}
+                                                {principalInfo?.name || (isCanisterPrincipal(stablePrincipalId.current?.toString() || '') ? 'Canister' : 'Anonymous')}
+                                                {principalInfo?.isVerified && (
+                                                    <FaCheckCircle size={16} color={principalPrimary} title="Verified name" />
+                                                )}
                                             </h2>
-                                            {isCanisterPrincipal(stablePrincipalId.current.toString()) && (
+                                            {isCanisterPrincipal(stablePrincipalId.current?.toString() || '') && (
                                                 <span style={{
                                                     background: `${principalAccent}20`,
                                                     color: principalAccent,
@@ -1288,40 +1327,14 @@ export default function PrincipalPage() {
                                                     Canister
                                                 </span>
                                             )}
-                                            {viewedUserIsPremium && !premiumLoading && (
-                                                <PremiumBadge size="small" />
-                                            )}
-                                            {principalInfo?.isVerified && (
-                                                <FaCheckCircle size={16} color={theme.colors.success} title="Verified" />
-                                            )}
                                         </div>
                                         
-                                        {/* Link to /canister page for canisters */}
-                                        {isCanisterPrincipal(stablePrincipalId.current.toString()) && (
-                                            <Link
-                                                to={`/canister?id=${stablePrincipalId.current.toString()}`}
-                                                style={{
-                                                    display: 'inline-flex',
-                                                    alignItems: 'center',
-                                                    gap: '6px',
-                                                    color: principalPrimary,
-                                                    fontSize: '0.85rem',
-                                                    textDecoration: 'none',
-                                                    marginBottom: '8px',
-                                                    padding: '4px 0'
-                                                }}
-                                            >
-                                                <FaExternalLinkAlt size={10} />
-                                                View Canister Details
-                                            </Link>
-                                        )}
-                                        
-                                        {/* Private Nickname - only show if different from name */}
+                                        {/* Private Nickname */}
                                         {principalInfo?.nickname && principalInfo.nickname !== principalInfo?.name && (
                                             <div style={{ 
                                                 color: theme.colors.mutedText, 
                                                 fontSize: '0.85rem', 
-                                                marginBottom: '8px',
+                                                marginTop: '4px',
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 gap: '6px'
@@ -1346,13 +1359,14 @@ export default function PrincipalPage() {
                                             gap: '8px',
                                             background: theme.colors.primaryBg,
                                             padding: '6px 12px',
-                                            borderRadius: '8px'
+                                            borderRadius: '8px',
+                                            marginTop: '8px'
                                         }}>
                                             <code style={{ 
                                                 color: theme.colors.secondaryText, 
                                                 fontSize: '0.8rem'
                                             }}>
-                                                {stablePrincipalId.current.toString().slice(0, 12)}...{stablePrincipalId.current.toString().slice(-8)}
+                                                {stablePrincipalId.current?.toString().slice(0, 12)}...{stablePrincipalId.current?.toString().slice(-8)}
                                             </code>
                                             <button
                                                 onClick={copyPrincipal}
@@ -1372,6 +1386,159 @@ export default function PrincipalPage() {
                                         </div>
                                     </div>
                                 </div>
+                                
+                                {/* Activity Stats */}
+                                <div style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: 'repeat(4, 1fr)',
+                                    gap: '0.75rem',
+                                    marginBottom: '1rem'
+                                }}>
+                                    <div style={{
+                                        background: theme.colors.tertiaryBg,
+                                        borderRadius: '12px',
+                                        padding: '0.75rem',
+                                        textAlign: 'center',
+                                        transition: 'all 0.2s ease',
+                                        border: `1px solid transparent`,
+                                        cursor: 'pointer'
+                                    }}
+                                    onClick={() => setActiveTab('posts')}
+                                    onMouseEnter={(e) => e.currentTarget.style.borderColor = principalPrimary}
+                                    onMouseLeave={(e) => e.currentTarget.style.borderColor = 'transparent'}
+                                    >
+                                        <div style={{ 
+                                            color: principalPrimary, 
+                                            fontSize: '1.25rem', 
+                                            fontWeight: '700',
+                                            marginBottom: '0.25rem'
+                                        }}>
+                                            {loadingPosts ? '...' : userPosts.length}
+                                        </div>
+                                        <div style={{ 
+                                            color: theme.colors.mutedText, 
+                                            fontSize: '0.7rem', 
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.5px'
+                                        }}>
+                                            Posts
+                                        </div>
+                                    </div>
+                                    <div style={{
+                                        background: theme.colors.tertiaryBg,
+                                        borderRadius: '12px',
+                                        padding: '0.75rem',
+                                        textAlign: 'center',
+                                        transition: 'all 0.2s ease',
+                                        border: `1px solid transparent`,
+                                        cursor: 'pointer'
+                                    }}
+                                    onClick={() => setActiveTab('posts')}
+                                    onMouseEnter={(e) => e.currentTarget.style.borderColor = principalSecondary}
+                                    onMouseLeave={(e) => e.currentTarget.style.borderColor = 'transparent'}
+                                    >
+                                        <div style={{ 
+                                            color: principalSecondary, 
+                                            fontSize: '1.25rem', 
+                                            fontWeight: '700',
+                                            marginBottom: '0.25rem'
+                                        }}>
+                                            {loadingPosts ? '...' : userThreads.length}
+                                        </div>
+                                        <div style={{ 
+                                            color: theme.colors.mutedText, 
+                                            fontSize: '0.7rem', 
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.5px'
+                                        }}>
+                                            Threads
+                                        </div>
+                                    </div>
+                                    <div style={{
+                                        background: theme.colors.tertiaryBg,
+                                        borderRadius: '12px',
+                                        padding: '0.75rem',
+                                        textAlign: 'center',
+                                        transition: 'all 0.2s ease',
+                                        border: `1px solid transparent`,
+                                        cursor: 'pointer'
+                                    }}
+                                    onClick={() => setActiveTab('trades')}
+                                    onMouseEnter={(e) => e.currentTarget.style.borderColor = theme.colors.success}
+                                    onMouseLeave={(e) => e.currentTarget.style.borderColor = 'transparent'}
+                                    >
+                                        <div style={{ 
+                                            color: theme.colors.success, 
+                                            fontSize: '1.25rem', 
+                                            fontWeight: '700',
+                                            marginBottom: '0.25rem'
+                                        }}>
+                                            {loadingTrades ? '...' : userOffers.length}
+                                        </div>
+                                        <div style={{ 
+                                            color: theme.colors.mutedText, 
+                                            fontSize: '0.7rem', 
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.5px'
+                                        }}>
+                                            Offers
+                                        </div>
+                                    </div>
+                                    <div style={{
+                                        background: theme.colors.tertiaryBg,
+                                        borderRadius: '12px',
+                                        padding: '0.75rem',
+                                        textAlign: 'center',
+                                        transition: 'all 0.2s ease',
+                                        border: `1px solid transparent`,
+                                        cursor: 'pointer'
+                                    }}
+                                    onClick={() => setActiveTab('neurons')}
+                                    onMouseEnter={(e) => e.currentTarget.style.borderColor = principalAccent}
+                                    onMouseLeave={(e) => e.currentTarget.style.borderColor = 'transparent'}
+                                    >
+                                        <div style={{ 
+                                            color: principalAccent, 
+                                            fontSize: '1.25rem', 
+                                            fontWeight: '700',
+                                            marginBottom: '0.25rem'
+                                        }}>
+                                            {loadingNeurons ? '...' : neurons.length}
+                                        </div>
+                                        <div style={{ 
+                                            color: theme.colors.mutedText, 
+                                            fontSize: '0.7rem', 
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.5px'
+                                        }}>
+                                            Neurons
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                {/* Link to /canister page for canisters */}
+                                {isCanisterPrincipal(stablePrincipalId.current?.toString() || '') && (
+                                    <Link
+                                        to={`/canister?id=${stablePrincipalId.current?.toString()}`}
+                                        style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            color: principalPrimary,
+                                            fontSize: '0.85rem',
+                                            textDecoration: 'none',
+                                            marginBottom: '1rem',
+                                            padding: '8px 14px',
+                                            background: `${principalPrimary}10`,
+                                            borderRadius: '8px',
+                                            border: `1px solid ${principalPrimary}30`,
+                                            transition: 'all 0.2s ease'
+                                        }}
+                                    >
+                                        <FaExternalLinkAlt size={10} />
+                                        View Canister Details
+                                    </Link>
+                                )}
 
                                 {/* Action Buttons */}
                                 <div style={{ 
@@ -1401,7 +1568,7 @@ export default function PrincipalPage() {
                                                 <FaPen size={12} />
                                                 {principalInfo?.nickname ? 'Edit Nickname' : 'Set Nickname'}
                                             </button>
-                                            {identity?.getPrincipal().toString() === stablePrincipalId.current.toString() ? (
+                                            {identity?.getPrincipal().toString() === stablePrincipalId.current?.toString() ? (
                                                 <button
                                                     onClick={() => setEditingName(true)}
                                                     style={{
@@ -1426,7 +1593,7 @@ export default function PrincipalPage() {
                                                 identity && (
                                                     <button
                                                         onClick={() => {
-                                                            const recipientPrincipal = stablePrincipalId.current.toString();
+                                                            const recipientPrincipal = stablePrincipalId.current?.toString();
                                                             navigate(`/sms?recipient=${encodeURIComponent(recipientPrincipal)}`);
                                                         }}
                                                         style={{
@@ -1452,7 +1619,6 @@ export default function PrincipalPage() {
                                         </>
                                     )}
                                 </div>
-                            </div>
 
                             {/* Nickname Editing Form */}
                             {editingNickname && (
@@ -1612,7 +1778,8 @@ export default function PrincipalPage() {
                                     </div>
                                 </div>
                             )}
-                        </div>
+                            </div>
+                        </>
                     )}
                 </div>
 

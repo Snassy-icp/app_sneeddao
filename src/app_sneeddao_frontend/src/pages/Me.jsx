@@ -912,6 +912,29 @@ export default function Me() {
                                     backgroundImage: 'radial-gradient(circle at 20% 50%, white 1px, transparent 1px), radial-gradient(circle at 80% 50%, white 1px, transparent 1px)',
                                     backgroundSize: '40px 40px'
                                 }} />
+                                
+                                {/* Premium Badge - top right corner */}
+                                {isPremium && !premiumLoading && (
+                                    <div style={{
+                                        position: 'absolute',
+                                        top: '12px',
+                                        right: '12px',
+                                        background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
+                                        color: '#1a1a2e',
+                                        padding: '6px 14px',
+                                        borderRadius: '20px',
+                                        fontSize: '0.8rem',
+                                        fontWeight: '700',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        boxShadow: `0 0 0 3px ${theme.colors.secondaryBg}, 0 4px 12px rgba(245, 158, 11, 0.4)`,
+                                        zIndex: 2
+                                    }}>
+                                        <FaCrown size={12} />
+                                        Premium
+                                    </div>
+                                )}
                             </div>
                             
                             {/* Profile Content */}
@@ -974,9 +997,6 @@ export default function Me() {
                                                 }}>
                                                     My Profile
                                                 </h1>
-                                            )}
-                                            {isPremium && !premiumLoading && (
-                                                <PremiumBadge size="small" />
                                             )}
                                         </div>
                                     </div>
