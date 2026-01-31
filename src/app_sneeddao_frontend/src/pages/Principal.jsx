@@ -1296,20 +1296,38 @@ export default function PrincipalPage() {
                                     
                                     {/* Name & Badge Row */}
                                     <div style={{ flex: 1, minWidth: '150px', paddingBottom: '4px' }}>
-                                        {/* Public Name */}
-                                        <h2 style={{ 
-                                            color: theme.colors.primaryText,
-                                            margin: '0 0 2px 0',
-                                            fontSize: 'clamp(1.1rem, 4vw, 1.5rem)',
-                                            fontWeight: '700',
+                                        {/* Public Name with inline nickname */}
+                                        <div style={{ 
                                             display: 'flex',
-                                            alignItems: 'center',
+                                            alignItems: 'baseline',
                                             gap: '0.5rem',
-                                            flexWrap: 'wrap'
+                                            flexWrap: 'wrap',
+                                            marginBottom: '2px'
                                         }}>
-                                            {principalInfo?.name || (isCanisterPrincipal(stablePrincipalId.current?.toString() || '') ? 'Canister' : 'Anonymous')}
-                                            {principalInfo?.isVerified && (
-                                                <FaCheckCircle size={14} color={principalPrimary} title="Verified name" />
+                                            <h2 style={{ 
+                                                color: theme.colors.primaryText,
+                                                margin: '0',
+                                                fontSize: 'clamp(1.1rem, 4vw, 1.5rem)',
+                                                fontWeight: '700',
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '0.4rem'
+                                            }}>
+                                                {principalInfo?.name || (isCanisterPrincipal(stablePrincipalId.current?.toString() || '') ? 'Canister' : 'Anonymous')}
+                                                {principalInfo?.isVerified && (
+                                                    <FaCheckCircle size={14} color={principalPrimary} title="Verified name" />
+                                                )}
+                                            </h2>
+                                            {/* Private Nickname - shown inline */}
+                                            {principalInfo?.nickname && principalInfo.nickname !== principalInfo?.name && (
+                                                <span style={{ 
+                                                    color: theme.colors.mutedText, 
+                                                    fontSize: '0.95rem',
+                                                    fontWeight: '400',
+                                                    fontStyle: 'italic'
+                                                }}>
+                                                    "{principalInfo.nickname}"
+                                                </span>
                                             )}
                                             {isCanisterPrincipal(stablePrincipalId.current?.toString() || '') && (
                                                 <span style={{
@@ -1327,30 +1345,7 @@ export default function PrincipalPage() {
                                                     Canister
                                                 </span>
                                             )}
-                                        </h2>
-                                        
-                                        {/* Private Nickname - shown below name */}
-                                        {principalInfo?.nickname && principalInfo.nickname !== principalInfo?.name && (
-                                            <div style={{ 
-                                                color: theme.colors.secondaryText, 
-                                                fontSize: '0.9rem', 
-                                                marginTop: '2px',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '6px'
-                                            }}>
-                                                <span style={{ 
-                                                    color: theme.colors.mutedText,
-                                                    fontSize: '0.8rem'
-                                                }}>aka</span>
-                                                <span style={{ 
-                                                    color: principalPrimary,
-                                                    fontWeight: '600'
-                                                }}>
-                                                    {principalInfo.nickname}
-                                                </span>
-                                            </div>
-                                        )}
+                                        </div>
                                         
                                         {/* Principal ID with copy */}
                                         <div style={{ 
