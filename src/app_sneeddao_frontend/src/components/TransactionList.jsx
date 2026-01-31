@@ -45,7 +45,8 @@ const getTypeInfo = (type) => {
 function TransactionList({ 
     snsRootCanisterId, 
     ledgerCanisterId: providedLedgerCanisterId = null, 
-    principalId = null, 
+    principalId = null,
+    subaccount = null, // Optional subaccount as Uint8Array or array of bytes - used with principalId for account-specific transactions
     isCollapsed = false, 
     onToggleCollapse = () => {},
     showHeader = true,
@@ -275,9 +276,10 @@ function TransactionList({
         
         try {
             const indexActor = createSnsIndexActor(indexCanisterId);
+            // Build account with optional subaccount
             const account = {
                 owner: Principal.fromText(principalId),
-                subaccount: []
+                subaccount: subaccount ? [Array.from(subaccount)] : []
             };
             
             let allTxs = [];
@@ -548,7 +550,7 @@ function TransactionList({
         
         // No principalId - fetch all transactions from ledger
         fetchLedgerTransactions();
-    }, [ledgerCanisterId, indexCanisterId, principalId, page, pageSize]);
+    }, [ledgerCanisterId, indexCanisterId, principalId, subaccount, page, pageSize]);
 
     useEffect(() => {
         if (principalId && allTransactions.length > 0) {

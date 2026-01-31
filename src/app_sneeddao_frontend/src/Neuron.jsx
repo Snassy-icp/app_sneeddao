@@ -22,6 +22,7 @@ import NeuronDisplay from './components/NeuronDisplay';
 import PrincipalInput from './components/PrincipalInput';
 import ConfirmDialog from './components/ConfirmDialog';
 import TokenIcon from './components/TokenIcon';
+import TransactionList from './components/TransactionList';
 import { FaSearch, FaCopy, FaExternalLinkAlt, FaEdit, FaCheck, FaTimes, FaChevronDown, FaChevronRight, FaUserShield, FaUsers, FaHistory, FaCrown, FaKey, FaPlus, FaTrash, FaLock, FaUnlock, FaClock, FaCoins, FaVoteYea, FaQuestion, FaCalendarAlt, FaPercent, FaChartLine, FaWallet, FaCheckCircle } from 'react-icons/fa';
 
 // Accent colors
@@ -2266,6 +2267,43 @@ function Neuron() {
                             )}
                         </>
                     )}
+
+                    {/* Neuron Transactions Section */}
+                    {neuronData && selectedSnsRoot && (() => {
+                        const selectedSns = getSnsById(selectedSnsRoot);
+                        if (!selectedSns?.canisters?.governance) return null;
+                        
+                        // Convert neuron ID hex to bytes (the subaccount)
+                        const neuronIdBytes = new Uint8Array(currentNeuronId.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+                        // Pad to 32 bytes if needed
+                        const subaccount32 = new Uint8Array(32);
+                        subaccount32.set(neuronIdBytes, 32 - neuronIdBytes.length);
+                        
+                        return (
+                            <div style={{ marginTop: '1.5rem' }}>
+                                <TransactionList
+                                    snsRootCanisterId={selectedSnsRoot}
+                                    principalId={selectedSns.canisters.governance}
+                                    subaccount={subaccount32}
+                                    embedded={true}
+                                    showHeader={true}
+                                    headerIcon={
+                                        <span style={{
+                                            width: '32px',
+                                            height: '32px',
+                                            borderRadius: '8px',
+                                            background: `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center'
+                                        }}>
+                                            <FaCoins size={14} color="white" />
+                                        </span>
+                                    }
+                                />
+                            </div>
+                        );
+                    })()}
 
                     {/* Action busy overlay */}
                     {actionBusy && actionMsg && (
