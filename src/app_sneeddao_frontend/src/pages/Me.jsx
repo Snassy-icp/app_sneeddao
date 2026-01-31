@@ -191,6 +191,14 @@ export default function Me() {
             return true;
         }
     });
+    const [showHeaderNotifications, setShowHeaderNotifications] = useState(() => {
+        try {
+            const saved = localStorage.getItem('showHeaderNotifications');
+            return saved !== null ? JSON.parse(saved) : true;
+        } catch (error) {
+            return true;
+        }
+    });
     const [expandQuickLinksOnDesktop, setExpandQuickLinksOnDesktop] = useState(() => {
         try {
             const saved = localStorage.getItem('expandQuickLinksOnDesktop');
@@ -1296,6 +1304,22 @@ export default function Me() {
                                                 setShowVpBar(newValue);
                                                 localStorage.setItem('showVpBar', JSON.stringify(newValue));
                                                 window.dispatchEvent(new CustomEvent('showVpBarChanged', { detail: newValue }));
+                                            }}
+                                        />
+                                    </SettingItem>
+
+                                    <SettingItem
+                                        title="Show Header Notifications"
+                                        description="Display the notification bar in the header"
+                                        theme={theme}
+                                    >
+                                        <ToggleSwitch
+                                            checked={showHeaderNotifications}
+                                            onChange={(e) => {
+                                                const newValue = e.target.checked;
+                                                setShowHeaderNotifications(newValue);
+                                                localStorage.setItem('showHeaderNotifications', JSON.stringify(newValue));
+                                                window.dispatchEvent(new CustomEvent('showHeaderNotificationsChanged', { detail: newValue }));
                                             }}
                                         />
                                     </SettingItem>

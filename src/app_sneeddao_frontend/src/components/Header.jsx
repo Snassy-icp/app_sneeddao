@@ -52,6 +52,14 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             return true;
         }
     });
+    const [showHeaderNotificationsSetting, setShowHeaderNotificationsSetting] = useState(() => {
+        try {
+            const saved = localStorage.getItem('showHeaderNotifications');
+            return saved !== null ? JSON.parse(saved) : true; // Default to enabled
+        } catch (error) {
+            return true;
+        }
+    });
     const [expandQuickLinksOnDesktop, setExpandQuickLinksOnDesktop] = useState(() => {
         try {
             const saved = localStorage.getItem('expandQuickLinksOnDesktop');
@@ -130,11 +138,22 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     setShowVpBarSetting(true);
                 }
             }
+            if (e.key === 'showHeaderNotifications') {
+                try {
+                    setShowHeaderNotificationsSetting(e.newValue !== null ? JSON.parse(e.newValue) : true);
+                } catch (error) {
+                    setShowHeaderNotificationsSetting(true);
+                }
+            }
         };
         
         // Listen for custom event (when setting is changed on the same page)
         const handleVpBarChanged = (e) => {
             setShowVpBarSetting(e.detail);
+        };
+
+        const handleHeaderNotificationsChanged = (e) => {
+            setShowHeaderNotificationsSetting(e.detail);
         };
         
         const handleExpandQuickLinksChanged = (e) => {
@@ -143,10 +162,12 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         
         window.addEventListener('storage', handleStorageChange);
         window.addEventListener('showVpBarChanged', handleVpBarChanged);
+        window.addEventListener('showHeaderNotificationsChanged', handleHeaderNotificationsChanged);
         window.addEventListener('expandQuickLinksOnDesktopChanged', handleExpandQuickLinksChanged);
         return () => {
             window.removeEventListener('storage', handleStorageChange);
             window.removeEventListener('showVpBarChanged', handleVpBarChanged);
+            window.removeEventListener('showHeaderNotificationsChanged', handleHeaderNotificationsChanged);
             window.removeEventListener('expandQuickLinksOnDesktopChanged', handleExpandQuickLinksChanged);
         };
     }, []);
@@ -1327,7 +1348,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             )}
 
             {/* Notifications Row: Only shows when there are notifications */}
-            {!isHeaderCollapsed && isAuthenticated && (newReplyCount > 0 || newTipCount > 0 || newMessageCount > 0 || collectiblesCount > 0) && (
+            {!isHeaderCollapsed && showHeaderNotificationsSetting && isAuthenticated && (newReplyCount > 0 || newTipCount > 0 || newMessageCount > 0 || collectiblesCount > 0) && (
                 <div style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
