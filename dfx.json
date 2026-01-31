@@ -28,6 +28,10 @@
       "main": "src/sneed_premium/main.mo",
       "type": "motoko"
     },
+    "rll": {
+      "main": "src/sneed_rewards/main.mo",
+      "type": "motoko"
+    },
     "app_sneeddao_frontend": {
       "dependencies": [
         "app_sneeddao_backend",
@@ -39,18 +43,6 @@
       ],
       "type": "assets",
       "workspace": "app_sneeddao_frontend"
-    },
-    "rll": {
-      "type": "custom",
-      "candid": "src/external/rll/rll.did",
-      "wasm": "none",
-      "build": "false",
-      "remote": {
-        "id": {
-          "ic": "lvc4n-7aaaa-aaaam-adm6a-cai",
-          "staging": "twapx-riaaa-aaaak-qlojq-cai"
-        }
-      }
     },
     "sgldt": {
       "type": "custom",
