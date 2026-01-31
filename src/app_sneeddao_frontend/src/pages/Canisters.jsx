@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../AuthContext';
 import { Link } from 'react-router-dom';
 import Header from '../components/Header';
@@ -186,11 +186,29 @@ export default function CanistersPage() {
     const [removingWalletCanister, setRemovingWalletCanister] = useState(null);
     const [trackedCanisterStatus, setTrackedCanisterStatus] = useState({}); // canisterId -> { cycles, memory, isController }
 
-    // Drag and drop state
-    const [draggedItem, setDraggedItem] = useState(null); // { type: 'canister' | 'group', id: string, sourceGroupId?: string }
-    const [dragOverTarget, setDragOverTarget] = useState(null); // { type: 'group' | 'wallet' | 'neuron_managers' | 'ungrouped', id?: string }
-    const dragCounterRef = React.useRef({}); // Track drag enter/leave counts per target
+    // Drag and drop state - using refs to avoid re-render issues
+    // The actual drag data is stored in refs (won't be affected by other components re-rendering)
+    const draggedItemRef = useRef(null); // { type: 'canister' | 'group', id: string, sourceGroupId?: string }
+    const dragOverTargetRef = useRef(null); // { type: 'group' | 'wallet' | 'neuron_managers' | 'ungrouped', id?: string }
+    const dragCounterRef = useRef({}); // Track drag enter/leave counts per target
+    // These states are only for triggering UI updates - the actual data is in refs
+    const [dragUIUpdate, setDragUIUpdate] = useState(0); // Increment to force UI update
     const [dropInProgress, setDropInProgress] = useState(null); // { itemType, itemId, targetType } - shown in progress dialog
+    
+    // Helper to get current drag state (reads from refs)
+    const draggedItem = draggedItemRef.current;
+    const dragOverTarget = dragOverTargetRef.current;
+    
+    // Helper to update drag state and trigger UI update
+    const setDraggedItem = useCallback((item) => {
+        draggedItemRef.current = item;
+        setDragUIUpdate(n => n + 1);
+    }, []);
+    
+    const setDragOverTarget = useCallback((target) => {
+        dragOverTargetRef.current = target;
+        setDragUIUpdate(n => n + 1);
+    }, []);
 
     // Helper to compare versions
     const compareVersions = (a, b) => {
@@ -2568,6 +2586,9 @@ export default function CanistersPage() {
             <style>{customStyles}</style>
             <Header />
             
+            {/* Main content wrapper - isolated from Header to prevent drag issues */}
+            <div style={{ contain: 'layout', willChange: 'transform' }}>
+            
             {/* Hero Section */}
             <div style={{
                 background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${canisterPrimary}15 50%, ${canisterSecondary}10 100%)`,
@@ -4324,6 +4345,7 @@ export default function CanistersPage() {
                     to { transform: rotate(360deg); }
                 }
             `}</style>
+            </div>
         </div>
     );
 }
