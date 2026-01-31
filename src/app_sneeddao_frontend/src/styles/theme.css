@@ -1,13 +1,12 @@
 /* Prevent horizontal overflow on mobile */
 html {
-  overflow-x: hidden;
   width: 100%;
+  overflow-x: clip;
 }
 
 #root {
   width: 100%;
   max-width: 100%;
-  overflow-x: hidden;
 }
 
 /* Global Theme CSS Variables */
@@ -52,7 +51,7 @@ body {
   min-height: 100vh;
   background: var(--color-primaryGradient);
   transition: all 0.3s ease;
-  overflow-x: hidden;
+  overflow-x: clip;
   width: 100%;
 }
 
@@ -63,7 +62,6 @@ body {
   min-height: 100vh;
   width: 100%;
   max-width: 100%;
-  overflow-x: hidden;
   box-sizing: border-box;
 }
 
@@ -99,7 +97,6 @@ img[style*="border-radius: 50%"] {
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
-  overflow-x: hidden;
 }
 
 /* On mobile, ensure header doesn't overflow */
