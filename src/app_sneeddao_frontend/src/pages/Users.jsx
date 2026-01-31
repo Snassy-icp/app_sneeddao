@@ -268,10 +268,11 @@ function Users() {
         
         // Apply owner/hotkey filter
         if (userTypeFilter === 'owners') {
-            // Filter to users with actual owned stake (not just owned neurons with 0 stake)
-            filtered = filtered.filter(user => user.ownedStake > BigInt(0));
+            // Filter to users with actual owned stake > 0 (not just owned neurons with 0 stake)
+            filtered = filtered.filter(user => user.ownedStake > 0n);
         } else if (userTypeFilter === 'hotkeys') {
-            filtered = filtered.filter(user => user.ownedNeurons.length === 0 && user.hotkeyNeurons.length > 0);
+            // Hotkeys only: users who only have hotkey access (no owned neurons or 0 owned stake)
+            filtered = filtered.filter(user => user.ownedStake === 0n && user.hotkeyNeurons.length > 0);
         }
         
         // Apply search filter
