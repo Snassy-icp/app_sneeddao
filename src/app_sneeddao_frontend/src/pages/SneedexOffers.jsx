@@ -886,7 +886,7 @@ function SneedexOffers() {
     // Reset to page 1 when filters/search/tab change
     useEffect(() => {
         setCurrentPage(1);
-    }, [filterType, searchOfferId, searchSellerPrincipal, sortBy, offerTab, bidTokenFilter, minPriceFilter, maxPriceFilter, assetTokenFilter, minAssetAmountFilter, maxAssetAmountFilter]);
+    }, [filterType, searchOfferId, searchSellerPrincipal, sortBy, offerTab, bidTokenFilter, minPriceFilter, maxPriceFilter, assetTokenFilter, minAssetAmountFilter, maxAssetAmountFilter, showActiveOffers, showSoldOffers, showExpiredOffers]);
 
     const styles = {
         container: {
