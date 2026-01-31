@@ -1686,7 +1686,9 @@ export default function SnsNeuronWizard() {
                 borderBottom: `1px solid ${theme.colors.border}`,
                 padding: '1.5rem 1rem',
                 position: 'relative',
-                overflow: 'hidden'
+                overflow: 'hidden',
+                width: '100%',
+                boxSizing: 'border-box'
             }}>
                 {/* Background decorations */}
                 <div style={{

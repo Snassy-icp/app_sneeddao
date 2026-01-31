@@ -1,3 +1,15 @@
+/* Prevent horizontal overflow on mobile */
+html {
+  overflow-x: hidden;
+  width: 100%;
+}
+
+#root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 /* Global Theme CSS Variables */
 :root {
   /* Default dark theme colors */
@@ -40,6 +52,19 @@ body {
   min-height: 100vh;
   background: var(--color-primaryGradient);
   transition: all 0.3s ease;
+  overflow-x: hidden;
+  width: 100%;
+}
+
+/* Global page container styling - prevent horizontal overflow on mobile */
+.page-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  box-sizing: border-box;
 }
 
 /* Global image reset - prevent logos and images from misbehaving */

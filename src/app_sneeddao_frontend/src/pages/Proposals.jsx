@@ -1160,7 +1160,9 @@ function Proposals() {
                     borderBottom: `1px solid ${theme.colors.border}`,
                     padding: '2.5rem 1.5rem',
                     position: 'relative',
-                    overflow: 'hidden'
+                    overflow: 'hidden',
+                    width: '100%',
+                    boxSizing: 'border-box'
                 }}>
                     {/* Background decoration */}
                     <div style={{

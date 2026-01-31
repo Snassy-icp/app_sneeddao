@@ -256,6 +256,8 @@ function HelpSnsJailbreak() {
                 padding: '3rem 1.25rem 2.5rem',
                 position: 'relative',
                 overflow: 'hidden',
+                width: '100%',
+                boxSizing: 'border-box'
             }}>
                 <div style={{
                     position: 'absolute',
