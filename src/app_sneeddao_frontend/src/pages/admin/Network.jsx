@@ -9,7 +9,8 @@ import ConfirmationModal from '../../ConfirmationModal';
 import { 
     FaNetworkWired, FaSave, FaSpinner, FaSync, FaCheck, FaTimes,
     FaDatabase, FaLock, FaComments, FaEnvelope, FaCrown, FaRobot, FaExchangeAlt,
-    FaCopy, FaLink, FaUnlink, FaServer, FaCoins, FaVoteYea, FaChevronDown, FaChevronUp
+    FaCopy, FaLink, FaUnlink, FaServer, FaCoins, FaVoteYea, FaChevronDown, FaChevronUp,
+    FaGift
 } from 'react-icons/fa';
 
 // Import actors
@@ -21,6 +22,7 @@ import { createActor as createSmsActor, canisterId as smsCanisterId } from 'decl
 import { createActor as createPremiumActor, canisterId as premiumCanisterId } from 'declarations/sneed_premium';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
 import { createActor as createSneedexActorDecl, canisterId as sneedexCanisterId } from 'declarations/sneedex';
+import { canisterId as rllCanisterId } from 'declarations/rll';
 
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
 
@@ -33,6 +35,7 @@ const KNOWN_CANISTERS = {
     sneed_premium: premiumCanisterId,
     sneed_icp_neuron_manager_factory: factoryCanisterId,
     sneedex: sneedexCanisterId,
+    rll: rllCanisterId,
     // External canisters
     icp_ledger: 'ryjl3-tyaaa-aaaaa-aaaba-cai',
     sneed_governance: 'fi3zi-fyaaa-aaaaq-aachq-cai',
@@ -1033,6 +1036,7 @@ export default function NetworkAdmin() {
                                         { name: 'SMS', id: smsCanisterId, icon: <FaEnvelope size={12} /> },
                                         { name: 'Neuron Manager Factory', id: factoryCanisterId, icon: <FaRobot size={12} /> },
                                         { name: 'Sneedex', id: sneedexCanisterId, icon: <FaExchangeAlt size={12} /> },
+                                        { name: 'Rewards (RLL)', id: rllCanisterId, icon: <FaGift size={12} /> },
                                     ].map(({ name, id, icon }) => (
                                         <div key={name} style={{
                                             backgroundColor: theme === 'dark' ? '#0f1a1a' : '#fff',

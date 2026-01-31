@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import Header from '../../components/Header';
@@ -14,13 +14,17 @@ import {
     FaCheckCircle, FaExclamationTriangle, FaPlay, FaStop,
     FaChartBar, FaUsers, FaHistory, FaCog, FaDatabase,
     FaClock, FaBalanceScale, FaDownload, FaExclamationCircle,
-    FaUserShield, FaFileImport, FaTimes, FaChevronDown, FaChevronUp
+    FaUserShield, FaFileImport, FaTimes, FaChevronDown, FaChevronUp,
+    FaInfoCircle, FaChevronLeft, FaChevronRight, FaWallet, FaQuestion
 } from 'react-icons/fa';
 
 // Gold theme for rewards
 const goldPrimary = '#d4af37';
 const goldLight = '#f4d03f';
 const goldDark = '#aa8c2c';
+
+// Pagination constants
+const ITEMS_PER_PAGE = 20;
 
 export default function RewardsAdmin() {
     const { isAuthenticated, identity } = useAuth();
@@ -56,6 +60,11 @@ export default function RewardsAdmin() {
     const [reconciliation, setReconciliation] = useState([]);
     const [loadingReconciliation, setLoadingReconciliation] = useState(false);
     
+    // User/Owner balance lookup
+    const [userBalanceLookup, setUserBalanceLookup] = useState('');
+    const [userBalances, setUserBalances] = useState([]);
+    const [loadingUserBalances, setLoadingUserBalances] = useState(false);
+    
     // Neuron statistics
     const [neuronStats, setNeuronStats] = useState(null);
     const [loadingNeuronStats, setLoadingNeuronStats] = useState(false);
@@ -64,23 +73,24 @@ export default function RewardsAdmin() {
     const [eventStats, setEventStats] = useState(null);
     const [loadingEventStats, setLoadingEventStats] = useState(false);
     
-    // Distribution events
+    // Distribution events with pagination
     const [distributionEvents, setDistributionEvents] = useState([]);
     const [loadingDistributions, setLoadingDistributions] = useState(false);
-    const [showAllDistributions, setShowAllDistributions] = useState(false);
+    const [distributionPage, setDistributionPage] = useState(1);
     
-    // Claim events
+    // Claim events with pagination
     const [claimEvents, setClaimEvents] = useState([]);
     const [loadingClaims, setLoadingClaims] = useState(false);
-    const [showAllClaims, setShowAllClaims] = useState(false);
+    const [claimPage, setClaimPage] = useState(1);
     const [errorClaimEvents, setErrorClaimEvents] = useState([]);
     const [loadingErrorClaims, setLoadingErrorClaims] = useState(false);
     
-    // Known and whitelisted tokens
+    // Known and whitelisted tokens (for metadata lookup)
     const [knownTokens, setKnownTokens] = useState([]);
     const [whitelistedTokens, setWhitelistedTokens] = useState([]);
     const [loadingTokens, setLoadingTokens] = useState(false);
     const [tokenLogos, setTokenLogos] = useState({});
+    const [tokensLoaded, setTokensLoaded] = useState(false);
     
     // Token distribution limits
     const [minDistributions, setMinDistributions] = useState([]);
@@ -106,6 +116,7 @@ export default function RewardsAdmin() {
         mainLoop: true,
         stats: true,
         balances: false,
+        userBalances: false,
         neuronStats: false,
         eventStats: false,
         distributions: false,
@@ -119,6 +130,48 @@ export default function RewardsAdmin() {
     // Modals
     const [infoModal, setInfoModal] = useState({ show: false, title: '', message: '', type: 'info' });
     const [confirmModal, setConfirmModal] = useState({ show: false, title: '', message: '', onConfirm: null });
+    
+    // Build token metadata map from known and whitelisted tokens
+    const tokenMetadataMap = useMemo(() => {
+        const map = {};
+        for (const [tokenId, metadata] of knownTokens) {
+            const key = tokenId.toString();
+            map[key] = {
+                symbol: metadata.symbol,
+                name: metadata.name,
+                decimals: Number(metadata.decimals),
+                fee: Number(metadata.fee)
+            };
+        }
+        for (const [tokenId, metadata] of whitelistedTokens) {
+            const key = tokenId.toString();
+            if (!map[key]) {
+                map[key] = {
+                    symbol: metadata.symbol,
+                    name: metadata.name,
+                    decimals: Number(metadata.decimals),
+                    fee: Number(metadata.fee)
+                };
+            }
+        }
+        return map;
+    }, [knownTokens, whitelistedTokens]);
+    
+    // Helper to get token display name
+    const getTokenDisplay = (tokenId) => {
+        const key = tokenId?.toString();
+        if (!key) return { symbol: '?', name: 'Unknown', decimals: 8 };
+        const meta = tokenMetadataMap[key];
+        if (meta) {
+            return meta;
+        }
+        // Fallback to shortened principal
+        return { 
+            symbol: `${key.slice(0, 5)}...`, 
+            name: key,
+            decimals: 8 
+        };
+    };
     
     const showInfo = (title, message, type = 'info') => {
         setInfoModal({ show: true, title, message, type });
@@ -178,6 +231,42 @@ export default function RewardsAdmin() {
         
         checkAdmin();
     }, [isAuthenticated, identity, getRllActor, navigate]);
+    
+    // Fetch tokens on initial load (needed for metadata lookup)
+    const fetchTokensInitial = useCallback(async () => {
+        if (!isAdmin || tokensLoaded) return;
+        
+        try {
+            const actor = getRllActor();
+            const [known, whitelisted] = await Promise.all([
+                actor.get_known_tokens(),
+                actor.get_whitelisted_tokens()
+            ]);
+            setKnownTokens(known);
+            setWhitelistedTokens(whitelisted);
+            setTokensLoaded(true);
+            
+            // Fetch logos in background
+            const logos = {};
+            for (const [tokenId, metadata] of [...known, ...whitelisted]) {
+                const tokenIdStr = tokenId.toString();
+                if (!logos[tokenIdStr]) {
+                    try {
+                        const ledgerActor = createLedgerActor(tokenId, {
+                            agentOptions: { identity }
+                        });
+                        const tokenMetadata = await ledgerActor.icrc1_metadata();
+                        logos[tokenIdStr] = getTokenLogo(tokenMetadata);
+                    } catch (e) {
+                        logos[tokenIdStr] = '';
+                    }
+                }
+            }
+            setTokenLogos(logos);
+        } catch (err) {
+            console.error('Error fetching tokens:', err);
+        }
+    }, [isAdmin, tokensLoaded, getRllActor, identity]);
     
     // Fetch basic stats
     const fetchStats = useCallback(async () => {
@@ -246,8 +335,9 @@ export default function RewardsAdmin() {
             fetchStats();
             fetchMainLoopStatus();
             fetchAdmins();
+            fetchTokensInitial();
         }
-    }, [isAdmin, fetchStats, fetchMainLoopStatus, fetchAdmins]);
+    }, [isAdmin, fetchStats, fetchMainLoopStatus, fetchAdmins, fetchTokensInitial]);
     
     // Toggle main loop
     const handleToggleMainLoop = async () => {
@@ -302,6 +392,34 @@ export default function RewardsAdmin() {
         }
     };
     
+    // Lookup user/owner balances
+    const handleLookupUserBalances = async () => {
+        if (!userBalanceLookup.trim()) {
+            showInfo('Error', 'Please enter a principal ID', 'error');
+            return;
+        }
+        
+        let principal;
+        try {
+            principal = Principal.fromText(userBalanceLookup.trim());
+        } catch (err) {
+            showInfo('Error', 'Invalid principal ID format', 'error');
+            return;
+        }
+        
+        setLoadingUserBalances(true);
+        try {
+            const actor = getRllActor();
+            const distributions = await actor.get_user_distributions(principal);
+            setUserBalances(distributions);
+        } catch (err) {
+            console.error('Error fetching user balances:', err);
+            showInfo('Error', 'Failed to fetch user balances: ' + err.message, 'error');
+        } finally {
+            setLoadingUserBalances(false);
+        }
+    };
+    
     // Fetch neuron statistics
     const fetchNeuronStats = async () => {
         setLoadingNeuronStats(true);
@@ -339,6 +457,7 @@ export default function RewardsAdmin() {
             const actor = getRllActor();
             const events = await actor.get_distribution_events();
             setDistributionEvents(events);
+            setDistributionPage(1); // Reset to first page
         } catch (err) {
             console.error('Error fetching distribution events:', err);
             showInfo('Error', 'Failed to fetch distribution events: ' + err.message, 'error');
@@ -354,6 +473,7 @@ export default function RewardsAdmin() {
             const actor = getRllActor();
             const events = await actor.get_claim_events();
             setClaimEvents(events);
+            setClaimPage(1); // Reset to first page
         } catch (err) {
             console.error('Error fetching claim events:', err);
             showInfo('Error', 'Failed to fetch claim events: ' + err.message, 'error');
@@ -381,7 +501,7 @@ export default function RewardsAdmin() {
         }
     };
     
-    // Fetch tokens
+    // Fetch tokens (full refresh)
     const fetchTokens = async () => {
         setLoadingTokens(true);
         try {
@@ -643,7 +763,7 @@ export default function RewardsAdmin() {
         const num = typeof amount === 'bigint' ? Number(amount) : amount;
         return (num / Math.pow(10, decimals)).toLocaleString(undefined, {
             minimumFractionDigits: 0,
-            maximumFractionDigits: decimals
+            maximumFractionDigits: Math.min(decimals, 6)
         });
     };
     
@@ -651,6 +771,150 @@ export default function RewardsAdmin() {
         const str = principal.toString();
         if (str.length <= 15) return str;
         return `${str.slice(0, 8)}...${str.slice(-5)}`;
+    };
+    
+    // Pagination helpers
+    const getPaginatedData = (data, page) => {
+        const start = (page - 1) * ITEMS_PER_PAGE;
+        const end = start + ITEMS_PER_PAGE;
+        return data.slice(start, end);
+    };
+    
+    const getTotalPages = (data) => {
+        return Math.ceil(data.length / ITEMS_PER_PAGE);
+    };
+    
+    // Pagination component
+    const Pagination = ({ currentPage, totalPages, onPageChange, totalItems }) => {
+        if (totalPages <= 1) return null;
+        
+        return (
+            <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginTop: '16px',
+                padding: '12px 16px',
+                backgroundColor: theme.colors.tertiaryBg,
+                borderRadius: '8px',
+                flexWrap: 'wrap',
+                gap: '12px'
+            }}>
+                <span style={{ color: theme.colors.secondaryText, fontSize: '0.85rem' }}>
+                    Showing {((currentPage - 1) * ITEMS_PER_PAGE) + 1} - {Math.min(currentPage * ITEMS_PER_PAGE, totalItems)} of {totalItems}
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <button
+                        onClick={() => onPageChange(1)}
+                        disabled={currentPage === 1}
+                        style={{
+                            padding: '6px 10px',
+                            borderRadius: '6px',
+                            border: `1px solid ${theme.colors.border}`,
+                            backgroundColor: currentPage === 1 ? theme.colors.tertiaryBg : theme.colors.secondaryBg,
+                            color: currentPage === 1 ? theme.colors.mutedText : theme.colors.primaryText,
+                            cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                            fontSize: '0.85rem'
+                        }}
+                    >
+                        First
+                    </button>
+                    <button
+                        onClick={() => onPageChange(currentPage - 1)}
+                        disabled={currentPage === 1}
+                        style={{
+                            padding: '6px 10px',
+                            borderRadius: '6px',
+                            border: `1px solid ${theme.colors.border}`,
+                            backgroundColor: currentPage === 1 ? theme.colors.tertiaryBg : theme.colors.secondaryBg,
+                            color: currentPage === 1 ? theme.colors.mutedText : theme.colors.primaryText,
+                            cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                            display: 'flex',
+                            alignItems: 'center'
+                        }}
+                    >
+                        <FaChevronLeft size={12} />
+                    </button>
+                    <span style={{ 
+                        padding: '6px 12px', 
+                        color: theme.colors.primaryText,
+                        fontWeight: '600'
+                    }}>
+                        Page {currentPage} of {totalPages}
+                    </span>
+                    <button
+                        onClick={() => onPageChange(currentPage + 1)}
+                        disabled={currentPage === totalPages}
+                        style={{
+                            padding: '6px 10px',
+                            borderRadius: '6px',
+                            border: `1px solid ${theme.colors.border}`,
+                            backgroundColor: currentPage === totalPages ? theme.colors.tertiaryBg : theme.colors.secondaryBg,
+                            color: currentPage === totalPages ? theme.colors.mutedText : theme.colors.primaryText,
+                            cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                            display: 'flex',
+                            alignItems: 'center'
+                        }}
+                    >
+                        <FaChevronRight size={12} />
+                    </button>
+                    <button
+                        onClick={() => onPageChange(totalPages)}
+                        disabled={currentPage === totalPages}
+                        style={{
+                            padding: '6px 10px',
+                            borderRadius: '6px',
+                            border: `1px solid ${theme.colors.border}`,
+                            backgroundColor: currentPage === totalPages ? theme.colors.tertiaryBg : theme.colors.secondaryBg,
+                            color: currentPage === totalPages ? theme.colors.mutedText : theme.colors.primaryText,
+                            cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                            fontSize: '0.85rem'
+                        }}
+                    >
+                        Last
+                    </button>
+                </div>
+            </div>
+        );
+    };
+    
+    // Token display component
+    const TokenDisplay = ({ tokenId, showLogo = true }) => {
+        const tokenIdStr = tokenId?.toString();
+        const meta = getTokenDisplay(tokenId);
+        const logo = tokenLogos[tokenIdStr];
+        
+        return (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {showLogo && (
+                    <div style={{
+                        width: '24px',
+                        height: '24px',
+                        borderRadius: '50%',
+                        backgroundColor: theme.colors.tertiaryBg,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        overflow: 'hidden',
+                        flexShrink: 0
+                    }}>
+                        {logo ? (
+                            <img src={logo} alt={meta.symbol} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                            <span style={{ fontSize: '0.7rem', color: theme.colors.secondaryText }}>{meta.symbol?.charAt(0) || '?'}</span>
+                        )}
+                    </div>
+                )}
+                <div>
+                    <span style={{ fontWeight: '600', color: goldPrimary }}>{meta.symbol}</span>
+                    {meta.name !== meta.symbol && (
+                        <span style={{ color: theme.colors.secondaryText, fontSize: '0.8rem', marginLeft: '6px' }}>
+                            ({meta.name})
+                        </span>
+                    )}
+                </div>
+            </div>
+        );
     };
     
     const styles = {
@@ -876,6 +1140,25 @@ export default function RewardsAdmin() {
             fontWeight: '600',
             marginBottom: '12px',
         },
+        helpText: {
+            backgroundColor: theme.colors.tertiaryBg,
+            padding: '12px 16px',
+            borderRadius: '8px',
+            marginBottom: '16px',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '10px',
+        },
+        helpIcon: {
+            color: goldPrimary,
+            flexShrink: 0,
+            marginTop: '2px',
+        },
+        helpContent: {
+            color: theme.colors.secondaryText,
+            fontSize: '0.9rem',
+            lineHeight: '1.5',
+        },
     };
 
     if (adminLoading) {
@@ -915,6 +1198,12 @@ export default function RewardsAdmin() {
     if (!isAdmin) {
         return null;
     }
+
+    // Paginated data
+    const paginatedDistributions = getPaginatedData(distributionEvents, distributionPage);
+    const distributionTotalPages = getTotalPages(distributionEvents);
+    const paginatedClaims = getPaginatedData(claimEvents, claimPage);
+    const claimTotalPages = getTotalPages(claimEvents);
 
     return (
         <div className='page-container'>
@@ -1070,7 +1359,7 @@ export default function RewardsAdmin() {
                         )}
                     </div>
 
-                    {/* Token Balances */}
+                    {/* Token Balances & Reconciliation */}
                     <div style={styles.section}>
                         <div 
                             style={styles.sectionHeader}
@@ -1084,6 +1373,20 @@ export default function RewardsAdmin() {
                         </div>
                         {expandedSections.balances && (
                             <div style={styles.sectionContent}>
+                                <div style={styles.helpText}>
+                                    <FaInfoCircle style={styles.helpIcon} />
+                                    <div style={styles.helpContent}>
+                                        <strong>What does reconciliation do?</strong><br />
+                                        Reconciliation compares the <em>local balance records</em> (what the RLL canister tracks as owed to users) 
+                                        against the <em>actual token balances</em> held by the RLL canister on each token's ledger. 
+                                        This helps identify discrepancies:
+                                        <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px' }}>
+                                            <li><strong>Remaining:</strong> Tokens in the canister not yet allocated to users (available for distribution)</li>
+                                            <li><strong>Underflow:</strong> If positive, indicates the canister owes more than it holds (potential issue)</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                                
                                 <div style={styles.buttonGroup}>
                                     <button
                                         onClick={fetchTokenBalances}
@@ -1105,28 +1408,35 @@ export default function RewardsAdmin() {
                                 
                                 {tokenBalances.length > 0 && (
                                     <div style={styles.subSection}>
-                                        <h3 style={styles.subSectionTitle}>Token Balances (Owed to Users)</h3>
+                                        <h3 style={styles.subSectionTitle}>Token Balances (Total Owed to Users)</h3>
                                         <div style={{ overflowX: 'auto' }}>
                                             <table style={styles.table}>
                                                 <thead style={styles.tableHead}>
                                                     <tr>
                                                         <th style={styles.th}>Token</th>
                                                         <th style={styles.th}>Total Owed</th>
+                                                        <th style={styles.th}>Ledger ID</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {tokenBalances.map(([tokenId, balance]) => (
-                                                        <tr key={tokenId.toString()}>
-                                                            <td style={styles.td}>
-                                                                <code>{shortenPrincipal(tokenId)}</code>
-                                                            </td>
-                                                            <td style={styles.td}>
-                                                                <span style={{ color: goldPrimary, fontWeight: '600' }}>
-                                                                    {formatAmount(balance)}
-                                                                </span>
-                                                            </td>
-                                                        </tr>
-                                                    ))}
+                                                    {tokenBalances.map(([tokenId, balance]) => {
+                                                        const meta = getTokenDisplay(tokenId);
+                                                        return (
+                                                            <tr key={tokenId.toString()}>
+                                                                <td style={styles.td}>
+                                                                    <TokenDisplay tokenId={tokenId} />
+                                                                </td>
+                                                                <td style={styles.td}>
+                                                                    <span style={{ color: goldPrimary, fontWeight: '600' }}>
+                                                                        {formatAmount(balance, meta.decimals)} {meta.symbol}
+                                                                    </span>
+                                                                </td>
+                                                                <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '0.8rem', color: theme.colors.secondaryText }}>
+                                                                    {shortenPrincipal(tokenId)}
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
                                                 </tbody>
                                             </table>
                                         </div>
@@ -1141,35 +1451,128 @@ export default function RewardsAdmin() {
                                                 <thead style={styles.tableHead}>
                                                     <tr>
                                                         <th style={styles.th}>Token</th>
-                                                        <th style={styles.th}>Local Total</th>
-                                                        <th style={styles.th}>Server Balance</th>
-                                                        <th style={styles.th}>Remaining</th>
+                                                        <th style={styles.th}>Local Total (Owed)</th>
+                                                        <th style={styles.th}>Server Balance (Held)</th>
+                                                        <th style={styles.th}>Remaining (Available)</th>
                                                         <th style={styles.th}>Underflow</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {reconciliation.map((item) => (
-                                                        <tr key={item.token_id.toString()}>
-                                                            <td style={styles.td}>
-                                                                <code>{shortenPrincipal(item.token_id)}</code>
-                                                            </td>
-                                                            <td style={styles.td}>{formatAmount(item.local_total)}</td>
-                                                            <td style={styles.td}>{formatAmount(item.server_balance)}</td>
-                                                            <td style={styles.td}>
-                                                                <span style={{ color: '#2ecc71' }}>
-                                                                    {formatAmount(item.remaining)}
-                                                                </span>
-                                                            </td>
-                                                            <td style={styles.td}>
-                                                                <span style={{ color: Number(item.underflow) > 0 ? '#e74c3c' : theme.colors.secondaryText }}>
-                                                                    {formatAmount(item.underflow)}
-                                                                </span>
-                                                            </td>
-                                                        </tr>
-                                                    ))}
+                                                    {reconciliation.map((item) => {
+                                                        const meta = getTokenDisplay(item.token_id);
+                                                        return (
+                                                            <tr key={item.token_id.toString()}>
+                                                                <td style={styles.td}>
+                                                                    <TokenDisplay tokenId={item.token_id} />
+                                                                </td>
+                                                                <td style={styles.td}>{formatAmount(item.local_total, meta.decimals)}</td>
+                                                                <td style={styles.td}>{formatAmount(item.server_balance, meta.decimals)}</td>
+                                                                <td style={styles.td}>
+                                                                    <span style={{ color: '#2ecc71' }}>
+                                                                        {formatAmount(item.remaining, meta.decimals)}
+                                                                    </span>
+                                                                </td>
+                                                                <td style={styles.td}>
+                                                                    <span style={{ color: Number(item.underflow) > 0 ? '#e74c3c' : theme.colors.secondaryText }}>
+                                                                        {formatAmount(item.underflow, meta.decimals)}
+                                                                        {Number(item.underflow) > 0 && (
+                                                                            <FaExclamationTriangle style={{ marginLeft: '6px' }} />
+                                                                        )}
+                                                                    </span>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
                                                 </tbody>
                                             </table>
                                         </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* User Balance Lookup */}
+                    <div style={styles.section}>
+                        <div 
+                            style={styles.sectionHeader}
+                            onClick={() => toggleSection('userBalances')}
+                        >
+                            <h2 style={styles.sectionTitle}>
+                                <FaWallet style={styles.sectionIcon} />
+                                User Balance Lookup
+                            </h2>
+                            {expandedSections.userBalances ? <FaChevronUp /> : <FaChevronDown />}
+                        </div>
+                        {expandedSections.userBalances && (
+                            <div style={styles.sectionContent}>
+                                <div style={styles.helpText}>
+                                    <FaInfoCircle style={styles.helpIcon} />
+                                    <div style={styles.helpContent}>
+                                        Look up the accumulated reward balances for a specific user/owner principal. 
+                                        This shows the rewards earned by that user across all tokens, which they can claim.
+                                    </div>
+                                </div>
+                                
+                                <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: '20px' }}>
+                                    <div style={{ flex: 1, minWidth: '300px' }}>
+                                        <input
+                                            type="text"
+                                            placeholder="Enter user principal ID..."
+                                            value={userBalanceLookup}
+                                            onChange={(e) => setUserBalanceLookup(e.target.value)}
+                                            onKeyDown={(e) => e.key === 'Enter' && handleLookupUserBalances()}
+                                            style={styles.input}
+                                        />
+                                    </div>
+                                    <button
+                                        onClick={handleLookupUserBalances}
+                                        style={{ ...styles.button, ...styles.primaryButton }}
+                                        disabled={loadingUserBalances || !userBalanceLookup.trim()}
+                                    >
+                                        {loadingUserBalances ? <FaSpinner className="spin" /> : <FaSearch />}
+                                        Lookup Balances
+                                    </button>
+                                </div>
+                                
+                                {userBalances.length > 0 && (
+                                    <div style={styles.subSection}>
+                                        <h3 style={styles.subSectionTitle}>
+                                            Balances for {shortenPrincipal(Principal.fromText(userBalanceLookup))}
+                                        </h3>
+                                        <div style={{ overflowX: 'auto' }}>
+                                            <table style={styles.table}>
+                                                <thead style={styles.tableHead}>
+                                                    <tr>
+                                                        <th style={styles.th}>Token</th>
+                                                        <th style={styles.th}>Balance</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {userBalances.map(([tokenId, balance]) => {
+                                                        const meta = getTokenDisplay(tokenId);
+                                                        return (
+                                                            <tr key={tokenId.toString()}>
+                                                                <td style={styles.td}>
+                                                                    <TokenDisplay tokenId={tokenId} />
+                                                                </td>
+                                                                <td style={styles.td}>
+                                                                    <span style={{ color: goldPrimary, fontWeight: '600' }}>
+                                                                        {formatAmount(balance, meta.decimals)} {meta.symbol}
+                                                                    </span>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
+                                
+                                {userBalances.length === 0 && userBalanceLookup && !loadingUserBalances && (
+                                    <div style={styles.emptyState}>
+                                        No balances found for this user. They may not have earned any rewards yet or have already claimed them.
                                     </div>
                                 )}
                             </div>
@@ -1349,7 +1752,7 @@ export default function RewardsAdmin() {
                         >
                             <h2 style={styles.sectionTitle}>
                                 <FaHistory style={styles.sectionIcon} />
-                                Distribution Events
+                                Distribution Events ({distributionEvents.length})
                             </h2>
                             {expandedSections.distributions ? <FaChevronUp /> : <FaChevronDown />}
                         </div>
@@ -1385,33 +1788,34 @@ export default function RewardsAdmin() {
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {(showAllDistributions ? distributionEvents : distributionEvents.slice(-20)).map((event, idx) => (
-                                                        <tr key={idx}>
-                                                            <td style={styles.td}>{formatTimestamp(event.timestamp)}</td>
-                                                            <td style={styles.td}>
-                                                                <code>{shortenPrincipal(event.token_id)}</code>
-                                                            </td>
-                                                            <td style={styles.td}>
-                                                                <span style={{ color: goldPrimary, fontWeight: '600' }}>
-                                                                    {formatAmount(event.amount)}
-                                                                </span>
-                                                            </td>
-                                                            <td style={styles.td}>
-                                                                {event.proposal_range?.first?.toString()} - {event.proposal_range?.last?.toString()}
-                                                            </td>
-                                                        </tr>
-                                                    ))}
+                                                    {paginatedDistributions.map((event, idx) => {
+                                                        const meta = getTokenDisplay(event.token_id);
+                                                        return (
+                                                            <tr key={idx}>
+                                                                <td style={styles.td}>{formatTimestamp(event.timestamp)}</td>
+                                                                <td style={styles.td}>
+                                                                    <TokenDisplay tokenId={event.token_id} />
+                                                                </td>
+                                                                <td style={styles.td}>
+                                                                    <span style={{ color: goldPrimary, fontWeight: '600' }}>
+                                                                        {formatAmount(event.amount, meta.decimals)} {meta.symbol}
+                                                                    </span>
+                                                                </td>
+                                                                <td style={styles.td}>
+                                                                    {event.proposal_range?.first?.toString()} - {event.proposal_range?.last?.toString()}
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
                                                 </tbody>
                                             </table>
                                         </div>
-                                        {distributionEvents.length > 20 && (
-                                            <button
-                                                onClick={() => setShowAllDistributions(!showAllDistributions)}
-                                                style={{ ...styles.button, ...styles.secondaryButton, marginTop: '16px' }}
-                                            >
-                                                {showAllDistributions ? 'Show Last 20' : `Show All ${distributionEvents.length}`}
-                                            </button>
-                                        )}
+                                        <Pagination
+                                            currentPage={distributionPage}
+                                            totalPages={distributionTotalPages}
+                                            onPageChange={setDistributionPage}
+                                            totalItems={distributionEvents.length}
+                                        />
                                     </div>
                                 )}
                             </div>
@@ -1426,7 +1830,7 @@ export default function RewardsAdmin() {
                         >
                             <h2 style={styles.sectionTitle}>
                                 <FaHistory style={styles.sectionIcon} />
-                                Claim Events
+                                Claim Events ({claimEvents.length})
                             </h2>
                             {expandedSections.claims ? <FaChevronUp /> : <FaChevronDown />}
                         </div>
@@ -1459,7 +1863,7 @@ export default function RewardsAdmin() {
                                 
                                 {claimEvents.length > 0 && (
                                     <div style={{ ...styles.subSection, marginTop: '20px' }}>
-                                        <h3 style={styles.subSectionTitle}>All Claim Events ({claimEvents.length})</h3>
+                                        <h3 style={styles.subSectionTitle}>All Claim Events</h3>
                                         <div style={{ overflowX: 'auto' }}>
                                             <table style={styles.table}>
                                                 <thead style={styles.tableHead}>
@@ -1473,45 +1877,46 @@ export default function RewardsAdmin() {
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {(showAllClaims ? claimEvents : claimEvents.slice(-30)).map((event, idx) => (
-                                                        <tr key={idx}>
-                                                            <td style={styles.td}>{event.sequence_number?.toString()}</td>
-                                                            <td style={styles.td}>{formatTimestamp(event.timestamp)}</td>
-                                                            <td style={styles.td}>
-                                                                <code>{shortenPrincipal(event.hotkey)}</code>
-                                                            </td>
-                                                            <td style={styles.td}>
-                                                                <code>{shortenPrincipal(event.token_id)}</code>
-                                                            </td>
-                                                            <td style={styles.td}>
-                                                                <span style={{ color: goldPrimary, fontWeight: '600' }}>
-                                                                    {formatAmount(event.amount)}
-                                                                </span>
-                                                            </td>
-                                                            <td style={styles.td}>
-                                                                <span style={{
-                                                                    ...styles.statusBadge,
-                                                                    ...('Success' in event.status ? styles.statusSuccess :
-                                                                        'Pending' in event.status ? styles.statusPending :
-                                                                        styles.statusFailed)
-                                                                }}>
-                                                                    {'Success' in event.status ? 'Success' :
-                                                                     'Pending' in event.status ? 'Pending' : 'Failed'}
-                                                                </span>
-                                                            </td>
-                                                        </tr>
-                                                    ))}
+                                                    {paginatedClaims.map((event, idx) => {
+                                                        const meta = getTokenDisplay(event.token_id);
+                                                        return (
+                                                            <tr key={idx}>
+                                                                <td style={styles.td}>{event.sequence_number?.toString()}</td>
+                                                                <td style={styles.td}>{formatTimestamp(event.timestamp)}</td>
+                                                                <td style={styles.td}>
+                                                                    <code style={{ fontSize: '0.8rem' }}>{shortenPrincipal(event.hotkey)}</code>
+                                                                </td>
+                                                                <td style={styles.td}>
+                                                                    <TokenDisplay tokenId={event.token_id} showLogo={false} />
+                                                                </td>
+                                                                <td style={styles.td}>
+                                                                    <span style={{ color: goldPrimary, fontWeight: '600' }}>
+                                                                        {formatAmount(event.amount, meta.decimals)}
+                                                                    </span>
+                                                                </td>
+                                                                <td style={styles.td}>
+                                                                    <span style={{
+                                                                        ...styles.statusBadge,
+                                                                        ...('Success' in event.status ? styles.statusSuccess :
+                                                                            'Pending' in event.status ? styles.statusPending :
+                                                                            styles.statusFailed)
+                                                                    }}>
+                                                                        {'Success' in event.status ? 'Success' :
+                                                                         'Pending' in event.status ? 'Pending' : 'Failed'}
+                                                                    </span>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
                                                 </tbody>
                                             </table>
                                         </div>
-                                        {claimEvents.length > 30 && (
-                                            <button
-                                                onClick={() => setShowAllClaims(!showAllClaims)}
-                                                style={{ ...styles.button, ...styles.secondaryButton, marginTop: '16px' }}
-                                            >
-                                                {showAllClaims ? 'Show Last 30' : `Show All ${claimEvents.length}`}
-                                            </button>
-                                        )}
+                                        <Pagination
+                                            currentPage={claimPage}
+                                            totalPages={claimTotalPages}
+                                            onPageChange={setClaimPage}
+                                            totalItems={claimEvents.length}
+                                        />
                                     </div>
                                 )}
                                 
@@ -1528,24 +1933,31 @@ export default function RewardsAdmin() {
                                                         <th style={styles.th}>Seq</th>
                                                         <th style={styles.th}>Timestamp</th>
                                                         <th style={styles.th}>Hotkey</th>
+                                                        <th style={styles.th}>Token</th>
                                                         <th style={styles.th}>Amount</th>
                                                         <th style={styles.th}>Error</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {errorClaimEvents.map((event, idx) => (
-                                                        <tr key={idx}>
-                                                            <td style={styles.td}>{event.sequence_number?.toString()}</td>
-                                                            <td style={styles.td}>{formatTimestamp(event.timestamp)}</td>
-                                                            <td style={styles.td}>
-                                                                <code>{shortenPrincipal(event.hotkey)}</code>
-                                                            </td>
-                                                            <td style={styles.td}>{formatAmount(event.amount)}</td>
-                                                            <td style={{ ...styles.td, color: '#e74c3c' }}>
-                                                                {event.error_message?.[0] || 'Unknown error'}
-                                                            </td>
-                                                        </tr>
-                                                    ))}
+                                                    {errorClaimEvents.map((event, idx) => {
+                                                        const meta = getTokenDisplay(event.token_id);
+                                                        return (
+                                                            <tr key={idx}>
+                                                                <td style={styles.td}>{event.sequence_number?.toString()}</td>
+                                                                <td style={styles.td}>{formatTimestamp(event.timestamp)}</td>
+                                                                <td style={styles.td}>
+                                                                    <code style={{ fontSize: '0.8rem' }}>{shortenPrincipal(event.hotkey)}</code>
+                                                                </td>
+                                                                <td style={styles.td}>
+                                                                    <TokenDisplay tokenId={event.token_id} showLogo={false} />
+                                                                </td>
+                                                                <td style={styles.td}>{formatAmount(event.amount, meta.decimals)}</td>
+                                                                <td style={{ ...styles.td, color: '#e74c3c', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                    {event.error_message?.[0] || 'Unknown error'}
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
                                                 </tbody>
                                             </table>
                                         </div>
@@ -1600,31 +2012,22 @@ export default function RewardsAdmin() {
                                                         <th style={styles.th}>Name</th>
                                                         <th style={styles.th}>Decimals</th>
                                                         <th style={styles.th}>Fee</th>
+                                                        <th style={styles.th}>Ledger ID</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
                                                     {knownTokens.map(([tokenId, metadata]) => (
                                                         <tr key={tokenId.toString()}>
                                                             <td style={styles.td}>
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                    <div style={styles.tokenLogo}>
-                                                                        {tokenLogos[tokenId.toString()] ? (
-                                                                            <img 
-                                                                                src={tokenLogos[tokenId.toString()]} 
-                                                                                alt={metadata.symbol}
-                                                                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                                                            />
-                                                                        ) : (
-                                                                            <span style={{ fontSize: '0.8rem' }}>{metadata.symbol?.charAt(0) || '?'}</span>
-                                                                        )}
-                                                                    </div>
-                                                                    <code>{shortenPrincipal(tokenId)}</code>
-                                                                </div>
+                                                                <TokenDisplay tokenId={tokenId} />
                                                             </td>
                                                             <td style={styles.td}><strong>{metadata.symbol}</strong></td>
                                                             <td style={styles.td}>{metadata.name}</td>
                                                             <td style={styles.td}>{metadata.decimals?.toString()}</td>
                                                             <td style={styles.td}>{metadata.fee?.toString()}</td>
+                                                            <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
+                                                                {shortenPrincipal(tokenId)}
+                                                            </td>
                                                         </tr>
                                                     ))}
                                                 </tbody>
@@ -1645,31 +2048,22 @@ export default function RewardsAdmin() {
                                                         <th style={styles.th}>Name</th>
                                                         <th style={styles.th}>Decimals</th>
                                                         <th style={styles.th}>Fee</th>
+                                                        <th style={styles.th}>Ledger ID</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
                                                     {whitelistedTokens.map(([tokenId, metadata]) => (
                                                         <tr key={tokenId.toString()}>
                                                             <td style={styles.td}>
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                    <div style={styles.tokenLogo}>
-                                                                        {tokenLogos[tokenId.toString()] ? (
-                                                                            <img 
-                                                                                src={tokenLogos[tokenId.toString()]} 
-                                                                                alt={metadata.symbol}
-                                                                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                                                            />
-                                                                        ) : (
-                                                                            <span style={{ fontSize: '0.8rem' }}>{metadata.symbol?.charAt(0) || '?'}</span>
-                                                                        )}
-                                                                    </div>
-                                                                    <code>{shortenPrincipal(tokenId)}</code>
-                                                                </div>
+                                                                <TokenDisplay tokenId={tokenId} />
                                                             </td>
                                                             <td style={styles.td}><strong>{metadata.symbol}</strong></td>
                                                             <td style={styles.td}>{metadata.name}</td>
                                                             <td style={styles.td}>{metadata.decimals?.toString()}</td>
                                                             <td style={styles.td}>{metadata.fee?.toString()}</td>
+                                                            <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
+                                                                {shortenPrincipal(tokenId)}
+                                                            </td>
                                                         </tr>
                                                     ))}
                                                 </tbody>
@@ -1709,42 +2103,45 @@ export default function RewardsAdmin() {
                                         {minDistributions.length > 0 && (
                                             <div style={{ ...styles.statCard, textAlign: 'left' }}>
                                                 <h4 style={{ color: goldPrimary, marginBottom: '16px' }}>Minimum Distributions</h4>
-                                                {minDistributions.map(([tokenId, amount]) => (
-                                                    <div key={tokenId.toString()} style={styles.infoRow}>
-                                                        <span style={styles.infoLabel}>
-                                                            <code>{shortenPrincipal(tokenId)}</code>
-                                                        </span>
-                                                        <span style={styles.infoValue}>{formatAmount(amount)}</span>
-                                                    </div>
-                                                ))}
+                                                {minDistributions.map(([tokenId, amount]) => {
+                                                    const meta = getTokenDisplay(tokenId);
+                                                    return (
+                                                        <div key={tokenId.toString()} style={styles.infoRow}>
+                                                            <span style={styles.infoLabel}>{meta.symbol}</span>
+                                                            <span style={styles.infoValue}>{formatAmount(amount, meta.decimals)}</span>
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         )}
                                         
                                         {maxDistributions.length > 0 && (
                                             <div style={{ ...styles.statCard, textAlign: 'left' }}>
                                                 <h4 style={{ color: goldPrimary, marginBottom: '16px' }}>Maximum Distributions</h4>
-                                                {maxDistributions.map(([tokenId, amount]) => (
-                                                    <div key={tokenId.toString()} style={styles.infoRow}>
-                                                        <span style={styles.infoLabel}>
-                                                            <code>{shortenPrincipal(tokenId)}</code>
-                                                        </span>
-                                                        <span style={styles.infoValue}>{formatAmount(amount)}</span>
-                                                    </div>
-                                                ))}
+                                                {maxDistributions.map(([tokenId, amount]) => {
+                                                    const meta = getTokenDisplay(tokenId);
+                                                    return (
+                                                        <div key={tokenId.toString()} style={styles.infoRow}>
+                                                            <span style={styles.infoLabel}>{meta.symbol}</span>
+                                                            <span style={styles.infoValue}>{formatAmount(amount, meta.decimals)}</span>
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         )}
                                         
                                         {totalDistributions.length > 0 && (
                                             <div style={{ ...styles.statCard, textAlign: 'left' }}>
                                                 <h4 style={{ color: goldPrimary, marginBottom: '16px' }}>Total Distributed</h4>
-                                                {totalDistributions.map(([tokenId, amount]) => (
-                                                    <div key={tokenId.toString()} style={styles.infoRow}>
-                                                        <span style={styles.infoLabel}>
-                                                            <code>{shortenPrincipal(tokenId)}</code>
-                                                        </span>
-                                                        <span style={{ ...styles.infoValue, color: '#2ecc71' }}>{formatAmount(amount)}</span>
-                                                    </div>
-                                                ))}
+                                                {totalDistributions.map(([tokenId, amount]) => {
+                                                    const meta = getTokenDisplay(tokenId);
+                                                    return (
+                                                        <div key={tokenId.toString()} style={styles.infoRow}>
+                                                            <span style={styles.infoLabel}>{meta.symbol}</span>
+                                                            <span style={{ ...styles.infoValue, color: '#2ecc71' }}>{formatAmount(amount, meta.decimals)}</span>
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         )}
                                     </div>
