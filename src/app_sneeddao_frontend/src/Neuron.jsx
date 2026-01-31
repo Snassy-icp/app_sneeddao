@@ -134,6 +134,7 @@ function Neuron() {
     const [isPermissionsExpanded, setIsPermissionsExpanded] = useState(false);
     const [isFolloweesExpanded, setIsFolloweesExpanded] = useState(false);
     const [showDissolveDelayDialog, setShowDissolveDelayDialog] = useState(false);
+    const [activeNeuronTab, setActiveNeuronTab] = useState('details'); // 'details' or 'transactions'
     const [dissolveDelayInput, setDissolveDelayInput] = useState('');
     
     // Dialog state for confirmations and alerts
@@ -1698,6 +1699,65 @@ function Neuron() {
                                 );
                             })()}
 
+                            {/* Tab Navigation */}
+                            <div style={{
+                                display: 'flex',
+                                gap: '0.5rem',
+                                padding: '0.25rem',
+                                background: theme.colors.primaryBg,
+                                borderRadius: '12px',
+                                marginBottom: '1rem',
+                                border: `1px solid ${theme.colors.border}`
+                            }}>
+                                <button
+                                    onClick={() => setActiveNeuronTab('details')}
+                                    style={{
+                                        flex: 1,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '0.5rem',
+                                        padding: '0.75rem 1rem',
+                                        borderRadius: '10px',
+                                        border: 'none',
+                                        background: activeNeuronTab === 'details' ? `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})` : 'transparent',
+                                        color: activeNeuronTab === 'details' ? 'white' : theme.colors.mutedText,
+                                        fontSize: '0.9rem',
+                                        fontWeight: '600',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                >
+                                    <FaUsers size={14} />
+                                    Details
+                                </button>
+                                <button
+                                    onClick={() => setActiveNeuronTab('transactions')}
+                                    style={{
+                                        flex: 1,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '0.5rem',
+                                        padding: '0.75rem 1rem',
+                                        borderRadius: '10px',
+                                        border: 'none',
+                                        background: activeNeuronTab === 'transactions' ? `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})` : 'transparent',
+                                        color: activeNeuronTab === 'transactions' ? 'white' : theme.colors.mutedText,
+                                        fontSize: '0.9rem',
+                                        fontWeight: '600',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                >
+                                    <FaCoins size={14} />
+                                    Transactions
+                                </button>
+                            </div>
+
+                            {/* Details Tab Content */}
+                            {activeNeuronTab === 'details' && (
+                                <>
                             {/* Permissions Section */}
                             <div className="neuron-card-animate" style={{ opacity: 0, animationDelay: '0.45s' }}>
                                 <div 
@@ -2265,45 +2325,32 @@ function Neuron() {
                                     )}
                                 </div>
                             )}
+                                </>
+                            )}
+
+                            {/* Transactions Tab Content */}
+                            {activeNeuronTab === 'transactions' && (() => {
+                                const selectedSns = getSnsById(selectedSnsRoot);
+                                if (!selectedSns?.canisters?.governance) return null;
+                                
+                                // Convert neuron ID hex to bytes (the subaccount)
+                                const neuronIdBytes = new Uint8Array(currentNeuronId.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+                                // Pad to 32 bytes if needed
+                                const subaccount32 = new Uint8Array(32);
+                                subaccount32.set(neuronIdBytes, 32 - neuronIdBytes.length);
+                                
+                                return (
+                                    <TransactionList
+                                        snsRootCanisterId={selectedSnsRoot}
+                                        principalId={selectedSns.canisters.governance}
+                                        subaccount={subaccount32}
+                                        embedded={true}
+                                        showHeader={false}
+                                    />
+                                );
+                            })()}
                         </>
                     )}
-
-                    {/* Neuron Transactions Section */}
-                    {neuronData && selectedSnsRoot && (() => {
-                        const selectedSns = getSnsById(selectedSnsRoot);
-                        if (!selectedSns?.canisters?.governance) return null;
-                        
-                        // Convert neuron ID hex to bytes (the subaccount)
-                        const neuronIdBytes = new Uint8Array(currentNeuronId.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
-                        // Pad to 32 bytes if needed
-                        const subaccount32 = new Uint8Array(32);
-                        subaccount32.set(neuronIdBytes, 32 - neuronIdBytes.length);
-                        
-                        return (
-                            <div style={{ marginTop: '1.5rem' }}>
-                                <TransactionList
-                                    snsRootCanisterId={selectedSnsRoot}
-                                    principalId={selectedSns.canisters.governance}
-                                    subaccount={subaccount32}
-                                    embedded={true}
-                                    showHeader={true}
-                                    headerIcon={
-                                        <span style={{
-                                            width: '32px',
-                                            height: '32px',
-                                            borderRadius: '8px',
-                                            background: `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center'
-                                        }}>
-                                            <FaCoins size={14} color="white" />
-                                        </span>
-                                    }
-                                />
-                            </div>
-                        );
-                    })()}
 
                     {/* Action busy overlay */}
                     {actionBusy && actionMsg && (
