@@ -117,7 +117,10 @@ function SneedexOffers() {
     
     // Advanced filter state
     const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
-    const [showInactiveOffers, setShowInactiveOffers] = useState(true); // Default to showing all offers including inactive
+    // State toggles for offer visibility
+    const [showActiveOffers, setShowActiveOffers] = useState(true);
+    const [showSoldOffers, setShowSoldOffers] = useState(true);
+    const [showExpiredOffers, setShowExpiredOffers] = useState(false); // Expired includes Cancelled/Reclaimed
     const [bidTokenFilter, setBidTokenFilter] = useState(''); // Filter by payment token
     const [minPriceFilter, setMinPriceFilter] = useState(''); // Min price filter (in token)
     const [maxPriceFilter, setMaxPriceFilter] = useState(''); // Max price filter (in token)
@@ -345,17 +348,24 @@ function SneedexOffers() {
             const actor = createSneedexActor(identity);
             let fetchedOffers = [];
             
-            // Build state filter based on showInactiveOffers toggle
-            // When showing inactive offers, include active and sold (Completed/Claimed) but exclude Expired
-            const stateFilter = showInactiveOffers 
-                ? [
-                    { Active: null }, 
-                    { Completed: { winning_bid_id: 0n, completion_time: 0n } }, 
-                    { Claimed: null },
-                    { Cancelled: null },
-                    { Reclaimed: null }
-                  ]
-                : [{ Active: null }]; // Only active offers
+            // Build state filter based on toggle states
+            const stateFilter = [];
+            if (showActiveOffers) {
+                stateFilter.push({ Active: null });
+            }
+            if (showSoldOffers) {
+                stateFilter.push({ Completed: { winning_bid_id: 0n, completion_time: 0n } });
+                stateFilter.push({ Claimed: null });
+            }
+            if (showExpiredOffers) {
+                stateFilter.push({ Expired: null });
+                stateFilter.push({ Cancelled: null });
+                stateFilter.push({ Reclaimed: null });
+            }
+            // Default to Active if nothing selected
+            if (stateFilter.length === 0) {
+                stateFilter.push({ Active: null });
+            }
             
             // Use getOfferFeed to get offers with state filtering
             // For public tab: only public offers (public_only = true)
@@ -386,9 +396,12 @@ function SneedexOffers() {
                 }
                 
                 // Filter by state client-side if using fallback
-                if (!showInactiveOffers) {
-                    fetchedOffers = fetchedOffers.filter(o => 'Active' in o.state);
-                }
+                fetchedOffers = fetchedOffers.filter(o => {
+                    if (showActiveOffers && 'Active' in o.state) return true;
+                    if (showSoldOffers && ('Completed' in o.state || 'Claimed' in o.state)) return true;
+                    if (showExpiredOffers && ('Expired' in o.state || 'Cancelled' in o.state || 'Reclaimed' in o.state)) return true;
+                    return false;
+                });
             }
             
             setOffers(fetchedOffers);
@@ -438,14 +451,14 @@ function SneedexOffers() {
         } finally {
             setLoading(false);
         }
-    }, [identity, offerTab, principal, showInactiveOffers, fetchGlobalTokenMetadata]);
+    }, [identity, offerTab, principal, showActiveOffers, showSoldOffers, showExpiredOffers, fetchGlobalTokenMetadata]);
     
     // Clear offers immediately when tab or filter changes (for responsive UX)
     // This shows loading state right away instead of stale data
     useEffect(() => {
         setOffers([]);
         setLoading(true);
-    }, [offerTab, showInactiveOffers]);
+    }, [offerTab, showActiveOffers, showSoldOffers, showExpiredOffers]);
     
     useEffect(() => {
         fetchOffers();
@@ -1616,50 +1629,68 @@ function SneedexOffers() {
                         <option value="lowest_price">Lowest Price</option>
                     </select>
                     
-                    {/* Active Only Toggle */}
-                    <label style={{
+                    {/* State Filter Toggles */}
+                    <div style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '6px',
-                        cursor: 'pointer',
-                        padding: '8px 10px',
+                        gap: '4px',
+                        padding: '4px',
                         borderRadius: '10px',
                         border: `1px solid ${theme.colors.border}`,
                         background: theme.colors.secondaryBg,
-                        fontSize: '0.8rem',
-                        fontWeight: '500',
-                        color: theme.colors.primaryText,
-                        whiteSpace: 'nowrap',
-                        flexShrink: 0,
                     }}>
-                        <span style={{ color: showInactiveOffers ? theme.colors.mutedText : theme.colors.primaryText }}>
-                            Active
-                        </span>
-                        <div 
-                            onClick={() => setShowInactiveOffers(prev => !prev)}
+                        <button
+                            onClick={() => setShowActiveOffers(prev => !prev)}
                             style={{
-                                width: '36px',
-                                height: '20px',
-                                borderRadius: '10px',
-                                background: showInactiveOffers ? theme.colors.tertiaryBg : sneedexPrimary,
-                                position: 'relative',
-                                transition: 'all 0.2s ease',
+                                padding: '6px 10px',
+                                borderRadius: '6px',
+                                border: 'none',
+                                background: showActiveOffers ? sneedexPrimary : 'transparent',
+                                color: showActiveOffers ? '#fff' : theme.colors.mutedText,
+                                fontSize: '0.75rem',
+                                fontWeight: '500',
                                 cursor: 'pointer',
+                                transition: 'all 0.2s ease',
+                                whiteSpace: 'nowrap',
                             }}
                         >
-                            <div style={{
-                                width: '14px',
-                                height: '14px',
-                                borderRadius: '50%',
-                                background: '#fff',
-                                position: 'absolute',
-                                top: '3px',
-                                left: showInactiveOffers ? '3px' : '19px',
+                            Active
+                        </button>
+                        <button
+                            onClick={() => setShowSoldOffers(prev => !prev)}
+                            style={{
+                                padding: '6px 10px',
+                                borderRadius: '6px',
+                                border: 'none',
+                                background: showSoldOffers ? sneedexPrimary : 'transparent',
+                                color: showSoldOffers ? '#fff' : theme.colors.mutedText,
+                                fontSize: '0.75rem',
+                                fontWeight: '500',
+                                cursor: 'pointer',
                                 transition: 'all 0.2s ease',
-                                boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-                            }} />
-                        </div>
-                    </label>
+                                whiteSpace: 'nowrap',
+                            }}
+                        >
+                            Sold
+                        </button>
+                        <button
+                            onClick={() => setShowExpiredOffers(prev => !prev)}
+                            style={{
+                                padding: '6px 10px',
+                                borderRadius: '6px',
+                                border: 'none',
+                                background: showExpiredOffers ? sneedexPrimary : 'transparent',
+                                color: showExpiredOffers ? '#fff' : theme.colors.mutedText,
+                                fontSize: '0.75rem',
+                                fontWeight: '500',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s ease',
+                                whiteSpace: 'nowrap',
+                            }}
+                        >
+                            Expired
+                        </button>
+                    </div>
                 </div>
                 
                 {/* Filters Section */}
