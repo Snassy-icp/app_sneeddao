@@ -1217,6 +1217,63 @@ export default function CanistersPage() {
         }
     };
 
+    // Move a group to become a subgroup of another group (or to root level if targetId is null)
+    const handleMoveGroup = async (sourceGroupId, targetGroupId) => {
+        try {
+            // Find and remove the source group from its current location
+            let sourceGroup = null;
+            
+            const removeGroup = (groups) => {
+                for (let i = 0; i < groups.length; i++) {
+                    if (groups[i].id === sourceGroupId) {
+                        sourceGroup = groups[i];
+                        return [...groups.slice(0, i), ...groups.slice(i + 1)];
+                    }
+                    const newSubgroups = removeGroup(groups[i].subgroups);
+                    if (sourceGroup) {
+                        return [
+                            ...groups.slice(0, i),
+                            { ...groups[i], subgroups: newSubgroups },
+                            ...groups.slice(i + 1)
+                        ];
+                    }
+                }
+                return groups;
+            };
+            
+            let newGroups = { ...canisterGroups };
+            newGroups.groups = removeGroup(newGroups.groups);
+            
+            if (!sourceGroup) {
+                console.error('Source group not found');
+                return;
+            }
+            
+            // Add the group as a subgroup of the target
+            const addAsSubgroup = (groups) => {
+                return groups.map(g => {
+                    if (g.id === targetGroupId) {
+                        return { ...g, subgroups: [...g.subgroups, sourceGroup] };
+                    }
+                    return { ...g, subgroups: addAsSubgroup(g.subgroups) };
+                });
+            };
+            
+            if (targetGroupId) {
+                newGroups.groups = addAsSubgroup(newGroups.groups);
+            } else {
+                // Add to root level
+                newGroups.groups = [...newGroups.groups, sourceGroup];
+            }
+            
+            await saveCanisterGroups(newGroups);
+            setSuccessMessage('Group moved');
+        } catch (err) {
+            console.error('Error moving group:', err);
+            setError('Failed to move group');
+        }
+    };
+
     // react-dnd drop handler - called when an item is dropped on a valid target
     const handleDndDrop = useCallback(async (item, targetType, targetId = null) => {
         const { type: itemType, id: itemId, sourceGroupId } = item;
@@ -1338,63 +1395,6 @@ export default function CanistersPage() {
         
         return true;
     }, [canisterGroups.groups]);
-
-    // Move a group to become a subgroup of another group (or to root level if targetId is null)
-    const handleMoveGroup = async (sourceGroupId, targetGroupId) => {
-        try {
-            // Find and remove the source group from its current location
-            let sourceGroup = null;
-            
-            const removeGroup = (groups) => {
-                for (let i = 0; i < groups.length; i++) {
-                    if (groups[i].id === sourceGroupId) {
-                        sourceGroup = groups[i];
-                        return [...groups.slice(0, i), ...groups.slice(i + 1)];
-                    }
-                    const newSubgroups = removeGroup(groups[i].subgroups);
-                    if (sourceGroup) {
-                        return [
-                            ...groups.slice(0, i),
-                            { ...groups[i], subgroups: newSubgroups },
-                            ...groups.slice(i + 1)
-                        ];
-                    }
-                }
-                return groups;
-            };
-            
-            let newGroups = { ...canisterGroups };
-            newGroups.groups = removeGroup(newGroups.groups);
-            
-            if (!sourceGroup) {
-                console.error('Source group not found');
-                return;
-            }
-            
-            // Add the group as a subgroup of the target
-            const addAsSubgroup = (groups) => {
-                return groups.map(g => {
-                    if (g.id === targetGroupId) {
-                        return { ...g, subgroups: [...g.subgroups, sourceGroup] };
-                    }
-                    return { ...g, subgroups: addAsSubgroup(g.subgroups) };
-                });
-            };
-            
-            if (targetGroupId) {
-                newGroups.groups = addAsSubgroup(newGroups.groups);
-            } else {
-                // Add to root level
-                newGroups.groups = [...newGroups.groups, sourceGroup];
-            }
-            
-            await saveCanisterGroups(newGroups);
-            setSuccessMessage('Group moved');
-        } catch (err) {
-            console.error('Error moving group:', err);
-            setError('Failed to move group');
-        }
-    };
 
     // Recursive component for rendering a group - uses react-dnd
     const GroupComponent = ({ 
