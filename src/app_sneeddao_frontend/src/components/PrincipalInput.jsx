@@ -1,10 +1,65 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { Principal } from '@dfinity/principal';
+import { decodeIcrcAccount, encodeIcrcAccount } from '@dfinity/ledger-icrc';
 import { useNaming } from '../NamingContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
-import { FaUser, FaCube, FaPen } from 'react-icons/fa';
+import { FaUser, FaCube, FaPen, FaWallet, FaTimes, FaCopy, FaExchangeAlt, FaCheck } from 'react-icons/fa';
+
+// Helper to convert bytes to hex
+const bytesToHex = (bytes) => {
+    if (!bytes || bytes.length === 0) return '';
+    return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+};
+
+// Helper to convert hex to bytes
+const hexToBytes = (hex) => {
+    if (!hex) return null;
+    const cleanHex = hex.replace(/^0x/i, '').replace(/\s/g, '');
+    if (!/^[0-9a-fA-F]*$/.test(cleanHex)) return null;
+    if (cleanHex.length === 0) return null;
+    // Pad to 64 chars (32 bytes)
+    const paddedHex = cleanHex.padStart(64, '0');
+    return new Uint8Array(paddedHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+};
+
+// Parse any account format (ICRC-1 encoded or plain principal)
+const parseAccountString = (input) => {
+    if (!input || typeof input !== 'string') return null;
+    const trimmed = input.trim();
+    if (!trimmed) return null;
+    
+    // Try ICRC-1 encoded format first (contains '.')
+    if (trimmed.includes('.')) {
+        try {
+            const decoded = decodeIcrcAccount(trimmed);
+            if (decoded && decoded.owner) {
+                return {
+                    principal: decoded.owner,
+                    subaccount: decoded.subaccount ? new Uint8Array(decoded.subaccount) : null,
+                    isEncoded: true
+                };
+            }
+        } catch (e) {
+            // Not valid ICRC account
+        }
+    }
+    
+    // Try as plain principal
+    try {
+        const principal = Principal.fromText(trimmed);
+        return { principal, subaccount: null, isEncoded: false };
+    } catch (e) {
+        return null;
+    }
+};
+
+// Check if subaccount is all zeros (default)
+const isDefaultSubaccount = (subaccount) => {
+    if (!subaccount || subaccount.length === 0) return true;
+    return subaccount.every(b => b === 0);
+};
 
 // Helper to determine if a principal is a canister (shorter) or user (longer)
 // Canister principals are typically 27 chars, user principals are 63 chars
@@ -30,7 +85,10 @@ const PrincipalInput = ({
     defaultTab = 'private', // 'private' | 'public' | 'all'
     defaultPrincipalType = 'both', // 'users' | 'canisters' | 'both'
     onFocus: onFocusProp,
-    onBlur: onBlurProp
+    onBlur: onBlurProp,
+    // Subaccount support props
+    showSubaccountOption = false, // If true, show a button to open subaccount dialog
+    onAccountChange = null // Callback with { principal: string, subaccount: Uint8Array|null, encoded: string }
 }) => {
     const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
@@ -46,6 +104,15 @@ const PrincipalInput = ({
     const inputRef = useRef(null);
     const dropdownRef = useRef(null);
     const containerRef = useRef(null);
+    
+    // Subaccount dialog state
+    const [showSubaccountDialog, setShowSubaccountDialog] = useState(false);
+    const [dialogPrincipal, setDialogPrincipal] = useState('');
+    const [dialogSubaccountHex, setDialogSubaccountHex] = useState('');
+    const [dialogEncodedAccount, setDialogEncodedAccount] = useState('');
+    const [dialogMode, setDialogMode] = useState('split'); // 'split' or 'encoded'
+    const [dialogError, setDialogError] = useState('');
+    const [copiedField, setCopiedField] = useState(null);
 
     // Update dropdown position when showing
     useEffect(() => {
@@ -307,6 +374,164 @@ const PrincipalInput = ({
         }, 0);
     };
 
+    // === Subaccount Dialog Handlers ===
+    
+    // Open dialog with current value parsed
+    const handleOpenSubaccountDialog = () => {
+        setDialogError('');
+        setCopiedField(null);
+        
+        const parsed = parseAccountString(inputValue);
+        if (parsed) {
+            setDialogPrincipal(parsed.principal.toText());
+            if (parsed.subaccount && !isDefaultSubaccount(parsed.subaccount)) {
+                setDialogSubaccountHex(bytesToHex(parsed.subaccount));
+            } else {
+                setDialogSubaccountHex('');
+            }
+            // Generate encoded version
+            try {
+                const encoded = encodeIcrcAccount({
+                    owner: parsed.principal,
+                    subaccount: parsed.subaccount && !isDefaultSubaccount(parsed.subaccount) ? parsed.subaccount : undefined
+                });
+                setDialogEncodedAccount(encoded);
+            } catch (e) {
+                setDialogEncodedAccount('');
+            }
+            setDialogMode('split');
+        } else {
+            setDialogPrincipal('');
+            setDialogSubaccountHex('');
+            setDialogEncodedAccount('');
+            setDialogMode('split');
+        }
+        setShowSubaccountDialog(true);
+    };
+    
+    // Handle encoded account input change
+    const handleEncodedAccountChange = (val) => {
+        setDialogEncodedAccount(val);
+        setDialogError('');
+        
+        const parsed = parseAccountString(val);
+        if (parsed) {
+            setDialogPrincipal(parsed.principal.toText());
+            if (parsed.subaccount && !isDefaultSubaccount(parsed.subaccount)) {
+                setDialogSubaccountHex(bytesToHex(parsed.subaccount));
+            } else {
+                setDialogSubaccountHex('');
+            }
+        }
+    };
+    
+    // Handle principal change in split mode
+    const handleDialogPrincipalChange = (val) => {
+        setDialogPrincipal(val);
+        setDialogError('');
+        updateEncodedFromSplit(val, dialogSubaccountHex);
+    };
+    
+    // Handle subaccount hex change in split mode
+    const handleDialogSubaccountChange = (val) => {
+        setDialogSubaccountHex(val);
+        setDialogError('');
+        updateEncodedFromSplit(dialogPrincipal, val);
+    };
+    
+    // Update encoded account from split values
+    const updateEncodedFromSplit = (principal, subHex) => {
+        try {
+            const p = Principal.fromText(principal.trim());
+            const subBytes = subHex.trim() ? hexToBytes(subHex) : null;
+            const encoded = encodeIcrcAccount({
+                owner: p,
+                subaccount: subBytes && !isDefaultSubaccount(subBytes) ? subBytes : undefined
+            });
+            setDialogEncodedAccount(encoded);
+        } catch (e) {
+            // Invalid input, don't update encoded
+        }
+    };
+    
+    // Copy to clipboard with feedback
+    const handleCopy = async (text, field) => {
+        try {
+            await navigator.clipboard.writeText(text);
+            setCopiedField(field);
+            setTimeout(() => setCopiedField(null), 1500);
+        } catch (e) {
+            // Fallback
+        }
+    };
+    
+    // Apply the dialog values
+    const handleApplySubaccount = () => {
+        setDialogError('');
+        
+        let finalValue = '';
+        let parsedAccount = null;
+        
+        if (dialogMode === 'encoded') {
+            // Use the encoded account directly
+            parsedAccount = parseAccountString(dialogEncodedAccount);
+            if (!parsedAccount) {
+                setDialogError('Invalid encoded account format');
+                return;
+            }
+            finalValue = dialogEncodedAccount.trim();
+        } else {
+            // Use split principal + subaccount
+            if (!dialogPrincipal.trim()) {
+                setDialogError('Please enter a principal');
+                return;
+            }
+            
+            try {
+                const principal = Principal.fromText(dialogPrincipal.trim());
+                const subBytes = dialogSubaccountHex.trim() ? hexToBytes(dialogSubaccountHex) : null;
+                
+                if (dialogSubaccountHex.trim() && !subBytes) {
+                    setDialogError('Invalid subaccount hex format');
+                    return;
+                }
+                
+                // If there's a non-default subaccount, encode as ICRC-1 account
+                if (subBytes && !isDefaultSubaccount(subBytes)) {
+                    finalValue = encodeIcrcAccount({
+                        owner: principal,
+                        subaccount: subBytes
+                    });
+                    parsedAccount = { principal, subaccount: subBytes, isEncoded: true };
+                } else {
+                    // Just use principal
+                    finalValue = dialogPrincipal.trim();
+                    parsedAccount = { principal, subaccount: null, isEncoded: false };
+                }
+            } catch (e) {
+                setDialogError('Invalid principal format');
+                return;
+            }
+        }
+        
+        // Apply the value
+        setInputValue(finalValue);
+        setShowSubaccountDialog(false);
+        setIsEditing(false);
+        
+        if (onChange) {
+            onChange(finalValue);
+        }
+        
+        if (onAccountChange && parsedAccount) {
+            onAccountChange({
+                principal: parsedAccount.principal.toText(),
+                subaccount: parsedAccount.subaccount,
+                encoded: finalValue
+            });
+        }
+    };
+
     return (
         <div 
             ref={containerRef}
@@ -376,39 +601,74 @@ const PrincipalInput = ({
 
             {/* Edit View - shown when editing or no valid principal */}
             {(isEditing || !isValid) && (
-                <input
-                    ref={inputRef}
-                    type="text"
-                    value={inputValue}
-                    onChange={handleInputChange}
-                    onFocus={handleFocus}
-                    onBlur={handleBlur}
-                    onKeyDown={onKeyDown}
-                    placeholder={placeholder}
-                    disabled={disabled}
-                    autoFocus={autoFocus}
-                    style={{
-                        width: '100%',
-                        padding: '8px 12px',
-                        border: `1px solid ${theme.colors.border}`,
-                        borderRadius: '8px',
-                        backgroundColor: theme.colors.tertiaryBg,
-                        color: theme.colors.primaryText,
-                        fontSize: '14px',
-                        outline: 'none',
-                        transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
-                        boxSizing: 'border-box',
-                        ...inputStyle
-                    }}
-                    onFocusCapture={(e) => {
-                        e.target.style.borderColor = theme.colors.accent;
-                        e.target.style.boxShadow = `0 0 0 2px ${theme.colors.accent}25`;
-                    }}
-                    onBlurCapture={(e) => {
-                        e.target.style.borderColor = theme.colors.border;
-                        e.target.style.boxShadow = 'none';
-                    }}
-                />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <input
+                        ref={inputRef}
+                        type="text"
+                        value={inputValue}
+                        onChange={handleInputChange}
+                        onFocus={handleFocus}
+                        onBlur={handleBlur}
+                        onKeyDown={onKeyDown}
+                        placeholder={placeholder}
+                        disabled={disabled}
+                        autoFocus={autoFocus}
+                        style={{
+                            flex: 1,
+                            padding: '8px 12px',
+                            border: `1px solid ${theme.colors.border}`,
+                            borderRadius: '8px',
+                            backgroundColor: theme.colors.tertiaryBg,
+                            color: theme.colors.primaryText,
+                            fontSize: '14px',
+                            outline: 'none',
+                            transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
+                            boxSizing: 'border-box',
+                            ...inputStyle
+                        }}
+                        onFocusCapture={(e) => {
+                            e.target.style.borderColor = theme.colors.accent;
+                            e.target.style.boxShadow = `0 0 0 2px ${theme.colors.accent}25`;
+                        }}
+                        onBlurCapture={(e) => {
+                            e.target.style.borderColor = theme.colors.border;
+                            e.target.style.boxShadow = 'none';
+                        }}
+                    />
+                    {showSubaccountOption && (
+                        <button
+                            type="button"
+                            onClick={handleOpenSubaccountDialog}
+                            disabled={disabled}
+                            style={{
+                                background: 'none',
+                                border: `1px solid ${theme.colors.border}`,
+                                borderRadius: '6px',
+                                padding: '7px 8px',
+                                cursor: disabled ? 'not-allowed' : 'pointer',
+                                color: theme.colors.mutedText,
+                                display: 'flex',
+                                alignItems: 'center',
+                                opacity: disabled ? 0.5 : 1,
+                                transition: 'all 0.2s ease',
+                                flexShrink: 0
+                            }}
+                            onMouseEnter={(e) => {
+                                if (!disabled) {
+                                    e.currentTarget.style.borderColor = theme.colors.accent;
+                                    e.currentTarget.style.color = theme.colors.accent;
+                                }
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.borderColor = theme.colors.border;
+                                e.currentTarget.style.color = theme.colors.mutedText;
+                            }}
+                            title="Add subaccount"
+                        >
+                            <FaWallet size={12} />
+                        </button>
+                    )}
+                </div>
             )}
             
             {/* Dropdown - rendered via portal to ensure it's above everything */}
@@ -555,6 +815,363 @@ const PrincipalInput = ({
                             />
                         </div>
                     ))}
+                </div>,
+                document.body
+            )}
+            
+            {/* Subaccount Dialog */}
+            {showSubaccountDialog && ReactDOM.createPortal(
+                <div
+                    style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 100000,
+                        padding: '1rem'
+                    }}
+                    onClick={() => setShowSubaccountDialog(false)}
+                >
+                    <div
+                        style={{
+                            backgroundColor: theme.colors.secondaryBg,
+                            borderRadius: '16px',
+                            padding: '1.5rem',
+                            width: '100%',
+                            maxWidth: '480px',
+                            maxHeight: '90vh',
+                            overflowY: 'auto',
+                            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+                            border: `1px solid ${theme.colors.border}`
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Dialog Header */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                <div style={{
+                                    width: '36px',
+                                    height: '36px',
+                                    borderRadius: '10px',
+                                    background: `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.accent}80)`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}>
+                                    <FaWallet size={16} color="white" />
+                                </div>
+                                <h3 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '1.1rem', fontWeight: '600' }}>
+                                    Account with Subaccount
+                                </h3>
+                            </div>
+                            <button
+                                onClick={() => setShowSubaccountDialog(false)}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    padding: '8px',
+                                    cursor: 'pointer',
+                                    color: theme.colors.mutedText,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    borderRadius: '6px'
+                                }}
+                                onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.primaryBg}
+                                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                            >
+                                <FaTimes size={16} />
+                            </button>
+                        </div>
+                        
+                        {/* Mode Toggle */}
+                        <div style={{
+                            display: 'flex',
+                            padding: '4px',
+                            background: theme.colors.primaryBg,
+                            borderRadius: '10px',
+                            marginBottom: '1rem'
+                        }}>
+                            <button
+                                onClick={() => setDialogMode('split')}
+                                style={{
+                                    flex: 1,
+                                    padding: '0.6rem 1rem',
+                                    borderRadius: '8px',
+                                    border: 'none',
+                                    background: dialogMode === 'split' ? theme.colors.accent : 'transparent',
+                                    color: dialogMode === 'split' ? 'white' : theme.colors.mutedText,
+                                    fontSize: '0.85rem',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                Principal + Subaccount
+                            </button>
+                            <button
+                                onClick={() => setDialogMode('encoded')}
+                                style={{
+                                    flex: 1,
+                                    padding: '0.6rem 1rem',
+                                    borderRadius: '8px',
+                                    border: 'none',
+                                    background: dialogMode === 'encoded' ? theme.colors.accent : 'transparent',
+                                    color: dialogMode === 'encoded' ? 'white' : theme.colors.mutedText,
+                                    fontSize: '0.85rem',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                Encoded Account
+                            </button>
+                        </div>
+                        
+                        {/* Split Mode Inputs */}
+                        {dialogMode === 'split' && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                {/* Principal Input */}
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.8rem', color: theme.colors.mutedText, marginBottom: '0.4rem', fontWeight: '500' }}>
+                                        Principal
+                                    </label>
+                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                        <input
+                                            type="text"
+                                            value={dialogPrincipal}
+                                            onChange={(e) => handleDialogPrincipalChange(e.target.value)}
+                                            placeholder="e.g. ryjl3-tyaaa-aaaaa-aaaba-cai"
+                                            style={{
+                                                flex: 1,
+                                                padding: '0.65rem 0.9rem',
+                                                borderRadius: '8px',
+                                                border: `1px solid ${theme.colors.border}`,
+                                                background: theme.colors.primaryBg,
+                                                color: theme.colors.primaryText,
+                                                fontSize: '0.9rem',
+                                                fontFamily: 'monospace',
+                                                outline: 'none'
+                                            }}
+                                            onFocus={(e) => e.target.style.borderColor = theme.colors.accent}
+                                            onBlur={(e) => e.target.style.borderColor = theme.colors.border}
+                                        />
+                                        <button
+                                            onClick={() => handleCopy(dialogPrincipal, 'principal')}
+                                            disabled={!dialogPrincipal}
+                                            style={{
+                                                padding: '0.65rem',
+                                                borderRadius: '8px',
+                                                border: `1px solid ${theme.colors.border}`,
+                                                background: theme.colors.primaryBg,
+                                                color: copiedField === 'principal' ? theme.colors.accent : theme.colors.mutedText,
+                                                cursor: dialogPrincipal ? 'pointer' : 'not-allowed',
+                                                opacity: dialogPrincipal ? 1 : 0.5
+                                            }}
+                                            title="Copy principal"
+                                        >
+                                            {copiedField === 'principal' ? <FaCheck size={12} /> : <FaCopy size={12} />}
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                {/* Subaccount Input */}
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.8rem', color: theme.colors.mutedText, marginBottom: '0.4rem', fontWeight: '500' }}>
+                                        Subaccount (hex) <span style={{ fontWeight: '400', opacity: 0.7 }}>- optional</span>
+                                    </label>
+                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                        <input
+                                            type="text"
+                                            value={dialogSubaccountHex}
+                                            onChange={(e) => handleDialogSubaccountChange(e.target.value)}
+                                            placeholder="e.g. 0102030405... (up to 64 hex chars)"
+                                            style={{
+                                                flex: 1,
+                                                padding: '0.65rem 0.9rem',
+                                                borderRadius: '8px',
+                                                border: `1px solid ${theme.colors.border}`,
+                                                background: theme.colors.primaryBg,
+                                                color: theme.colors.primaryText,
+                                                fontSize: '0.9rem',
+                                                fontFamily: 'monospace',
+                                                outline: 'none'
+                                            }}
+                                            onFocus={(e) => e.target.style.borderColor = theme.colors.accent}
+                                            onBlur={(e) => e.target.style.borderColor = theme.colors.border}
+                                        />
+                                        <button
+                                            onClick={() => handleCopy(dialogSubaccountHex, 'subaccount')}
+                                            disabled={!dialogSubaccountHex}
+                                            style={{
+                                                padding: '0.65rem',
+                                                borderRadius: '8px',
+                                                border: `1px solid ${theme.colors.border}`,
+                                                background: theme.colors.primaryBg,
+                                                color: copiedField === 'subaccount' ? theme.colors.accent : theme.colors.mutedText,
+                                                cursor: dialogSubaccountHex ? 'pointer' : 'not-allowed',
+                                                opacity: dialogSubaccountHex ? 1 : 0.5
+                                            }}
+                                            title="Copy subaccount"
+                                        >
+                                            {copiedField === 'subaccount' ? <FaCheck size={12} /> : <FaCopy size={12} />}
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                {/* Encoded Preview */}
+                                {dialogEncodedAccount && (
+                                    <div style={{
+                                        padding: '0.75rem',
+                                        background: theme.colors.primaryBg,
+                                        borderRadius: '8px',
+                                        border: `1px solid ${theme.colors.border}`
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                                            <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>Encoded Account</span>
+                                            <button
+                                                onClick={() => handleCopy(dialogEncodedAccount, 'encoded')}
+                                                style={{
+                                                    background: 'none',
+                                                    border: 'none',
+                                                    padding: '2px',
+                                                    cursor: 'pointer',
+                                                    color: copiedField === 'encoded' ? theme.colors.accent : theme.colors.mutedText
+                                                }}
+                                                title="Copy encoded account"
+                                            >
+                                                {copiedField === 'encoded' ? <FaCheck size={10} /> : <FaCopy size={10} />}
+                                            </button>
+                                        </div>
+                                        <div style={{
+                                            fontFamily: 'monospace',
+                                            fontSize: '0.8rem',
+                                            color: theme.colors.secondaryText,
+                                            wordBreak: 'break-all',
+                                            lineHeight: '1.4'
+                                        }}>
+                                            {dialogEncodedAccount}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                        
+                        {/* Encoded Mode Input */}
+                        {dialogMode === 'encoded' && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.8rem', color: theme.colors.mutedText, marginBottom: '0.4rem', fontWeight: '500' }}>
+                                        ICRC-1 Account (encoded)
+                                    </label>
+                                    <textarea
+                                        value={dialogEncodedAccount}
+                                        onChange={(e) => handleEncodedAccountChange(e.target.value)}
+                                        placeholder="Paste encoded account (e.g. principal.checksum-subaccount)"
+                                        rows={3}
+                                        style={{
+                                            width: '100%',
+                                            padding: '0.65rem 0.9rem',
+                                            borderRadius: '8px',
+                                            border: `1px solid ${theme.colors.border}`,
+                                            background: theme.colors.primaryBg,
+                                            color: theme.colors.primaryText,
+                                            fontSize: '0.85rem',
+                                            fontFamily: 'monospace',
+                                            outline: 'none',
+                                            resize: 'vertical',
+                                            boxSizing: 'border-box'
+                                        }}
+                                        onFocus={(e) => e.target.style.borderColor = theme.colors.accent}
+                                        onBlur={(e) => e.target.style.borderColor = theme.colors.border}
+                                    />
+                                </div>
+                                
+                                {/* Parsed Preview */}
+                                {dialogPrincipal && (
+                                    <div style={{
+                                        padding: '0.75rem',
+                                        background: theme.colors.primaryBg,
+                                        borderRadius: '8px',
+                                        border: `1px solid ${theme.colors.border}`
+                                    }}>
+                                        <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginBottom: '0.5rem' }}>Parsed Values</div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText, minWidth: '70px' }}>Principal:</span>
+                                                <span style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: theme.colors.secondaryText, wordBreak: 'break-all' }}>
+                                                    {dialogPrincipal}
+                                                </span>
+                                            </div>
+                                            {dialogSubaccountHex && (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                    <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText, minWidth: '70px' }}>Subaccount:</span>
+                                                    <span style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: theme.colors.secondaryText, wordBreak: 'break-all' }}>
+                                                        {dialogSubaccountHex.length > 32 ? `${dialogSubaccountHex.substring(0, 16)}...${dialogSubaccountHex.substring(dialogSubaccountHex.length - 16)}` : dialogSubaccountHex}
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                        
+                        {/* Error Message */}
+                        {dialogError && (
+                            <div style={{
+                                marginTop: '1rem',
+                                padding: '0.6rem 0.9rem',
+                                background: `${theme.colors.error}15`,
+                                border: `1px solid ${theme.colors.error}40`,
+                                borderRadius: '8px',
+                                color: theme.colors.error,
+                                fontSize: '0.85rem'
+                            }}>
+                                {dialogError}
+                            </div>
+                        )}
+                        
+                        {/* Action Buttons */}
+                        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
+                            <button
+                                onClick={() => setShowSubaccountDialog(false)}
+                                style={{
+                                    flex: 1,
+                                    padding: '0.7rem 1rem',
+                                    borderRadius: '8px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    background: 'transparent',
+                                    color: theme.colors.secondaryText,
+                                    fontSize: '0.9rem',
+                                    fontWeight: '500',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleApplySubaccount}
+                                style={{
+                                    flex: 1,
+                                    padding: '0.7rem 1rem',
+                                    borderRadius: '8px',
+                                    border: 'none',
+                                    background: theme.colors.accent,
+                                    color: 'white',
+                                    fontSize: '0.9rem',
+                                    fontWeight: '600',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                Apply
+                            </button>
+                        </div>
+                    </div>
                 </div>,
                 document.body
             )}

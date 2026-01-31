@@ -1358,11 +1358,12 @@ function TransactionList({
                             </div>
                             
                             {/* From input */}
-                            <div style={{ flex: '1 1 160px', maxWidth: '240px' }} className="transaction-filter-group">
+                            <div style={{ flex: '1 1 160px', maxWidth: '280px' }} className="transaction-filter-group">
                                 <PrincipalInput
                                     value={fromFilter}
                                     onChange={setFromFilter}
                                     placeholder="From (principal or account)..."
+                                    showSubaccountOption={true}
                                 />
                             </div>
                             
@@ -1408,11 +1409,12 @@ function TransactionList({
                             </div>
                             
                             {/* To input */}
-                            <div style={{ flex: '1 1 160px', maxWidth: '240px' }} className="transaction-filter-group">
+                            <div style={{ flex: '1 1 160px', maxWidth: '280px' }} className="transaction-filter-group">
                                 <PrincipalInput
                                     value={toFilter}
                                     onChange={setToFilter}
                                     placeholder="To (principal or account)..."
+                                    showSubaccountOption={true}
                                 />
                             </div>
                             

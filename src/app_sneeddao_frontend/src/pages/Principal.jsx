@@ -566,13 +566,13 @@ export default function PrincipalPage() {
 
     // Fetch posts and threads for the user
     const fetchUserPosts = useCallback(async () => {
-        if (!identity || !createForumActor || !stablePrincipalId.current) return;
+        if (!createForumActor || !stablePrincipalId.current) return;
         
         setLoadingPosts(true);
         setPostsError(null);
         
         try {
-            const forumActor = createForumActor(identity);
+            const forumActor = createForumActor(identity || null);
             const targetPrincipal = stablePrincipalId.current;
             
             const [postsData, threadsData] = await Promise.all([
@@ -593,10 +593,10 @@ export default function PrincipalPage() {
 
     // Fetch post counts for threads asynchronously
     const fetchThreadPostCounts = useCallback(async (threads) => {
-        if (!identity || !createForumActor || !threads.length) return;
+        if (!createForumActor || !threads.length) return;
         
         try {
-            const forumActor = createForumActor(identity);
+            const forumActor = createForumActor(identity || null);
             
             const countPromises = threads.map(async (thread) => {
                 try {
@@ -624,7 +624,7 @@ export default function PrincipalPage() {
 
     // Auto-fetch posts when principal changes
     useEffect(() => {
-        if (stablePrincipalId.current && identity && createForumActor) {
+        if (stablePrincipalId.current && createForumActor) {
             fetchUserPosts();
         }
     }, [searchParams.get('id'), fetchUserPosts]);
@@ -638,13 +638,13 @@ export default function PrincipalPage() {
 
     // Fetch trades (Sneedex offers and bids) for the user
     const fetchUserTrades = useCallback(async () => {
-        if (!identity || !stablePrincipalId.current) return;
+        if (!stablePrincipalId.current) return;
         
         setLoadingTrades(true);
         setTradesError(null);
         
         try {
-            const actor = createSneedexActor(identity);
+            const actor = createSneedexActor(identity || null);
             const targetPrincipal = stablePrincipalId.current;
             
             // Fetch offers created by this principal and bids made by this principal
@@ -669,8 +669,9 @@ export default function PrincipalPage() {
         const fetchTokens = async () => {
             try {
                 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
+                const agentOptions = identity ? { identity } : {};
                 const backendActor = createBackendActor(backendCanisterId, {
-                    agentOptions: { identity }
+                    agentOptions
                 });
                 const tokens = await backendActor.get_whitelisted_tokens();
                 setWhitelistedTokens(tokens);
@@ -678,14 +679,12 @@ export default function PrincipalPage() {
                 console.error('Failed to fetch whitelisted tokens:', e);
             }
         };
-        if (identity) {
-            fetchTokens();
-        }
+        fetchTokens();
     }, [identity]);
 
     // Auto-fetch trades when principal changes
     useEffect(() => {
-        if (stablePrincipalId.current && identity) {
+        if (stablePrincipalId.current) {
             fetchUserTrades();
         }
     }, [searchParams.get('id'), fetchUserTrades]);
@@ -1553,26 +1552,28 @@ export default function PrincipalPage() {
                                 }}>
                                     {!editingName && !editingNickname && (
                                         <>
-                                            <button
-                                                onClick={() => setEditingNickname(true)}
-                                                style={{
-                                                    background: theme.colors.primaryBg,
-                                                    color: theme.colors.primaryText,
-                                                    border: `1px solid ${theme.colors.border}`,
-                                                    borderRadius: '10px',
-                                                    padding: '10px 16px',
-                                                    cursor: 'pointer',
-                                                    fontSize: '0.9rem',
-                                                    fontWeight: '500',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '8px',
-                                                    transition: 'all 0.2s ease'
-                                                }}
-                                            >
-                                                <FaPen size={12} />
-                                                {principalInfo?.nickname ? 'Edit Nickname' : 'Set Nickname'}
-                                            </button>
+                                            {isAuthenticated && (
+                                                <button
+                                                    onClick={() => setEditingNickname(true)}
+                                                    style={{
+                                                        background: theme.colors.primaryBg,
+                                                        color: theme.colors.primaryText,
+                                                        border: `1px solid ${theme.colors.border}`,
+                                                        borderRadius: '10px',
+                                                        padding: '10px 16px',
+                                                        cursor: 'pointer',
+                                                        fontSize: '0.9rem',
+                                                        fontWeight: '500',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px',
+                                                        transition: 'all 0.2s ease'
+                                                    }}
+                                                >
+                                                    <FaPen size={12} />
+                                                    {principalInfo?.nickname ? 'Edit Nickname' : 'Set Nickname'}
+                                                </button>
+                                            )}
                                             {identity?.getPrincipal().toString() === stablePrincipalId.current?.toString() ? (
                                                 <button
                                                     onClick={() => setEditingName(true)}
