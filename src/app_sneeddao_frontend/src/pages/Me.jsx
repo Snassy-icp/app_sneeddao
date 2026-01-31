@@ -286,7 +286,7 @@ export default function Me() {
             setUserStats(prev => ({ ...prev, loadingStats: true }));
             try {
                 const forumActor = createForumActor(identity);
-                const userPrincipal = identity.getPrincipal().toString();
+                const userPrincipal = identity.getPrincipal();
                 
                 const [posts, threads, tipsGiven, tipsReceived] = await Promise.all([
                     getPostsByUser(forumActor, userPrincipal).catch(() => []),

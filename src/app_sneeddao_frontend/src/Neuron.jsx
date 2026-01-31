@@ -69,7 +69,7 @@ const customStyles = `
 function Neuron() {
     const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
-    const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT, snsLogo } = useSns();
+    const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT } = useSns();
     const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
     const [neuronIdInput, setNeuronIdInput] = useState(searchParams.get('neuronid') || '');
@@ -986,8 +986,8 @@ function Neuron() {
                                 minWidth: '56px', maxWidth: '56px', flexShrink: 0,
                                 overflow: 'hidden'
                             }}>
-                                {snsLogo ? (
-                                    <img src={snsLogo} alt="SNS" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                {tokenLogo ? (
+                                    <img src={tokenLogo} alt="SNS" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                 ) : (
                                     <div style={{
                                         width: '100%', height: '100%',

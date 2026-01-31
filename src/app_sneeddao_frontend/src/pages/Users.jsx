@@ -615,7 +615,7 @@ function Users() {
                             alignItems: 'center',
                             marginBottom: '1rem'
                         }}>
-                            <div style={{ width: '280px', minWidth: '200px', position: 'relative' }}>
+                            <div style={{ width: '200px', minWidth: '150px', position: 'relative' }}>
                                 <FaSearch size={14} style={{
                                     position: 'absolute',
                                     left: '12px',

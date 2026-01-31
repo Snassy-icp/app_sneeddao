@@ -5,7 +5,7 @@ import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { useAuth } from '../AuthContext';
 import { useSns } from '../contexts/SnsContext';
 import Header from '../components/Header';
-import { fetchAndCacheSnsData, getSnsById } from '../utils/SnsUtils';
+import { fetchAndCacheSnsData, getSnsById, fetchSnsLogo, getAllSnses } from '../utils/SnsUtils';
 import { formatNeuronIdLink, formatE8s, getDissolveState, uint8ArrayToHex } from '../utils/NeuronUtils';
 import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
 import { Actor, HttpAgent } from '@dfinity/agent';
@@ -19,12 +19,13 @@ import { FaUsers, FaLock, FaUnlock, FaClock, FaDownload, FaSync, FaChevronLeft, 
 function Neurons() {
     const { theme } = useTheme();
     const { identity } = useAuth();
-    const { selectedSnsRoot, updateSelectedSns, snsLogo } = useSns();
+    const { selectedSnsRoot, updateSelectedSns } = useSns();
     const navigate = useNavigate();
     const location = useLocation();
     const [searchParams] = useSearchParams();
     const [snsList, setSnsList] = useState([]);
     const [neurons, setNeurons] = useState([]);
+    const [snsLogo, setSnsLogo] = useState(null);
     const [filteredNeurons, setFilteredNeurons] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [error, setError] = useState('');
@@ -178,6 +179,40 @@ function Neurons() {
         setCurrentPage(1);
         setNeurons([]);
     }, [selectedSnsRoot]);
+
+    // Load SNS logo when SNS changes
+    useEffect(() => {
+        const loadSnsLogo = async () => {
+            if (!selectedSnsRoot) {
+                setSnsLogo(null);
+                return;
+            }
+            
+            try {
+                const allSnses = getAllSnses();
+                const currentSnsInfo = allSnses.find(sns => sns.rootCanisterId === selectedSnsRoot);
+                
+                if (currentSnsInfo?.canisters?.governance) {
+                    const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://ic0.app' : 'http://localhost:4943';
+                    const agent = new HttpAgent({ host, ...(identity && { identity }) });
+                    
+                    if (process.env.DFX_NETWORK !== 'ic') {
+                        await agent.fetchRootKey();
+                    }
+                    
+                    const logo = await fetchSnsLogo(currentSnsInfo.canisters.governance, agent);
+                    setSnsLogo(logo);
+                } else {
+                    setSnsLogo(null);
+                }
+            } catch (error) {
+                console.error('Error loading SNS logo:', error);
+                setSnsLogo(null);
+            }
+        };
+        
+        loadSnsLogo();
+    }, [selectedSnsRoot, identity]);
 
     // Fetch SNS data on component mount
     useEffect(() => {
