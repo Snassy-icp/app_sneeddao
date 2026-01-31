@@ -837,7 +837,11 @@ function Sns() {
                                                 color: theme.colors.secondaryText,
                                                 fontSize: '0.85rem'
                                             }}>
-                                                <FaCoins style={{ color: snsAccent }} />
+                                                {currentSnsLogo ? (
+                                                    <img src={currentSnsLogo} alt="" style={{ width: '16px', height: '16px', borderRadius: '4px' }} />
+                                                ) : (
+                                                    <FaCoins style={{ color: snsAccent }} />
+                                                )}
                                                 <span><strong style={{ color: theme.colors.primaryText }}>{selectedSnsDetails.tokenSymbol}</strong></span>
                                             </div>
                                         )}
@@ -896,7 +900,11 @@ function Sns() {
                                     color: theme.colors.secondaryText,
                                     fontSize: '0.8rem'
                                 }}>
-                                    <FaCoins style={{ color: snsAccent }} />
+                                    {currentSnsLogo ? (
+                                        <img src={currentSnsLogo} alt="" style={{ width: '14px', height: '14px', borderRadius: '3px' }} />
+                                    ) : (
+                                        <FaCoins style={{ color: snsAccent }} />
+                                    )}
                                     <span><strong style={{ color: theme.colors.primaryText }}>{selectedSnsDetails.tokenSymbol}</strong></span>
                                     {tokenPriceICP !== null && (
                                         <span style={{ color: theme.colors.primaryText, fontWeight: '600' }}>

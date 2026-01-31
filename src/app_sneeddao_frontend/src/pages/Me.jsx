@@ -23,8 +23,13 @@ import {
     getAllNeuronNames,
     getAllNeuronNicknames,
     setPrincipalName,
-    getPrincipalName
+    getPrincipalName,
+    getPostsByUser,
+    getThreadsByUser,
+    getTipsGivenByUser,
+    getTipsReceivedByUser
 } from '../utils/BackendUtils';
+import { useForum } from '../contexts/ForumContext';
 import { useNaming } from '../NamingContext';
 import { Link } from 'react-router-dom';
 import ConfirmationModal from '../ConfirmationModal';
@@ -112,6 +117,7 @@ export default function Me() {
     const { theme } = useTheme();
     const { identity } = useAuth();
     const { selectedSnsRoot, updateSelectedSns } = useSns();
+    const { createForumActor } = useForum();
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const [snsList, setSnsList] = useState([]);
@@ -223,6 +229,15 @@ export default function Me() {
         }
     });
     
+    // User activity stats
+    const [userStats, setUserStats] = useState({
+        postsCount: 0,
+        threadsCount: 0,
+        tipsGivenCount: 0,
+        tipsReceivedCount: 0,
+        loadingStats: false
+    });
+    
     // Load neuron manager settings on mount
     useEffect(() => {
         const settings = getNeuronManagerSettings();
@@ -262,6 +277,39 @@ export default function Me() {
         
         loadNotificationSettings();
     }, [identity]);
+    
+    // Load user activity stats
+    useEffect(() => {
+        const fetchUserStats = async () => {
+            if (!identity || !createForumActor) return;
+            
+            setUserStats(prev => ({ ...prev, loadingStats: true }));
+            try {
+                const forumActor = createForumActor(identity);
+                const userPrincipal = identity.getPrincipal().toString();
+                
+                const [posts, threads, tipsGiven, tipsReceived] = await Promise.all([
+                    getPostsByUser(forumActor, userPrincipal).catch(() => []),
+                    getThreadsByUser(forumActor, userPrincipal).catch(() => []),
+                    getTipsGivenByUser(forumActor, userPrincipal).catch(() => []),
+                    getTipsReceivedByUser(forumActor, userPrincipal).catch(() => [])
+                ]);
+                
+                setUserStats({
+                    postsCount: posts?.length || 0,
+                    threadsCount: threads?.length || 0,
+                    tipsGivenCount: tipsGiven?.length || 0,
+                    tipsReceivedCount: tipsReceived?.length || 0,
+                    loadingStats: false
+                });
+            } catch (err) {
+                console.error('Failed to load user stats:', err);
+                setUserStats(prev => ({ ...prev, loadingStats: false }));
+            }
+        };
+        
+        fetchUserStats();
+    }, [identity, createForumActor]);
     
     // Save Sneedex notification settings
     const saveNotificationSettings = async () => {
@@ -934,56 +982,130 @@ export default function Me() {
                                     </div>
                                 </div>
 
-                                {/* Principal ID Display */}
-                                {identity && (
-                                    <div style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '0.75rem',
-                                        padding: '0.75rem 1rem',
+                                {/* Activity Stats */}
+                                <div style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: 'repeat(4, 1fr)',
+                                    gap: '0.75rem',
+                                    marginBottom: '1rem'
+                                }}>
+                                    <Link to="/posts" style={{
                                         background: theme.colors.tertiaryBg,
                                         borderRadius: '12px',
-                                        marginBottom: '1rem',
-                                        flexWrap: 'wrap'
-                                    }}>
-                                        <span style={{
-                                            fontSize: '0.75rem',
-                                            fontWeight: '600',
-                                            color: theme.colors.mutedText,
+                                        padding: '0.75rem',
+                                        textAlign: 'center',
+                                        textDecoration: 'none',
+                                        transition: 'all 0.2s ease',
+                                        border: `1px solid transparent`
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.borderColor = mePrimary}
+                                    onMouseLeave={(e) => e.currentTarget.style.borderColor = 'transparent'}
+                                    >
+                                        <div style={{ 
+                                            color: mePrimary, 
+                                            fontSize: '1.25rem', 
+                                            fontWeight: '700',
+                                            marginBottom: '0.25rem'
+                                        }}>
+                                            {userStats.loadingStats ? '...' : userStats.postsCount}
+                                        </div>
+                                        <div style={{ 
+                                            color: theme.colors.mutedText, 
+                                            fontSize: '0.7rem', 
                                             textTransform: 'uppercase',
                                             letterSpacing: '0.5px'
                                         }}>
-                                            Principal ID
-                                        </span>
-                                        <code style={{
-                                            fontSize: '0.85rem',
-                                            color: theme.colors.secondaryText,
-                                            fontFamily: 'monospace',
-                                            wordBreak: 'break-all',
-                                            flex: 1
+                                            Posts
+                                        </div>
+                                    </Link>
+                                    <Link to="/posts?tab=my-threads" style={{
+                                        background: theme.colors.tertiaryBg,
+                                        borderRadius: '12px',
+                                        padding: '0.75rem',
+                                        textAlign: 'center',
+                                        textDecoration: 'none',
+                                        transition: 'all 0.2s ease',
+                                        border: `1px solid transparent`
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.borderColor = meSecondary}
+                                    onMouseLeave={(e) => e.currentTarget.style.borderColor = 'transparent'}
+                                    >
+                                        <div style={{ 
+                                            color: meSecondary, 
+                                            fontSize: '1.25rem', 
+                                            fontWeight: '700',
+                                            marginBottom: '0.25rem'
                                         }}>
-                                            {identity.getPrincipal().toString()}
-                                        </code>
-                                        <button
-                                            onClick={() => {
-                                                navigator.clipboard.writeText(identity.getPrincipal().toString());
-                                            }}
-                                            style={{
-                                                background: 'transparent',
-                                                border: 'none',
-                                                color: theme.colors.accent,
-                                                cursor: 'pointer',
-                                                padding: '4px 8px',
-                                                borderRadius: '6px',
-                                                fontSize: '0.75rem',
-                                                fontWeight: '500'
-                                            }}
-                                            title="Copy to clipboard"
-                                        >
-                                            Copy
-                                        </button>
-                                    </div>
-                                )}
+                                            {userStats.loadingStats ? '...' : userStats.threadsCount}
+                                        </div>
+                                        <div style={{ 
+                                            color: theme.colors.mutedText, 
+                                            fontSize: '0.7rem', 
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.5px'
+                                        }}>
+                                            Threads
+                                        </div>
+                                    </Link>
+                                    <Link to="/tips?tab=received" style={{
+                                        background: theme.colors.tertiaryBg,
+                                        borderRadius: '12px',
+                                        padding: '0.75rem',
+                                        textAlign: 'center',
+                                        textDecoration: 'none',
+                                        transition: 'all 0.2s ease',
+                                        border: `1px solid transparent`
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.borderColor = theme.colors.success}
+                                    onMouseLeave={(e) => e.currentTarget.style.borderColor = 'transparent'}
+                                    >
+                                        <div style={{ 
+                                            color: theme.colors.success, 
+                                            fontSize: '1.25rem', 
+                                            fontWeight: '700',
+                                            marginBottom: '0.25rem'
+                                        }}>
+                                            {userStats.loadingStats ? '...' : userStats.tipsReceivedCount}
+                                        </div>
+                                        <div style={{ 
+                                            color: theme.colors.mutedText, 
+                                            fontSize: '0.7rem', 
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.5px'
+                                        }}>
+                                            Tips ↓
+                                        </div>
+                                    </Link>
+                                    <Link to="/tips?tab=given" style={{
+                                        background: theme.colors.tertiaryBg,
+                                        borderRadius: '12px',
+                                        padding: '0.75rem',
+                                        textAlign: 'center',
+                                        textDecoration: 'none',
+                                        transition: 'all 0.2s ease',
+                                        border: `1px solid transparent`
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.borderColor = meAccent}
+                                    onMouseLeave={(e) => e.currentTarget.style.borderColor = 'transparent'}
+                                    >
+                                        <div style={{ 
+                                            color: meAccent, 
+                                            fontSize: '1.25rem', 
+                                            fontWeight: '700',
+                                            marginBottom: '0.25rem'
+                                        }}>
+                                            {userStats.loadingStats ? '...' : userStats.tipsGivenCount}
+                                        </div>
+                                        <div style={{ 
+                                            color: theme.colors.mutedText, 
+                                            fontSize: '0.7rem', 
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.5px'
+                                        }}>
+                                            Tips ↑
+                                        </div>
+                                    </Link>
+                                </div>
 
                                 {/* Name Edit Section */}
                                 {!editingPrincipalName ? (
@@ -1041,6 +1163,7 @@ export default function Me() {
                                                 color: theme.colors.primaryText,
                                                 padding: '0.75rem 1rem',
                                                 width: '100%',
+                                                maxWidth: '300px',
                                                 fontSize: '0.95rem'
                                             }}
                                         />

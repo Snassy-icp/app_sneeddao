@@ -87,7 +87,7 @@ function Users() {
     const [searchTerm, setSearchTerm] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(20);
-    const [sortConfig, setSortConfig] = useState({ key: 'stake', direction: 'desc' });
+    const [sortConfig, setSortConfig] = useState({ key: 'owned', direction: 'desc' });
     const [hideUnnamed, setHideUnnamed] = useState(false);
     const [userTypeFilter, setUserTypeFilter] = useState('all'); // 'all', 'owners', 'hotkeys'
     

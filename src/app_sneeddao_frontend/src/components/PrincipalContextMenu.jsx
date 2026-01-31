@@ -53,22 +53,30 @@ const PrincipalContextMenu = ({
         };
     }, [isOpen, onClose]);
 
-    const handleSendMessage = () => {
+    const handleSendMessage = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
         onSendMessage();
         onClose();
     };
 
-    const handleSetNickname = () => {
+    const handleSetNickname = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
         onSetNickname();
         onClose();
     };
 
-    const handleViewProfile = () => {
+    const handleViewProfile = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
         navigate(`/principal?id=${principalId}`);
         onClose();
     };
 
-    const handleCopyId = () => {
+    const handleCopyId = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
         navigator.clipboard.writeText(principalId);
         onClose();
     };

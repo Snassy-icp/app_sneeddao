@@ -1379,7 +1379,8 @@ function Proposals() {
                                         fontSize: '0.9rem',
                                         outline: 'none',
                                         cursor: 'pointer',
-                                        appearance: 'none'
+                                        appearance: 'none',
+                                        maxWidth: '200px'
                             }}
                         >
                             {topicOptions.map(option => (
