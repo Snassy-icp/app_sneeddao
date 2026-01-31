@@ -876,12 +876,22 @@ function SneedexOffers() {
     });
     
     // Paginate the filtered offers
-    const paginatedOffers = useMemo(() => {
-        const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-        return filteredOffers.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-    }, [filteredOffers, currentPage]);
+    const totalPages = useMemo(() => Math.max(1, Math.ceil(filteredOffers.length / ITEMS_PER_PAGE)), [filteredOffers.length]);
     
-    const totalPages = useMemo(() => Math.ceil(filteredOffers.length / ITEMS_PER_PAGE), [filteredOffers.length]);
+    // Compute safe current page (always within valid bounds)
+    const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+    
+    const paginatedOffers = useMemo(() => {
+        const startIndex = (safeCurrentPage - 1) * ITEMS_PER_PAGE;
+        return filteredOffers.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+    }, [filteredOffers, safeCurrentPage]);
+    
+    // Sync state when current page exceeds total pages
+    useEffect(() => {
+        if (currentPage > totalPages) {
+            setCurrentPage(totalPages);
+        }
+    }, [currentPage, totalPages]);
     
     // Reset to page 1 when filters/search/tab change
     useEffect(() => {
@@ -1995,25 +2005,25 @@ function SneedexOffers() {
                                 <button
                                     style={{
                                         ...styles.paginationButton,
-                                        opacity: currentPage === 1 ? 0.5 : 1,
-                                        cursor: currentPage === 1 ? 'not-allowed' : 'pointer'
+                                        opacity: safeCurrentPage === 1 ? 0.5 : 1,
+                                        cursor: safeCurrentPage === 1 ? 'not-allowed' : 'pointer'
                                     }}
                                     onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                                    disabled={currentPage === 1}
+                                    disabled={safeCurrentPage === 1}
                                 >
                                     <FaChevronLeft /> Prev
                                 </button>
                                 <span style={styles.paginationInfo}>
-                                    {currentPage}/{totalPages}
+                                    {safeCurrentPage}/{totalPages}
                                 </span>
                                 <button
                                     style={{
                                         ...styles.paginationButton,
-                                        opacity: currentPage === totalPages ? 0.5 : 1,
-                                        cursor: currentPage === totalPages ? 'not-allowed' : 'pointer'
+                                        opacity: safeCurrentPage === totalPages ? 0.5 : 1,
+                                        cursor: safeCurrentPage === totalPages ? 'not-allowed' : 'pointer'
                                     }}
                                     onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                                    disabled={currentPage === totalPages}
+                                    disabled={safeCurrentPage === totalPages}
                                 >
                                     Next <FaChevronRight />
                                 </button>
@@ -2569,25 +2579,25 @@ function SneedexOffers() {
                                 <button
                                     style={{
                                         ...styles.paginationButton,
-                                        opacity: currentPage === 1 ? 0.5 : 1,
-                                        cursor: currentPage === 1 ? 'not-allowed' : 'pointer'
+                                        opacity: safeCurrentPage === 1 ? 0.5 : 1,
+                                        cursor: safeCurrentPage === 1 ? 'not-allowed' : 'pointer'
                                     }}
                                     onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                                    disabled={currentPage === 1}
+                                    disabled={safeCurrentPage === 1}
                                 >
                                     <FaChevronLeft /> Prev
                                 </button>
                                 <span style={styles.paginationInfo}>
-                                    {currentPage}/{totalPages}
+                                    {safeCurrentPage}/{totalPages}
                                 </span>
                                 <button
                                     style={{
                                         ...styles.paginationButton,
-                                        opacity: currentPage === totalPages ? 0.5 : 1,
-                                        cursor: currentPage === totalPages ? 'not-allowed' : 'pointer'
+                                        opacity: safeCurrentPage === totalPages ? 0.5 : 1,
+                                        cursor: safeCurrentPage === totalPages ? 'not-allowed' : 'pointer'
                                     }}
                                     onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                                    disabled={currentPage === totalPages}
+                                    disabled={safeCurrentPage === totalPages}
                                 >
                                     Next <FaChevronRight />
                                 </button>
