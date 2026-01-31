@@ -87,7 +87,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         if (['/sneedex', '/sneedex_offers', '/sneedex_create', '/sneedex_my'].includes(path) || path.startsWith('/sneedex_offer/')) return 'Sneedex';
         if (['/tools/main', '/tools/sns_jailbreak', '/tools/sns_jailbreak_list'].includes(path) || path.startsWith('/tools/')) return 'Tools';
         if (['/admin'].includes(path) || location.pathname.startsWith('/admin/')) return 'Admin';
-        if (['/help', '/doc'].includes(path) || location.pathname.startsWith('/help/')) return 'Help';
+        if (['/help'].includes(path) || location.pathname.startsWith('/help/')) return 'Help';
         return 'Sneed Hub';
     });
 
@@ -192,7 +192,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             setActiveSection('Sneedex');
         } else if (['/admin'].includes(path) || path.startsWith('/admin/')) {
             setActiveSection('Admin');
-        } else if (['/help', '/doc'].includes(path) || path.startsWith('/help/')) {
+        } else if (['/help'].includes(path) || path.startsWith('/help/')) {
             setActiveSection('Help');
         }
     }, [location.pathname]);
@@ -419,8 +419,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             displayName: 'Help',
             defaultPath: '/help',
             subMenu: [
-                { name: 'Help', path: '/help' },
-                { name: 'Doc', path: '/doc' }
+                { name: 'Help', path: '/help' }
             ]
         }
     };
