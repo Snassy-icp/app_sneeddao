@@ -51,7 +51,7 @@ import ThemeToggle from '../components/ThemeToggle';
 import TokenIcon from '../components/TokenIcon';
 import { Principal } from '@dfinity/principal';
 import { createSneedexActor } from '../utils/SneedexUtils';
-import { FaUser, FaCrown, FaWallet, FaComments, FaCoins, FaEnvelope, FaGift, FaLock, FaServer, FaAddressBook, FaCog, FaChevronRight, FaChevronDown, FaBrain, FaExchangeAlt, FaCheckCircle, FaBell, FaPalette, FaGavel } from 'react-icons/fa';
+import { FaUser, FaCrown, FaWallet, FaComments, FaCoins, FaEnvelope, FaGift, FaLock, FaServer, FaAddressBook, FaCog, FaChevronRight, FaChevronDown, FaBrain, FaExchangeAlt, FaCheckCircle, FaBell, FaPalette, FaGavel, FaShareAlt, FaExternalLinkAlt } from 'react-icons/fa';
 
 // Custom CSS for animations
 const customStyles = `
@@ -831,6 +831,7 @@ export default function Me() {
 
     // Quick navigation items
     const quickNavItems = [
+        { icon: <FaShareAlt size={20} />, label: 'My Public Page', to: `/principal?id=${identity?.getPrincipal().toString()}`, color: '#3b82f6' },
         { icon: <FaWallet size={20} />, label: 'My Wallet', to: '/wallet', color: mePrimary },
         { icon: <FaGavel size={20} />, label: 'My Trades', to: '/sneedex_my', color: '#6366f1' },
         { icon: <FaComments size={20} />, label: 'My Posts', to: '/posts', color: '#10b981' },
@@ -1236,6 +1237,65 @@ export default function Me() {
                                         </div>
                                     </div>
                                 )}
+
+                                {/* Public Page Link */}
+                                <Link
+                                    to={`/principal?id=${identity?.getPrincipal().toString()}`}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '1rem',
+                                        background: theme.colors.tertiaryBg,
+                                        borderRadius: '12px',
+                                        padding: '1rem 1.25rem',
+                                        marginTop: '1rem',
+                                        textDecoration: 'none',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.currentTarget.style.borderColor = '#3b82f6';
+                                        e.currentTarget.style.background = `${theme.colors.tertiaryBg}`;
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.currentTarget.style.borderColor = theme.colors.border;
+                                        e.currentTarget.style.background = theme.colors.tertiaryBg;
+                                    }}
+                                >
+                                    <div style={{
+                                        width: '40px',
+                                        height: '40px',
+                                        borderRadius: '10px',
+                                        background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        flexShrink: 0
+                                    }}>
+                                        <FaShareAlt size={18} color="white" />
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{
+                                            color: theme.colors.primaryText,
+                                            fontWeight: '600',
+                                            fontSize: '0.95rem',
+                                            marginBottom: '0.25rem',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.5rem'
+                                        }}>
+                                            View My Public Page
+                                            <FaExternalLinkAlt size={12} color={theme.colors.mutedText} />
+                                        </div>
+                                        <div style={{
+                                            color: theme.colors.mutedText,
+                                            fontSize: '0.8rem',
+                                            lineHeight: '1.4'
+                                        }}>
+                                            Your shareable profile page that others can view — share the URL with friends!
+                                        </div>
+                                    </div>
+                                </Link>
                             </div>
                         </div>
                     </div>
