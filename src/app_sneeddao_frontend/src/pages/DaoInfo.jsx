@@ -6,7 +6,7 @@ import { Principal } from '@dfinity/principal';
 import { HttpAgent } from '@dfinity/agent';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
-import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
+import { createActor as createRllActor, canisterId as rllCanisterId } from 'declarations/rll';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { fetchAndCacheSnsData, getSnsById } from '../utils/SnsUtils';
 import priceService from '../services/PriceService';

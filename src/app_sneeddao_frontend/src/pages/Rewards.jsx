@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
+import { createActor as createRllActor, canisterId as rllCanisterId } from 'declarations/rll';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import Header from '../components/Header';
 import { fetchUserNeuronsForSns } from '../utils/NeuronUtils';

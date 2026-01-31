@@ -6,7 +6,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { app_sneeddao_backend, createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
-import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
+import { createActor as createRllActor, canisterId as rllCanisterId } from 'declarations/rll';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId  } from 'declarations/sneed_lock';
 import { createActor as createSgldtActor } from 'external/sgldt';
 import { useNavigate, Link, useLocation } from 'react-router-dom';

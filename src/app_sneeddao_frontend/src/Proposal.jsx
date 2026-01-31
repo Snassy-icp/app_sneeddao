@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
-import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
+import { createActor as createRllActor, canisterId as rllCanisterId } from 'declarations/rll';
 import { useAuth } from './AuthContext';
 import { useSns } from './contexts/SnsContext';
 import { useNeurons } from './contexts/NeuronsContext';

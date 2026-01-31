@@ -70,14 +70,15 @@ type Tally =
 type Subaccount = blob;
 type SneedRLL = 
  service {
-   acceptsVote: (ProposalData, nat64) -> (bool) query;
-   add_admin: (principal) -> (Result);
-   add_known_token: (principal) -> ();
+   acceptsVote: (proposal: ProposalData, nowSeconds: nat64) -> (bool) query;
+   add_admin: ("principal": principal) -> (Result);
+   add_known_token: (token_ledger_id: principal) -> ();
    all_token_balances: () -> (vec record {
                                     principal;
                                     nat;
                                   }) query;
-   balance_of: (principal, principal) -> (nat) query;
+   balance_of: (owner: principal, icrc1_ledger_canister_id: principal) ->
+    (nat) query;
    balance_reconciliation: () ->
     (vec
       record {
@@ -87,10 +88,11 @@ type SneedRLL =
         token_id: principal;
         underflow: nat;
       });
-   balance_reconciliation_from_balances: (vec record {
-                                                principal;
-                                                nat;
-                                              }) ->
+   balance_reconciliation_from_balances: (token_balances:
+    vec record {
+          principal;
+          nat;
+        }) ->
     (vec
       record {
         local_total: nat;
@@ -104,15 +106,16 @@ type SneedRLL =
                                     principal;
                                     nat;
                                   });
-   balances_of_hotkey_neurons: (vec Neuron) ->
+   balances_of_hotkey_neurons: (neurons: vec Neuron) ->
     (vec record {
            principal;
            nat;
          }) query;
    caller_is_admin: () -> (bool) query;
-   check_wallet_token_balances: (principal) -> (Result);
+   check_wallet_token_balances: (wallet: principal) -> (Result);
    check_whitelisted_token_balances: () -> (Result);
-   claim_full_balance_of_hotkey: (principal, nat) -> (TransferResult);
+   claim_full_balance_of_hotkey: (icrc1_ledger_canister_id: principal, fee:
+    nat) -> (TransferResult);
    clear_all_balances_and_distributions: () -> ();
    clear_balances: () -> ();
    clear_claim_events: () -> ();
@@ -134,7 +137,7 @@ type SneedRLL =
                                                  nat;
                                                }) query;
    get_claim_events: () -> (vec ClaimEvent) query;
-   get_claim_events_for_hotkey: (principal) -> (vec ClaimEvent) query;
+   get_claim_events_for_hotkey: (hotkey: principal) -> (vec ClaimEvent) query;
    get_distribution_events: () -> (vec DistributionEvent) query;
    get_empty_ballot_proposals: () ->
     (record {
@@ -210,12 +213,12 @@ type SneedRLL =
         };
      }) query;
    get_highest_closed_proposal_id: () -> (nat64) query;
-   get_hotkey_claimed_amounts: (principal) ->
+   get_hotkey_claimed_amounts: (hotkey: principal) ->
     (vec record {
            principal;
            nat;
          }) query;
-   get_hotkey_voting_power: (vec Neuron) ->
+   get_hotkey_voting_power: (neurons: vec Neuron) ->
     (record {
        distribution_voting_power: nat64;
        neurons_by_owner: vec record {
@@ -283,7 +286,7 @@ type SneedRLL =
           total: nat64;
         };
      }) query;
-   get_neuron_voting_history: (blob) ->
+   get_neuron_voting_history: (neuron_id: blob) ->
     (vec
       record {
         proposal_action: nat64;
@@ -293,10 +296,11 @@ type SneedRLL =
         vote: int32;
         voting_power: nat64;
       }) query;
-   get_proposal_ballots: (nat64) -> (vec record {
-                                           text;
-                                           Ballot;
-                                         }) query;
+   get_proposal_ballots: (proposal_id: nat64) ->
+    (vec record {
+           text;
+           Ballot;
+         }) query;
    get_proposal_import_status: () -> (Result) query;
    get_token_balance_check_status: () ->
     (record {
@@ -305,28 +309,31 @@ type SneedRLL =
        ticks: nat;
        total: nat;
      }) query;
-   get_token_distribution_events: (principal) ->
+   get_token_distribution_events: (token_id: principal) ->
     (vec DistributionEvent) query;
-   get_token_max_distribution: (principal) -> (opt nat) query;
-   get_token_metadata: (principal) -> (opt TokenMetadata) query;
-   get_token_min_distribution: (principal) -> (opt nat) query;
-   get_token_total_distribution: (principal) -> (nat) query;
+   get_token_max_distribution: (token_id: principal) -> (opt nat) query;
+   get_token_metadata: (token_ledger_id: principal) ->
+    (opt TokenMetadata) query;
+   get_token_min_distribution: (token_id: principal) -> (opt nat) query;
+   get_token_total_distribution: (token_id: principal) -> (nat) query;
    get_total_distributions: () -> (vec record {
                                          principal;
                                          nat;
                                        }) query;
    get_unmatched_pending_claims: () -> (Result_1) query;
    get_user_distribution_events: () -> (vec UserDistributionEvent) query;
-   get_user_distributions: (principal) -> (vec record {
-                                                 principal;
-                                                 nat;
-                                               }) query;
-   get_user_specific_distribution_events: (principal) ->
+   get_user_distributions: (user: principal) ->
+    (vec record {
+           principal;
+           nat;
+         }) query;
+   get_user_specific_distribution_events: (user: principal) ->
     (vec UserDistributionEvent) query;
-   get_user_token_distribution: (principal, principal) -> (nat) query;
-   get_user_token_distribution_events: (principal, principal) ->
-    (vec UserDistributionEvent) query;
-   get_user_voting_history: (principal) ->
+   get_user_token_distribution: (user: principal, token_id: principal) ->
+    (nat) query;
+   get_user_token_distribution_events: (user: principal, token_id:
+    principal) -> (vec UserDistributionEvent) query;
+   get_user_voting_history: (user: principal) ->
     (vec
       record {
         neuron_votes:
@@ -344,7 +351,7 @@ type SneedRLL =
         vote: int32;
         voting_power: nat64;
       }) query;
-   get_wallet_known_tokens: (principal) ->
+   get_wallet_known_tokens: (wallet: principal) ->
     (vec record {
            principal;
            TokenMetadata;
@@ -371,13 +378,15 @@ type SneedRLL =
    imported_owners_count: () -> (nat) query;
    imported_props_count: () -> (nat) query;
    list_admins: () -> (vec principal) query;
-   principal_is_admin: (principal) -> (bool) query;
-   remove_admin: (principal) -> (Result);
-   remove_known_token: (principal) -> ();
-   remove_token_max_distribution: (principal) -> (Result);
-   remove_token_min_distribution: (principal) -> (Result);
-   set_token_max_distribution: (principal, nat) -> (Result);
-   set_token_min_distribution: (principal, nat) -> (Result);
+   principal_is_admin: ("principal": principal) -> (bool) query;
+   remove_admin: ("principal": principal) -> (Result);
+   remove_known_token: (token_ledger_id: principal) -> ();
+   remove_token_max_distribution: (token_id: principal) -> (Result);
+   remove_token_min_distribution: (token_id: principal) -> (Result);
+   set_token_max_distribution: (token_id: principal, max_amount: nat) ->
+    (Result);
+   set_token_min_distribution: (token_id: principal, min_amount: nat) ->
+    (Result);
    start_distribution_cycle: () -> (Result);
    start_rll_main_loop: () -> (Result);
    stop_distribution_cycle: () -> (Result);
@@ -386,7 +395,7 @@ type SneedRLL =
    stop_rll_main_loop: () -> (Result);
    stop_token_balance_check: () -> (Result);
    stop_wallet_token_check: () -> (Result);
-   total_balance: (principal) -> (nat) query;
+   total_balance: (icrc1_ledger_canister_id: principal) -> (nat) query;
  };
 type Result_1 = 
  variant {

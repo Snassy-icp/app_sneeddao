@@ -4,7 +4,7 @@ import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
 import { useNeurons } from '../contexts/NeuronsContext';
-import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
+import { createActor as createRllActor, canisterId as rllCanisterId } from 'declarations/rll';
 import { useAuth } from '../AuthContext';
 import { useAdminCheck } from '../hooks/useAdminCheck';
 import { useTextLimits } from '../hooks/useTextLimits';

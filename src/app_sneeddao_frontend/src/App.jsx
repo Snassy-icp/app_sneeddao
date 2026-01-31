@@ -54,6 +54,7 @@ import ProfitsAdmin from './pages/admin/Profits';
 import TokensAdmin from './pages/admin/Tokens';
 import AdminsAdmin from './pages/admin/Admins';
 import AdminSnsJailbreak from './pages/AdminSnsJailbreak';
+import RewardsAdmin from './pages/admin/Rewards';
 import Projects from './pages/Projects';
 import Rewards from './pages/Rewards';
 import Disclaimer from './pages/Disclaimer';
@@ -229,6 +230,7 @@ function App() {
                     <Route path="/admin/tokens" element={<TokensAdmin />} />
                     <Route path="/admin/admins" element={<AdminsAdmin />} />
                     <Route path="/admin/sns_jailbreak" element={<AdminSnsJailbreak />} />
+                    <Route path="/admin/rewards" element={<RewardsAdmin />} />
                   </Routes>
                   </Layout>
                 </NamingProvider>

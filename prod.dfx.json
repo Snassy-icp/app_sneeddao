@@ -28,7 +28,7 @@
     },
     "rll": {
       "type": "custom",
-      "candid": "src/external/rll/rll.did",
+      "candid": "src/declarations/rll/rll.did",
       "wasm": "none",
       "build": "false",
       "remote": {

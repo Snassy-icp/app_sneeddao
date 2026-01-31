@@ -23,7 +23,7 @@ import { createActor as createVectorActor } from 'external/icrc55_vector';
 import { createActor as createExVectorActor } from 'external/icrc55_exvector';
 import { encodeIcrcAccount } from '@dfinity/ledger-icrc';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
-import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
+import { createActor as createRllActor, canisterId as rllCanisterId } from 'declarations/rll';
 import priceService from './services/PriceService';
 import Header from './components/Header';
 import { useTheme } from './contexts/ThemeContext';
@@ -1530,6 +1530,7 @@ function RLLInfo() {
         rllDiagram: true,    // Expanded by default
         systemComponents: true  // Expanded by default
     });
+    const [activeTab, setActiveTab] = useState('assets'); // 'assets', 'rll', 'components'
     const [expandedItems, setExpandedItems] = useState({});
     const [tooltip, setTooltip] = useState(null);
     const [treasuryBalances, setTreasuryBalances] = useState({
@@ -3238,23 +3239,111 @@ function RLLInfo() {
                     </div>
                 </section>
                 
-                <div className="rll-layout" style={{
-                    display: 'grid',
-                    gap: '40px',
+                {/* Tab Navigation */}
+                <div style={{
+                    display: 'flex',
+                    gap: '8px',
+                    marginBottom: '20px',
                     width: '100%',
-                    minWidth: '0',
-                    minHeight: '0',
-                    gridTemplateAreas: "'assets' 'flow' 'details'",
-                    gridTemplateColumns: '1fr',
-                    justifyItems: 'center'
+                    maxWidth: '800px',
+                    margin: '0 auto 20px',
+                    padding: '4px',
+                    background: theme.colors.secondaryBg,
+                    borderRadius: '14px',
+                    border: `1px solid ${theme.colors.border}`,
                 }}>
-                    {/* Total Assets Section */}
+                    <button
+                        onClick={() => setActiveTab('assets')}
+                        style={{
+                            flex: 1,
+                            padding: '12px 16px',
+                            background: activeTab === 'assets' 
+                                ? `linear-gradient(135deg, ${rllPrimary}20, ${rllPrimary}10)` 
+                                : 'transparent',
+                            border: activeTab === 'assets' 
+                                ? `1px solid ${rllPrimary}40` 
+                                : '1px solid transparent',
+                            borderRadius: '10px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '8px',
+                            color: activeTab === 'assets' ? rllPrimary : theme.colors.secondaryText,
+                            fontWeight: activeTab === 'assets' ? '600' : '500',
+                            fontSize: '0.9rem',
+                            transition: 'all 0.2s ease',
+                        }}
+                    >
+                        <FaWallet size={14} />
+                        <span>Total Assets</span>
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('rll')}
+                        style={{
+                            flex: 1,
+                            padding: '12px 16px',
+                            background: activeTab === 'rll' 
+                                ? `linear-gradient(135deg, ${rllPrimary}20, ${rllPrimary}10)` 
+                                : 'transparent',
+                            border: activeTab === 'rll' 
+                                ? `1px solid ${rllPrimary}40` 
+                                : '1px solid transparent',
+                            borderRadius: '10px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '8px',
+                            color: activeTab === 'rll' ? rllPrimary : theme.colors.secondaryText,
+                            fontWeight: activeTab === 'rll' ? '600' : '500',
+                            fontSize: '0.9rem',
+                            transition: 'all 0.2s ease',
+                        }}
+                    >
+                        <FaChartLine size={14} />
+                        <span>RLL Diagram</span>
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('components')}
+                        style={{
+                            flex: 1,
+                            padding: '12px 16px',
+                            background: activeTab === 'components' 
+                                ? `linear-gradient(135deg, ${rllPrimary}20, ${rllPrimary}10)` 
+                                : 'transparent',
+                            border: activeTab === 'components' 
+                                ? `1px solid ${rllPrimary}40` 
+                                : '1px solid transparent',
+                            borderRadius: '10px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '8px',
+                            color: activeTab === 'components' ? rllPrimary : theme.colors.secondaryText,
+                            fontWeight: activeTab === 'components' ? '600' : '500',
+                            fontSize: '0.9rem',
+                            transition: 'all 0.2s ease',
+                        }}
+                    >
+                        <FaCubes size={14} />
+                        <span>Components</span>
+                    </button>
+                </div>
+
+                {/* Tab Content */}
+                <div className="rll-tab-content" style={{
+                    width: '100%',
+                    maxWidth: '800px',
+                    margin: '0 auto',
+                }}>
+                    {/* Total Assets Tab */}
+                    {activeTab === 'assets' && (
                     <section className="rll-fade-in" style={{
                         ...styles.section, 
-                        gridArea: 'assets',
                         width: '100%',
-                        maxWidth: '800px',
-                        alignSelf: 'start'
+                        marginTop: 0,
                     }}>
                         <div 
                             style={{
@@ -4414,21 +4503,19 @@ function RLLInfo() {
                             </div>
                         </div>}
                     </section>
+                    )}
 
-                    {/* Flow Diagram Section */}
+                    {/* RLL Diagram Tab */}
+                    {activeTab === 'rll' && (
                     <section className="rll-fade-in" style={{
                         ...styles.section, 
-                        gridArea: 'flow',
                         width: '100%',
-                        maxWidth: '800px',
-                        height: expandedSections.rllDiagram ? '800px' : 'auto',
-                        minWidth: '0',
-                        minHeight: '0',
+                        height: '800px',
+                        marginTop: 0,
                         overflow: 'hidden'
                     }}>
                         <div 
                             style={styles.sectionHeader}
-                            onClick={() => setExpandedSections(prev => ({ ...prev, rllDiagram: !prev.rllDiagram }))}
                         >
                             <div style={{ display: 'flex', alignItems: 'center' }}>
                                 <div style={styles.sectionIcon}>
@@ -4445,11 +4532,8 @@ function RLLInfo() {
                                     </span>
                                 </h2>
                             </div>
-                            <button style={styles.expandButton}>
-                                {expandedSections.rllDiagram ? '▼' : '▶'}
-                            </button>
                         </div>
-                        {expandedSections.rllDiagram && <div style={{
+                        <div style={{
                             position: 'relative',
                             width: '100%',
                             height: 'calc(800px - 60px)',
@@ -4475,20 +4559,19 @@ function RLLInfo() {
                                 <TokenAnimationManager edges={initialEdges} nodes={initialNodes} />
                                 <TooltipOverlay tooltip={tooltip} theme={theme} />
                             </ReactFlow>
-                        </div>}
+                        </div>
                     </section>
+                    )}
 
-                    {/* Combined Details Section */}
+                    {/* System Components Tab */}
+                    {activeTab === 'components' && (
                     <section className="rll-fade-in" style={{
                         ...styles.section, 
-                        gridArea: 'details',
                         width: '100%',
-                        maxWidth: '800px',
-                        alignSelf: 'start'
+                        marginTop: 0,
                     }}>
                         <div 
                             style={styles.sectionHeader}
-                            onClick={() => setExpandedSections(prev => ({ ...prev, systemComponents: !prev.systemComponents }))}
                         >
                             <div style={{ display: 'flex', alignItems: 'center' }}>
                                 <div style={styles.sectionIcon}>
@@ -4505,11 +4588,8 @@ function RLLInfo() {
                                     </span>
                                 </h2>
                             </div>
-                            <button style={styles.expandButton}>
-                                {expandedSections.systemComponents ? '▼' : '▶'}
-                            </button>
                         </div>
-                        {expandedSections.systemComponents && Object.entries(nodes).map(([key, section]) => (
+                        {Object.entries(nodes).map(([key, section]) => (
                             <div key={key}>
                                 <div 
                                     style={styles.expandableHeader}
@@ -4582,7 +4662,7 @@ function RLLInfo() {
                             </div>
                         ))}
 
-                        {expandedSections.systemComponents && <h2 style={{ marginTop: '40px', ...styles.heading }}>
+                        <h2 style={{ marginTop: '40px', ...styles.heading }}>
                             <div style={styles.headingLeft}>
                                 <span>Token Flows</span>
                             </div>
@@ -4595,8 +4675,8 @@ function RLLInfo() {
                                 </span>
                                 <span style={{ width: '20px' }}></span>
                             </div>
-                        </h2>}
-                        {expandedSections.systemComponents && Object.entries(edges).map(([key, section]) => (
+                        </h2>
+                        {Object.entries(edges).map(([key, section]) => (
                             <div key={key}>
                                 <div 
                                     style={styles.expandableHeader}
@@ -4667,89 +4747,33 @@ function RLLInfo() {
                             </div>
                         ))}
                     </section>
+                    )}
                 </div>
 
                 <style>
                     {`
-                        @media (min-width: 1600px) {
-                            .rll-layout {
-                                grid-template-columns: 400px minmax(600px, 1fr) 500px !important;
-                                grid-template-areas: "assets flow details" !important;
-                                gap: 20px;
-                                max-width: 1800px;
-                                margin: 0 auto;
-                                padding: 0 20px;
-                                justifyItems: stretch;
-                            }
+                        .long-account-string {
+                            display: inline-block;
+                            max-width: 100%;
+                            word-break: break-all;
+                            font-family: monospace;
+                            font-size: 0.9em;
+                            background-color: rgba(0, 0, 0, 0.2);
+                            padding: 2px 4px;
+                            border-radius: 3px;
+                            margin: 2px 0;
+                        }
 
-                            .long-account-string {
-                                display: inline-block;
-                                max-width: 100%;
-                                word-break: break-all;
-                                font-family: monospace;
-                                font-size: 0.9em;
-                                background-color: rgba(0, 0, 0, 0.2);
-                                padding: 2px 4px;
-                                border-radius: 3px;
-                                margin: 2px 0;
+                        @media (min-width: 1200px) {
+                            .rll-tab-content {
+                                max-width: 1000px !important;
                             }
+                        }
 
-                            .rll-layout > section[style*="gridArea: assets"] {
-                                width: 400px !important;
-                                max-width: 400px !important;
-                            }
-
-                            .rll-layout > section[style*="gridArea: flow"] {
-                                width: 100% !important;
-                                max-width: unset !important;
-                                min-width: 600px !important;
-                            }
-
-                            .rll-layout > section[style*="gridArea: details"] {
-                                width: 500px !important;
-                                max-width: 500px !important;
-                                overflow-x: hidden !important;
-                            }
-
-                            /* Comprehensive text wrapping for all content types */
-                            .rll-layout > section[style*="gridArea: details"] * {
-                                overflow-wrap: break-word !important;
-                                word-wrap: break-word !important;
-                                word-break: break-word !important;
-                                hyphens: auto !important;
-                            }
-
-                            .rll-layout > section[style*="gridArea: details"] .item-content {
-                                max-width: 100% !important;
-                                padding-right: 10px !important;
-                            }
-
-                            .rll-layout > section[style*="gridArea: details"] .canisterId,
-                            .rll-layout > section[style*="gridArea: details"] .icrc1Account,
-                            .rll-layout > section[style*="gridArea: details"] pre,
-                            .rll-layout > section[style*="gridArea: details"] code {
-                                max-width: 100% !important;
-                                white-space: pre-wrap !important;
-                                font-family: monospace !important;
-                            }
-
-                            /* Ensure expandable headers don't overflow */
-                            .rll-layout > section[style*="gridArea: details"] .expandableHeader {
-                                display: flex !important;
-                                align-items: center !important;
-                                justify-content: space-between !important;
-                                padding-right: 10px !important;
-                            }
-
-                            /* Add padding to nested content */
-                            .rll-layout > section[style*="gridArea: details"] .detailsSection {
-                                padding: 10px !important;
-                                margin-right: 10px !important;
-                            }
-
-                            /* Ensure long URLs and links wrap properly */
-                            .rll-layout > section[style*="gridArea: details"] a {
-                                word-break: break-all !important;
+                        /* Mobile responsive tabs */
+                        @media (max-width: 600px) {
+                            .rll-tab-content section {
+                                padding: 1rem !important;
                             }
                         }
                     `}
