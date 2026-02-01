@@ -358,14 +358,14 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             defaultPath: '/me',
             subMenu: [
                 { name: 'Me', path: '/me' },
-                { name: 'Premium', path: '/premium' },
+                { name: 'Wallet', path: '/wallet' },
                 { name: 'Messages', path: '/sms' },
                 { name: 'Posts', path: '/posts' },
                 { name: 'Tips', path: '/tips' },
                 { name: 'Rewards', path: '/rewards' },
-                { name: 'Wallet', path: '/wallet' },
                 { name: 'Canisters', path: '/canisters' },
-                { name: 'Address Book', path: '/names' }
+                { name: 'Address Book', path: '/names' },
+                { name: 'Premium', path: '/premium' }
             ]
         },
         'Sneedex': {
@@ -1523,7 +1523,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                     e.currentTarget.style.transform = 'translateY(0)';
                                     e.currentTarget.style.boxShadow = '0 2px 8px rgba(16, 185, 129, 0.15)';
                                 }}
-                                title={`You have ${collectiblesCount} ${collectiblesCount === 1 ? 'item' : 'items'} to collect (fees, rewards, maturity)`}
+                                title={`You have ${collectiblesCount} ${collectiblesCount === 1 ? 'item' : 'items'} to collect worth $${collectiblesItems.reduce((sum, item) => sum + (item.usdValue || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (fees, rewards, maturity)`}
                             >
                                 <FaGift size={11} />
                                 <span>{collectiblesCount}</span>
