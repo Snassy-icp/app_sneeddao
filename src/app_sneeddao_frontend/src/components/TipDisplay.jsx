@@ -5,15 +5,14 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
 import { formatPrincipal } from '../utils/PrincipalUtils';
 
-const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = new Map(), isNarrowScreen = false, onTip = null }) => {
+const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = new Map(), isNarrowScreen = false, onTip = null, animateToken = null }) => {
     const { theme } = useTheme();
     const [hoveredToken, setHoveredToken] = useState(null);
     const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
     const [expandedTokens, setExpandedTokens] = useState(new Set()); // Track which pills are expanded
-    const [tooltipLocked, setTooltipLocked] = useState(false); // Prevent position updates when hovering tooltip
     const [animatingTokens, setAnimatingTokens] = useState(new Set()); // Track tokens that just received a new tip
     const pillRefs = useRef(new Map()); // Store refs to pill elements
-    const prevTipsRef = useRef(new Map()); // Track previous tip counts for animation
+    const tooltipHoveredRef = useRef(false); // Track if tooltip is being hovered (use ref to avoid stale closures)
     
     // Use the token metadata hook
     const { fetchTokenMetadata, getTokenMetadata, isLoadingMetadata } = useTokenMetadata();
@@ -174,72 +173,44 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
         return null; // No logo available
     };
 
-    // Detect new tips and trigger animation
+    // Handle external animation trigger (e.g., when tip dialog closes)
     useEffect(() => {
-        if (!tips || tips.length === 0) return;
-        
-        // Group current tips by token
-        const currentCounts = new Map();
-        tips.forEach(tip => {
-            const tokenKey = tip.token_ledger_principal.toString();
-            currentCounts.set(tokenKey, (currentCounts.get(tokenKey) || 0) + 1);
-        });
-        
-        // Check for increases and trigger animations
-        const newAnimating = new Set();
-        currentCounts.forEach((count, tokenKey) => {
-            const prevCount = prevTipsRef.current.get(tokenKey) || 0;
-            if (count > prevCount && prevCount > 0) {
-                // A new tip was added to an existing token
-                newAnimating.add(tokenKey);
-            }
-        });
-        
-        if (newAnimating.size > 0) {
-            setAnimatingTokens(newAnimating);
+        if (animateToken) {
+            setAnimatingTokens(new Set([animateToken]));
             // Clear animation state after animation completes
-            setTimeout(() => {
+            const timer = setTimeout(() => {
                 setAnimatingTokens(new Set());
             }, 800);
+            return () => clearTimeout(timer);
         }
-        
-        // Update previous counts
-        prevTipsRef.current = currentCounts;
-    }, [tips]);
+    }, [animateToken]);
 
     const handleMouseEnter = useCallback((tokenKey) => {
-        // Only update if not already showing this token or tooltip is locked
-        if (tooltipLocked && hoveredToken === tokenKey) return;
-        
         setHoveredToken(tokenKey);
-        setTooltipLocked(false);
         
         // Position tooltip based on the pill element
         const pillElement = pillRefs.current.get(tokenKey);
         if (pillElement) {
             updateTooltipPositionFromElement(pillElement);
         }
-    }, [tooltipLocked, hoveredToken]);
+    }, []);
     
     const handlePillMouseLeave = useCallback((tokenKey) => {
         // Delay closing to allow moving to tooltip
         setTimeout(() => {
-            setHoveredToken(current => {
-                if (current === tokenKey && !tooltipLocked) {
-                    return null;
-                }
-                return current;
-            });
-        }, 200);
-    }, [tooltipLocked]);
+            // Only close if tooltip is not being hovered
+            if (!tooltipHoveredRef.current) {
+                setHoveredToken(current => current === tokenKey ? null : current);
+            }
+        }, 150);
+    }, []);
     
     const handleTooltipMouseEnter = useCallback(() => {
-        // Lock the tooltip position when hovering over it
-        setTooltipLocked(true);
+        tooltipHoveredRef.current = true;
     }, []);
     
     const handleTooltipMouseLeave = useCallback(() => {
-        setTooltipLocked(false);
+        tooltipHoveredRef.current = false;
         setHoveredToken(null);
     }, []);
 

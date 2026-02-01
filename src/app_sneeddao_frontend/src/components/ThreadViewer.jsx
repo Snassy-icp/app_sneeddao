@@ -703,6 +703,8 @@ function ThreadViewer({
     const [selectedPostForTip, setSelectedPostForTip] = useState(null);
     const [tippingState, setTippingState] = useState('idle'); // 'idle', 'transferring', 'registering', 'success', 'error'
     const [defaultTipToken, setDefaultTipToken] = useState(null); // Preselected token for tip modal
+    const [lastTippedInfo, setLastTippedInfo] = useState(null); // { postId, tokenPrincipal } - for animation
+    const [animatingTipToken, setAnimatingTipToken] = useState(null); // Token to animate after tip success
 
     // Edit/Delete states
     const [editingPost, setEditingPost] = useState(null); // postId being edited
@@ -1782,6 +1784,12 @@ function ThreadViewer({
             if ('ok' in tipResult) {
                 console.log('Tip registered successfully:', tipResult.ok);
                 setTippingState('success');
+                
+                // Store the tipped info for animation when modal closes
+                setLastTippedInfo({
+                    postId: Number(selectedPostForTip.id),
+                    tokenPrincipal: tokenPrincipal.toString()
+                });
                 
                 // Refresh tips for this post
                 await fetchTipsForPosts([selectedPostForTip]);
@@ -3236,10 +3244,22 @@ function ThreadViewer({
                 <TipModal
                     isOpen={tipModalOpen}
                     onClose={() => {
+                        // If closing from success state and we have tip info, trigger animation
+                        if (tippingState === 'success' && lastTippedInfo) {
+                            setAnimatingTipToken({
+                                postId: lastTippedInfo.postId,
+                                tokenPrincipal: lastTippedInfo.tokenPrincipal
+                            });
+                            // Clear animation after it completes
+                            setTimeout(() => {
+                                setAnimatingTipToken(null);
+                            }, 900);
+                        }
                         setTipModalOpen(false);
                         setSelectedPostForTip(null);
                         setDefaultTipToken(null);
                         setTippingState('idle');
+                        setLastTippedInfo(null);
                     }}
                     post={selectedPostForTip}
                     availableTokens={availableTokens}
@@ -3507,6 +3527,12 @@ function ThreadViewer({
                                     onTip={identity && post.created_by.toString() !== identity.getPrincipal().toString() 
                                         ? (tokenPrincipal) => openTipModal(post, tokenPrincipal.toString())
                                         : null
+                                    }
+                                    animateToken={
+                                        animatingTipToken && 
+                                        animatingTipToken.postId === Number(post.id) 
+                                            ? animatingTipToken.tokenPrincipal 
+                                            : null
                                     }
                                 />
                             )}
