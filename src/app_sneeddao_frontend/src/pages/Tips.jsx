@@ -16,6 +16,7 @@ import {
 import { getRelativeTime, getFullDate } from '../utils/DateUtils';
 import { formatPrincipal, getPrincipalDisplayInfoFromContext, PrincipalDisplay } from '../utils/PrincipalUtils';
 import { Principal } from '@dfinity/principal';
+import { get_token_conversion_rate } from '../utils/TokenUtils';
 import Header from '../components/Header';
 import TokenConfetti from '../components/TokenConfetti';
 import { FaGift, FaArrowDown, FaArrowUp, FaSync, FaLock, FaExternalLinkAlt, FaComment } from 'react-icons/fa';
@@ -115,12 +116,14 @@ const Tips = () => {
     // Confetti state
     const [confettiLogos, setConfettiLogos] = useState([]);
     const [triggerConfetti, setTriggerConfetti] = useState(0);
+    const [confettiUsdValue, setConfettiUsdValue] = useState(0);
     const confettiTriggeredRef = useRef(false);
     
     // Debug: Press 'C' to test confetti (development only)
+    // Press 'C' for small effect (~$0.10), 'V' for full effect (~$5.00)
     useEffect(() => {
         const handleKeyPress = (e) => {
-            if (e.key === 'c' || e.key === 'C') {
+            if (e.key === 'c' || e.key === 'C' || e.key === 'v' || e.key === 'V') {
                 // Gather all token logos from tips
                 const allLogos = tipsReceived
                     .map(tip => {
@@ -132,8 +135,11 @@ const Tips = () => {
                 const uniqueLogos = [...new Set(allLogos)];
                 
                 if (uniqueLogos.length > 0) {
-                    console.log('🎉 Manual confetti trigger! Logos:', uniqueLogos);
+                    // 'C' = small tip (~$0.10, ~55% intensity), 'V' = big tip (~$5.00, 100% intensity)
+                    const testUsdValue = (e.key === 'v' || e.key === 'V') ? 5.00 : 0.10;
+                    console.log('🎉 Manual confetti trigger! Logos:', uniqueLogos, 'Test USD:', testUsdValue);
                     setConfettiLogos(uniqueLogos);
+                    setConfettiUsdValue(testUsdValue);
                     setTimeout(() => setTriggerConfetti(prev => prev + 1), 100);
                 } else {
                     console.log('⚠️ No token logos available for confetti');
@@ -325,7 +331,30 @@ const Tips = () => {
             return;
         }
         
-        // Preload images before triggering confetti
+        // Calculate USD value of all new tips
+        const calculateTotalUsdValue = async () => {
+            let totalUsd = 0;
+            
+            for (const tip of newTips) {
+                const tokenId = tip.token_ledger_principal.toString();
+                const metadata = getTokenMetadata(tokenId);
+                const decimals = metadata?.decimals || 8;
+                
+                try {
+                    const rate = await get_token_conversion_rate(tokenId, decimals);
+                    if (rate && rate > 0) {
+                        const tokenAmount = Number(tip.amount) / Math.pow(10, decimals);
+                        totalUsd += tokenAmount * rate;
+                    }
+                } catch (err) {
+                    console.warn('Failed to get conversion rate for', tokenId, err);
+                }
+            }
+            
+            return totalUsd;
+        };
+        
+        // Preload images and calculate USD value in parallel
         const preloadPromises = logos.map(url => {
             return new Promise((resolve) => {
                 const img = new Image();
@@ -336,13 +365,17 @@ const Tips = () => {
             });
         });
         
-        Promise.all(preloadPromises).then(results => {
-            console.log('🎊 Images preloaded:', results);
+        Promise.all([
+            Promise.all(preloadPromises),
+            calculateTotalUsdValue()
+        ]).then(([imageResults, totalUsdValue]) => {
+            console.log('🎊 Images preloaded:', imageResults, 'Total USD:', totalUsdValue);
             // Only proceed if at least one image loaded
-            if (results.some(loaded => loaded) && !confettiTriggeredRef.current) {
+            if (imageResults.some(loaded => loaded) && !confettiTriggeredRef.current) {
                 confettiTriggeredRef.current = true;
                 setConfettiLogos(logos);
-                console.log('🎉🎉🎉 LAUNCHING CONFETTI! 🎉🎉🎉');
+                setConfettiUsdValue(totalUsdValue);
+                console.log('🎉🎉🎉 LAUNCHING CONFETTI! USD Value:', totalUsdValue, '🎉🎉🎉');
                 // Small delay for dramatic effect
                 setTimeout(() => {
                     setTriggerConfetti(prev => prev + 1);
@@ -699,8 +732,9 @@ const Tips = () => {
             <TokenConfetti 
                 tokenLogos={confettiLogos}
                 trigger={triggerConfetti}
-                duration={7000}
-                particleCount={80}
+                duration={8000}
+                particleCount={100}
+                usdValue={confettiUsdValue}
             />
             
             <main style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
