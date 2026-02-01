@@ -992,9 +992,6 @@ function ThreadViewer({
     const fetchPosts = useCallback(async () => {
         if (!forumActor || !threadId) return;
         
-        // Save scroll position before fetching
-        const scrollPosition = window.pageYOffset || document.documentElement.scrollTop;
-        
         try {
             console.log('Fetching posts for thread ID:', threadId);
             const posts = await forumActor.get_posts_by_thread(Number(threadId));
@@ -1014,23 +1011,9 @@ function ThreadViewer({
             } else {
                 setDiscussionPosts([]);
             }
-            
-            // Restore scroll position after state update (double rAF for React batching)
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    window.scrollTo(0, scrollPosition);
-                });
-            });
         } catch (err) {
             console.error('Error fetching posts:', err);
             setDiscussionPosts([]);
-            
-            // Restore scroll position even on error
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    window.scrollTo(0, scrollPosition);
-                });
-            });
         }
     }, [forumActor, threadId]);
 
@@ -1193,9 +1176,6 @@ function ThreadViewer({
 
     // Handler functions
     const handleVote = useCallback(async (postId, voteType) => {
-        // Save scroll position at the very beginning
-        const savedScrollY = window.scrollY;
-        
         const selectedNeurons = getSelectedNeurons();
         if (!forumActor || !selectedNeurons || selectedNeurons.length === 0) {
             return;
@@ -1743,13 +1723,23 @@ function ThreadViewer({
         }
     }, [forumActor, selectedPostForTip, identity, refreshTokenBalance, closeTipModal]);
 
-    // Edit handlers
+    // Edit handlers - preserve scroll position to prevent unwanted scroll
     const startEditPost = useCallback((post) => {
+        const scrollY = window.scrollY;
         setEditingPost(Number(post.id));
+        // Restore scroll position after React renders
+        requestAnimationFrame(() => {
+            window.scrollTo(0, scrollY);
+        });
     }, []);
 
     const cancelEditPost = useCallback(() => {
+        const scrollY = window.scrollY;
         setEditingPost(null);
+        // Restore scroll position after React renders
+        requestAnimationFrame(() => {
+            window.scrollTo(0, scrollY);
+        });
     }, []);
 
     const submitEditPost = useCallback(async (title, body) => {
@@ -3237,6 +3227,7 @@ function ThreadViewer({
                         {!isFlat && (
                             <span
                                 onClick={() => {
+                                    const scrollY = window.scrollY;
                                     const newCollapsed = new Set(collapsedPosts);
                                     if (hasBeenManuallyToggled) {
                                         newCollapsed.delete(Number(post.id));
@@ -3244,6 +3235,10 @@ function ThreadViewer({
                                         newCollapsed.add(Number(post.id));
                                     }
                                     setCollapsedPosts(newCollapsed);
+                                    // Restore scroll position after React renders
+                                    requestAnimationFrame(() => {
+                                        window.scrollTo(0, scrollY);
+                                    });
                                 }}
                                 style={{
                                     color: theme.colors.mutedText,
@@ -3425,13 +3420,7 @@ function ThreadViewer({
                                     onClick={(e) => {
                                         e.preventDefault();
                                         e.stopPropagation();
-                                        // Prevent scroll by locking body overflow temporarily
                                         const scrollY = window.scrollY;
-                                        document.body.style.overflow = 'hidden';
-                                        document.body.style.position = 'fixed';
-                                        document.body.style.top = `-${scrollY}px`;
-                                        document.body.style.width = '100%';
-                                        
                                         const postIdStr = post.id.toString();
                                         const postVotes = threadVotes.get(postIdStr);
                                         const hasUpvotes = postVotes?.upvoted_neurons?.length > 0;
@@ -3441,16 +3430,9 @@ function ThreadViewer({
                                         } else {
                                             handleVote(post.id, 'up');
                                         }
-                                        
-                                        // Unlock body and restore scroll position after React renders
+                                        // Restore scroll position after React renders
                                         requestAnimationFrame(() => {
-                                            requestAnimationFrame(() => {
-                                                document.body.style.overflow = '';
-                                                document.body.style.position = '';
-                                                document.body.style.top = '';
-                                                document.body.style.width = '';
-                                                window.scrollTo(0, scrollY);
-                                            });
+                                            window.scrollTo(0, scrollY);
                                         });
                                     }}
                                     disabled={votingStates.get(post.id.toString()) === 'voting' || totalVotingPower === 0}
@@ -3500,13 +3482,7 @@ function ThreadViewer({
                                     onClick={(e) => {
                                         e.preventDefault();
                                         e.stopPropagation();
-                                        // Prevent scroll by locking body overflow temporarily
                                         const scrollY = window.scrollY;
-                                        document.body.style.overflow = 'hidden';
-                                        document.body.style.position = 'fixed';
-                                        document.body.style.top = `-${scrollY}px`;
-                                        document.body.style.width = '100%';
-                                        
                                         const postIdStr = post.id.toString();
                                         const postVotes = threadVotes.get(postIdStr);
                                         const hasDownvotes = postVotes?.downvoted_neurons?.length > 0;
@@ -3516,16 +3492,9 @@ function ThreadViewer({
                                         } else {
                                             handleVote(post.id, 'down');
                                         }
-                                        
-                                        // Unlock body and restore scroll position after React renders
+                                        // Restore scroll position after React renders
                                         requestAnimationFrame(() => {
-                                            requestAnimationFrame(() => {
-                                                document.body.style.overflow = '';
-                                                document.body.style.position = '';
-                                                document.body.style.top = '';
-                                                document.body.style.width = '';
-                                                window.scrollTo(0, scrollY);
-                                            });
+                                            window.scrollTo(0, scrollY);
                                         });
                                     }}
                                     disabled={votingStates.get(post.id.toString()) === 'voting' || totalVotingPower === 0}
@@ -3543,14 +3512,22 @@ function ThreadViewer({
 
                             {/* Reply Button */}
                             <button
+                                type="button"
                                 className="post-action-btn"
-                                onClick={() => {
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    const scrollY = window.scrollY;
                                     const isReplying = replyingTo === Number(post.id);
                                     if (isReplying) {
                                         setReplyingTo(null);
                                     } else {
                                         setReplyingTo(Number(post.id));
                                     }
+                                    // Restore scroll position after React renders
+                                    requestAnimationFrame(() => {
+                                        window.scrollTo(0, scrollY);
+                                    });
                                 }}
                                 title={replyingTo === Number(post.id) ? 'Cancel reply' : 'Reply to this post'}
                             >
@@ -3563,8 +3540,13 @@ function ThreadViewer({
                                     {/* Tip Button - Only show for posts by other users */}
                                     {identity && post.created_by.toString() !== identity.getPrincipal().toString() && (
                                         <button
+                                            type="button"
                                             className="post-action-btn"
-                                            onClick={() => openTipModal(post)}
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                openTipModal(post);
+                                            }}
                                             title="Send a tip to the post author"
                                         >
                                             <FaCoins size={12} style={{ opacity: 0.7 }} /> Tip
@@ -3574,8 +3556,11 @@ function ThreadViewer({
                                     {/* Send Message Button - Only show for posts by other users */}
                                     {identity && post.created_by.toString() !== identity.getPrincipal().toString() && (
                                         <button
+                                            type="button"
                                             className="post-action-btn"
-                                            onClick={() => {
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
                                                 const recipientPrincipal = post.created_by.toString();
                                                 navigate(`/sms?recipient=${encodeURIComponent(recipientPrincipal)}`);
                                             }}
@@ -3588,8 +3573,13 @@ function ThreadViewer({
                                     {/* Edit Button - Show for post owner or admin */}
                                     {identity && (post.created_by.toString() === identity.getPrincipal().toString() || isAdmin) && (
                                         <button
+                                            type="button"
                                             className="post-action-btn"
-                                            onClick={() => startEditPost(post)}
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                startEditPost(post);
+                                            }}
                                             title="Edit this post"
                                         >
                                             <FaEdit size={12} style={{ opacity: 0.7 }} /> Edit
@@ -3599,8 +3589,13 @@ function ThreadViewer({
                                     {/* Delete Button - Show for post owner or admin */}
                                     {identity && (post.created_by.toString() === identity.getPrincipal().toString() || isAdmin) && (
                                         <button
+                                            type="button"
                                             className="post-action-btn"
-                                            onClick={() => handleDeletePost(post.id)}
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                handleDeletePost(post.id);
+                                            }}
                                             disabled={deletingPost === Number(post.id)}
                                             style={{
                                                 cursor: deletingPost === Number(post.id) ? 'not-allowed' : 'pointer',
@@ -3616,8 +3611,13 @@ function ThreadViewer({
                                     {identity && post.created_by.toString() === identity.getPrincipal().toString() && 
                                      !postPolls.get(Number(post.id))?.length && !showPollForm.get(Number(post.id)) && (
                                         <button
+                                            type="button"
                                             className="post-action-btn"
-                                            onClick={() => setShowPollForm(prev => new Map(prev.set(Number(post.id), true)))}
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                setShowPollForm(prev => new Map(prev.set(Number(post.id), true)));
+                                            }}
                                             title="Add a poll to this post"
                                         >
                                             <FaPoll size={12} style={{ opacity: 0.7 }} /> Add Poll
@@ -3682,7 +3682,10 @@ function ThreadViewer({
                                             {/* Tip Option */}
                             {identity && post.created_by.toString() !== identity.getPrincipal().toString() && (
                                 <button
-                                                    onClick={() => {
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
                                                         openTipModal(post);
                                                         setOpenOverflowMenu(null);
                                                     }}
@@ -3707,7 +3710,10 @@ function ThreadViewer({
                                             {/* Message Option */}
                             {identity && post.created_by.toString() !== identity.getPrincipal().toString() && (
                                 <button
-                                    onClick={() => {
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
                                         const recipientPrincipal = post.created_by.toString();
                                         navigate(`/sms?recipient=${encodeURIComponent(recipientPrincipal)}`);
                                                         setOpenOverflowMenu(null);
@@ -3733,7 +3739,10 @@ function ThreadViewer({
                                             {/* Edit Option */}
                             {identity && (post.created_by.toString() === identity.getPrincipal().toString() || isAdmin) && (
                                 <button
-                                                    onClick={() => {
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
                                                         startEditPost(post);
                                                         setOpenOverflowMenu(null);
                                                     }}
@@ -3758,7 +3767,10 @@ function ThreadViewer({
                                             {/* Delete Option */}
                             {identity && (post.created_by.toString() === identity.getPrincipal().toString() || isAdmin) && (
                                 <button
-                                                    onClick={() => {
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
                                                         handleDeletePost(post.id);
                                                         setOpenOverflowMenu(null);
                                                     }}
