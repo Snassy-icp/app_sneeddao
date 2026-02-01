@@ -9,7 +9,7 @@ import { get_token_conversion_rate } from '../utils/TokenUtils';
 const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = new Map(), isNarrowScreen = false, onTip = null, animateToken = null, postId = null }) => {
     const { theme } = useTheme();
     const [hoveredToken, setHoveredToken] = useState(null);
-    const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
+    const [tooltipPosition, setTooltipPosition] = useState({ x: -9999, y: -9999 }); // Start off-screen to prevent flash
     const [expandedTokens, setExpandedTokens] = useState(new Set()); // Track which pills are expanded
     const [animatingTokens, setAnimatingTokens] = useState(new Set()); // Track tokens that just received a new tip
     const pillRefs = useRef(new Map()); // Store refs to pill elements
@@ -379,6 +379,13 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
             return;
         }
         
+        // Position tooltip FIRST based on current pill position
+        const pillElement = pillRefs.current.get(tokenKey);
+        if (pillElement) {
+            updateTooltipPositionFromElement(pillElement);
+        }
+        
+        // Then show tooltip
         setHoveredToken(tokenKey);
         
         // Auto-expand the pill on hover (desktop)
@@ -388,13 +395,13 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
             return newSet;
         });
         
-        // Position tooltip based on the pill element (with small delay for expansion)
+        // Recalculate position after expansion animation completes
         setTimeout(() => {
-            const pillElement = pillRefs.current.get(tokenKey);
-            if (pillElement) {
-                updateTooltipPositionFromElement(pillElement);
+            const pillEl = pillRefs.current.get(tokenKey);
+            if (pillEl) {
+                updateTooltipPositionFromElement(pillEl);
             }
-        }, 50);
+        }, 300);
     }, [updateTooltipPositionFromElement]);
     
     const handlePillMouseLeave = useCallback((tokenKey) => {
