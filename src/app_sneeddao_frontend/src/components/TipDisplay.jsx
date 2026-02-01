@@ -151,9 +151,10 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
         <div style={{
             display: 'flex',
             flexWrap: 'wrap',
-            gap: '6px',
+            gap: '8px',
             alignItems: 'center',
-            marginTop: '8px',
+            marginTop: '4px',
+            marginBottom: '6px',
             fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
             }}>
             
@@ -170,53 +171,75 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                         onMouseLeave={handleMouseLeave}
                         onMouseMove={handleMouseMove}
                         style={{
-                            backgroundColor: theme.colors.primaryBg,
-                            border: `1px solid ${isLoading ? theme.colors.mutedText : theme.colors.warning}`,
-                            borderRadius: '12px',
-                            padding: '4px 8px',
-                            fontSize: '12px',
-                            color: isLoading ? theme.colors.mutedText : theme.colors.warning,
+                            background: isLoading 
+                                ? 'linear-gradient(135deg, rgba(100,100,100,0.15) 0%, rgba(80,80,80,0.1) 100%)'
+                                : 'linear-gradient(135deg, rgba(255,215,0,0.12) 0%, rgba(255,180,0,0.06) 100%)',
+                            border: `1px solid ${isLoading ? 'rgba(150,150,150,0.3)' : 'rgba(255,215,0,0.35)'}`,
+                            borderRadius: '16px',
+                            padding: '3px 10px 3px 6px',
+                            fontSize: '11px',
+                            color: isLoading ? theme.colors.mutedText : '#e6c200',
                             cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '4px',
+                            gap: '5px',
                             fontWeight: '500',
-                            opacity: isLoading ? 0.7 : 1
+                            opacity: isLoading ? 0.7 : 1,
+                            transition: 'all 0.2s ease',
+                            boxShadow: isLoading ? 'none' : '0 1px 3px rgba(255,215,0,0.1)',
+                        }}
+                        onMouseOver={(e) => {
+                            if (!isLoading) {
+                                e.currentTarget.style.background = 'linear-gradient(135deg, rgba(255,215,0,0.2) 0%, rgba(255,180,0,0.12) 100%)';
+                                e.currentTarget.style.borderColor = 'rgba(255,215,0,0.5)';
+                                e.currentTarget.style.boxShadow = '0 2px 8px rgba(255,215,0,0.2)';
+                            }
+                        }}
+                        onMouseOut={(e) => {
+                            if (!isLoading) {
+                                e.currentTarget.style.background = 'linear-gradient(135deg, rgba(255,215,0,0.12) 0%, rgba(255,180,0,0.06) 100%)';
+                                e.currentTarget.style.borderColor = 'rgba(255,215,0,0.35)';
+                                e.currentTarget.style.boxShadow = '0 1px 3px rgba(255,215,0,0.1)';
+                            }
                         }}
                     >
                         {isLoading ? (
-                            <span>⏳</span>
+                            <span style={{ fontSize: '12px' }}>⏳</span>
                         ) : logo ? (
                             <img 
                                 src={logo} 
                                 alt={symbol}
                                 style={{
-                                    width: '16px',
-                                    height: '16px',
+                                    width: '14px',
+                                    height: '14px',
                                     borderRadius: '50%',
-                                    objectFit: 'cover'
+                                    objectFit: 'cover',
+                                    boxShadow: '0 1px 2px rgba(0,0,0,0.2)'
                                 }}
                                 onError={(e) => {
-                                    // Fallback to diamond if logo fails to load
                                     e.target.style.display = 'none';
                                     e.target.nextSibling.style.display = 'inline';
                                 }}
                             />
                         ) : null}
-                        {/* Fallback diamond - hidden by default if logo exists */}
-                        <span style={{ display: logo && !isLoading ? 'none' : 'inline' }}>💎</span>
+                        <span style={{ display: logo && !isLoading ? 'none' : 'inline', fontSize: '11px' }}>💎</span>
                         {!isNarrowScreen && (
-                            <span>
+                            <span style={{ letterSpacing: '-0.2px' }}>
                                 {formatAmount(tokenData.totalAmount, decimals)} {symbol}
                             </span>
                         )}
                         <span style={{ 
-                            backgroundColor: isLoading ? '#666' : '#f39c12',
-                            color: isLoading ? '#ccc' : '#000',
-                            borderRadius: '6px',
-                            padding: '1px 4px',
-                            fontSize: '10px',
-                            fontWeight: 'bold'
+                            background: isLoading 
+                                ? 'rgba(100,100,100,0.4)'
+                                : 'linear-gradient(135deg, #ffd700 0%, #e6ac00 100%)',
+                            color: isLoading ? '#ccc' : '#1a1a00',
+                            borderRadius: '8px',
+                            padding: '1px 5px',
+                            fontSize: '9px',
+                            fontWeight: '700',
+                            minWidth: '14px',
+                            textAlign: 'center',
+                            boxShadow: isLoading ? 'none' : '0 1px 2px rgba(0,0,0,0.15)'
                         }}>
                             {tokenData.tips.length}
                         </span>
@@ -231,57 +254,106 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                         position: 'fixed',
                         left: tooltipPosition.x,
                         top: tooltipPosition.y,
-                        backgroundColor: '#1a1a1a',
-                        border: '1px solid #4a4a4a',
-                        borderRadius: '6px',
-                        padding: '12px',
+                        background: 'linear-gradient(180deg, #1e1e1e 0%, #151515 100%)',
+                        border: '1px solid rgba(255,215,0,0.2)',
+                        borderRadius: '12px',
+                        padding: '14px 16px',
                         color: '#ffffff',
                         fontSize: '12px',
-                        maxWidth: '300px',
+                        maxWidth: '320px',
+                        minWidth: '200px',
                         zIndex: 9999,
-                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
-                        pointerEvents: 'none'
+                        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.05) inset',
+                        pointerEvents: 'none',
+                        backdropFilter: 'blur(10px)'
                     }}
                 >
+                    {/* Header */}
                     <div style={{
-                        fontWeight: 'bold',
-                        color: '#f39c12',
-                        marginBottom: '8px',
-                        borderBottom: '1px solid #333',
-                        paddingBottom: '4px'
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        marginBottom: '12px',
+                        paddingBottom: '10px',
+                        borderBottom: '1px solid rgba(255,215,0,0.15)'
                     }}>
-                        {getTokenSymbol(tipsByToken[hoveredToken].principal)} Tips ({tipsByToken[hoveredToken].tips.length})
+                        {getTokenLogo(tipsByToken[hoveredToken].principal) && (
+                            <img 
+                                src={getTokenLogo(tipsByToken[hoveredToken].principal)} 
+                                alt=""
+                                style={{
+                                    width: '20px',
+                                    height: '20px',
+                                    borderRadius: '50%',
+                                    boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
+                                }}
+                            />
+                        )}
+                        <div>
+                            <div style={{
+                                fontWeight: '600',
+                                color: '#ffd700',
+                                fontSize: '13px',
+                                letterSpacing: '-0.2px'
+                            }}>
+                                {getTokenSymbol(tipsByToken[hoveredToken].principal)} Tips
+                            </div>
+                            <div style={{
+                                fontSize: '10px',
+                                color: 'rgba(255,255,255,0.5)',
+                                marginTop: '1px'
+                            }}>
+                                {tipsByToken[hoveredToken].tips.length} {tipsByToken[hoveredToken].tips.length === 1 ? 'tip' : 'tips'} received
+                            </div>
+                        </div>
                     </div>
                     
-                    <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                    {/* Tips List */}
+                    <div style={{ 
+                        maxHeight: '180px', 
+                        overflowY: 'auto',
+                        marginRight: '-8px',
+                        paddingRight: '8px'
+                    }}>
                         {tipsByToken[hoveredToken].tips
-                            .sort((a, b) => Number(b.created_at) - Number(a.created_at)) // Most recent first
+                            .sort((a, b) => Number(b.created_at) - Number(a.created_at))
                             .map((tip, index) => (
                                 <div key={index} style={{
                                     display: 'flex',
-                                    justifyContent: 'space-between',
                                     alignItems: 'flex-start',
-                                    marginBottom: index < tipsByToken[hoveredToken].tips.length - 1 ? '6px' : '0',
-                                    paddingBottom: index < tipsByToken[hoveredToken].tips.length - 1 ? '6px' : '0',
-                                    borderBottom: index < tipsByToken[hoveredToken].tips.length - 1 ? '1px solid #333' : 'none',
-                                    gap: '8px'
+                                    gap: '10px',
+                                    padding: '8px 0',
+                                    borderBottom: index < tipsByToken[hoveredToken].tips.length - 1 
+                                        ? '1px solid rgba(255,255,255,0.06)' 
+                                        : 'none'
                                 }}>
+                                    <div style={{
+                                        width: '6px',
+                                        height: '6px',
+                                        borderRadius: '50%',
+                                        background: 'linear-gradient(135deg, #ffd700 0%, #e6ac00 100%)',
+                                        marginTop: '5px',
+                                        flexShrink: 0,
+                                        boxShadow: '0 0 6px rgba(255,215,0,0.4)'
+                                    }} />
                                     <div style={{ flex: 1, minWidth: 0 }}>
                                         <div style={{
-                                            color: '#6b8e6b',
-                                            fontWeight: '500',
-                                            marginBottom: '2px'
+                                            color: '#8fbc8f',
+                                            fontWeight: '600',
+                                            fontSize: '12px',
+                                            marginBottom: '3px'
                                         }}>
-                                            {formatAmount(Number(tip.amount), getTokenDecimals(tip.token_ledger_principal))} {getTokenSymbol(tip.token_ledger_principal)}
+                                            +{formatAmount(Number(tip.amount), getTokenDecimals(tip.token_ledger_principal))} {getTokenSymbol(tip.token_ledger_principal)}
                                         </div>
                                         <div style={{
-                                            color: theme.colors.mutedText,
+                                            color: 'rgba(255,255,255,0.6)',
                                             fontSize: '10px',
                                             overflow: 'hidden',
                                             textOverflow: 'ellipsis',
-                                            whiteSpace: 'nowrap'
+                                            whiteSpace: 'nowrap',
+                                            marginBottom: '2px'
                                         }}>
-                                            From: {(() => {
+                                            {(() => {
                                                 const principalStr = tip.from_principal.toString();
                                                 const displayInfo = principalDisplayInfo.get(principalStr);
                                                 const formatted = formatPrincipal(tip.from_principal, displayInfo);
@@ -289,7 +361,6 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                                                 if (typeof formatted === 'string') {
                                                     return formatted;
                                                 } else if (formatted?.name || formatted?.nickname) {
-                                                    // Show name/nickname with truncated ID
                                                     const parts = [];
                                                     if (formatted.name) parts.push(formatted.name);
                                                     if (formatted.nickname) parts.push(`"${formatted.nickname}"`);
@@ -300,8 +371,8 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                                             })()}
                                         </div>
                                         <div style={{
-                                            color: '#666',
-                                            fontSize: '10px'
+                                            color: 'rgba(255,255,255,0.35)',
+                                            fontSize: '9px'
                                         }}>
                                             {formatTimestamp(tip.created_at)}
                                         </div>
@@ -311,14 +382,30 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                         }
                     </div>
                     
+                    {/* Total */}
                     <div style={{
-                        marginTop: '8px',
-                        paddingTop: '8px',
-                        borderTop: '1px solid #333',
-                        fontWeight: 'bold',
-                        color: '#f39c12'
+                        marginTop: '12px',
+                        paddingTop: '10px',
+                        borderTop: '1px solid rgba(255,215,0,0.15)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
                     }}>
-                        Total: {formatAmount(tipsByToken[hoveredToken].totalAmount, getTokenDecimals(tipsByToken[hoveredToken].principal))} {getTokenSymbol(tipsByToken[hoveredToken].principal)}
+                        <span style={{ 
+                            color: 'rgba(255,255,255,0.5)', 
+                            fontSize: '11px',
+                            fontWeight: '500'
+                        }}>
+                            Total
+                        </span>
+                        <span style={{
+                            fontWeight: '700',
+                            color: '#ffd700',
+                            fontSize: '13px',
+                            letterSpacing: '-0.3px'
+                        }}>
+                            {formatAmount(tipsByToken[hoveredToken].totalAmount, getTokenDecimals(tipsByToken[hoveredToken].principal))} {getTokenSymbol(tipsByToken[hoveredToken].principal)}
+                        </span>
                     </div>
                 </div>,
                 document.body
