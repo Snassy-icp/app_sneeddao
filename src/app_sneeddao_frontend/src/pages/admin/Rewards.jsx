@@ -940,6 +940,66 @@ export default function RewardsAdmin() {
         );
     };
     
+    // Filter and pair claim events (must be before any conditional returns)
+    const processedClaimEvents = useMemo(() => {
+        // First, filter by principal if filter is set
+        let filtered = claimEvents;
+        if (claimFilter.trim()) {
+            const filterLower = claimFilter.trim().toLowerCase();
+            filtered = claimEvents.filter(event => 
+                event.hotkey?.toString().toLowerCase().includes(filterLower)
+            );
+        }
+        
+        // Sort by sequence number descending (newest first)
+        const sorted = [...filtered].sort((a, b) => 
+            Number(b.sequence_number) - Number(a.sequence_number)
+        );
+        
+        // Pair pending + success events into single rows
+        const paired = [];
+        
+        for (const event of sorted) {
+            if ('Pending' in event.status) {
+                // Check if we have a matching success for this pending
+                const existingSuccess = paired.find(e => 
+                    e.hotkey?.toString() === event.hotkey?.toString() &&
+                    e.token_id?.toString() === event.token_id?.toString() &&
+                    e.amount?.toString() === event.amount?.toString() &&
+                    'Success' in e.status &&
+                    !e._paired
+                );
+                
+                if (existingSuccess) {
+                    // Mark the success as paired and add pending info
+                    existingSuccess._paired = true;
+                    existingSuccess._pendingTimestamp = event.timestamp;
+                    existingSuccess._pendingSeq = event.sequence_number;
+                } else {
+                    // No matching success, add pending as standalone
+                    paired.push({ ...event });
+                }
+            } else if ('Success' in event.status) {
+                // Check if there's a pending event that will come later
+                paired.push({ ...event, _paired: false });
+            } else {
+                // Failed events - show as is
+                paired.push({ ...event });
+            }
+        }
+        
+        return paired;
+    }, [claimEvents, claimFilter]);
+    
+    // Filter all user balances (must be before any conditional returns)
+    const filteredUserBalances = useMemo(() => {
+        if (!userBalancesFilter.trim()) return allUserBalances;
+        const filterLower = userBalancesFilter.trim().toLowerCase();
+        return allUserBalances.filter(([principal, _]) => 
+            principal.toString().toLowerCase().includes(filterLower)
+        );
+    }, [allUserBalances, userBalancesFilter]);
+    
     const styles = {
         container: {
             maxWidth: '1400px',
@@ -1222,76 +1282,11 @@ export default function RewardsAdmin() {
         return null;
     }
 
-    // Paginated data
+    // Paginated data (computed from memoized values above)
     const paginatedDistributions = getPaginatedData(distributionEvents, distributionPage);
     const distributionTotalPages = getTotalPages(distributionEvents);
-    
-    // Filter and pair claim events
-    const processedClaimEvents = useMemo(() => {
-        // First, filter by principal if filter is set
-        let filtered = claimEvents;
-        if (claimFilter.trim()) {
-            const filterLower = claimFilter.trim().toLowerCase();
-            filtered = claimEvents.filter(event => 
-                event.hotkey?.toString().toLowerCase().includes(filterLower)
-            );
-        }
-        
-        // Sort by sequence number descending (newest first)
-        const sorted = [...filtered].sort((a, b) => 
-            Number(b.sequence_number) - Number(a.sequence_number)
-        );
-        
-        // Pair pending + success events into single rows
-        const paired = [];
-        const seenPending = new Map(); // Map from key to pending event
-        
-        for (const event of sorted) {
-            const key = `${event.hotkey?.toString()}-${event.token_id?.toString()}-${event.amount?.toString()}`;
-            
-            if ('Pending' in event.status) {
-                // Check if we have a matching success for this pending
-                const existingSuccess = paired.find(e => 
-                    e.hotkey?.toString() === event.hotkey?.toString() &&
-                    e.token_id?.toString() === event.token_id?.toString() &&
-                    e.amount?.toString() === event.amount?.toString() &&
-                    'Success' in e.status &&
-                    !e._paired
-                );
-                
-                if (existingSuccess) {
-                    // Mark the success as paired and add pending info
-                    existingSuccess._paired = true;
-                    existingSuccess._pendingTimestamp = event.timestamp;
-                    existingSuccess._pendingSeq = event.sequence_number;
-                } else {
-                    // No matching success, add pending as standalone
-                    paired.push({ ...event });
-                }
-            } else if ('Success' in event.status) {
-                // Check if there's a pending event that will come later
-                paired.push({ ...event, _paired: false });
-            } else {
-                // Failed events - show as is
-                paired.push({ ...event });
-            }
-        }
-        
-        return paired;
-    }, [claimEvents, claimFilter]);
-    
     const paginatedClaims = getPaginatedData(processedClaimEvents, claimPage);
     const claimTotalPages = getTotalPages(processedClaimEvents);
-    
-    // Filter all user balances
-    const filteredUserBalances = useMemo(() => {
-        if (!userBalancesFilter.trim()) return allUserBalances;
-        const filterLower = userBalancesFilter.trim().toLowerCase();
-        return allUserBalances.filter(([principal, _]) => 
-            principal.toString().toLowerCase().includes(filterLower)
-        );
-    }, [allUserBalances, userBalancesFilter]);
-    
     const paginatedUserBalances = getPaginatedData(filteredUserBalances, userBalancesPage);
     const userBalancesTotalPages = getTotalPages(filteredUserBalances);
 
