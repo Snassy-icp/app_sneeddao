@@ -4047,6 +4047,13 @@ function Wallet() {
         liquidityPositions.forEach(position => {
             position.positions.forEach(positionDetails => {
                 if (positionDetails.tokensOwed0 > 0n || positionDetails.tokensOwed1 > 0n) {
+                    // Skip if neither token amount is >= its transaction fee (can't collect)
+                    const canCollect0 = positionDetails.tokensOwed0 >= (position.token0Fee || 0n);
+                    const canCollect1 = positionDetails.tokensOwed1 >= (position.token1Fee || 0n);
+                    if (!canCollect0 && !canCollect1) {
+                        return; // Skip this position - fees below transaction fees
+                    }
+                    
                     const fee0USD = position.token0_conversion_rate 
                         ? Number(positionDetails.tokensOwed0) / Number(10n ** BigInt(position.token0Decimals)) * position.token0_conversion_rate
                         : 0;
@@ -4078,6 +4085,12 @@ function Wallet() {
         tokens.forEach(token => {
             const rewardAmount = rewardAmountOrZero(token, rewardDetailsLoading, false);
             if (rewardAmount > 0n) {
+                // Skip if reward amount is less than transaction fee (can't collect)
+                const tokenFee = BigInt(token.fee || 0);
+                if (rewardAmount < tokenFee) {
+                    return; // Skip this reward - below transaction fee
+                }
+                
                 const rewardsUSD = token.conversion_rate 
                     ? Number(rewardAmount) / Number(10n ** BigInt(token.decimals)) * token.conversion_rate
                     : 0;
@@ -4114,10 +4127,17 @@ function Wallet() {
             
             // Use the neurons stored from TokenCard callback
             const neurons = snsNeuronsByToken[ledgerId] || [];
+            const tokenFee = BigInt(token.fee || 0);
+            
             neurons.forEach(neuron => {
                 const maturity = BigInt(neuron.maturity_e8s_equivalent || 0n);
                 // Only include neurons where user has DISBURSE_MATURITY permission
                 if (maturity > 0n && userHasNeuronPermission(neuron, PERM.DISBURSE_MATURITY)) {
+                    // Skip if maturity is less than transaction fee (can't collect)
+                    if (maturity < tokenFee) {
+                        return; // Skip this neuron - maturity below transaction fee
+                    }
+                    
                     const maturityUSD = token.conversion_rate 
                         ? Number(maturity) / Number(10n ** BigInt(token.decimals)) * token.conversion_rate
                         : 0;

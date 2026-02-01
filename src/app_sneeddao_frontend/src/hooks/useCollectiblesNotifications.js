@@ -156,6 +156,12 @@ export function useCollectiblesNotifications() {
                                     const conversionRate = await get_token_conversion_rate(ledgerId.toText(), decimals);
                                     const usdValue = conversionRate ? Number(amount) / Number(10n ** BigInt(decimals)) * conversionRate : 0;
                                     
+                                    // Skip if amount is less than transaction fee (can't collect)
+                                    if (amount < fee) {
+                                        console.log(`Skipping ${symbol} reward: amount ${amount} < fee ${fee}`);
+                                        continue;
+                                    }
+                                    
                                     items.push({
                                         type: 'reward',
                                         name: `${symbol} Rewards`,
@@ -222,11 +228,13 @@ export function useCollectiblesNotifications() {
                                 const ledgerActor0 = createLedgerActor(token0Address);
                                 const ledgerActor1 = createLedgerActor(token1Address);
                                 
-                                const [symbol0, decimals0, symbol1, decimals1] = await Promise.all([
+                                const [symbol0, decimals0, fee0, symbol1, decimals1, fee1] = await Promise.all([
                                     ledgerActor0.icrc1_symbol(),
                                     ledgerActor0.icrc1_decimals(),
+                                    ledgerActor0.icrc1_fee(),
                                     ledgerActor1.icrc1_symbol(),
-                                    ledgerActor1.icrc1_decimals()
+                                    ledgerActor1.icrc1_decimals(),
+                                    ledgerActor1.icrc1_fee()
                                 ]);
                                 
                                 const [rate0, rate1] = await Promise.all([
@@ -247,6 +255,14 @@ export function useCollectiblesNotifications() {
                                         const isClaimedPosition = claimed_position_ids_for_swap.includes(position.id);
                                         
                                         if ((isUserPosition || isClaimedPosition) && (position.tokensOwed0 > 0n || position.tokensOwed1 > 0n)) {
+                                            // Skip if neither token amount is >= its transaction fee (can't collect)
+                                            const canCollect0 = position.tokensOwed0 >= fee0;
+                                            const canCollect1 = position.tokensOwed1 >= fee1;
+                                            if (!canCollect0 && !canCollect1) {
+                                                console.log(`Skipping LP position #${position.id}: fees below transaction fees`);
+                                                continue;
+                                            }
+                                            
                                             const fee0USD = rate0 ? Number(position.tokensOwed0) / Number(10n ** BigInt(decimals0)) * rate0 : 0;
                                             const fee1USD = rate1 ? Number(position.tokensOwed1) / Number(10n ** BigInt(decimals1)) * rate1 : 0;
                                             
@@ -319,11 +335,13 @@ export function useCollectiblesNotifications() {
                                 let symbol = sns.name || 'Unknown';
                                 let decimals = 8;
                                 let conversionRate = 0;
+                                let tokenFee = 0n;
                                 
                                 try {
                                     const ledgerActor = createLedgerActor(ledgerId);
                                     symbol = await ledgerActor.icrc1_symbol();
                                     decimals = await ledgerActor.icrc1_decimals();
+                                    tokenFee = await ledgerActor.icrc1_fee();
                                     conversionRate = await get_token_conversion_rate(ledgerId, decimals);
                                 } catch (e) {
                                     console.warn('Could not get token info for SNS:', sns.name);
@@ -332,6 +350,12 @@ export function useCollectiblesNotifications() {
                                 for (const neuron of neurons) {
                                     const maturity = BigInt(neuron.maturity_e8s_equivalent || 0n);
                                     if (maturity > 0n && userHasNeuronPermission(neuron, PERM.DISBURSE_MATURITY, currentPrincipal)) {
+                                        // Skip if maturity is less than transaction fee (can't collect)
+                                        if (maturity < tokenFee) {
+                                            console.log(`Skipping ${symbol} neuron maturity: amount ${maturity} < fee ${tokenFee}`);
+                                            continue;
+                                        }
+                                        
                                         const maturityUSD = conversionRate ? Number(maturity) / Number(10n ** BigInt(decimals)) * conversionRate : 0;
                                         
                                         const neuronIdHex = Array.from(neuron.id[0].id)
@@ -347,6 +371,7 @@ export function useCollectiblesNotifications() {
                                                 ledger_canister_id: ledgerId,
                                                 symbol,
                                                 decimals,
+                                                fee: tokenFee,
                                                 conversion_rate: conversionRate
                                             },
                                             neuron: neuron,
