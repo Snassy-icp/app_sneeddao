@@ -66,10 +66,11 @@ const TipModal = ({
     const [tokenPrices, setTokenPrices] = useState({}); // USD prices per token
     const [isClosing, setIsClosing] = useState(false); // Track closing animation state
     const [successLogo, setSuccessLogo] = useState(null); // Capture logo when tip succeeds
-    const [flyingLogo, setFlyingLogo] = useState(null); // { x, y, size, rotation } for flying animation
+    const [showFlyingLogo, setShowFlyingLogo] = useState(false); // Just controls visibility
     
     const logoRef = useRef(null); // Ref to the logo element
     const animationRef = useRef(null); // Ref for requestAnimationFrame
+    const flyingLogoRef = useRef(null); // Ref to flying logo element for direct DOM manipulation
 
     // Close dropdown when modal closes, reset closing state
     useEffect(() => {
@@ -77,7 +78,7 @@ const TipModal = ({
             setTokenDropdownOpen(false);
             setIsClosing(false);
             setSuccessLogo(null);
-            setFlyingLogo(null);
+            setShowFlyingLogo(false);
             if (animationRef.current) {
                 cancelAnimationFrame(animationRef.current);
             }
@@ -129,16 +130,10 @@ const TipModal = ({
             const endX = targetRect.left + 10; // Center of logo in pill
             const endY = targetRect.top + targetRect.height / 2;
             
-            // Initialize flying state
-            setFlyingLogo({
-                x: startX,
-                y: startY,
-                size: startSize,
-                rotation: 0
-            });
+            // Show the flying logo element
+            setShowFlyingLogo(true);
             
             const duration = 800; // ms for flight
-            const startTime = performance.now();
             
             // Bezier curve control points for a nice arc
             const cp1x = startX + (endX - startX) * 0.3;
@@ -146,50 +141,84 @@ const TipModal = ({
             const cp2x = startX + (endX - startX) * 0.7;
             const cp2y = endY - 30;
             
-            const animate = (currentTime) => {
-                const elapsed = currentTime - startTime;
-                const progress = Math.min(elapsed / duration, 1);
-                
-                // Easing - starts slow, speeds up, slows at end
-                const easeInOutCubic = (t) => t < 0.5 
-                    ? 4 * t * t * t 
-                    : 1 - Math.pow(-2 * t + 2, 3) / 2;
-                const easedProgress = easeInOutCubic(progress);
-                
-                // Calculate position along cubic bezier curve
-                const t = easedProgress;
-                const mt = 1 - t;
-                const x = mt * mt * mt * startX + 
-                          3 * mt * mt * t * cp1x + 
-                          3 * mt * t * t * cp2x + 
-                          t * t * t * endX;
-                const y = mt * mt * mt * startY + 
-                          3 * mt * mt * t * cp1y + 
-                          3 * mt * t * t * cp2y + 
-                          t * t * t * endY;
-                
-                // Size shrinks exponentially for dramatic effect at the end
-                const sizeProgress = Math.pow(progress, 0.7);
-                const size = startSize - (startSize - endSize) * sizeProgress;
-                
-                // Rotation accelerates (more spins toward the end)
-                const rotation = progress * progress * 2160; // 6 full rotations, accelerating
-                
-                setFlyingLogo({ x, y, size, rotation });
-                
-                if (progress < 1) {
-                    animationRef.current = requestAnimationFrame(animate);
-                } else {
-                    // Animation complete
-                    setFlyingLogo(null);
-                    if (onAnimationComplete) {
-                        onAnimationComplete();
-                    }
+            // Wait for React to render the portal (use setTimeout for reliability)
+            setTimeout(() => {
+                const flyingEl = flyingLogoRef.current;
+                if (!flyingEl) {
+                    console.error('Flying logo element not found');
+                    if (onAnimationComplete) onAnimationComplete();
                     onClose();
+                    return;
                 }
-            };
-            
-            animationRef.current = requestAnimationFrame(animate);
+                
+                // Set initial position and make visible
+                flyingEl.style.left = `${startX - startSize / 2}px`;
+                flyingEl.style.top = `${startY - startSize / 2}px`;
+                flyingEl.style.width = `${startSize}px`;
+                flyingEl.style.height = `${startSize}px`;
+                flyingEl.style.boxShadow = '0 4px 20px rgba(255, 215, 0, 0.5)';
+                
+                const startTime = performance.now();
+                
+                const animate = (currentTime) => {
+                    const elapsed = currentTime - startTime;
+                    const progress = Math.min(elapsed / duration, 1);
+                    
+                    // Easing - starts slow, speeds up, slows at end
+                    const easeInOutCubic = (t) => t < 0.5 
+                        ? 4 * t * t * t 
+                        : 1 - Math.pow(-2 * t + 2, 3) / 2;
+                    const easedProgress = easeInOutCubic(progress);
+                    
+                    // Calculate position along cubic bezier curve
+                    const t = easedProgress;
+                    const mt = 1 - t;
+                    const x = mt * mt * mt * startX + 
+                              3 * mt * mt * t * cp1x + 
+                              3 * mt * t * t * cp2x + 
+                              t * t * t * endX;
+                    const y = mt * mt * mt * startY + 
+                              3 * mt * mt * t * cp1y + 
+                              3 * mt * t * t * cp2y + 
+                              t * t * t * endY;
+                    
+                    // Size shrinks exponentially for dramatic effect at the end
+                    const sizeProgress = Math.pow(progress, 0.7);
+                    const size = startSize - (startSize - endSize) * sizeProgress;
+                    
+                    // Rotation accelerates (more spins toward the end)
+                    const rotation = progress * progress * 2160; // 6 full rotations, accelerating
+                    
+                    // Direct DOM manipulation for smooth 60fps
+                    flyingEl.style.left = `${x - size / 2}px`;
+                    flyingEl.style.top = `${y - size / 2}px`;
+                    flyingEl.style.width = `${size}px`;
+                    flyingEl.style.height = `${size}px`;
+                    flyingEl.style.transform = `rotate(${rotation}deg)`;
+                    
+                    // Adjust shadow based on size
+                    if (size > 10) {
+                        const shadowSize = Math.max(2, size * 0.1);
+                        const shadowBlur = Math.max(10, size * 0.3);
+                        flyingEl.style.boxShadow = `0 ${shadowSize}px ${shadowBlur}px rgba(255, 215, 0, 0.5)`;
+                    } else {
+                        flyingEl.style.boxShadow = 'none';
+                    }
+                    
+                    if (progress < 1) {
+                        animationRef.current = requestAnimationFrame(animate);
+                    } else {
+                        // Animation complete
+                        setShowFlyingLogo(false);
+                        if (onAnimationComplete) {
+                            onAnimationComplete();
+                        }
+                        onClose();
+                    }
+                };
+                
+                animationRef.current = requestAnimationFrame(animate);
+            }, 50); // Small delay to ensure React has rendered the portal
         }, 350); // Start flying after fade completes
     }, [targetPillSelector, onClose, onAnimationComplete]);
 
@@ -497,7 +526,7 @@ const TipModal = ({
                             justifyContent: 'center',
                             background: logo ? 'transparent' : 'linear-gradient(135deg, #ffd700, #ffaa00)',
                             // Hide when flying animation is active (flying logo takes over)
-                            opacity: flyingLogo ? 0 : 1
+                            opacity: showFlyingLogo ? 0 : 1
                         }}
                     >
                         {logo ? (
@@ -1349,6 +1378,7 @@ const TipModal = ({
     const showClosingAnimation = isClosing && tippingState === 'success';
     
     return (
+    <>
         <div style={{
             position: 'fixed',
             top: 0,
@@ -1381,52 +1411,52 @@ const TipModal = ({
             }}>
                 {renderContent()}
             </div>
-            
-            {/* Flying Logo - rendered via portal to escape modal bounds */}
-            {flyingLogo && createPortal(
-                <div
-                    style={{
-                        position: 'fixed',
-                        left: flyingLogo.x - flyingLogo.size / 2,
-                        top: flyingLogo.y - flyingLogo.size / 2,
-                        width: flyingLogo.size,
-                        height: flyingLogo.size,
-                        borderRadius: '50%',
-                        overflow: 'hidden',
-                        boxShadow: flyingLogo.size > 10 
-                            ? `0 ${Math.max(2, flyingLogo.size * 0.1)}px ${Math.max(10, flyingLogo.size * 0.3)}px rgba(255, 215, 0, 0.5)`
-                            : 'none',
-                        zIndex: 10000,
-                        pointerEvents: 'none',
-                        transform: `rotate(${flyingLogo.rotation}deg)`,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        background: (successLogo || tokenMetadata[selectedToken]?.logo) 
-                            ? 'transparent' 
-                            : 'linear-gradient(135deg, #ffd700, #ffaa00)'
-                    }}
-                >
-                    {(successLogo || tokenMetadata[selectedToken]?.logo) ? (
-                        <img 
-                            src={successLogo || tokenMetadata[selectedToken]?.logo} 
-                            alt="Token"
-                            style={{
-                                width: '100%',
-                                height: '100%',
-                                objectFit: 'cover'
-                            }}
-                        />
-                    ) : (
-                        <span style={{ 
-                            fontSize: Math.max(1, flyingLogo.size * 0.45),
-                            lineHeight: 1
-                        }}>💎</span>
-                    )}
-                </div>,
-                document.body
-            )}
         </div>
+        
+        {/* Flying Logo - rendered via portal to escape modal bounds - OUTSIDE main modal div */}
+        {showFlyingLogo && createPortal(
+            <div
+                ref={flyingLogoRef}
+                style={{
+                    position: 'fixed',
+                    left: 'calc(50% - 32px)',
+                    top: 'calc(50% - 32px)',
+                    width: '64px',
+                    height: '64px',
+                    borderRadius: '50%',
+                    overflow: 'hidden',
+                    zIndex: 10000,
+                    pointerEvents: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: (successLogo || tokenMetadata[selectedToken]?.logo) 
+                        ? 'transparent' 
+                        : 'linear-gradient(135deg, #ffd700, #ffaa00)',
+                    boxShadow: '0 4px 20px rgba(255, 215, 0, 0.5)',
+                    willChange: 'transform, left, top, width, height'
+                }}
+            >
+                {(successLogo || tokenMetadata[selectedToken]?.logo) ? (
+                    <img 
+                        src={successLogo || tokenMetadata[selectedToken]?.logo} 
+                        alt="Token"
+                        style={{
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover'
+                        }}
+                    />
+                ) : (
+                    <span style={{ 
+                        fontSize: '28px',
+                        lineHeight: 1
+                    }}>💎</span>
+                )}
+            </div>,
+            document.body
+        )}
+    </>
     );
 };
 
