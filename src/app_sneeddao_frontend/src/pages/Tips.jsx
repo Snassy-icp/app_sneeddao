@@ -241,6 +241,8 @@ const Tips = () => {
     const [error, setError] = useState(null);
     const [loadingMetadata, setLoadingMetadata] = useState(new Set());
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
+    const [tokenPrices, setTokenPrices] = useState({}); // USD prices per token { tokenId: price }
+    const [loadingPrices, setLoadingPrices] = useState(new Set()); // Tokens currently loading prices
     const [capturedOldTimestamp, setCapturedOldTimestamp] = useState(0); // Captured ONCE for highlighting
     const [timestampProcessed, setTimestampProcessed] = useState(false); // Ensures single execution
     const [isNarrowScreen, setIsNarrowScreen] = useState(window.innerWidth < 768);
@@ -516,6 +518,49 @@ const Tips = () => {
         });
     }, [loading, tipsReceived, capturedOldTimestamp, getTokenMetadata, loadingMetadata]);
 
+    // Ref to track tokens we've started fetching prices for (to avoid duplicate fetches)
+    const fetchedPricesRef = useRef(new Set());
+    
+    // Effect to progressively fetch USD prices for all tokens
+    useEffect(() => {
+        if (loading || (tipsReceived.length === 0 && tipsGiven.length === 0)) return;
+        
+        // Collect all unique token IDs from both received and given tips
+        const allTips = [...tipsReceived, ...tipsGiven];
+        const uniqueTokenIds = [...new Set(allTips.map(tip => tip.token_ledger_principal.toString()))];
+        
+        // Fetch prices for tokens we haven't started fetching yet
+        uniqueTokenIds.forEach(async (tokenId) => {
+            // Skip if we've already started fetching this token
+            if (fetchedPricesRef.current.has(tokenId)) return;
+            
+            // Mark as started (using ref to avoid closure issues)
+            fetchedPricesRef.current.add(tokenId);
+            
+            // Get decimals from metadata (use default 8 if not available)
+            const metadata = getTokenMetadata(tokenId);
+            const decimals = metadata?.decimals ?? 8;
+            
+            // Mark as loading in state (for UI)
+            setLoadingPrices(prev => new Set([...prev, tokenId]));
+            
+            try {
+                const price = await get_token_conversion_rate(tokenId, decimals);
+                console.log(`💰 Price for ${tokenId}:`, price);
+                setTokenPrices(prev => ({ ...prev, [tokenId]: price || 0 }));
+            } catch (err) {
+                console.warn('Failed to fetch price for', tokenId, err);
+                setTokenPrices(prev => ({ ...prev, [tokenId]: 0 }));
+            } finally {
+                setLoadingPrices(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(tokenId);
+                    return newSet;
+                });
+            }
+        });
+    }, [loading, tipsReceived, tipsGiven, getTokenMetadata]);
+
     // Helper function to check if a tip is new (for highlighting)
     const isTipNew = (tipTimestamp) => {
         const isNew = Number(tipTimestamp) > capturedOldTimestamp;
@@ -547,6 +592,39 @@ const Tips = () => {
         });
         return `${formattedAmount} ${symbol}`;
     };
+
+    // Calculate USD value for a tip
+    const getTipUsdValue = (amount, tokenId) => {
+        const decimals = getTokenDecimals(tokenId);
+        const price = tokenPrices[tokenId];
+        if (price === undefined || price === null || price <= 0) return null;
+        const tokenAmount = Number(amount) / Math.pow(10, decimals);
+        return tokenAmount * price;
+    };
+
+    // Format USD value for display
+    const formatUsdValue = (value) => {
+        if (value === null || value === undefined) return null;
+        if (value < 0.01) return '< $0.01';
+        if (value >= 1000) return `$${(value / 1000).toFixed(1)}K`;
+        return `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    };
+    
+    // Calculate total USD values for received and given tips
+    const totalReceivedUsd = tipsReceived.reduce((total, tip) => {
+        const usdValue = getTipUsdValue(tip.amount, tip.token_ledger_principal.toString());
+        return total + (usdValue || 0);
+    }, 0);
+    
+    const totalGivenUsd = tipsGiven.reduce((total, tip) => {
+        const usdValue = getTipUsdValue(tip.amount, tip.token_ledger_principal.toString());
+        return total + (usdValue || 0);
+    }, 0);
+    
+    // Check if all prices are loaded
+    const allPricesLoaded = [...tipsReceived, ...tipsGiven].every(tip => 
+        tokenPrices[tip.token_ledger_principal.toString()] !== undefined
+    );
 
     const formatDate = (timestamp) => {
         const date = new Date(Number(timestamp) / 1_000_000); // Convert from nanoseconds
@@ -928,14 +1006,46 @@ const Tips = () => {
                         </div>
                         
                         {/* Quick Stats */}
-                        <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
                                 <FaArrowDown size={14} style={{ color: theme.colors.success }} />
-                                <span><strong style={{ color: theme.colors.success }}>{tipsReceived.length}</strong> received</span>
+                                <span>
+                                    <strong style={{ color: theme.colors.success }}>{tipsReceived.length}</strong> received
+                                    {totalReceivedUsd > 0 && (
+                                        <span style={{ 
+                                            color: '#8fbc8f', 
+                                            marginLeft: '0.35rem',
+                                            fontWeight: '600'
+                                        }}>
+                                            ({formatUsdValue(totalReceivedUsd)})
+                                        </span>
+                                    )}
+                                    {!allPricesLoaded && tipsReceived.length > 0 && totalReceivedUsd === 0 && (
+                                        <span style={{ color: theme.colors.mutedText, marginLeft: '0.35rem', fontSize: '0.8rem' }}>
+                                            (...)
+                                        </span>
+                                    )}
+                                </span>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
                                 <FaArrowUp size={14} style={{ color: tipsPrimary }} />
-                                <span><strong style={{ color: tipsPrimary }}>{tipsGiven.length}</strong> given</span>
+                                <span>
+                                    <strong style={{ color: tipsPrimary }}>{tipsGiven.length}</strong> given
+                                    {totalGivenUsd > 0 && (
+                                        <span style={{ 
+                                            color: tipsPrimary, 
+                                            marginLeft: '0.35rem',
+                                            fontWeight: '600'
+                                        }}>
+                                            ({formatUsdValue(totalGivenUsd)})
+                                        </span>
+                                    )}
+                                    {!allPricesLoaded && tipsGiven.length > 0 && totalGivenUsd === 0 && (
+                                        <span style={{ color: theme.colors.mutedText, marginLeft: '0.35rem', fontSize: '0.8rem' }}>
+                                            (...)
+                                        </span>
+                                    )}
+                                </span>
                             </div>
                         </div>
                     </div>
@@ -1234,9 +1344,40 @@ const Tips = () => {
                         <div style={{ 
                             color: tipsPrimary, 
                             fontWeight: '700', 
-                            fontSize: '1.1rem' 
+                            fontSize: '1.1rem',
+                            display: 'flex',
+                            alignItems: 'baseline',
+                            gap: '0.5rem',
+                            flexWrap: 'wrap'
                         }}>
-                            {isLoadingToken ? 'Loading...' : formatTokenAmount(tip.amount, tokenId)}
+                            <span>{isLoadingToken ? 'Loading...' : formatTokenAmount(tip.amount, tokenId)}</span>
+                            {!isLoadingToken && (() => {
+                                const usdValue = getTipUsdValue(tip.amount, tokenId);
+                                const isLoadingPrice = loadingPrices.has(tokenId);
+                                if (isLoadingPrice) {
+                                    return (
+                                        <span style={{
+                                            fontSize: '0.75rem',
+                                            color: theme.colors.mutedText,
+                                            fontWeight: '500'
+                                        }}>
+                                            ...
+                                        </span>
+                                    );
+                                }
+                                if (usdValue !== null) {
+                                    return (
+                                        <span style={{
+                                            fontSize: '0.85rem',
+                                            color: '#8fbc8f',
+                                            fontWeight: '600'
+                                        }}>
+                                            ({formatUsdValue(usdValue)})
+                                        </span>
+                                    );
+                                }
+                                return null;
+                            })()}
                         </div>
                         {isNew && (
                             <span style={{
