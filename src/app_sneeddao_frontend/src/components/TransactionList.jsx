@@ -113,7 +113,7 @@ function TransactionList({
     const [ledgerCanisterId, setLedgerCanisterId] = useState(null);
     const [indexCanisterId, setIndexCanisterId] = useState(null);
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
-    const [sortConfig, setSortConfig] = useState({ key: 'index', direction: 'asc' });
+    const [sortConfig, setSortConfig] = useState({ key: 'index', direction: embedded ? 'desc' : 'asc' }); // Newest first when embedded, oldest first on dedicated page
     const [fromFilter, setFromFilter] = useState('');
     const [toFilter, setToFilter] = useState('');
     const [filterOperator, setFilterOperator] = useState('and');
