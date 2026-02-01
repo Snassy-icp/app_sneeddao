@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Principal } from '@dfinity/principal';
 import { useTheme } from '../contexts/ThemeContext';
@@ -71,8 +71,8 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
     const updateTooltipPositionFromElement = useCallback((element) => {
         const rect = element.getBoundingClientRect();
         const tooltipWidth = 320;
-        const estimatedTooltipHeight = 300; // Conservative estimate for checking fit
-        const margin = 8;
+        const estimatedTooltipHeight = 350; // Conservative estimate for checking fit
+        const margin = 10;
 
         // Center tooltip horizontally relative to pill
         let x = rect.left + (rect.width / 2) - (tooltipWidth / 2);
@@ -87,9 +87,9 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
             y = rect.bottom + margin;
             setTooltipAbove(false);
         } else {
-            // Position above the pill - bottom of tooltip flush with top of pill
-            // We'll set a placeholder y and adjust after render using the ref
-            y = rect.top - margin - estimatedTooltipHeight;
+            // Position above the pill - start with estimate, will be corrected after render
+            // Use a large estimate to position it high, then correction will bring it down
+            y = rect.top - margin - 400;
             setTooltipAbove(true);
         }
 
@@ -106,23 +106,28 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
             y = margin;
         }
 
-        setTooltipPosition({ x, y, pillTop: rect.top, margin });
+        setTooltipPosition({ x, y, pillTop: rect.top, margin, needsCorrection: !fitsBelow });
     }, []);
     
     // Adjust tooltip position after render when positioned above
-    useEffect(() => {
-        if (tooltipAbove && tooltipRef.current && hoveredToken) {
-            const tooltipRect = tooltipRef.current.getBoundingClientRect();
-            const pillTop = tooltipPosition.pillTop;
-            const margin = tooltipPosition.margin || 8;
-            
-            // Reposition so bottom of tooltip is flush with top of pill
-            const newY = pillTop - tooltipRect.height - margin;
-            if (newY >= 8) { // Ensure it doesn't go off-screen
-                setTooltipPosition(prev => ({ ...prev, y: newY }));
-            }
+    useLayoutEffect(() => {
+        if (tooltipPosition.needsCorrection && tooltipRef.current && hoveredToken) {
+            // Use requestAnimationFrame to ensure the tooltip has been painted
+            requestAnimationFrame(() => {
+                if (!tooltipRef.current) return;
+                
+                const tooltipRect = tooltipRef.current.getBoundingClientRect();
+                const pillTop = tooltipPosition.pillTop;
+                const margin = tooltipPosition.margin || 10;
+                
+                // Calculate where the tooltip should be so its bottom is flush with top of pill
+                const targetY = pillTop - tooltipRect.height - margin;
+                const finalY = Math.max(8, targetY); // Ensure it doesn't go off-screen
+                
+                setTooltipPosition(prev => ({ ...prev, y: finalY, needsCorrection: false }));
+            });
         }
-    }, [tooltipAbove, hoveredToken, tooltipPosition.pillTop]);
+    }, [tooltipPosition.needsCorrection, hoveredToken, tooltipPosition.pillTop]);
     
     // Toggle expansion of a tip pill
     const toggleExpanded = (tokenKey, e) => {
