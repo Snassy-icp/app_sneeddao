@@ -94,46 +94,69 @@ const TipModal = ({
     
     // Handle animated close - fade out content, then fly logo to pill
     const handleAnimatedClose = useCallback(() => {
-        setIsClosing(true);
+        if (!logoRef.current) {
+            onClose();
+            return;
+        }
         
-        // After fade completes, start the flying animation
-        setTimeout(() => {
-            if (!logoRef.current) {
-                onClose();
-                return;
-            }
-            
-            // Find target pill by querying the DOM
-            let targetElement = null;
-            if (targetPillSelector) {
-                targetElement = document.querySelector(targetPillSelector);
-            }
-            
-            if (!targetElement) {
-                // No animation target, just close
+        // Find target pill by querying the DOM
+        let targetElement = null;
+        if (targetPillSelector) {
+            targetElement = document.querySelector(targetPillSelector);
+        }
+        
+        if (!targetElement) {
+            // No animation target, just close
+            setIsClosing(true);
+            setTimeout(() => {
                 if (onAnimationComplete) {
                     onAnimationComplete();
                 }
                 onClose();
+            }, 350);
+            return;
+        }
+        
+        // Get starting position from the logo element BEFORE fade starts
+        const logoRect = logoRef.current.getBoundingClientRect();
+        const startX = logoRect.left + logoRect.width / 2;
+        const startY = logoRect.top + logoRect.height / 2;
+        const startSize = 64;
+        const endSize = 1; // Shrink to 1 pixel
+        
+        // Show flying logo IMMEDIATELY (positioned over the dialog logo)
+        setShowFlyingLogo(true);
+        
+        // Position the flying logo right away (before React renders, use RAF)
+        requestAnimationFrame(() => {
+            const flyingEl = flyingLogoRef.current;
+            if (flyingEl) {
+                flyingEl.style.left = `${startX - startSize / 2}px`;
+                flyingEl.style.top = `${startY - startSize / 2}px`;
+                flyingEl.style.width = `${startSize}px`;
+                flyingEl.style.height = `${startSize}px`;
+                flyingEl.style.boxShadow = '0 4px 20px rgba(255, 215, 0, 0.5)';
+                flyingEl.style.opacity = '1';
+            }
+        });
+        
+        // NOW start the dialog fade
+        setIsClosing(true);
+        
+        // After fade completes, start the spinning/flying animation
+        setTimeout(() => {
+            const flyingEl = flyingLogoRef.current;
+            if (!flyingEl) {
+                console.error('Flying logo element not found');
+                if (onAnimationComplete) onAnimationComplete();
+                onClose();
                 return;
             }
-            
-            // Get starting position from the logo element
-            const logoRect = logoRef.current.getBoundingClientRect();
-            const startX = logoRect.left + logoRect.width / 2;
-            const startY = logoRect.top + logoRect.height / 2;
-            const startSize = 64;
-            const endSize = 1; // Shrink to 1 pixel
             
             // Target position (center of tip pill logo)
             const targetRect = targetElement.getBoundingClientRect();
             const endX = targetRect.left + 10; // Center of logo in pill
             const endY = targetRect.top + targetRect.height / 2;
-            
-            // Show the flying logo element
-            setShowFlyingLogo(true);
-            
-            const duration = 800; // ms for flight
             
             // Bezier curve control points for a nice arc
             const cp1x = startX + (endX - startX) * 0.3;
@@ -141,120 +164,101 @@ const TipModal = ({
             const cp2x = startX + (endX - startX) * 0.7;
             const cp2y = endY - 30;
             
-            // Wait for React to render the portal (use setTimeout for reliability)
-            setTimeout(() => {
-                const flyingEl = flyingLogoRef.current;
-                if (!flyingEl) {
-                    console.error('Flying logo element not found');
-                    if (onAnimationComplete) onAnimationComplete();
-                    onClose();
-                    return;
+            // Phase 1: Wind-up spin in place
+            const windUpDuration = 900; // ms to spin up before takeoff (longer for dramatic effect)
+            const flightDuration = 800; // ms for flight
+            const windUpStartTime = performance.now();
+            
+            const windUpAnimate = (currentTime) => {
+                const elapsed = currentTime - windUpStartTime;
+                const progress = Math.min(elapsed / windUpDuration, 1);
+                
+                // Accelerating rotation during wind-up (ease-in quartic for slower start)
+                // Start very slow, build up speed dramatically toward the end
+                const windUpRotation = progress * progress * progress * progress * 1080; // 3 rotations, slow start then fast
+                
+                flyingEl.style.transform = `rotate(${windUpRotation}deg)`;
+                
+                // Subtle scale pulse during wind-up for anticipation
+                const pulse = 1 + Math.sin(progress * Math.PI * 4) * 0.03 * (1 - progress);
+                flyingEl.style.width = `${startSize * pulse}px`;
+                flyingEl.style.height = `${startSize * pulse}px`;
+                flyingEl.style.left = `${startX - (startSize * pulse) / 2}px`;
+                flyingEl.style.top = `${startY - (startSize * pulse) / 2}px`;
+                
+                // Increasing glow during wind-up
+                const glowIntensity = 0.5 + progress * 0.3;
+                flyingEl.style.boxShadow = `0 4px ${20 + progress * 10}px rgba(255, 215, 0, ${glowIntensity})`;
+                
+                if (progress < 1) {
+                    animationRef.current = requestAnimationFrame(windUpAnimate);
+                } else {
+                    // Wind-up complete, start flight!
+                    const flightStartTime = performance.now();
+                    const initialRotation = 1080; // Continue from where wind-up ended (3 rotations)
+                    
+                    const flightAnimate = (currentTime) => {
+                        const elapsed = currentTime - flightStartTime;
+                        const progress = Math.min(elapsed / flightDuration, 1);
+                        
+                        // Easing for position - starts fast (momentum from spin), slows at end
+                        const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+                        const easedProgress = easeOutCubic(progress);
+                        
+                        // Calculate position along cubic bezier curve
+                        const t = easedProgress;
+                        const mt = 1 - t;
+                        const x = mt * mt * mt * startX + 
+                                  3 * mt * mt * t * cp1x + 
+                                  3 * mt * t * t * cp2x + 
+                                  t * t * t * endX;
+                        const y = mt * mt * mt * startY + 
+                                  3 * mt * mt * t * cp1y + 
+                                  3 * mt * t * t * cp2y + 
+                                  t * t * t * endY;
+                        
+                        // Size shrinks during flight
+                        const sizeProgress = Math.pow(progress, 0.7);
+                        const size = startSize - (startSize - endSize) * sizeProgress;
+                        
+                        // Rotation continues from wind-up, adds more rotations during flight
+                        // Starts fast (carrying momentum), gradually slows
+                        const flightRotation = initialRotation + (1 - Math.pow(1 - progress, 2)) * 1800; // ~5 more rotations
+                        
+                        // Direct DOM manipulation for smooth 60fps
+                        flyingEl.style.left = `${x - size / 2}px`;
+                        flyingEl.style.top = `${y - size / 2}px`;
+                        flyingEl.style.width = `${size}px`;
+                        flyingEl.style.height = `${size}px`;
+                        flyingEl.style.transform = `rotate(${flightRotation}deg)`;
+                        
+                        // Adjust shadow based on size
+                        if (size > 10) {
+                            const shadowSize = Math.max(2, size * 0.1);
+                            const shadowBlur = Math.max(10, size * 0.3);
+                            flyingEl.style.boxShadow = `0 ${shadowSize}px ${shadowBlur}px rgba(255, 215, 0, 0.5)`;
+                        } else {
+                            flyingEl.style.boxShadow = 'none';
+                        }
+                        
+                        if (progress < 1) {
+                            animationRef.current = requestAnimationFrame(flightAnimate);
+                        } else {
+                            // Animation complete
+                            setShowFlyingLogo(false);
+                            if (onAnimationComplete) {
+                                onAnimationComplete();
+                            }
+                            onClose();
+                        }
+                    };
+                    
+                    animationRef.current = requestAnimationFrame(flightAnimate);
                 }
-                
-                // Set initial position and make visible
-                flyingEl.style.left = `${startX - startSize / 2}px`;
-                flyingEl.style.top = `${startY - startSize / 2}px`;
-                flyingEl.style.width = `${startSize}px`;
-                flyingEl.style.height = `${startSize}px`;
-                flyingEl.style.boxShadow = '0 4px 20px rgba(255, 215, 0, 0.5)';
-                flyingEl.style.opacity = '1';
-                
-                // Phase 1: Wind-up spin in place
-                const windUpDuration = 900; // ms to spin up before takeoff (longer for dramatic effect)
-                const flightDuration = 800; // ms for flight
-                const windUpStartTime = performance.now();
-                
-                const windUpAnimate = (currentTime) => {
-                    const elapsed = currentTime - windUpStartTime;
-                    const progress = Math.min(elapsed / windUpDuration, 1);
-                    
-                    // Accelerating rotation during wind-up (ease-in quartic for slower start)
-                    // Start very slow, build up speed dramatically toward the end
-                    const windUpRotation = progress * progress * progress * progress * 1080; // 3 rotations, slow start then fast
-                    
-                    flyingEl.style.transform = `rotate(${windUpRotation}deg)`;
-                    
-                    // Subtle scale pulse during wind-up for anticipation
-                    const pulse = 1 + Math.sin(progress * Math.PI * 4) * 0.03 * (1 - progress);
-                    flyingEl.style.width = `${startSize * pulse}px`;
-                    flyingEl.style.height = `${startSize * pulse}px`;
-                    flyingEl.style.left = `${startX - (startSize * pulse) / 2}px`;
-                    flyingEl.style.top = `${startY - (startSize * pulse) / 2}px`;
-                    
-                    // Increasing glow during wind-up
-                    const glowIntensity = 0.5 + progress * 0.3;
-                    flyingEl.style.boxShadow = `0 4px ${20 + progress * 10}px rgba(255, 215, 0, ${glowIntensity})`;
-                    
-                    if (progress < 1) {
-                        animationRef.current = requestAnimationFrame(windUpAnimate);
-                    } else {
-                        // Wind-up complete, start flight!
-                        const flightStartTime = performance.now();
-                        const initialRotation = 720; // Continue from where wind-up ended
-                        
-                        const flightAnimate = (currentTime) => {
-                            const elapsed = currentTime - flightStartTime;
-                            const progress = Math.min(elapsed / flightDuration, 1);
-                            
-                            // Easing for position - starts fast (momentum from spin), slows at end
-                            const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
-                            const easedProgress = easeOutCubic(progress);
-                            
-                            // Calculate position along cubic bezier curve
-                            const t = easedProgress;
-                            const mt = 1 - t;
-                            const x = mt * mt * mt * startX + 
-                                      3 * mt * mt * t * cp1x + 
-                                      3 * mt * t * t * cp2x + 
-                                      t * t * t * endX;
-                            const y = mt * mt * mt * startY + 
-                                      3 * mt * mt * t * cp1y + 
-                                      3 * mt * t * t * cp2y + 
-                                      t * t * t * endY;
-                            
-                            // Size shrinks during flight
-                            const sizeProgress = Math.pow(progress, 0.7);
-                            const size = startSize - (startSize - endSize) * sizeProgress;
-                            
-                            // Rotation continues from wind-up, adds more rotations during flight
-                            // Starts fast (carrying momentum), gradually slows
-                            const flightRotation = initialRotation + (1 - Math.pow(1 - progress, 2)) * 1800; // ~5 more rotations
-                            
-                            // Direct DOM manipulation for smooth 60fps
-                            flyingEl.style.left = `${x - size / 2}px`;
-                            flyingEl.style.top = `${y - size / 2}px`;
-                            flyingEl.style.width = `${size}px`;
-                            flyingEl.style.height = `${size}px`;
-                            flyingEl.style.transform = `rotate(${flightRotation}deg)`;
-                            
-                            // Adjust shadow based on size
-                            if (size > 10) {
-                                const shadowSize = Math.max(2, size * 0.1);
-                                const shadowBlur = Math.max(10, size * 0.3);
-                                flyingEl.style.boxShadow = `0 ${shadowSize}px ${shadowBlur}px rgba(255, 215, 0, 0.5)`;
-                            } else {
-                                flyingEl.style.boxShadow = 'none';
-                            }
-                            
-                            if (progress < 1) {
-                                animationRef.current = requestAnimationFrame(flightAnimate);
-                            } else {
-                                // Animation complete
-                                setShowFlyingLogo(false);
-                                if (onAnimationComplete) {
-                                    onAnimationComplete();
-                                }
-                                onClose();
-                            }
-                        };
-                        
-                        animationRef.current = requestAnimationFrame(flightAnimate);
-                    }
-                };
-                
-                animationRef.current = requestAnimationFrame(windUpAnimate);
-            }, 50); // Small delay to ensure React has rendered the portal
-        }, 350); // Start flying after fade completes
+            };
+            
+            animationRef.current = requestAnimationFrame(windUpAnimate);
+        }, 350); // Start spinning after fade completes
     }, [targetPillSelector, onClose, onAnimationComplete]);
 
     // Update selected token when defaultToken changes or modal opens
