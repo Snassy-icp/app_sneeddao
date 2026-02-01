@@ -71,6 +71,8 @@ const TipModal = ({
     const logoRef = useRef(null); // Ref to the logo element
     const animationRef = useRef(null); // Ref for requestAnimationFrame
     const flyingLogoRef = useRef(null); // Ref to flying logo element for direct DOM manipulation
+    const sparkleCanvasRef = useRef(null); // Ref to sparkle trail canvas
+    const sparklesRef = useRef([]); // Array of sparkle particles
 
     // Close dropdown when modal closes, reset closing state
     useEffect(() => {
@@ -92,6 +94,27 @@ const TipModal = ({
         }
     }, [tippingState, selectedToken, tokenMetadata, successLogo]);
     
+    // Create a sparkle particle
+    const createSparkle = useCallback((x, y, size) => {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 1 + Math.random() * 3;
+        const colors = ['#FFD700', '#FFA500', '#FFEC8B', '#FFFACD', '#FFFFFF'];
+        
+        return {
+            x,
+            y,
+            vx: Math.cos(angle) * speed + (Math.random() - 0.5) * 2,
+            vy: Math.sin(angle) * speed - 1,
+            size: (3 + Math.random() * 5) * (size / 64), // Scale with logo size
+            color: colors[Math.floor(Math.random() * colors.length)],
+            alpha: 1,
+            decay: 0.02 + Math.random() * 0.02,
+            gravity: 0.08,
+            rotation: Math.random() * 360,
+            rotationSpeed: (Math.random() - 0.5) * 10
+        };
+    }, []);
+
     // Handle animated close - fade out content, then fly logo to pill
     const handleAnimatedClose = useCallback(() => {
         if (!logoRef.current) {
@@ -126,6 +149,7 @@ const TipModal = ({
         
         // Show flying logo IMMEDIATELY (positioned over the dialog logo)
         setShowFlyingLogo(true);
+        sparklesRef.current = []; // Reset sparkles
         
         // Position the flying logo right away (before React renders, use RAF)
         requestAnimationFrame(() => {
@@ -138,6 +162,13 @@ const TipModal = ({
                 flyingEl.style.boxShadow = '0 4px 20px rgba(255, 215, 0, 0.5)';
                 flyingEl.style.opacity = '1';
             }
+            
+            // Initialize sparkle canvas
+            const canvas = sparkleCanvasRef.current;
+            if (canvas) {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
         });
         
         // NOW start the dialog fade
@@ -146,6 +177,9 @@ const TipModal = ({
         // After fade completes, start the spinning/flying animation
         setTimeout(() => {
             const flyingEl = flyingLogoRef.current;
+            const canvas = sparkleCanvasRef.current;
+            const ctx = canvas?.getContext('2d');
+            
             if (!flyingEl) {
                 console.error('Flying logo element not found');
                 if (onAnimationComplete) onAnimationComplete();
@@ -168,6 +202,54 @@ const TipModal = ({
             const windUpDuration = 900; // ms to spin up before takeoff (longer for dramatic effect)
             const flightDuration = 800; // ms for flight
             const windUpStartTime = performance.now();
+            let lastSparkleTime = 0;
+            
+            // Function to update and draw sparkles
+            const updateSparkles = () => {
+                if (!ctx || !canvas) return;
+                
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                sparklesRef.current = sparklesRef.current.filter(s => {
+                    // Update physics
+                    s.x += s.vx;
+                    s.y += s.vy;
+                    s.vy += s.gravity;
+                    s.alpha -= s.decay;
+                    s.rotation += s.rotationSpeed;
+                    
+                    if (s.alpha <= 0) return false;
+                    
+                    // Draw sparkle
+                    ctx.save();
+                    ctx.translate(s.x, s.y);
+                    ctx.rotate((s.rotation * Math.PI) / 180);
+                    ctx.globalAlpha = s.alpha;
+                    ctx.shadowBlur = 8;
+                    ctx.shadowColor = s.color;
+                    ctx.fillStyle = s.color;
+                    
+                    // Star shape
+                    ctx.beginPath();
+                    const spikes = 4;
+                    const outerRadius = s.size;
+                    const innerRadius = s.size * 0.4;
+                    for (let i = 0; i < spikes * 2; i++) {
+                        const radius = i % 2 === 0 ? outerRadius : innerRadius;
+                        const angle = (i * Math.PI) / spikes - Math.PI / 2;
+                        if (i === 0) {
+                            ctx.moveTo(radius * Math.cos(angle), radius * Math.sin(angle));
+                        } else {
+                            ctx.lineTo(radius * Math.cos(angle), radius * Math.sin(angle));
+                        }
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.restore();
+                    
+                    return true;
+                });
+            };
             
             const windUpAnimate = (currentTime) => {
                 const elapsed = currentTime - windUpStartTime;
@@ -189,6 +271,23 @@ const TipModal = ({
                 // Increasing glow during wind-up
                 const glowIntensity = 0.5 + progress * 0.3;
                 flyingEl.style.boxShadow = `0 4px ${20 + progress * 10}px rgba(255, 215, 0, ${glowIntensity})`;
+                
+                // Spawn sparkles during wind-up (increasing rate as spin speeds up)
+                if (currentTime - lastSparkleTime > 80 - progress * 60) {
+                    const sparkleCount = 1 + Math.floor(progress * 2);
+                    for (let i = 0; i < sparkleCount; i++) {
+                        const angle = Math.random() * Math.PI * 2;
+                        const dist = 30 + Math.random() * 10;
+                        sparklesRef.current.push(createSparkle(
+                            startX + Math.cos(angle) * dist,
+                            startY + Math.sin(angle) * dist,
+                            startSize
+                        ));
+                    }
+                    lastSparkleTime = currentTime;
+                }
+                
+                updateSparkles();
                 
                 if (progress < 1) {
                     animationRef.current = requestAnimationFrame(windUpAnimate);
@@ -232,6 +331,17 @@ const TipModal = ({
                         flyingEl.style.height = `${size}px`;
                         flyingEl.style.transform = `rotate(${flightRotation}deg)`;
                         
+                        // Spawn sparkle trail during flight (more frequent, tapering off as logo shrinks)
+                        if (size > 5 && currentTime - lastSparkleTime > 30) {
+                            const sparkleCount = Math.ceil(3 * (size / startSize));
+                            for (let i = 0; i < sparkleCount; i++) {
+                                sparklesRef.current.push(createSparkle(x, y, size));
+                            }
+                            lastSparkleTime = currentTime;
+                        }
+                        
+                        updateSparkles();
+                        
                         // Adjust shadow based on size
                         if (size > 10) {
                             const shadowSize = Math.max(2, size * 0.1);
@@ -244,12 +354,21 @@ const TipModal = ({
                         if (progress < 1) {
                             animationRef.current = requestAnimationFrame(flightAnimate);
                         } else {
-                            // Animation complete
-                            setShowFlyingLogo(false);
-                            if (onAnimationComplete) {
-                                onAnimationComplete();
-                            }
-                            onClose();
+                            // Continue updating sparkles until they fade
+                            const fadeOutSparkles = () => {
+                                updateSparkles();
+                                if (sparklesRef.current.length > 0) {
+                                    animationRef.current = requestAnimationFrame(fadeOutSparkles);
+                                } else {
+                                    // All sparkles faded, close modal
+                                    setShowFlyingLogo(false);
+                                    if (onAnimationComplete) {
+                                        onAnimationComplete();
+                                    }
+                                    onClose();
+                                }
+                            };
+                            fadeOutSparkles();
                         }
                     };
                     
@@ -259,7 +378,7 @@ const TipModal = ({
             
             animationRef.current = requestAnimationFrame(windUpAnimate);
         }, 350); // Start spinning after fade completes
-    }, [targetPillSelector, onClose, onAnimationComplete]);
+    }, [targetPillSelector, onClose, onAnimationComplete, createSparkle]);
 
     // Update selected token when defaultToken changes or modal opens
     useEffect(() => {
@@ -1452,48 +1571,64 @@ const TipModal = ({
             </div>
         </div>
         
-        {/* Flying Logo - rendered via portal to escape modal bounds - OUTSIDE main modal div */}
+        {/* Flying Logo and Sparkle Trail - rendered via portal to escape modal bounds */}
         {showFlyingLogo && createPortal(
-            <div
-                ref={flyingLogoRef}
-                style={{
-                    position: 'fixed',
-                    left: 0,
-                    top: 0,
-                    width: '64px',
-                    height: '64px',
-                    borderRadius: '50%',
-                    overflow: 'hidden',
-                    zIndex: 10000,
-                    pointerEvents: 'none',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    background: (successLogo || tokenMetadata[selectedToken]?.logo) 
-                        ? 'transparent' 
-                        : 'linear-gradient(135deg, #ffd700, #ffaa00)',
-                    boxShadow: '0 4px 20px rgba(255, 215, 0, 0.5)',
-                    willChange: 'transform, left, top, width, height, opacity',
-                    opacity: 0
-                }}
-            >
-                {(successLogo || tokenMetadata[selectedToken]?.logo) ? (
-                    <img 
-                        src={successLogo || tokenMetadata[selectedToken]?.logo} 
-                        alt="Token"
-                        style={{
-                            width: '100%',
-                            height: '100%',
-                            objectFit: 'cover'
-                        }}
-                    />
-                ) : (
-                    <span style={{ 
-                        fontSize: '28px',
-                        lineHeight: 1
-                    }}>💎</span>
-                )}
-            </div>,
+            <>
+                {/* Sparkle trail canvas */}
+                <canvas
+                    ref={sparkleCanvasRef}
+                    style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        width: '100vw',
+                        height: '100vh',
+                        pointerEvents: 'none',
+                        zIndex: 9999
+                    }}
+                />
+                {/* Flying logo */}
+                <div
+                    ref={flyingLogoRef}
+                    style={{
+                        position: 'fixed',
+                        left: 0,
+                        top: 0,
+                        width: '64px',
+                        height: '64px',
+                        borderRadius: '50%',
+                        overflow: 'hidden',
+                        zIndex: 10000,
+                        pointerEvents: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: (successLogo || tokenMetadata[selectedToken]?.logo) 
+                            ? 'transparent' 
+                            : 'linear-gradient(135deg, #ffd700, #ffaa00)',
+                        boxShadow: '0 4px 20px rgba(255, 215, 0, 0.5)',
+                        willChange: 'transform, left, top, width, height, opacity',
+                        opacity: 0
+                    }}
+                >
+                    {(successLogo || tokenMetadata[selectedToken]?.logo) ? (
+                        <img 
+                            src={successLogo || tokenMetadata[selectedToken]?.logo} 
+                            alt="Token"
+                            style={{
+                                width: '100%',
+                                height: '100%',
+                                objectFit: 'cover'
+                            }}
+                        />
+                    ) : (
+                        <span style={{ 
+                            fontSize: '28px',
+                            lineHeight: 1
+                        }}>💎</span>
+                    )}
+                </div>
+            </>,
             document.body
         )}
     </>

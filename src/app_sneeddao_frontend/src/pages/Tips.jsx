@@ -54,6 +54,49 @@ const customStyles = `
     50% { box-shadow: 0 0 20px 5px rgba(245, 158, 11, 0.3); }
 }
 
+@keyframes shimmer {
+    0% { transform: translateX(-100%) rotate(25deg); }
+    100% { transform: translateX(200%) rotate(25deg); }
+}
+
+@keyframes sparkleFloat {
+    0%, 100% { 
+        transform: translateY(0) scale(1);
+        opacity: 0.8;
+    }
+    50% { 
+        transform: translateY(-8px) scale(1.2);
+        opacity: 1;
+    }
+}
+
+@keyframes sparkleFloat2 {
+    0%, 100% { 
+        transform: translateY(-4px) scale(1.1);
+        opacity: 1;
+    }
+    50% { 
+        transform: translateY(4px) scale(0.9);
+        opacity: 0.6;
+    }
+}
+
+@keyframes sparkleFloat3 {
+    0%, 100% { 
+        transform: translateY(2px) scale(0.9);
+        opacity: 0.7;
+    }
+    50% { 
+        transform: translateY(-10px) scale(1.3);
+        opacity: 1;
+    }
+}
+
+@keyframes twinkle {
+    0%, 100% { opacity: 0.3; transform: scale(0.8); }
+    50% { opacity: 1; transform: scale(1.2); }
+}
+
 .tips-card-animate {
     animation: fadeInUp 0.5s ease-out forwards;
 }
@@ -77,6 +120,95 @@ const customStyles = `
 
 .tips-new-glow {
     animation: fadeInUp 0.5s ease-out forwards, newTipGlow 2s ease-in-out 3;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Shimmer effect overlay */
+.tips-new-glow::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 215, 0, 0.15),
+        rgba(255, 255, 255, 0.25),
+        rgba(255, 215, 0, 0.15),
+        transparent
+    );
+    animation: shimmer 3s ease-in-out infinite;
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* Sparkle container */
+.tips-sparkle-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 2;
+}
+
+/* Individual sparkles */
+.tips-sparkle {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    background: #FFD700;
+    clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+    filter: drop-shadow(0 0 3px #FFD700);
+}
+
+.tips-sparkle:nth-child(1) {
+    top: 15%;
+    left: 5%;
+    animation: sparkleFloat 2.5s ease-in-out infinite;
+}
+
+.tips-sparkle:nth-child(2) {
+    top: 60%;
+    left: 15%;
+    animation: sparkleFloat2 3s ease-in-out infinite 0.3s;
+    width: 6px;
+    height: 6px;
+}
+
+.tips-sparkle:nth-child(3) {
+    top: 25%;
+    right: 8%;
+    animation: sparkleFloat3 2.8s ease-in-out infinite 0.6s;
+}
+
+.tips-sparkle:nth-child(4) {
+    top: 70%;
+    right: 12%;
+    animation: sparkleFloat 3.2s ease-in-out infinite 0.9s;
+    width: 5px;
+    height: 5px;
+}
+
+.tips-sparkle:nth-child(5) {
+    top: 40%;
+    left: 50%;
+    animation: twinkle 1.5s ease-in-out infinite 0.2s;
+    width: 4px;
+    height: 4px;
+}
+
+.tips-sparkle:nth-child(6) {
+    top: 10%;
+    left: 70%;
+    animation: sparkleFloat2 2.7s ease-in-out infinite 1.2s;
+    width: 7px;
+    height: 7px;
 }
 
 .tips-tab {
@@ -1044,9 +1176,21 @@ const Tips = () => {
                     display: 'flex',
                     alignItems: 'center',
                     gap: '1rem',
-                    flexWrap: 'wrap'
+                    flexWrap: 'wrap',
+                    position: 'relative'
                 }}
             >
+                {/* Floating sparkles for new tips */}
+                {isNew && (
+                    <div className="tips-sparkle-container">
+                        <div className="tips-sparkle" />
+                        <div className="tips-sparkle" />
+                        <div className="tips-sparkle" />
+                        <div className="tips-sparkle" />
+                        <div className="tips-sparkle" />
+                        <div className="tips-sparkle" />
+                    </div>
+                )}
                 {/* Token Logo & Amount */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: '150px' }}>
                     {isLoadingToken ? (
