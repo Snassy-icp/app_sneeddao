@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useForum } from '../contexts/ForumContext';
@@ -17,6 +17,7 @@ import { getRelativeTime, getFullDate } from '../utils/DateUtils';
 import { formatPrincipal, getPrincipalDisplayInfoFromContext, PrincipalDisplay } from '../utils/PrincipalUtils';
 import { Principal } from '@dfinity/principal';
 import Header from '../components/Header';
+import TokenConfetti from '../components/TokenConfetti';
 import { FaGift, FaArrowDown, FaArrowUp, FaSync, FaLock, FaExternalLinkAlt, FaComment } from 'react-icons/fa';
 
 // Custom CSS for animations
@@ -110,6 +111,11 @@ const Tips = () => {
     const [capturedOldTimestamp, setCapturedOldTimestamp] = useState(0); // Captured ONCE for highlighting
     const [timestampProcessed, setTimestampProcessed] = useState(false); // Ensures single execution
     const [isNarrowScreen, setIsNarrowScreen] = useState(window.innerWidth < 768);
+    
+    // Confetti state
+    const [confettiLogos, setConfettiLogos] = useState([]);
+    const [triggerConfetti, setTriggerConfetti] = useState(0);
+    const confettiTriggeredRef = useRef(false);
 
     // Handle window resize for responsive layout
     useEffect(() => {
@@ -248,6 +254,58 @@ const Tips = () => {
             fetchTipsData();
         }
     }, [timestampProcessed, fetchTipsData]);
+    
+    // Effect to trigger confetti when new tips are loaded
+    useEffect(() => {
+        // Only run once per page load, after tips are loaded
+        if (confettiTriggeredRef.current || loading || tipsReceived.length === 0 || !capturedOldTimestamp) {
+            return;
+        }
+        
+        // Find new tips
+        const newTips = tipsReceived.filter(tip => Number(tip.created_at) > capturedOldTimestamp);
+        
+        if (newTips.length === 0) {
+            confettiTriggeredRef.current = true; // Mark as checked even if no new tips
+            return;
+        }
+        
+        // Collect unique token logos from new tips (use getTokenMetadata directly)
+        const uniqueTokenIds = [...new Set(newTips.map(tip => tip.token_ledger_principal.toString()))];
+        const logos = uniqueTokenIds
+            .map(tokenId => {
+                const metadata = getTokenMetadata(tokenId);
+                return metadata?.logo;
+            })
+            .filter(logo => logo != null);
+        
+        if (logos.length === 0) {
+            // No logos loaded yet, wait for metadata
+            return;
+        }
+        
+        // Preload images before triggering confetti
+        const preloadPromises = logos.map(url => {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => resolve(true);
+                img.onerror = () => resolve(false);
+                img.src = url;
+            });
+        });
+        
+        Promise.all(preloadPromises).then(results => {
+            // Only proceed if at least one image loaded
+            if (results.some(loaded => loaded) && !confettiTriggeredRef.current) {
+                confettiTriggeredRef.current = true;
+                setConfettiLogos(logos);
+                // Small delay for dramatic effect
+                setTimeout(() => {
+                    setTriggerConfetti(prev => prev + 1);
+                }, 500);
+            }
+        });
+    }, [loading, tipsReceived, capturedOldTimestamp, getTokenMetadata]);
 
     // Helper function to check if a tip is new (for highlighting)
     const isTipNew = (tipTimestamp) => {
@@ -592,6 +650,15 @@ const Tips = () => {
         <div className="page-container">
             <style>{customStyles}</style>
             <Header showSnsDropdown={false} />
+            
+            {/* Token Logo Confetti for new tips */}
+            <TokenConfetti 
+                tokenLogos={confettiLogos}
+                trigger={triggerConfetti}
+                duration={7000}
+                particleCount={80}
+            />
+            
             <main style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
                 {/* Hero Section */}
                 <div style={{
