@@ -6,6 +6,7 @@ import { Principal } from '@dfinity/principal';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'declarations/rll';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { getTokenLogo } from '../../utils/TokenUtils';
+import { PrincipalDisplay } from '../../utils/PrincipalUtils';
 import InfoModal from '../../components/InfoModal';
 import ConfirmationModal from '../../ConfirmationModal';
 import { useNavigate } from 'react-router-dom';
@@ -1646,7 +1647,13 @@ export default function RewardsAdmin() {
                                                     {paginatedUserBalances.map(([principal, tokenBalances]) => (
                                                         <tr key={principal.toString()}>
                                                             <td style={styles.td}>
-                                                                <code style={{ fontSize: '0.8rem' }}>{shortenPrincipal(principal)}</code>
+                                                                <PrincipalDisplay 
+                                                                    principal={principal} 
+                                                                    showCopyButton={false}
+                                                                    short={true}
+                                                                    enableContextMenu={true}
+                                                                    isAuthenticated={isAuthenticated}
+                                                                />
                                                             </td>
                                                             <td style={styles.td}>
                                                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
@@ -2044,7 +2051,13 @@ export default function RewardsAdmin() {
                                                                     )}
                                                                 </td>
                                                                 <td style={styles.td}>
-                                                                    <code style={{ fontSize: '0.8rem' }}>{shortenPrincipal(event.hotkey)}</code>
+                                                                    <PrincipalDisplay 
+                                                                        principal={event.hotkey} 
+                                                                        showCopyButton={false}
+                                                                        short={true}
+                                                                        enableContextMenu={true}
+                                                                        isAuthenticated={isAuthenticated}
+                                                                    />
                                                                 </td>
                                                                 <td style={styles.td}>
                                                                     <TokenDisplay tokenId={event.token_id} showLogo={false} />
@@ -2111,7 +2124,13 @@ export default function RewardsAdmin() {
                                                                 <td style={styles.td}>{event.sequence_number?.toString()}</td>
                                                                 <td style={styles.td}>{formatTimestamp(event.timestamp)}</td>
                                                                 <td style={styles.td}>
-                                                                    <code style={{ fontSize: '0.8rem' }}>{shortenPrincipal(event.hotkey)}</code>
+                                                                    <PrincipalDisplay 
+                                                                        principal={event.hotkey} 
+                                                                        showCopyButton={false}
+                                                                        short={true}
+                                                                        enableContextMenu={true}
+                                                                        isAuthenticated={isAuthenticated}
+                                                                    />
                                                                 </td>
                                                                 <td style={styles.td}>
                                                                     <TokenDisplay tokenId={event.token_id} showLogo={false} />
