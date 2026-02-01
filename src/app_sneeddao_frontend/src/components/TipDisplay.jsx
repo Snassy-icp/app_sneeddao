@@ -60,9 +60,55 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
         }
     }, []);
     
+    // Track if the last interaction was touch-based
+    const lastInteractionWasTouch = useRef(false);
+    
+    // Position tooltip relative to an element (below or above)
+    const updateTooltipPositionFromElement = useCallback((element) => {
+        const rect = element.getBoundingClientRect();
+        const tooltipWidth = 320;
+        const tooltipHeight = 280;
+        const margin = 8;
+
+        // Center tooltip horizontally relative to pill
+        let x = rect.left + (rect.width / 2) - (tooltipWidth / 2);
+        
+        // Default: position below the pill
+        let y = rect.bottom + margin;
+        
+        // Check if tooltip would go off-screen at the bottom
+        const fitsBelow = (y + tooltipHeight) <= window.innerHeight - margin;
+        
+        if (!fitsBelow) {
+            // Position above the pill instead
+            y = rect.top - tooltipHeight - margin;
+        }
+
+        // Adjust horizontal position if tooltip would go off-screen
+        if (x + tooltipWidth > window.innerWidth - margin) {
+            x = window.innerWidth - tooltipWidth - margin;
+        }
+        if (x < margin) {
+            x = margin;
+        }
+
+        // Ensure tooltip doesn't go off-screen at the top
+        if (y < margin) {
+            y = margin;
+        }
+
+        setTooltipPosition({ x, y });
+    }, []);
+    
     // Toggle expansion of a tip pill
     const toggleExpanded = (tokenKey, e) => {
-        e.stopPropagation(); // Prevent tooltip from triggering
+        e.stopPropagation();
+        e.preventDefault();
+        
+        const wasExpanded = expandedTokens.has(tokenKey);
+        const wasShowingTooltip = hoveredToken === tokenKey;
+        
+        // Toggle expansion
         setExpandedTokens(prev => {
             const newSet = new Set(prev);
             if (newSet.has(tokenKey)) {
@@ -72,7 +118,35 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
             }
             return newSet;
         });
+        
+        // On touch devices, also handle tooltip
+        if (lastInteractionWasTouch.current) {
+            if (wasShowingTooltip) {
+                // If tooltip was showing, hide it and collapse
+                setHoveredToken(null);
+            } else {
+                // Show tooltip and position it
+                // Use setTimeout to ensure the pill has expanded first
+                setTimeout(() => {
+                    setHoveredToken(tokenKey);
+                    const pillElement = pillRefs.current.get(tokenKey);
+                    if (pillElement) {
+                        updateTooltipPositionFromElement(pillElement);
+                    }
+                }, 50);
+            }
+        }
     };
+    
+    // Handle touch start to track touch interactions
+    const handleTouchStart = useCallback(() => {
+        lastInteractionWasTouch.current = true;
+    }, []);
+    
+    // Handle mouse enter to track mouse interactions
+    const handleMouseDown = useCallback(() => {
+        lastInteractionWasTouch.current = false;
+    }, []);
     
     // Handle tip button click
     const handleTipClick = (tokenPrincipal, e) => {
@@ -220,8 +294,40 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
             return () => clearTimeout(timer);
         }
     }, [animateToken]);
+    
+    // On mobile, dismiss tooltip when tapping outside
+    useEffect(() => {
+        if (!hoveredToken) return;
+        
+        const handleClickOutside = (e) => {
+            // Check if click is outside of pills and tooltip
+            const clickedPill = e.target.closest('[data-tip-pill]');
+            const clickedTooltip = e.target.closest('[data-tip-tooltip]');
+            
+            if (!clickedPill && !clickedTooltip) {
+                setHoveredToken(null);
+            }
+        };
+        
+        // Small delay to avoid immediately closing from the same click that opened it
+        const timer = setTimeout(() => {
+            document.addEventListener('click', handleClickOutside);
+            document.addEventListener('touchstart', handleClickOutside);
+        }, 100);
+        
+        return () => {
+            clearTimeout(timer);
+            document.removeEventListener('click', handleClickOutside);
+            document.removeEventListener('touchstart', handleClickOutside);
+        };
+    }, [hoveredToken]);
 
     const handleMouseEnter = useCallback((tokenKey) => {
+        // If last interaction was touch, don't handle hover - let click handle it
+        if (lastInteractionWasTouch.current) {
+            return;
+        }
+        
         setHoveredToken(tokenKey);
         
         // Position tooltip based on the pill element
@@ -229,9 +335,14 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
         if (pillElement) {
             updateTooltipPositionFromElement(pillElement);
         }
-    }, []);
+    }, [updateTooltipPositionFromElement]);
     
     const handlePillMouseLeave = useCallback((tokenKey) => {
+        // If last interaction was touch, don't handle hover - let click handle it
+        if (lastInteractionWasTouch.current) {
+            return;
+        }
+        
         // Delay closing to allow moving to tooltip
         setTimeout(() => {
             // Only close if tooltip is not being hovered
@@ -248,33 +359,6 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
     const handleTooltipMouseLeave = useCallback(() => {
         tooltipHoveredRef.current = false;
         setHoveredToken(null);
-    }, []);
-
-    const updateTooltipPositionFromElement = useCallback((element) => {
-        const rect = element.getBoundingClientRect();
-        const tooltipWidth = 320;
-        const tooltipHeight = 280;
-        const margin = 10;
-
-        // Position tooltip to the right of the pill
-        let x = rect.right + margin;
-        let y = rect.top - 20;
-
-        // Adjust if tooltip would go off-screen to the right
-        if (x + tooltipWidth > window.innerWidth) {
-            x = rect.left - tooltipWidth - margin;
-        }
-
-        // Adjust if tooltip would go off-screen at the bottom
-        if (y + tooltipHeight > window.innerHeight) {
-            y = window.innerHeight - tooltipHeight - margin;
-        }
-
-        // Ensure tooltip doesn't go off-screen at the top or left
-        x = Math.max(margin, x);
-        y = Math.max(margin, y);
-
-        setTooltipPosition({ x, y });
     }, []);
 
     return (
@@ -307,6 +391,8 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                             if (el) pillRefs.current.set(tokenKey, el);
                             else pillRefs.current.delete(tokenKey);
                         }}
+                        onTouchStart={handleTouchStart}
+                        onMouseDown={handleMouseDown}
                         onClick={(e) => toggleExpanded(tokenKey, e)}
                         onMouseEnter={() => handleMouseEnter(tokenKey)}
                         onMouseLeave={() => handlePillMouseLeave(tokenKey)}
@@ -466,6 +552,7 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
             {/* Tooltip */}
             {hoveredToken && createPortal(
                 <div
+                    data-tip-tooltip="true"
                     onMouseEnter={handleTooltipMouseEnter}
                     onMouseLeave={handleTooltipMouseLeave}
                     style={{
