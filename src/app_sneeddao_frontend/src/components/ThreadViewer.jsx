@@ -1822,13 +1822,15 @@ function ThreadViewer({
                 setTippingState('success');
                 
                 // Store the tipped info for animation when modal closes
+                // The real tips will be fetched after animation completes (in onAnimationComplete)
                 setLastTippedInfo({
                     postId: postIdNum,
-                    tokenPrincipal: tokenPrincipalStr
+                    tokenPrincipal: tokenPrincipalStr,
+                    post: selectedPostForTip // Store post reference for delayed fetch
                 });
                 
-                // Refresh tips for this post (will replace placeholder with real data)
-                await fetchTipsForPosts([selectedPostForTip]);
+                // DON'T fetch tips here - wait for animation to complete
+                // fetchTipsForPosts will be called in onAnimationComplete
                 
                 // Refresh token balance
                 if (refreshTokenBalance) {
@@ -3305,6 +3307,15 @@ function ThreadViewer({
                                 postId: lastTippedInfo.postId,
                                 tokenPrincipal: lastTippedInfo.tokenPrincipal
                             });
+                            
+                            // Now fetch the real tips (replaces placeholder)
+                            // Small delay so the logo fade-in animation can play first
+                            setTimeout(() => {
+                                if (lastTippedInfo.post) {
+                                    fetchTipsForPosts([lastTippedInfo.post]);
+                                }
+                            }, 400);
+                            
                             setTimeout(() => {
                                 setAnimatingTipToken(null);
                             }, 900);

@@ -128,11 +128,16 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
             acc[tokenKey] = {
                 principal: tip.token_ledger_principal,
                 tips: [],
-                totalAmount: 0
+                totalAmount: 0,
+                isPlaceholder: false
             };
         }
         acc[tokenKey].tips.push(tip);
         acc[tokenKey].totalAmount += Number(tip.amount);
+        // Track if this is a placeholder (waiting for flying token to land)
+        if (tip._isPlaceholder) {
+            acc[tokenKey].isPlaceholder = true;
+        }
         return acc;
     }, {});
 
@@ -290,6 +295,9 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                 const isLoading = isLoadingMetadata(tokenData.principal);
                 const isExpanded = expandedTokens.has(tokenKey);
                 const isAnimating = animatingTokens.has(tokenKey);
+                const isPlaceholder = tokenData.isPlaceholder;
+                // Placeholder logos start invisible and fade in when the flying token lands
+                const logoOpacity = isPlaceholder && !isAnimating ? 0 : 1;
                 
                 return (
                     <div
@@ -353,7 +361,9 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                                     borderRadius: '50%',
                                     objectFit: 'cover',
                                     boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
-                                    flexShrink: 0
+                                    flexShrink: 0,
+                                    opacity: logoOpacity,
+                                    transition: 'opacity 0.3s ease-out'
                                 }}
                                 onError={(e) => {
                                     e.target.style.display = 'none';
@@ -361,7 +371,13 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                                 }}
                             />
                         ) : null}
-                        <span style={{ display: logo && !isLoading ? 'none' : 'inline', fontSize: '11px', flexShrink: 0 }}>💎</span>
+                        <span style={{ 
+                            display: logo && !isLoading ? 'none' : 'inline', 
+                            fontSize: '11px', 
+                            flexShrink: 0,
+                            opacity: logoOpacity,
+                            transition: 'opacity 0.3s ease-out'
+                        }}>💎</span>
                         
                         {/* Amount and symbol - only show when expanded */}
                         <span style={{ 
