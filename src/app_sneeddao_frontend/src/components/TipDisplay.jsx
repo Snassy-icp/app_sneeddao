@@ -5,6 +5,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
 import { formatPrincipal } from '../utils/PrincipalUtils';
 import { get_token_conversion_rate } from '../utils/TokenUtils';
+import { FaCoins } from 'react-icons/fa';
 
 const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = new Map(), isNarrowScreen = false, onTip = null, animateToken = null, postId = null }) => {
     const { theme } = useTheme();
@@ -241,8 +242,7 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
         });
     }, [tips]);
 
-    // If no tips and no onTip callback, don't render anything
-    if ((!tips || tips.length === 0) && !onTip) {
+    if (!tips || tips.length === 0) {
         return null;
     }
 
@@ -633,7 +633,7 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                 );
             })}
             
-            {/* Add Tip button - circular + pill */}
+            {/* Add Tip button - circular coin pill */}
             {onTip && (
                 <button
                     onClick={(e) => {
@@ -652,8 +652,6 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                         padding: 0,
                         cursor: 'pointer',
                         color: '#d4aa00',
-                        fontSize: '14px',
-                        fontWeight: '400',
                         transition: 'all 0.2s ease',
                     }}
                     onMouseOver={(e) => {
@@ -674,7 +672,7 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                     }}
                     title="Add a tip"
                 >
-                    +
+                    <FaCoins size={11} />
                 </button>
             )}
 
