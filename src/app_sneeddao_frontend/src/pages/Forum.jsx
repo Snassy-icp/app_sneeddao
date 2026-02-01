@@ -942,62 +942,83 @@ function Forum() {
                                                     )}
                                                 </div>
                                                 
-                                                {/* Subtopics */}
+                                                {/* Subtopics - inline pills */}
                                                 {topic.children.length > 0 && (
                                                     <div style={{
-                                                        marginTop: '0.75rem',
-                                                        padding: '0.75rem',
-                                                        background: theme.colors.primaryBg,
-                                                        borderRadius: '8px',
-                                                        border: `1px solid ${theme.colors.border}`
+                                                        marginTop: '10px',
+                                                        display: 'flex',
+                                                        flexWrap: 'wrap',
+                                                        gap: '8px',
+                                                        alignItems: 'center'
                                                     }}>
-                                                        <div style={{
-                                                            display: 'flex',
-                                                            flexWrap: 'wrap',
-                                                            gap: '0.5rem'
+                                                        <span style={{
+                                                            fontSize: '0.75rem',
+                                                            color: theme.colors.mutedText,
+                                                            textTransform: 'uppercase',
+                                                            letterSpacing: '0.5px',
+                                                            fontWeight: '600',
+                                                            marginRight: '4px'
                                                         }}>
-                                                            {topic.children.map((child) => {
-                                                                const childStats = topicStatistics.get(child.id);
-                                                                return (
-                                                                    <span
-                                                                        key={child.id}
-                                                            onClick={(e) => {
-                                                                e.preventDefault();
-                                                                e.stopPropagation();
-                                                                window.location.href = `/topic/${child.id}`;
-                                                            }}
-                                                                        style={{
-                                                                            color: forumPrimary,
-                                                                            fontSize: '0.85rem',
-                                                                            cursor: 'pointer',
-                                                                            padding: '4px 10px',
-                                                                            background: `${forumPrimary}15`,
-                                                                            borderRadius: '6px',
-                                                                            display: 'flex',
-                                                                            alignItems: 'center',
-                                                                            gap: '4px',
-                                                                            transition: 'all 0.2s ease'
-                                                            }}
-                                                        >
-                                                            {child.title}
-                                                                        {childStats?.total_unread_posts > 0 && (
+                                                            Subtopics:
+                                                        </span>
+                                                        {topic.children.map((child) => {
+                                                            const childStats = topicStatistics.get(child.id);
+                                                            return (
+                                                                <span
+                                                                    key={child.id}
+                                                                    onClick={(e) => {
+                                                                        e.preventDefault();
+                                                                        e.stopPropagation();
+                                                                        window.location.href = `/topic/${child.id}`;
+                                                                    }}
+                                                                    style={{
+                                                                        color: theme.colors.primaryText,
+                                                                        fontSize: '0.8rem',
+                                                                        cursor: 'pointer',
+                                                                        padding: '5px 12px',
+                                                                        background: `linear-gradient(135deg, ${forumPrimary}15 0%, ${forumPrimary}08 100%)`,
+                                                                        border: `1px solid ${forumPrimary}25`,
+                                                                        borderRadius: '20px',
+                                                                        display: 'inline-flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '6px',
+                                                                        transition: 'all 0.2s ease',
+                                                                        fontWeight: '500'
+                                                                    }}
+                                                                    onMouseEnter={(e) => {
+                                                                        e.currentTarget.style.background = `linear-gradient(135deg, ${forumPrimary}25 0%, ${forumPrimary}15 100%)`;
+                                                                        e.currentTarget.style.borderColor = `${forumPrimary}40`;
+                                                                        e.currentTarget.style.transform = 'translateY(-1px)';
+                                                                        e.currentTarget.style.boxShadow = `0 2px 8px ${forumPrimary}20`;
+                                                                    }}
+                                                                    onMouseLeave={(e) => {
+                                                                        e.currentTarget.style.background = `linear-gradient(135deg, ${forumPrimary}15 0%, ${forumPrimary}08 100%)`;
+                                                                        e.currentTarget.style.borderColor = `${forumPrimary}25`;
+                                                                        e.currentTarget.style.transform = 'translateY(0)';
+                                                                        e.currentTarget.style.boxShadow = 'none';
+                                                                    }}
+                                                                >
+                                                                    <FaChevronRight size={8} style={{ color: forumPrimary, opacity: 0.7 }} />
+                                                                    {child.title}
+                                                                    {childStats?.total_unread_posts > 0 && (
                                                                         <span style={{
-                                                                                background: theme.colors.error,
+                                                                            background: `linear-gradient(135deg, ${theme.colors.error} 0%, #dc2626 100%)`,
                                                                             color: 'white',
-                                                                                padding: '1px 5px',
-                                                                            borderRadius: '6px',
-                                                                            fontSize: '0.7rem',
-                                                                                fontWeight: '600'
+                                                                            padding: '2px 6px',
+                                                                            borderRadius: '10px',
+                                                                            fontSize: '0.65rem',
+                                                                            fontWeight: '700',
+                                                                            marginLeft: '2px',
+                                                                            boxShadow: `0 1px 4px ${theme.colors.error}40`
                                                                         }}>
                                                                             {childStats.total_unread_posts}
                                                                         </span>
-                                                                        )}
-                                                        </span>
-                                                                );
-                                                            })}
-                                                        </div>
-                                        </div>
-                                    )}
+                                                                    )}
+                                                                </span>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
                                     </div>
                                             
                                             {/* Arrow */}

@@ -15,8 +15,10 @@ import { createActor as createSnsGovernanceActor } from 'external/sns_governance
 import { getSnsById, fetchSnsLogo, getAllSnses } from '../utils/SnsUtils';
 import { getPostsByThread } from '../utils/BackendUtils';
 import { HttpAgent } from '@dfinity/agent';
-import { FaComments, FaChevronRight, FaPlus, FaRegClock, FaSort, FaList, FaChevronLeft, FaGavel, FaRegLightbulb, FaFire, FaPoll, FaArrowRight } from 'react-icons/fa';
+import { FaComments, FaChevronRight, FaPlus, FaRegClock, FaSort, FaList, FaChevronLeft, FaGavel, FaRegLightbulb, FaFire, FaPoll, FaArrowRight, FaUser } from 'react-icons/fa';
 import { getRelativeTime, getFullDate } from '../utils/DateUtils';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
+import { useNaming } from '../NamingContext';
 
 // Custom CSS for animations
 const customStyles = `
@@ -76,6 +78,7 @@ function Topic() {
     const { identity } = useAuth();
     const { theme } = useTheme();
     const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT } = useSns();
+    const { principalNames, principalNicknames } = useNaming();
     const navigate = useNavigate();
 
     // Get SNS from URL params if provided, otherwise use selected SNS
@@ -1447,12 +1450,41 @@ function Topic() {
                                                     <div style={{
                                                         display: 'flex',
                                                         alignItems: 'center',
-                                                        gap: '16px',
+                                                        gap: '12px',
                                                         flexWrap: 'wrap',
                                                         fontSize: '0.8rem',
                                                         color: theme.colors.mutedText,
                                                         marginTop: '2px'
                                                     }}>
+                                                        {/* Creator */}
+                                                        {thread.created_by && (
+                                                            <span 
+                                                                style={{ 
+                                                                    display: 'flex', 
+                                                                    alignItems: 'center', 
+                                                                    gap: '5px',
+                                                                    padding: '4px 8px',
+                                                                    background: 'rgba(255,255,255,0.03)',
+                                                                    borderRadius: '6px'
+                                                                }}
+                                                                onClick={(e) => e.stopPropagation()}
+                                                            >
+                                                                <FaUser size={10} style={{ opacity: 0.7 }} />
+                                                                <PrincipalDisplay 
+                                                                    principal={thread.created_by}
+                                                                    displayInfo={getPrincipalDisplayInfoFromContext(
+                                                                        thread.created_by,
+                                                                        principalNames,
+                                                                        principalNicknames
+                                                                    )}
+                                                                    showCopyButton={false}
+                                                                    style={{ 
+                                                                        fontSize: '0.8rem',
+                                                                        color: theme.colors.mutedText
+                                                                    }}
+                                                                />
+                                                            </span>
+                                                        )}
                                                         <span 
                                                             style={{ 
                                                                 display: 'flex', 
