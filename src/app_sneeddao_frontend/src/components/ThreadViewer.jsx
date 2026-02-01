@@ -3488,6 +3488,15 @@ function ThreadViewer({
                     {/* Post content - hide when collapsed */}
                     {!isCollapsed && (
                         <>
+                            {/* Tips Display - between header and body */}
+                            {postTips[Number(post.id)] && postTips[Number(post.id)].length > 0 && (
+                                <TipDisplay 
+                                    tips={postTips[Number(post.id)]}
+                                    principalDisplayInfo={principalDisplayInfo}
+                                    isNarrowScreen={isNarrowScreen}
+                                />
+                            )}
+                            
                             {/* Post body - hide when editing */}
                             {editingPost !== Number(post.id) && (
                                 <div className="post-body">
@@ -3507,15 +3516,6 @@ function ThreadViewer({
                                     totalVotingPower={totalVotingPower}
                                 />
                             ))}
-                            
-                            {/* Tips Display */}
-                            {postTips[Number(post.id)] && postTips[Number(post.id)].length > 0 && (
-                                <TipDisplay 
-                                    tips={postTips[Number(post.id)]}
-                                    principalDisplayInfo={principalDisplayInfo}
-                                    isNarrowScreen={isNarrowScreen}
-                                />
-                            )}
 
                             {/* Action Buttons - Only show for authenticated users and real posts (not optimistic) */}
                             {isAuthenticated && !isOptimistic && (
