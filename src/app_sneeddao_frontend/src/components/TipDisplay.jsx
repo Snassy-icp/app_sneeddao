@@ -381,7 +381,14 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
             return;
         }
         
-        // Position tooltip FIRST based on current pill position
+        // If switching to a different pill, briefly hide tooltip to prevent flash
+        if (hoveredToken && hoveredToken !== tokenKey) {
+            setHoveredToken(null);
+        }
+        
+        // Position tooltip FIRST based on current pill position (move off-screen first to prevent flash)
+        setTooltipPosition({ x: -9999, y: -9999 });
+        
         const pillElement = pillRefs.current.get(tokenKey);
         if (pillElement) {
             updateTooltipPositionFromElement(pillElement);
@@ -404,7 +411,7 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                 updateTooltipPositionFromElement(pillEl);
             }
         }, 300);
-    }, [updateTooltipPositionFromElement]);
+    }, [updateTooltipPositionFromElement, hoveredToken]);
     
     const handlePillMouseLeave = useCallback((tokenKey) => {
         // If last interaction was touch, don't handle hover - let click handle it
