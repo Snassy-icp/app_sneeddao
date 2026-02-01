@@ -129,15 +129,17 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
         }
     }, [tooltipPosition.needsCorrection, hoveredToken, tooltipPosition.pillTop]);
     
-    // Toggle expansion of a tip pill
+    // Toggle expansion of a tip pill (desktop only - whole pill click)
     const toggleExpanded = (tokenKey, e) => {
         e.stopPropagation();
         e.preventDefault();
         
-        const wasExpanded = expandedTokens.has(tokenKey);
-        const wasShowingTooltip = hoveredToken === tokenKey;
+        // On touch devices, don't handle whole pill click - use separate handlers
+        if (lastInteractionWasTouch.current) {
+            return;
+        }
         
-        // Toggle expansion
+        // Desktop: toggle expansion
         setExpandedTokens(prev => {
             const newSet = new Set(prev);
             if (newSet.has(tokenKey)) {
@@ -147,24 +149,44 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
             }
             return newSet;
         });
+    };
+    
+    // Toggle tooltip only (mobile - tap on token icon)
+    const toggleTooltipOnly = (tokenKey, e) => {
+        e.stopPropagation();
+        e.preventDefault();
         
-        // On touch devices, also handle tooltip
-        if (lastInteractionWasTouch.current) {
-            if (wasShowingTooltip) {
-                // If tooltip was showing, hide it and collapse
-                setHoveredToken(null);
-            } else {
-                // Show tooltip and position it
-                // Use setTimeout to ensure the pill has expanded first
-                setTimeout(() => {
-                    setHoveredToken(tokenKey);
-                    const pillElement = pillRefs.current.get(tokenKey);
-                    if (pillElement) {
-                        updateTooltipPositionFromElement(pillElement);
-                    }
-                }, 50);
+        if (!lastInteractionWasTouch.current) return;
+        
+        const wasShowingTooltip = hoveredToken === tokenKey;
+        
+        if (wasShowingTooltip) {
+            setHoveredToken(null);
+        } else {
+            setHoveredToken(tokenKey);
+            const pillElement = pillRefs.current.get(tokenKey);
+            if (pillElement) {
+                updateTooltipPositionFromElement(pillElement);
             }
         }
+    };
+    
+    // Toggle expand only (mobile - tap on count badge)
+    const toggleExpandOnly = (tokenKey, e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        
+        if (!lastInteractionWasTouch.current) return;
+        
+        setExpandedTokens(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(tokenKey)) {
+                newSet.delete(tokenKey);
+            } else {
+                newSet.add(tokenKey);
+            }
+            return newSet;
+        });
     };
     
     // Handle touch start to track touch interactions
@@ -488,36 +510,45 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                             }
                         }}
                     >
-                        {/* Token icon */}
-                        {isLoading ? (
-                            <span style={{ fontSize: '12px' }}>⏳</span>
-                        ) : logo ? (
-                            <img 
-                                src={logo} 
-                                alt={symbol}
-                                style={{
-                                    width: '14px',
-                                    height: '14px',
-                                    borderRadius: '50%',
-                                    objectFit: 'cover',
-                                    boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
-                                    flexShrink: 0,
-                                    opacity: logoOpacity,
-                                    transition: 'opacity 0.3s ease-out'
-                                }}
-                                onError={(e) => {
-                                    e.target.style.display = 'none';
-                                    e.target.nextSibling.style.display = 'inline';
-                                }}
-                            />
-                        ) : null}
-                        <span style={{ 
-                            display: logo && !isLoading ? 'none' : 'inline', 
-                            fontSize: '11px', 
-                            flexShrink: 0,
-                            opacity: logoOpacity,
-                            transition: 'opacity 0.3s ease-out'
-                        }}>💎</span>
+                        {/* Token icon - on mobile, tapping toggles tooltip */}
+                        <span 
+                            onClick={(e) => toggleTooltipOnly(tokenKey, e)}
+                            style={{ 
+                                display: 'flex', 
+                                alignItems: 'center',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            {isLoading ? (
+                                <span style={{ fontSize: '12px' }}>⏳</span>
+                            ) : logo ? (
+                                <img 
+                                    src={logo} 
+                                    alt={symbol}
+                                    style={{
+                                        width: '14px',
+                                        height: '14px',
+                                        borderRadius: '50%',
+                                        objectFit: 'cover',
+                                        boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
+                                        flexShrink: 0,
+                                        opacity: logoOpacity,
+                                        transition: 'opacity 0.3s ease-out'
+                                    }}
+                                    onError={(e) => {
+                                        e.target.style.display = 'none';
+                                        e.target.nextSibling.style.display = 'inline';
+                                    }}
+                                />
+                            ) : null}
+                            <span style={{ 
+                                display: logo && !isLoading ? 'none' : 'inline', 
+                                fontSize: '11px', 
+                                flexShrink: 0,
+                                opacity: logoOpacity,
+                                transition: 'opacity 0.3s ease-out'
+                            }}>💎</span>
+                        </span>
                         
                         {/* Amount and symbol - only show when expanded */}
                         <span style={{ 
@@ -572,31 +603,34 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                             </button>
                         )}
                         
-                        {/* Tip count badge */}
-                        <span style={{ 
-                            background: isAnimating 
-                                ? 'rgba(255,215,0,0.6)'
-                                : isLoading 
-                                    ? 'rgba(100,100,100,0.25)'
-                                    : 'rgba(255,215,0,0.25)',
-                            color: isAnimating ? '#fff' : isLoading ? '#999' : '#d4aa00',
-                            borderRadius: '50%',
-                            padding: tokenData.tips.length > 9 ? '1px 5px' : '1px',
-                            fontSize: '9px',
-                            fontWeight: '600',
-                            width: tokenData.tips.length > 9 ? 'auto' : '14px',
-                            height: '14px',
-                            minWidth: '14px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            border: isAnimating 
-                                ? '1px solid rgba(255,215,0,0.8)' 
-                                : isLoading ? '1px solid rgba(150,150,150,0.3)' : '1px solid rgba(255,215,0,0.35)',
-                            flexShrink: 0,
-                            transition: 'all 0.3s ease',
-                            textShadow: isAnimating ? '0 0 8px rgba(255,255,255,0.8)' : 'none'
-                        }}>
+                        {/* Tip count badge - on mobile, tapping toggles expand/collapse */}
+                        <span 
+                            onClick={(e) => toggleExpandOnly(tokenKey, e)}
+                            style={{ 
+                                background: isAnimating 
+                                    ? 'rgba(255,215,0,0.6)'
+                                    : isLoading 
+                                        ? 'rgba(100,100,100,0.25)'
+                                        : 'rgba(255,215,0,0.25)',
+                                color: isAnimating ? '#fff' : isLoading ? '#999' : '#d4aa00',
+                                borderRadius: '50%',
+                                padding: tokenData.tips.length > 9 ? '1px 5px' : '1px',
+                                fontSize: '9px',
+                                fontWeight: '600',
+                                width: tokenData.tips.length > 9 ? 'auto' : '14px',
+                                height: '14px',
+                                minWidth: '14px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                border: isAnimating 
+                                    ? '1px solid rgba(255,215,0,0.8)' 
+                                    : isLoading ? '1px solid rgba(150,150,150,0.3)' : '1px solid rgba(255,215,0,0.35)',
+                                flexShrink: 0,
+                                transition: 'all 0.3s ease',
+                                textShadow: isAnimating ? '0 0 8px rgba(255,255,255,0.8)' : 'none',
+                                cursor: 'pointer'
+                            }}>
                             {tokenData.tips.length}
                         </span>
                     </div>
