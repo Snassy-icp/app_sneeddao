@@ -127,23 +127,37 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
     };
 
     const handleMouseLeave = () => {
+        // Small delay to allow moving to tooltip
+        setTimeout(() => {
+            // Only close if we haven't re-entered
+            setHoveredToken(prev => prev);
+        }, 100);
+    };
+    
+    const handlePillMouseLeave = (tokenKey) => {
+        // Delay closing to allow moving to tooltip
+        setTimeout(() => {
+            setHoveredToken(current => current === tokenKey ? null : current);
+        }, 150);
+    };
+    
+    const handleTooltipMouseEnter = () => {
+        // Keep tooltip open when hovering over it
+        // hoveredToken is already set, just keep it
+    };
+    
+    const handleTooltipMouseLeave = () => {
         setHoveredToken(null);
     };
 
-    const handleMouseMove = (event) => {
-        if (hoveredToken) {
-            updateTooltipPosition(event);
-        }
-    };
-
     const updateTooltipPosition = (event) => {
-        const tooltipWidth = 300; // Approximate tooltip width
-        const tooltipHeight = 200; // Approximate tooltip height
+        const tooltipWidth = 320; // Approximate tooltip width
+        const tooltipHeight = 280; // Approximate tooltip height
         const margin = 15;
 
-        // Simple approach: use clientX/clientY directly for position: fixed
+        // Position tooltip to the right of the cursor, fixed position
         let x = event.clientX + margin;
-        let y = event.clientY - margin;
+        let y = event.clientY - 20;
 
         // Adjust if tooltip would go off-screen to the right
         if (x + tooltipWidth > window.innerWidth) {
@@ -152,7 +166,7 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
 
         // Adjust if tooltip would go off-screen at the bottom
         if (y + tooltipHeight > window.innerHeight) {
-            y = event.clientY - tooltipHeight - margin;
+            y = window.innerHeight - tooltipHeight - margin;
         }
 
         // Ensure tooltip doesn't go off-screen at the top or left
@@ -185,8 +199,7 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                         key={tokenKey}
                         onClick={(e) => toggleExpanded(tokenKey, e)}
                         onMouseEnter={(e) => handleMouseEnter(tokenKey, e)}
-                        onMouseLeave={handleMouseLeave}
-                        onMouseMove={handleMouseMove}
+                        onMouseLeave={() => handlePillMouseLeave(tokenKey)}
                         style={{
                             background: isLoading 
                                 ? 'linear-gradient(135deg, rgba(100,100,100,0.15) 0%, rgba(80,80,80,0.1) 100%)'
@@ -286,6 +299,8 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
             {/* Tooltip */}
             {hoveredToken && createPortal(
                 <div
+                    onMouseEnter={handleTooltipMouseEnter}
+                    onMouseLeave={handleTooltipMouseLeave}
                     style={{
                         position: 'fixed',
                         left: tooltipPosition.x,
@@ -300,8 +315,9 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                         minWidth: '200px',
                         zIndex: 9999,
                         boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.05) inset',
-                        pointerEvents: 'none',
-                        backdropFilter: 'blur(10px)'
+                        pointerEvents: 'auto',
+                        backdropFilter: 'blur(10px)',
+                        cursor: 'default'
                     }}
                 >
                     {/* Header */}
