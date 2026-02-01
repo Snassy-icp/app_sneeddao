@@ -129,56 +129,51 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
         }
     }, [tooltipPosition.needsCorrection, hoveredToken, tooltipPosition.pillTop]);
     
-    // Track tooltip fade-in state and pending tooltip timer
-    const [tooltipFadingIn, setTooltipFadingIn] = useState(false);
-    const tooltipTimerRef = useRef(null);
-    
     // Toggle expansion of a tip pill
+    // Mobile 3-state: collapsed → expanded (no tooltip) → expanded (with tooltip) → collapsed
     const toggleExpanded = (tokenKey, e) => {
         e.stopPropagation();
         e.preventDefault();
         
-        const wasExpanded = expandedTokens.has(tokenKey);
-        const wasShowingTooltip = hoveredToken === tokenKey;
+        const isExpanded = expandedTokens.has(tokenKey);
+        const isShowingTooltip = hoveredToken === tokenKey;
         
-        // Clear any pending tooltip timer
-        if (tooltipTimerRef.current) {
-            clearTimeout(tooltipTimerRef.current);
-            tooltipTimerRef.current = null;
-        }
-        
-        if (wasExpanded) {
-            // Collapsing - hide tooltip and collapse
-            setHoveredToken(null);
-            setTooltipFadingIn(false);
-            setExpandedTokens(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(tokenKey);
-                return newSet;
-            });
-        } else {
-            // Expanding
-            setExpandedTokens(prev => {
-                const newSet = new Set(prev);
-                newSet.add(tokenKey);
-                return newSet;
-            });
-            
-            // On mobile, wait for reflow then fade in tooltip
-            if (lastInteractionWasTouch.current) {
-                setTooltipFadingIn(false);
-                tooltipTimerRef.current = setTimeout(() => {
-                    const pillElement = pillRefs.current.get(tokenKey);
-                    if (pillElement) {
-                        updateTooltipPositionFromElement(pillElement);
-                    }
-                    setHoveredToken(tokenKey);
-                    // Start fade-in after a tiny delay to ensure position is set
-                    requestAnimationFrame(() => {
-                        setTooltipFadingIn(true);
-                    });
-                }, 800); // Wait for reflow
+        if (lastInteractionWasTouch.current) {
+            // Mobile: 3-state logic
+            if (!isExpanded) {
+                // State 1 → State 2: Collapsed → Expanded (no tooltip)
+                setExpandedTokens(prev => {
+                    const newSet = new Set(prev);
+                    newSet.add(tokenKey);
+                    return newSet;
+                });
+            } else if (isExpanded && !isShowingTooltip) {
+                // State 2 → State 3: Expanded (no tooltip) → Expanded (with tooltip)
+                const pillElement = pillRefs.current.get(tokenKey);
+                if (pillElement) {
+                    updateTooltipPositionFromElement(pillElement);
+                }
+                setHoveredToken(tokenKey);
+            } else {
+                // State 3 → State 1: Expanded (with tooltip) → Collapsed
+                setHoveredToken(null);
+                setExpandedTokens(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(tokenKey);
+                    return newSet;
+                });
             }
+        } else {
+            // Desktop: simple toggle expand/collapse (hover handles tooltip)
+            setExpandedTokens(prev => {
+                const newSet = new Set(prev);
+                if (newSet.has(tokenKey)) {
+                    newSet.delete(tokenKey);
+                } else {
+                    newSet.add(tokenKey);
+                }
+                return newSet;
+            });
         }
     };
     
@@ -339,14 +334,6 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
         }
     }, [animateToken]);
     
-    // Cleanup tooltip timer on unmount
-    useEffect(() => {
-        return () => {
-            if (tooltipTimerRef.current) {
-                clearTimeout(tooltipTimerRef.current);
-            }
-        };
-    }, []);
     
     // On mobile, dismiss tooltip when tapping outside
     useEffect(() => {
@@ -664,11 +651,7 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                         boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.05) inset',
                         pointerEvents: 'auto',
                         backdropFilter: 'blur(10px)',
-                        cursor: 'default',
-                        // Fade-in animation for mobile
-                        opacity: lastInteractionWasTouch.current ? (tooltipFadingIn ? 1 : 0) : 1,
-                        transform: lastInteractionWasTouch.current ? (tooltipFadingIn ? 'translateY(0)' : 'translateY(-8px)') : 'translateY(0)',
-                        transition: 'opacity 0.3s ease-out, transform 0.3s ease-out'
+                        cursor: 'default'
                     }}
                 >
                     {/* Header */}
