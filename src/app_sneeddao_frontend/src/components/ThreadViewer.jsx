@@ -455,7 +455,9 @@ function ThreadViewer({
     const [threadVotes, setThreadVotes] = useState(new Map()); // Map<postId, {upvoted_neurons: [], downvoted_neurons: []}>
     const [optimisticScores, setOptimisticScores] = useState(new Map()); // Map<postId, {upvote_score: number, downvote_score: number}>
     const [optimisticEdits, setOptimisticEdits] = useState(new Map()); // Map<postId, {title: string|null, body: string}>
+    const [optimisticPosts, setOptimisticPosts] = useState([]); // Array of optimistic posts pending server confirmation
     const [voteAnimations, setVoteAnimations] = useState(new Map()); // Map<postId, 'upvote' | 'downvote' | 'score'>
+    const optimisticPostIdRef = useRef(-1); // For generating unique negative temporary IDs
     
     // Settings panel state
     const [showSettings, setShowSettings] = useState(false);
@@ -633,6 +635,27 @@ function ThreadViewer({
             body: post.body
         };
     }, [optimisticEdits]);
+
+    // Helper to create an optimistic post object
+    const createOptimisticPost = useCallback((title, body, parentPostId = null) => {
+        const tempId = optimisticPostIdRef.current;
+        optimisticPostIdRef.current -= 1; // Decrement for next use (negative IDs to avoid collision)
+        
+        return {
+            id: BigInt(tempId),
+            thread_id: BigInt(threadId),
+            reply_to_post_id: parentPostId ? [BigInt(parentPostId)] : [],
+            title: title ? [title] : [],
+            body: body,
+            created_by: identity?.getPrincipal() || Principal.anonymous(),
+            created_at: BigInt(Date.now() * 1000000), // nanoseconds
+            upvote_score: BigInt(0),
+            downvote_score: BigInt(0),
+            replies: [],
+            _isOptimistic: true, // Flag to identify optimistic posts
+            _tempId: tempId // Store the temp ID for later removal
+        };
+    }, [threadId, identity]);
 
     // Sort posts based on selected criteria
     const sortPosts = useCallback((posts) => {
@@ -1017,32 +1040,55 @@ function ThreadViewer({
         }
     }, [forumActor, threadId]);
 
-    // Submit comment function (simplified from Discussion.jsx)
+    // Submit comment function with optimistic updates
     const submitComment = async () => {
         if (!commentText.trim() || !forumActor || !threadId) return;
         
-        setSubmittingComment(true);
+        const scrollY = window.scrollY;
+        
+        // Capture the values before clearing the form
+        const titleValue = commentTitle?.trim() || null;
+        const bodyValue = commentText.trim();
+        const shouldUseTitle = titleValue && titleValue.length > 0;
+        
+        // Create optimistic post immediately
+        const optimisticPost = createOptimisticPost(
+            shouldUseTitle ? titleValue : null,
+            bodyValue,
+            null // No parent for top-level comments
+        );
+        const tempId = optimisticPost._tempId;
+        
+        // Add optimistic post to the list immediately
+        setOptimisticPosts(prev => [...prev, optimisticPost]);
+        
+        // Clear form and close it immediately
+        setCommentText('');
+        setCommentTitle('');
+        setShowCommentForm(false);
+        
+        // Restore scroll position after React renders
+        requestAnimationFrame(() => {
+            window.scrollTo(0, scrollY);
+        });
+        
+        // Now call the API in the background
         try {
-            // Only use the title if it's explicitly provided
-            const shouldUseTitle = commentTitle && commentTitle.trim();
-            
             const result = await forumActor.create_post(
                 Number(threadId),
                 [], // reply_to_post_id - empty for top-level posts
-                shouldUseTitle ? [commentTitle.trim()] : [], // title
-                commentText // body
+                shouldUseTitle ? [titleValue] : [], // title
+                bodyValue // body
             );
             
             if ('ok' in result) {
                 console.log('Comment created successfully, post ID:', result.ok);
                 const postId = result.ok;
                 
-                // Clear form immediately
-                setCommentText('');
-                setCommentTitle('');
-                setShowCommentForm(false);
+                // Remove optimistic post
+                setOptimisticPosts(prev => prev.filter(p => p._tempId !== tempId));
                 
-                // Refresh posts to show the new post
+                // Refresh posts to get the real post from server
                 await fetchPosts();
                 
                 // Auto-upvote if user has voting power
@@ -1086,13 +1132,15 @@ function ThreadViewer({
                     }
                 }
             } else {
+                // Remove optimistic post on error
+                setOptimisticPosts(prev => prev.filter(p => p._tempId !== tempId));
                 throw new Error(formatError(result.err));
             }
         } catch (error) {
             console.error('Error creating comment:', error);
+            // Remove optimistic post on error
+            setOptimisticPosts(prev => prev.filter(p => p._tempId !== tempId));
             if (onError) onError('Failed to create comment: ' + error.message);
-        } finally {
-            setSubmittingComment(false);
         }
     };
 
@@ -1575,23 +1623,44 @@ function ThreadViewer({
     const submitReply = useCallback(async (parentPostId, replyText) => {
         if (!replyText.trim() || !forumActor || !threadId) return;
         
-        setSubmittingComment(true);
+        const scrollY = window.scrollY;
+        
+        // Create optimistic reply immediately
+        const optimisticPost = createOptimisticPost(
+            null, // No title for replies
+            replyText.trim(),
+            parentPostId
+        );
+        const tempId = optimisticPost._tempId;
+        
+        // Add optimistic post to the list immediately
+        setOptimisticPosts(prev => [...prev, optimisticPost]);
+        
+        // Clear form immediately
+        setReplyingTo(null);
+        
+        // Restore scroll position after React renders
+        requestAnimationFrame(() => {
+            window.scrollTo(0, scrollY);
+        });
+        
+        // Now call the API in the background
         try {
             const result = await forumActor.create_post(
                 Number(threadId),
                 [Number(parentPostId)],
                 [], // Empty title for replies
-                replyText
+                replyText.trim()
             );
             
             if ('ok' in result) {
                 console.log('Reply created successfully, post ID:', result.ok);
                 const postId = result.ok;
                 
-                // Clear form immediately
-                setReplyingTo(null);
+                // Remove optimistic post
+                setOptimisticPosts(prev => prev.filter(p => p._tempId !== tempId));
                 
-                // Refresh posts to show the new reply
+                // Refresh posts to get the real post from server
                 await fetchPosts();
                 
                 // Auto-upvote if user has voting power
@@ -1636,15 +1705,17 @@ function ThreadViewer({
                 }
             } else {
                 console.error('Failed to create reply:', result.err);
+                // Remove optimistic post on error
+                setOptimisticPosts(prev => prev.filter(p => p._tempId !== tempId));
                 if (onError) onError('Failed to create reply: ' + result.err);
             }
         } catch (error) {
             console.error('Error creating reply:', error);
+            // Remove optimistic post on error
+            setOptimisticPosts(prev => prev.filter(p => p._tempId !== tempId));
             if (onError) onError('Failed to create reply: ' + error.message);
-        } finally {
-            setSubmittingComment(false);
         }
-    }, [forumActor, threadId, onError, fetchPosts, allNeurons, totalVotingPower]);
+    }, [forumActor, threadId, onError, fetchPosts, allNeurons, totalVotingPower, createOptimisticPost]);
 
     const openTipModal = useCallback((post) => {
         setSelectedPostForTip(post);
@@ -2142,8 +2213,11 @@ function ThreadViewer({
         return rootPosts;
     }, []);
 
-    // Get posts for display based on mode
+    // Get posts for display based on mode (including optimistic posts)
     const getDisplayPosts = useCallback(() => {
+        // Merge real posts with optimistic posts
+        const allPosts = [...discussionPosts, ...optimisticPosts];
+        
         if (mode === 'post' && focusedPostId) {
             // For post mode, we want to show:
             // 1. All ancestors of the focused post
@@ -2151,8 +2225,8 @@ function ThreadViewer({
             // 3. All descendants of the focused post
             // 4. Collapse other branches initially
             
-            const focusedPost = discussionPosts.find(p => Number(p.id) === Number(focusedPostId));
-            if (!focusedPost) return buildPostTree(discussionPosts);
+            const focusedPost = allPosts.find(p => Number(p.id) === Number(focusedPostId));
+            if (!focusedPost) return buildPostTree(allPosts);
             
             const relevantPosts = new Set();
             
@@ -2164,12 +2238,12 @@ function ThreadViewer({
             while (currentPost && currentPost.reply_to_post_id && currentPost.reply_to_post_id.length > 0) {
                 const parentId = Number(currentPost.reply_to_post_id[0]);
                 relevantPosts.add(parentId);
-                currentPost = discussionPosts.find(p => Number(p.id) === parentId);
+                currentPost = allPosts.find(p => Number(p.id) === parentId);
             }
             
-            // Add all descendants
+            // Add all descendants (including optimistic replies)
             const addDescendants = (postId) => {
-                const children = discussionPosts.filter(p => 
+                const children = allPosts.filter(p => 
                     p.reply_to_post_id && 
                     p.reply_to_post_id.length > 0 && 
                     Number(p.reply_to_post_id[0]) === postId
@@ -2182,13 +2256,13 @@ function ThreadViewer({
             addDescendants(Number(focusedPostId));
             
             // Filter posts to relevant ones and build tree
-            const filteredPosts = discussionPosts.filter(p => relevantPosts.has(Number(p.id)));
+            const filteredPosts = allPosts.filter(p => relevantPosts.has(Number(p.id)));
             return buildPostTree(filteredPosts);
         }
         
         // Default: show all posts in tree
-        return buildPostTree(discussionPosts);
-    }, [discussionPosts, mode, focusedPostId, buildPostTree]);
+        return buildPostTree(allPosts);
+    }, [discussionPosts, optimisticPosts, mode, focusedPostId, buildPostTree]);
 
     // Ensure ancestor posts are expanded when in post mode
     useEffect(() => {
@@ -3177,10 +3251,11 @@ function ThreadViewer({
         // Determine special styling states
         const needsBorder = isFocused || isUnread;
         const needsBackground = isNegative || isFocused || isUnread;
+        const isOptimistic = post._isOptimistic;
         
         return (
             <div 
-                className={`post-item ${isFocused ? 'focused-post' : ''}`} 
+                className={`post-item ${isFocused ? 'focused-post' : ''} ${isOptimistic ? 'optimistic-post' : ''}`} 
                 data-depth={depth}
                 style={{ 
                     // Minimal indentation - CSS will handle the actual value via custom property
@@ -3193,20 +3268,28 @@ function ThreadViewer({
                     // Reduced vertical spacing
                     marginBottom: '2px',
                     marginTop: depth === 0 ? '8px' : '2px',
-                    // Background only for special states
-                    backgroundColor: needsBackground 
-                        ? (isUnread ? theme.colors.accentHover : (isNegative ? theme.colors.primaryBg : theme.colors.accentHover))
-                        : 'transparent',
+                    // Background only for special states (optimistic posts get a subtle highlight)
+                    backgroundColor: isOptimistic 
+                        ? 'rgba(255, 215, 0, 0.05)'
+                        : (needsBackground 
+                            ? (isUnread ? theme.colors.accentHover : (isNegative ? theme.colors.primaryBg : theme.colors.accentHover))
+                            : 'transparent'),
                     // Border only for focused/unread posts
                     border: needsBorder 
                         ? `2px solid ${isUnread ? theme.colors.accent : theme.colors.accent}` 
                         : 'none',
                     // Left border for nesting indication (not for top-level or bordered posts)
-                    borderLeft: !needsBorder && depth > 0 
-                        ? `2px solid ${isNegative ? theme.colors.error : theme.colors.border}` 
-                        : (needsBorder ? undefined : 'none'),
+                    // Optimistic posts get a gold left border
+                    borderLeft: isOptimistic 
+                        ? '3px solid rgba(255, 215, 0, 0.5)'
+                        : (!needsBorder && depth > 0 
+                            ? `2px solid ${isNegative ? theme.colors.error : theme.colors.border}` 
+                            : (needsBorder ? undefined : 'none')),
                     borderRadius: needsBorder ? '6px' : '0',
-                    position: 'relative'
+                    position: 'relative',
+                    // Add subtle opacity for optimistic posts
+                    opacity: isOptimistic ? 0.85 : 1,
+                    transition: 'opacity 0.3s ease, background-color 0.3s ease'
                 }}
             >
 
@@ -3252,22 +3335,46 @@ function ThreadViewer({
                                 {isCollapsed ? '▶' : '▼'}
                             </span>
                         )}
-                        <a 
-                            href={`/post?postid=${post.id}${selectedSnsRoot ? `&sns=${selectedSnsRoot}` : ''}`}
-                            className="post-id"
-                            style={{
-                                color: theme.colors.mutedText,
-                                textDecoration: 'none',
-                                fontWeight: '400',
-                                fontSize: '12px',
-                                fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-                                flexShrink: 0
-                            }}
-                            onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                            onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                        >
-                            #{isNarrowScreen ? '' : post.id.toString()}
-                        </a>
+                        {isOptimistic ? (
+                            <span
+                                style={{
+                                    color: '#ffd700',
+                                    fontSize: '12px',
+                                    fontWeight: '500',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    flexShrink: 0
+                                }}
+                            >
+                                <span style={{ 
+                                    display: 'inline-block',
+                                    width: '8px',
+                                    height: '8px',
+                                    borderRadius: '50%',
+                                    backgroundColor: '#ffd700',
+                                    animation: 'pulse 1.5s ease-in-out infinite'
+                                }} />
+                                Sending...
+                            </span>
+                        ) : (
+                            <a 
+                                href={`/post?postid=${post.id}${selectedSnsRoot ? `&sns=${selectedSnsRoot}` : ''}`}
+                                className="post-id"
+                                style={{
+                                    color: theme.colors.mutedText,
+                                    textDecoration: 'none',
+                                    fontWeight: '400',
+                                    fontSize: '12px',
+                                    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+                                    flexShrink: 0
+                                }}
+                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                            >
+                                #{isNarrowScreen ? '' : post.id.toString()}
+                            </a>
+                        )}
                         {effectiveContent.title && <span style={{ 
                             margin: 0, 
                             wordBreak: 'break-word', 
@@ -3398,8 +3505,8 @@ function ThreadViewer({
                                 />
                             )}
 
-                            {/* Action Buttons - Only show for authenticated users */}
-                            {isAuthenticated && (
+                            {/* Action Buttons - Only show for authenticated users and real posts (not optimistic) */}
+                            {isAuthenticated && !isOptimistic && (
                         <div style={{
                             display: 'flex',
                             gap: '8px',

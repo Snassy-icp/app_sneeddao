@@ -282,6 +282,22 @@
     100% { transform: rotate(360deg); }
 }
 
+/* Pulse animation for optimistic posts */
+@keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.9); }
+}
+
+/* Optimistic post styling */
+.optimistic-post {
+    animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 0.85; transform: translateY(0); }
+}
+
 /* Vote button animations - subtle but satisfying */
 @keyframes vote-pop {
     0% { transform: scale(1); }
