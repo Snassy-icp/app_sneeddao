@@ -4,6 +4,7 @@ import { Principal } from '@dfinity/principal';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
 import { formatPrincipal } from '../utils/PrincipalUtils';
+import { get_token_conversion_rate } from '../utils/TokenUtils';
 
 const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = new Map(), isNarrowScreen = false, onTip = null, animateToken = null }) => {
     const { theme } = useTheme();
@@ -13,6 +14,7 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
     const [animatingTokens, setAnimatingTokens] = useState(new Set()); // Track tokens that just received a new tip
     const pillRefs = useRef(new Map()); // Store refs to pill elements
     const tooltipHoveredRef = useRef(false); // Track if tooltip is being hovered (use ref to avoid stale closures)
+    const [tokenPrices, setTokenPrices] = useState({}); // USD prices for tokens
     
     // Use the token metadata hook
     const { fetchTokenMetadata, getTokenMetadata, isLoadingMetadata } = useTokenMetadata();
@@ -95,6 +97,26 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
         });
     }, [tips, tokenInfo, fetchTokenMetadata, getTokenMetadata]);
 
+    // Fetch USD prices for all unique tokens
+    useEffect(() => {
+        if (!tips || tips.length === 0) return;
+
+        const uniqueTokens = [...new Set(tips.map(tip => tip.token_ledger_principal.toString()))];
+        
+        uniqueTokens.forEach(async (tokenKey) => {
+            if (tokenPrices[tokenKey] !== undefined) return; // Already fetched
+            
+            try {
+                const decimals = getTokenDecimals({ toString: () => tokenKey });
+                const price = await get_token_conversion_rate(tokenKey, decimals);
+                setTokenPrices(prev => ({ ...prev, [tokenKey]: price }));
+            } catch (error) {
+                console.warn(`Failed to fetch price for ${tokenKey}:`, error);
+                setTokenPrices(prev => ({ ...prev, [tokenKey]: 0 }));
+            }
+        });
+    }, [tips]);
+
     if (!tips || tips.length === 0) {
         return null;
     }
@@ -124,6 +146,15 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
 
     const formatTimestamp = (timestamp) => {
         return new Date(Number(timestamp) / 1000000).toLocaleString();
+    };
+
+    const formatUsdValue = (amount, decimals, tokenKey) => {
+        const price = tokenPrices[tokenKey];
+        if (!price || price <= 0) return null;
+        const tokenAmount = amount / Math.pow(10, decimals);
+        const usdValue = tokenAmount * price;
+        if (usdValue < 0.01) return '< $0.01';
+        return `$${usdValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     };
 
     const getTokenSymbol = (principal) => {
@@ -509,12 +540,26 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                                     }} />
                                     <div style={{ flex: 1, minWidth: 0 }}>
                                         <div style={{
-                                            color: '#8fbc8f',
-                                            fontWeight: '600',
-                                            fontSize: '12px',
+                                            display: 'flex',
+                                            alignItems: 'baseline',
+                                            gap: '6px',
                                             marginBottom: '3px'
                                         }}>
-                                            +{formatAmount(Number(tip.amount), getTokenDecimals(tip.token_ledger_principal))} {getTokenSymbol(tip.token_ledger_principal)}
+                                            <span style={{
+                                                color: '#8fbc8f',
+                                                fontWeight: '600',
+                                                fontSize: '12px'
+                                            }}>
+                                                +{formatAmount(Number(tip.amount), getTokenDecimals(tip.token_ledger_principal))} {getTokenSymbol(tip.token_ledger_principal)}
+                                            </span>
+                                            {formatUsdValue(Number(tip.amount), getTokenDecimals(tip.token_ledger_principal), tip.token_ledger_principal.toString()) && (
+                                                <span style={{
+                                                    color: 'rgba(255,255,255,0.4)',
+                                                    fontSize: '10px'
+                                                }}>
+                                                    ({formatUsdValue(Number(tip.amount), getTokenDecimals(tip.token_ledger_principal), tip.token_ledger_principal.toString())})
+                                                </span>
+                                            )}
                                         </div>
                                         <div style={{
                                             color: 'rgba(255,255,255,0.6)',
@@ -557,26 +602,43 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                     <div style={{
                         marginTop: '12px',
                         paddingTop: '10px',
-                        borderTop: '1px solid rgba(255,215,0,0.15)',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
+                        borderTop: '1px solid rgba(255,215,0,0.15)'
                     }}>
-                        <span style={{ 
-                            color: 'rgba(255,255,255,0.5)', 
-                            fontSize: '11px',
-                            fontWeight: '500'
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
                         }}>
-                            Total
-                        </span>
-                        <span style={{
-                            fontWeight: '700',
-                            color: '#ffd700',
-                            fontSize: '13px',
-                            letterSpacing: '-0.3px'
-                        }}>
-                            {formatAmount(tipsByToken[hoveredToken].totalAmount, getTokenDecimals(tipsByToken[hoveredToken].principal))} {getTokenSymbol(tipsByToken[hoveredToken].principal)}
-                        </span>
+                            <span style={{ 
+                                color: 'rgba(255,255,255,0.5)', 
+                                fontSize: '11px',
+                                fontWeight: '500'
+                            }}>
+                                Total
+                            </span>
+                            <span style={{
+                                fontWeight: '700',
+                                color: '#ffd700',
+                                fontSize: '13px',
+                                letterSpacing: '-0.3px'
+                            }}>
+                                {formatAmount(tipsByToken[hoveredToken].totalAmount, getTokenDecimals(tipsByToken[hoveredToken].principal))} {getTokenSymbol(tipsByToken[hoveredToken].principal)}
+                            </span>
+                        </div>
+                        {formatUsdValue(tipsByToken[hoveredToken].totalAmount, getTokenDecimals(tipsByToken[hoveredToken].principal), hoveredToken) && (
+                            <div style={{
+                                textAlign: 'right',
+                                marginTop: '4px'
+                            }}>
+                                <span style={{
+                                    color: '#8fbc8f',
+                                    fontSize: '12px',
+                                    fontWeight: '600'
+                                }}>
+                                    ≈ {formatUsdValue(tipsByToken[hoveredToken].totalAmount, getTokenDecimals(tipsByToken[hoveredToken].principal), hoveredToken)} USD
+                                </span>
+                            </div>
+                        )}
                     </div>
                 </div>,
                 document.body

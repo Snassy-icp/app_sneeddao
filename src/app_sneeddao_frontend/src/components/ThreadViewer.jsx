@@ -908,8 +908,8 @@ function ThreadViewer({
                 })));
                 setDiscussionPosts(posts);
                 
-                // Fetch tips for all posts
-                await fetchTipsForPosts(posts);
+                // Fetch tips for all posts (replace all since we're loading everything)
+                await fetchTipsForPosts(posts, true);
             } else {
                 setDiscussionPosts([]);
             }
@@ -1032,8 +1032,8 @@ function ThreadViewer({
                 })));
                 setDiscussionPosts(posts);
                 
-                // Fetch tips for all posts
-                await fetchTipsForPosts(posts);
+                // Fetch tips for all posts (replace all since we're loading everything)
+                await fetchTipsForPosts(posts, true);
             } else {
                 setDiscussionPosts([]);
             }
@@ -1147,8 +1147,8 @@ function ThreadViewer({
         }
     };
 
-    // Fetch tips for posts
-    const fetchTipsForPosts = async (posts) => {
+    // Fetch tips for posts - merges with existing tips instead of replacing
+    const fetchTipsForPosts = async (posts, replaceAll = false) => {
         if (!forumActor || !posts || posts.length === 0) return;
 
         try {
@@ -1158,15 +1158,22 @@ function ThreadViewer({
             });
 
             const tipsResults = await Promise.all(tipsPromises);
-            const newPostTips = {};
 
-            tipsResults.forEach(({ postId, tips }) => {
-                if (tips && tips.length > 0) {
-                    newPostTips[postId] = tips;
-                }
+            setPostTips(prev => {
+                // If replaceAll, start fresh; otherwise merge with existing
+                const merged = replaceAll ? {} : { ...prev };
+                
+                tipsResults.forEach(({ postId, tips }) => {
+                    if (tips && tips.length > 0) {
+                        merged[postId] = tips;
+                    } else if (replaceAll) {
+                        // Only clear if we're replacing all - post might have no tips
+                        delete merged[postId];
+                    }
+                });
+                
+                return merged;
             });
-
-            setPostTips(newPostTips);
         } catch (error) {
             console.error('Error fetching tips for posts:', error);
         }

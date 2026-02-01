@@ -3,6 +3,7 @@ import { Principal } from '@dfinity/principal';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { NamingContext } from '../NamingContext';
+import { get_token_conversion_rate } from '../utils/TokenUtils';
 
 // Add CSS animations
 const animationStyles = `
@@ -59,6 +60,7 @@ const TipModal = ({
     const [tokenLogo, setTokenLogo] = useState(null);
     const [recipientDisplayInfo, setRecipientDisplayInfo] = useState(null);
     const [tokenDropdownOpen, setTokenDropdownOpen] = useState(false);
+    const [tokenPrices, setTokenPrices] = useState({}); // USD prices per token
 
     // Close dropdown when modal closes
     useEffect(() => {
@@ -164,6 +166,17 @@ const TipModal = ({
         }
     };
 
+    // Fetch USD price for a token
+    const fetchTokenPrice = async (tokenPrincipal, decimals) => {
+        try {
+            const price = await get_token_conversion_rate(tokenPrincipal, decimals);
+            setTokenPrices(prev => ({ ...prev, [tokenPrincipal]: price }));
+        } catch (error) {
+            console.warn(`Failed to fetch price for ${tokenPrincipal}:`, error);
+            setTokenPrices(prev => ({ ...prev, [tokenPrincipal]: 0 }));
+        }
+    };
+
     // Reset form when modal opens and fetch balances
     useEffect(() => {
         if (isOpen) {
@@ -175,6 +188,7 @@ const TipModal = ({
             setTokenBalances({});
             setLoadingBalances({});
             setTokenMetadata({});
+            setTokenPrices({});
             
             // Fetch balances and metadata for all available tokens
             availableTokens.forEach(token => {
@@ -183,6 +197,13 @@ const TipModal = ({
             });
         }
     }, [isOpen, availableTokens, identity, defaultToken]);
+
+    // Fetch USD price when token metadata is loaded
+    useEffect(() => {
+        if (selectedToken && tokenMetadata[selectedToken] && !tokenPrices[selectedToken]) {
+            fetchTokenPrice(selectedToken, tokenMetadata[selectedToken].decimals);
+        }
+    }, [selectedToken, tokenMetadata, tokenPrices]);
 
     // Update logo when selected token changes
     useEffect(() => {
@@ -206,6 +227,24 @@ const TipModal = ({
     }, [post?.created_by, principalNames, principalNicknames]);
 
     if (!isOpen) return null;
+
+    // Calculate USD value for the entered amount
+    const getUsdValue = () => {
+        if (!amount || !selectedToken || !tokenPrices[selectedToken]) {
+            return null;
+        }
+        const price = tokenPrices[selectedToken];
+        if (price <= 0) return null;
+        const usdValue = parseFloat(amount) * price;
+        return usdValue;
+    };
+
+    // Format USD value
+    const formatUsdValue = (value) => {
+        if (value === null || value === undefined) return null;
+        if (value < 0.01) return '< $0.01';
+        return `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    };
 
     // Calculate max amount (balance - fee)
     const getMaxAmount = () => {
@@ -854,6 +893,30 @@ const TipModal = ({
                                 required
                             />
                         </div>
+                        
+                        {/* USD Value Display */}
+                        {amount && parseFloat(amount) > 0 && (
+                            <div style={{
+                                textAlign: 'center',
+                                marginTop: '8px',
+                                fontSize: '14px',
+                                color: 'rgba(255, 255, 255, 0.6)'
+                            }}>
+                                {tokenPrices[selectedToken] ? (
+                                    <span style={{ 
+                                        color: '#8fbc8f',
+                                        fontWeight: '500'
+                                    }}>
+                                        ≈ {formatUsdValue(getUsdValue())} USD
+                                    </span>
+                                ) : (
+                                    <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>
+                                        Loading price...
+                                    </span>
+                                )}
+                            </div>
+                        )}
+                        
                         {selectedToken && tokenMetadata[selectedToken] && (
                             <div style={{
                                 marginTop: '16px',
