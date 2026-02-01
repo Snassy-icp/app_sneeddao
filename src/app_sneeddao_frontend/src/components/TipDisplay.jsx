@@ -74,8 +74,8 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
         const estimatedTooltipHeight = 350; // Conservative estimate for checking fit
         const margin = 10;
 
-        // Center tooltip horizontally relative to pill
-        let x = rect.left + (rect.width / 2) - (tooltipWidth / 2);
+        // Align tooltip with left edge of pill (stays stable when pill expands to the right)
+        let x = rect.left;
         
         // Check if tooltip would fit below the pill
         const spaceBelow = window.innerHeight - rect.bottom - margin;
@@ -390,14 +390,7 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
             newSet.add(tokenKey);
             return newSet;
         });
-        
-        // Recalculate position after expansion animation completes
-        setTimeout(() => {
-            const pillEl = pillRefs.current.get(tokenKey);
-            if (pillEl) {
-                updateTooltipPositionFromElement(pillEl);
-            }
-        }, 300);
+        // No need to recalculate position - tooltip aligns with left edge which stays fixed
     }, [updateTooltipPositionFromElement, hoveredToken]);
     
     const handlePillMouseLeave = useCallback((tokenKey) => {
