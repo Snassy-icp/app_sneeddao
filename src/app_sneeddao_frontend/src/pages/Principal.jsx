@@ -137,7 +137,11 @@ export default function PrincipalPage() {
     const [neuronError, setNeuronError] = useState(null);
     const [tokenSymbol, setTokenSymbol] = useState('SNS');
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
-    const [activeTab, setActiveTab] = useState('posts'); // 'posts', 'neurons', 'transactions', 'trades'
+    const [activeTab, setActiveTab] = useState(() => {
+        // Default to transactions tab if a subaccount is in the URL
+        const urlSubaccount = new URLSearchParams(window.location.search).get('subaccount');
+        return urlSubaccount ? 'transactions' : 'posts';
+    }); // 'posts', 'neurons', 'transactions', 'trades'
     const [postsActiveTab, setPostsActiveTab] = useState('posts');
     const [tradesActiveTab, setTradesActiveTab] = useState('offers'); // 'offers' or 'bids'
     const [showOnlyActiveOffers, setShowOnlyActiveOffers] = useState(false);
@@ -2406,6 +2410,7 @@ export default function PrincipalPage() {
                                 showHeader={false}
                                 embedded={true}
                                 showSubaccountFilter={true}
+                                initialSubaccountFilter={searchParams.get('subaccount') || null}
                             />
                         </div>
                     )}

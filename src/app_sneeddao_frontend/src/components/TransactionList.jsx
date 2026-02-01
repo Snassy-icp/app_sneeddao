@@ -91,6 +91,7 @@ function TransactionList({
     principalId = null,
     subaccount = null, // Optional subaccount as Uint8Array or array of bytes - used with principalId for account-specific transactions
     showSubaccountFilter = false, // If true, show dropdown to filter by subaccount (fetches available subaccounts)
+    initialSubaccountFilter = null, // Optional initial subaccount for the filter (as Uint8Array or hex string)
     isCollapsed = false, 
     onToggleCollapse = () => {},
     showHeader = true,
@@ -118,11 +119,38 @@ function TransactionList({
     const [toFilter, setToFilter] = useState('');
     const [filterOperator, setFilterOperator] = useState('and');
     const [totalTransactions, setTotalTransactions] = useState(0);
-    // Subaccount filter state
+    // Subaccount filter state - initialize from prop if provided
     const [availableSubaccounts, setAvailableSubaccounts] = useState([]);
-    const [selectedSubaccount, setSelectedSubaccount] = useState(null); // null = all, or Uint8Array
+    const [selectedSubaccount, setSelectedSubaccount] = useState(() => {
+        if (!initialSubaccountFilter) return null;
+        // If it's already a Uint8Array, use it directly
+        if (initialSubaccountFilter instanceof Uint8Array) return initialSubaccountFilter;
+        // If it's a hex string, convert it
+        if (typeof initialSubaccountFilter === 'string') {
+            try {
+                const cleanHex = initialSubaccountFilter.replace(/^0x/i, '').replace(/\s/g, '');
+                if (cleanHex.length > 0 && cleanHex.length <= 64) {
+                    const paddedHex = cleanHex.padStart(64, '0');
+                    return new Uint8Array(paddedHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+                }
+            } catch (e) {
+                console.warn('Invalid initialSubaccountFilter:', e);
+            }
+        }
+        return null;
+    });
     const [loadingSubaccounts, setLoadingSubaccounts] = useState(false);
-    const [subaccountInput, setSubaccountInput] = useState(''); // Text input for combo-box
+    const [subaccountInput, setSubaccountInput] = useState(() => {
+        if (!initialSubaccountFilter) return '';
+        if (initialSubaccountFilter instanceof Uint8Array) return subaccountToHex(initialSubaccountFilter);
+        if (typeof initialSubaccountFilter === 'string') {
+            const cleanHex = initialSubaccountFilter.replace(/^0x/i, '').replace(/\s/g, '');
+            if (cleanHex.length > 0 && cleanHex.length <= 64) {
+                return cleanHex.padStart(64, '0');
+            }
+        }
+        return '';
+    }); // Text input for combo-box
     const [showSubaccountDropdown, setShowSubaccountDropdown] = useState(false);
     const subaccountInputRef = useRef(null);
     const subaccountDropdownRef = useRef(null);
@@ -1695,7 +1723,19 @@ function TransactionList({
                                                                         alignItems: 'center',
                                                                         gap: '4px'
                                                                     }}>
-                                                                        <span>Sub: {fromSubHex.substring(0, 16)}...</span>
+                                                                        <Link
+                                                                            to={`/principal?id=${fromPrincipal.toString()}&subaccount=${fromSubHex}`}
+                                                                            onClick={(e) => e.stopPropagation()}
+                                                                            style={{
+                                                                                color: theme.colors.mutedText,
+                                                                                textDecoration: 'none'
+                                                                            }}
+                                                                            onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                                                            onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                                                            title={`View transactions for this subaccount\n${fromSubHex}`}
+                                                                        >
+                                                                            Sub: {fromSubHex.substring(0, 16)}...
+                                                                        </Link>
                                                                         <button
                                                                             onClick={(e) => {
                                                                                 e.stopPropagation();
@@ -1749,7 +1789,19 @@ function TransactionList({
                                                                         alignItems: 'center',
                                                                         gap: '4px'
                                                                     }}>
-                                                                        <span>Sub: {toSubHex.substring(0, 16)}...</span>
+                                                                        <Link
+                                                                            to={`/principal?id=${toPrincipal.toString()}&subaccount=${toSubHex}`}
+                                                                            onClick={(e) => e.stopPropagation()}
+                                                                            style={{
+                                                                                color: theme.colors.mutedText,
+                                                                                textDecoration: 'none'
+                                                                            }}
+                                                                            onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                                                            onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                                                            title={`View transactions for this subaccount\n${toSubHex}`}
+                                                                        >
+                                                                            Sub: {toSubHex.substring(0, 16)}...
+                                                                        </Link>
                                                                         <button
                                                                             onClick={(e) => {
                                                                                 e.stopPropagation();
