@@ -3367,22 +3367,30 @@ function ThreadViewer({
                                     onClick={(e) => {
                                         e.preventDefault();
                                         e.stopPropagation();
-                                        // Save scroll position immediately
+                                        // Prevent scroll by locking body overflow temporarily
                                         const scrollY = window.scrollY;
+                                        document.body.style.overflow = 'hidden';
+                                        document.body.style.position = 'fixed';
+                                        document.body.style.top = `-${scrollY}px`;
+                                        document.body.style.width = '100%';
+                                        
                                         const postIdStr = post.id.toString();
                                         const postVotes = threadVotes.get(postIdStr);
                                         const hasUpvotes = postVotes?.upvoted_neurons?.length > 0;
                                         
                                         if (hasUpvotes) {
-                                            // Recant upvotes for neurons that upvoted
                                             handleRetractVote(post.id);
                                         } else {
-                                            // Regular upvote
                                             handleVote(post.id, 'up');
                                         }
-                                        // Restore scroll position after React's state updates (double rAF for batching)
+                                        
+                                        // Unlock body and restore scroll position after React renders
                                         requestAnimationFrame(() => {
                                             requestAnimationFrame(() => {
+                                                document.body.style.overflow = '';
+                                                document.body.style.position = '';
+                                                document.body.style.top = '';
+                                                document.body.style.width = '';
                                                 window.scrollTo(0, scrollY);
                                             });
                                         });
@@ -3434,22 +3442,30 @@ function ThreadViewer({
                                     onClick={(e) => {
                                         e.preventDefault();
                                         e.stopPropagation();
-                                        // Save scroll position immediately
+                                        // Prevent scroll by locking body overflow temporarily
                                         const scrollY = window.scrollY;
+                                        document.body.style.overflow = 'hidden';
+                                        document.body.style.position = 'fixed';
+                                        document.body.style.top = `-${scrollY}px`;
+                                        document.body.style.width = '100%';
+                                        
                                         const postIdStr = post.id.toString();
                                         const postVotes = threadVotes.get(postIdStr);
                                         const hasDownvotes = postVotes?.downvoted_neurons?.length > 0;
                                         
                                         if (hasDownvotes) {
-                                            // Recant downvotes for neurons that downvoted
                                             handleRetractVote(post.id);
                                         } else {
-                                            // Regular downvote
                                             handleVote(post.id, 'down');
                                         }
-                                        // Restore scroll position after React's state updates (double rAF for batching)
+                                        
+                                        // Unlock body and restore scroll position after React renders
                                         requestAnimationFrame(() => {
                                             requestAnimationFrame(() => {
+                                                document.body.style.overflow = '';
+                                                document.body.style.position = '';
+                                                document.body.style.top = '';
+                                                document.body.style.width = '';
                                                 window.scrollTo(0, scrollY);
                                             });
                                         });
