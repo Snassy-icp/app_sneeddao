@@ -1790,15 +1790,44 @@ function ThreadViewer({
 
             if ('ok' in tipResult) {
                 console.log('Tip registered successfully:', tipResult.ok);
+                
+                const postIdNum = Number(selectedPostForTip.id);
+                const tokenPrincipalStr = tokenPrincipal.toString();
+                
+                // If this post doesn't have a tip pill for this token yet,
+                // add a placeholder so the animation has somewhere to fly to
+                setPostTips(prev => {
+                    const existingTips = prev[postIdNum] || [];
+                    const hasExistingTokenTip = existingTips.some(
+                        t => t.token_ledger_principal.toString() === tokenPrincipalStr
+                    );
+                    
+                    if (!hasExistingTokenTip) {
+                        // Add a placeholder tip
+                        const placeholderTip = {
+                            token_ledger_principal: Principal.fromText(tokenPrincipal),
+                            from_principal: identity.getPrincipal(),
+                            amount: BigInt(amount),
+                            created_at: BigInt(Date.now() * 1000000),
+                            _isPlaceholder: true
+                        };
+                        return {
+                            ...prev,
+                            [postIdNum]: [...existingTips, placeholderTip]
+                        };
+                    }
+                    return prev;
+                });
+                
                 setTippingState('success');
                 
                 // Store the tipped info for animation when modal closes
                 setLastTippedInfo({
-                    postId: Number(selectedPostForTip.id),
-                    tokenPrincipal: tokenPrincipal.toString()
+                    postId: postIdNum,
+                    tokenPrincipal: tokenPrincipalStr
                 });
                 
-                // Refresh tips for this post
+                // Refresh tips for this post (will replace placeholder with real data)
                 await fetchTipsForPosts([selectedPostForTip]);
                 
                 // Refresh token balance
