@@ -61,13 +61,24 @@ const TipModal = ({
     const [recipientDisplayInfo, setRecipientDisplayInfo] = useState(null);
     const [tokenDropdownOpen, setTokenDropdownOpen] = useState(false);
     const [tokenPrices, setTokenPrices] = useState({}); // USD prices per token
+    const [isClosing, setIsClosing] = useState(false); // Track closing animation state
 
-    // Close dropdown when modal closes
+    // Close dropdown when modal closes, reset closing state
     useEffect(() => {
         if (!isOpen) {
             setTokenDropdownOpen(false);
+            setIsClosing(false);
         }
     }, [isOpen]);
+    
+    // Handle animated close - fade out content, keep logo visible
+    const handleAnimatedClose = () => {
+        setIsClosing(true);
+        // After fade animation completes, actually close
+        setTimeout(() => {
+            onClose();
+        }, 400); // Match the CSS transition duration
+    };
 
     // Update selected token when defaultToken changes or modal opens
     useEffect(() => {
@@ -357,7 +368,7 @@ const TipModal = ({
             
             return (
                 <div style={{ textAlign: 'center' }}>
-                    {/* Token Logo */}
+                    {/* Token Logo - stays visible during close animation */}
                     <div style={{ 
                         width: '64px',
                         height: '64px',
@@ -368,7 +379,9 @@ const TipModal = ({
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        background: logo ? 'transparent' : 'linear-gradient(135deg, #ffd700, #ffaa00)'
+                        background: logo ? 'transparent' : 'linear-gradient(135deg, #ffd700, #ffaa00)',
+                        transition: 'opacity 0.3s ease',
+                        opacity: 1
                     }}>
                         {logo ? (
                             <img 
@@ -384,38 +397,46 @@ const TipModal = ({
                             <span style={{ fontSize: '28px' }}>💎</span>
                         )}
                     </div>
-                    <h3 style={{ 
-                        color: '#ffffff', 
-                        margin: '0 0 16px', 
-                        fontSize: '24px',
-                        fontWeight: '600'
+                    
+                    {/* Content that fades out when closing */}
+                    <div style={{
+                        opacity: isClosing ? 0 : 1,
+                        transition: 'opacity 0.3s ease',
+                        pointerEvents: isClosing ? 'none' : 'auto'
                     }}>
-                        Thank You!
-                    </h3>
-                    <p style={{
-                        color: 'rgba(255, 255, 255, 0.8)',
-                        margin: '0 0 24px',
-                        fontSize: '16px',
-                        lineHeight: '1.5'
-                    }}>
-                        Your appreciation has been sent successfully. The recipient will be notified of your thoughtful gesture.
-                    </p>
-                    <button
-                        onClick={onClose}
-                        style={{
-                            background: 'linear-gradient(135deg, #ffd700, #ffaa00)',
-                            border: 'none',
-                            borderRadius: '12px',
-                            color: '#000000',
-                            cursor: 'pointer',
-                            fontSize: '15px',
-                            fontWeight: '600',
-                            padding: '12px 24px',
-                            transition: 'all 0.2s ease'
-                        }}
-                    >
-                        Close
-                    </button>
+                        <h3 style={{ 
+                            color: '#ffffff', 
+                            margin: '0 0 16px', 
+                            fontSize: '24px',
+                            fontWeight: '600'
+                        }}>
+                            Thank You!
+                        </h3>
+                        <p style={{
+                            color: 'rgba(255, 255, 255, 0.8)',
+                            margin: '0 0 24px',
+                            fontSize: '16px',
+                            lineHeight: '1.5'
+                        }}>
+                            Your appreciation has been sent successfully. The recipient will be notified of your thoughtful gesture.
+                        </p>
+                        <button
+                            onClick={handleAnimatedClose}
+                            style={{
+                                background: 'linear-gradient(135deg, #ffd700, #ffaa00)',
+                                border: 'none',
+                                borderRadius: '12px',
+                                color: '#000000',
+                                cursor: 'pointer',
+                                fontSize: '15px',
+                                fontWeight: '600',
+                                padding: '12px 24px',
+                                transition: 'all 0.2s ease'
+                            }}
+                        >
+                            Close
+                        </button>
+                    </div>
                 </div>
             );
         }
@@ -1220,20 +1241,24 @@ const TipModal = ({
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: 1000,
-            animation: 'fadeIn 0.2s ease-out'
+            animation: 'fadeIn 0.2s ease-out',
+            opacity: isClosing ? 0 : 1,
+            transition: 'opacity 0.35s ease',
+            pointerEvents: isClosing ? 'none' : 'auto'
         }}>
             <div style={{
-                background: 'linear-gradient(145deg, #1a1a1a 0%, #2a2a2a 100%)',
-                border: '1px solid rgba(255, 215, 0, 0.2)',
+                background: isClosing ? 'transparent' : 'linear-gradient(145deg, #1a1a1a 0%, #2a2a2a 100%)',
+                border: isClosing ? 'none' : '1px solid rgba(255, 215, 0, 0.2)',
                 borderRadius: '20px',
                 padding: '32px',
                 width: '420px',
                 maxWidth: 'calc(100vw - 40px)', // Only shrink if screen is smaller than 460px (420px + 40px margin)
                 maxHeight: '90vh',
                 overflow: 'auto',
-                boxShadow: '0 20px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05)',
+                boxShadow: isClosing ? 'none' : '0 20px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05)',
                 position: 'relative',
-                animation: 'slideIn 0.3s ease-out'
+                animation: 'slideIn 0.3s ease-out',
+                transition: 'background 0.3s ease, border 0.3s ease, box-shadow 0.3s ease'
             }}>
                 {renderContent()}
             </div>
