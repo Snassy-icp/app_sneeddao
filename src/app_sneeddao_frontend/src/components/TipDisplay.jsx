@@ -9,9 +9,24 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
     const { theme } = useTheme();
     const [hoveredToken, setHoveredToken] = useState(null);
     const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
+    const [expandedTokens, setExpandedTokens] = useState(new Set()); // Track which pills are expanded
     
     // Use the token metadata hook
     const { fetchTokenMetadata, getTokenMetadata, isLoadingMetadata } = useTokenMetadata();
+    
+    // Toggle expansion of a tip pill
+    const toggleExpanded = (tokenKey, e) => {
+        e.stopPropagation(); // Prevent tooltip from triggering
+        setExpandedTokens(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(tokenKey)) {
+                newSet.delete(tokenKey);
+            } else {
+                newSet.add(tokenKey);
+            }
+            return newSet;
+        });
+    };
 
     // Fetch metadata for all unique tokens when tips change
     useEffect(() => {
@@ -163,10 +178,12 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                 const symbol = getTokenSymbol(tokenData.principal);
                 const logo = getTokenLogo(tokenData.principal);
                 const isLoading = isLoadingMetadata(tokenData.principal);
+                const isExpanded = expandedTokens.has(tokenKey);
                 
                 return (
                     <div
                         key={tokenKey}
+                        onClick={(e) => toggleExpanded(tokenKey, e)}
                         onMouseEnter={(e) => handleMouseEnter(tokenKey, e)}
                         onMouseLeave={handleMouseLeave}
                         onMouseMove={handleMouseMove}
@@ -176,17 +193,18 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                                 : 'linear-gradient(135deg, rgba(255,215,0,0.12) 0%, rgba(255,180,0,0.06) 100%)',
                             border: `1px solid ${isLoading ? 'rgba(150,150,150,0.3)' : 'rgba(255,215,0,0.35)'}`,
                             borderRadius: '16px',
-                            padding: '3px 10px 3px 6px',
+                            padding: isExpanded ? '3px 10px 3px 6px' : '3px 6px',
                             fontSize: '11px',
                             color: isLoading ? theme.colors.mutedText : '#e6c200',
                             cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '5px',
+                            gap: isExpanded ? '5px' : '4px',
                             fontWeight: '500',
                             opacity: isLoading ? 0.7 : 1,
-                            transition: 'all 0.2s ease',
+                            transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
                             boxShadow: isLoading ? 'none' : '0 1px 3px rgba(255,215,0,0.1)',
+                            overflow: 'hidden',
                         }}
                         onMouseOver={(e) => {
                             if (!isLoading) {
@@ -203,6 +221,7 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                             }
                         }}
                     >
+                        {/* Token icon */}
                         {isLoading ? (
                             <span style={{ fontSize: '12px' }}>⏳</span>
                         ) : logo ? (
@@ -214,7 +233,8 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                                     height: '14px',
                                     borderRadius: '50%',
                                     objectFit: 'cover',
-                                    boxShadow: '0 1px 2px rgba(0,0,0,0.2)'
+                                    boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
+                                    flexShrink: 0
                                 }}
                                 onError={(e) => {
                                     e.target.style.display = 'none';
@@ -222,12 +242,23 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                                 }}
                             />
                         ) : null}
-                        <span style={{ display: logo && !isLoading ? 'none' : 'inline', fontSize: '11px' }}>💎</span>
-                        {!isNarrowScreen && (
-                            <span style={{ letterSpacing: '-0.2px' }}>
-                                {formatAmount(tokenData.totalAmount, decimals)} {symbol}
-                            </span>
-                        )}
+                        <span style={{ display: logo && !isLoading ? 'none' : 'inline', fontSize: '11px', flexShrink: 0 }}>💎</span>
+                        
+                        {/* Amount and symbol - only show when expanded */}
+                        <span style={{ 
+                            display: 'flex',
+                            alignItems: 'center',
+                            letterSpacing: '-0.2px',
+                            maxWidth: isExpanded ? '200px' : '0',
+                            opacity: isExpanded ? 1 : 0,
+                            overflow: 'hidden',
+                            whiteSpace: 'nowrap',
+                            transition: 'max-width 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease'
+                        }}>
+                            {formatAmount(tokenData.totalAmount, decimals)} {symbol}
+                        </span>
+                        
+                        {/* Tip count badge */}
                         <span style={{ 
                             background: isLoading 
                                 ? 'rgba(100,100,100,0.4)'
@@ -239,7 +270,8 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                             fontWeight: '700',
                             minWidth: '14px',
                             textAlign: 'center',
-                            boxShadow: isLoading ? 'none' : '0 1px 2px rgba(0,0,0,0.15)'
+                            boxShadow: isLoading ? 'none' : '0 1px 2px rgba(0,0,0,0.15)',
+                            flexShrink: 0
                         }}>
                             {tokenData.tips.length}
                         </span>
