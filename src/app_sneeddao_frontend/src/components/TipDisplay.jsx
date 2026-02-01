@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Principal } from '@dfinity/principal';
 import { useTheme } from '../contexts/ThemeContext';
@@ -11,9 +11,53 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
     const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
     const [expandedTokens, setExpandedTokens] = useState(new Set()); // Track which pills are expanded
     const [tooltipLocked, setTooltipLocked] = useState(false); // Prevent position updates when hovering tooltip
+    const [animatingTokens, setAnimatingTokens] = useState(new Set()); // Track tokens that just received a new tip
+    const pillRefs = useRef(new Map()); // Store refs to pill elements
+    const prevTipsRef = useRef(new Map()); // Track previous tip counts for animation
     
     // Use the token metadata hook
     const { fetchTokenMetadata, getTokenMetadata, isLoadingMetadata } = useTokenMetadata();
+    
+    // Inject animation keyframes
+    useEffect(() => {
+        const styleId = 'tip-display-animations';
+        if (!document.getElementById(styleId)) {
+            const style = document.createElement('style');
+            style.id = styleId;
+            style.textContent = `
+                @keyframes tipPulse {
+                    0% {
+                        transform: scale(1);
+                        box-shadow: 0 0 0 rgba(255,215,0,0);
+                    }
+                    20% {
+                        transform: scale(1.2);
+                        box-shadow: 0 0 25px rgba(255,215,0,0.7), 0 0 50px rgba(255,215,0,0.4);
+                    }
+                    40% {
+                        transform: scale(1.1);
+                    }
+                    60% {
+                        transform: scale(1.15);
+                        box-shadow: 0 0 15px rgba(255,215,0,0.5), 0 0 30px rgba(255,215,0,0.2);
+                    }
+                    100% {
+                        transform: scale(1);
+                        box-shadow: 0 1px 3px rgba(255,215,0,0.1);
+                    }
+                }
+                @keyframes tipGlow {
+                    0%, 100% {
+                        filter: brightness(1);
+                    }
+                    50% {
+                        filter: brightness(1.3);
+                    }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+    }, []);
     
     // Toggle expansion of a tip pill
     const toggleExpanded = (tokenKey, e) => {
@@ -130,20 +174,54 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
         return null; // No logo available
     };
 
-    const handleMouseEnter = (tokenKey, event) => {
-        // Only update position if tooltip isn't locked (not hovering over tooltip)
-        if (!tooltipLocked) {
-            setHoveredToken(tokenKey);
-            updateTooltipPosition(event);
-        } else if (hoveredToken !== tokenKey) {
-            // If switching to a different pill while tooltip is locked, update
-            setTooltipLocked(false);
-            setHoveredToken(tokenKey);
-            updateTooltipPosition(event);
+    // Detect new tips and trigger animation
+    useEffect(() => {
+        if (!tips || tips.length === 0) return;
+        
+        // Group current tips by token
+        const currentCounts = new Map();
+        tips.forEach(tip => {
+            const tokenKey = tip.token_ledger_principal.toString();
+            currentCounts.set(tokenKey, (currentCounts.get(tokenKey) || 0) + 1);
+        });
+        
+        // Check for increases and trigger animations
+        const newAnimating = new Set();
+        currentCounts.forEach((count, tokenKey) => {
+            const prevCount = prevTipsRef.current.get(tokenKey) || 0;
+            if (count > prevCount && prevCount > 0) {
+                // A new tip was added to an existing token
+                newAnimating.add(tokenKey);
+            }
+        });
+        
+        if (newAnimating.size > 0) {
+            setAnimatingTokens(newAnimating);
+            // Clear animation state after animation completes
+            setTimeout(() => {
+                setAnimatingTokens(new Set());
+            }, 800);
         }
-    };
+        
+        // Update previous counts
+        prevTipsRef.current = currentCounts;
+    }, [tips]);
+
+    const handleMouseEnter = useCallback((tokenKey) => {
+        // Only update if not already showing this token or tooltip is locked
+        if (tooltipLocked && hoveredToken === tokenKey) return;
+        
+        setHoveredToken(tokenKey);
+        setTooltipLocked(false);
+        
+        // Position tooltip based on the pill element
+        const pillElement = pillRefs.current.get(tokenKey);
+        if (pillElement) {
+            updateTooltipPositionFromElement(pillElement);
+        }
+    }, [tooltipLocked, hoveredToken]);
     
-    const handlePillMouseLeave = (tokenKey) => {
+    const handlePillMouseLeave = useCallback((tokenKey) => {
         // Delay closing to allow moving to tooltip
         setTimeout(() => {
             setHoveredToken(current => {
@@ -152,31 +230,32 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                 }
                 return current;
             });
-        }, 150);
-    };
+        }, 200);
+    }, [tooltipLocked]);
     
-    const handleTooltipMouseEnter = () => {
+    const handleTooltipMouseEnter = useCallback(() => {
         // Lock the tooltip position when hovering over it
         setTooltipLocked(true);
-    };
+    }, []);
     
-    const handleTooltipMouseLeave = () => {
+    const handleTooltipMouseLeave = useCallback(() => {
         setTooltipLocked(false);
         setHoveredToken(null);
-    };
+    }, []);
 
-    const updateTooltipPosition = (event) => {
-        const tooltipWidth = 320; // Approximate tooltip width
-        const tooltipHeight = 280; // Approximate tooltip height
-        const margin = 15;
+    const updateTooltipPositionFromElement = useCallback((element) => {
+        const rect = element.getBoundingClientRect();
+        const tooltipWidth = 320;
+        const tooltipHeight = 280;
+        const margin = 10;
 
-        // Position tooltip to the right of the cursor, fixed position
-        let x = event.clientX + margin;
-        let y = event.clientY - 20;
+        // Position tooltip to the right of the pill
+        let x = rect.right + margin;
+        let y = rect.top - 20;
 
         // Adjust if tooltip would go off-screen to the right
         if (x + tooltipWidth > window.innerWidth) {
-            x = event.clientX - tooltipWidth - margin;
+            x = rect.left - tooltipWidth - margin;
         }
 
         // Adjust if tooltip would go off-screen at the bottom
@@ -189,7 +268,7 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
         y = Math.max(margin, y);
 
         setTooltipPosition({ x, y });
-    };
+    }, []);
 
     return (
         <div style={{
@@ -208,12 +287,17 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                 const logo = getTokenLogo(tokenData.principal);
                 const isLoading = isLoadingMetadata(tokenData.principal);
                 const isExpanded = expandedTokens.has(tokenKey);
+                const isAnimating = animatingTokens.has(tokenKey);
                 
                 return (
                     <div
                         key={tokenKey}
+                        ref={(el) => {
+                            if (el) pillRefs.current.set(tokenKey, el);
+                            else pillRefs.current.delete(tokenKey);
+                        }}
                         onClick={(e) => toggleExpanded(tokenKey, e)}
-                        onMouseEnter={(e) => handleMouseEnter(tokenKey, e)}
+                        onMouseEnter={() => handleMouseEnter(tokenKey)}
                         onMouseLeave={() => handlePillMouseLeave(tokenKey)}
                         style={{
                             background: isLoading 
@@ -231,18 +315,22 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                             fontWeight: '500',
                             opacity: isLoading ? 0.7 : 1,
                             transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                            boxShadow: isLoading ? 'none' : '0 1px 3px rgba(255,215,0,0.1)',
+                            boxShadow: isAnimating 
+                                ? '0 0 20px rgba(255,215,0,0.6), 0 0 40px rgba(255,215,0,0.3)'
+                                : isLoading ? 'none' : '0 1px 3px rgba(255,215,0,0.1)',
                             overflow: 'hidden',
+                            transform: isAnimating ? 'scale(1.15)' : 'scale(1)',
+                            animation: isAnimating ? 'tipPulse 0.8s ease-out' : 'none',
                         }}
                         onMouseOver={(e) => {
-                            if (!isLoading) {
+                            if (!isLoading && !isAnimating) {
                                 e.currentTarget.style.background = 'linear-gradient(135deg, rgba(255,215,0,0.2) 0%, rgba(255,180,0,0.12) 100%)';
                                 e.currentTarget.style.borderColor = 'rgba(255,215,0,0.5)';
                                 e.currentTarget.style.boxShadow = '0 2px 8px rgba(255,215,0,0.2)';
                             }
                         }}
                         onMouseOut={(e) => {
-                            if (!isLoading) {
+                            if (!isLoading && !isAnimating) {
                                 e.currentTarget.style.background = 'linear-gradient(135deg, rgba(255,215,0,0.12) 0%, rgba(255,180,0,0.06) 100%)';
                                 e.currentTarget.style.borderColor = 'rgba(255,215,0,0.35)';
                                 e.currentTarget.style.boxShadow = '0 1px 3px rgba(255,215,0,0.1)';
@@ -327,10 +415,12 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                         
                         {/* Tip count badge */}
                         <span style={{ 
-                            background: isLoading 
-                                ? 'rgba(100,100,100,0.25)'
-                                : 'rgba(255,215,0,0.25)',
-                            color: isLoading ? '#999' : '#d4aa00',
+                            background: isAnimating 
+                                ? 'rgba(255,215,0,0.6)'
+                                : isLoading 
+                                    ? 'rgba(100,100,100,0.25)'
+                                    : 'rgba(255,215,0,0.25)',
+                            color: isAnimating ? '#fff' : isLoading ? '#999' : '#d4aa00',
                             borderRadius: '50%',
                             padding: tokenData.tips.length > 9 ? '1px 5px' : '1px',
                             fontSize: '9px',
@@ -341,8 +431,12 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            border: isLoading ? '1px solid rgba(150,150,150,0.3)' : '1px solid rgba(255,215,0,0.35)',
-                            flexShrink: 0
+                            border: isAnimating 
+                                ? '1px solid rgba(255,215,0,0.8)' 
+                                : isLoading ? '1px solid rgba(150,150,150,0.3)' : '1px solid rgba(255,215,0,0.35)',
+                            flexShrink: 0,
+                            transition: 'all 0.3s ease',
+                            textShadow: isAnimating ? '0 0 8px rgba(255,255,255,0.8)' : 'none'
                         }}>
                             {tokenData.tips.length}
                         </span>
