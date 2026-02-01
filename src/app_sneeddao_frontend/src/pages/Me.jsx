@@ -205,6 +205,14 @@ export default function Me() {
             return true;
         }
     });
+    const [collectiblesThreshold, setCollectiblesThreshold] = useState(() => {
+        try {
+            const saved = localStorage.getItem('collectiblesThreshold');
+            return saved !== null ? parseFloat(saved) : 1.0;
+        } catch (error) {
+            return 1.0;
+        }
+    });
     const [expandQuickLinksOnDesktop, setExpandQuickLinksOnDesktop] = useState(() => {
         try {
             const saved = localStorage.getItem('expandQuickLinksOnDesktop');
@@ -1618,6 +1626,39 @@ export default function Me() {
                                                 window.dispatchEvent(new CustomEvent('showHeaderNotificationsChanged', { detail: newValue }));
                                             }}
                                         />
+                                    </SettingItem>
+                                    
+                                    <SettingItem
+                                        title="Collectibles Threshold"
+                                        description="Minimum USD value to show collectibles notifications (fees, rewards, maturity) in the header and wallet"
+                                        theme={theme}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{ color: theme.colors.secondaryText }}>$</span>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="0.01"
+                                                value={collectiblesThreshold}
+                                                onChange={(e) => {
+                                                    const newValue = Math.max(0, parseFloat(e.target.value) || 0);
+                                                    setCollectiblesThreshold(newValue);
+                                                    localStorage.setItem('collectiblesThreshold', newValue.toString());
+                                                    window.dispatchEvent(new CustomEvent('collectiblesThresholdChanged', { detail: newValue }));
+                                                }}
+                                                style={{
+                                                    width: '80px',
+                                                    padding: '6px 10px',
+                                                    borderRadius: '8px',
+                                                    border: `1px solid ${theme.colors.border}`,
+                                                    backgroundColor: theme.colors.tertiaryBg,
+                                                    color: theme.colors.primaryText,
+                                                    fontSize: '14px',
+                                                    textAlign: 'right'
+                                                }}
+                                            />
+                                            <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>USD</span>
+                                        </div>
                                     </SettingItem>
                                     
                                     <SettingItem

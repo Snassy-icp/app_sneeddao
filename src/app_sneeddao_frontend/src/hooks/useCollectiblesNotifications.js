@@ -17,12 +17,24 @@ import { get_token_conversion_rate } from '../utils/TokenUtils';
 let cachedResult = {
     count: 0,
     items: [],
+    filteredItems: [],
     principalId: null,
-    lastChecked: null
+    lastChecked: null,
+    threshold: 1.0
 };
 
 // Minimum time between fetches (30 seconds) to prevent rapid re-fetching
 const MIN_FETCH_INTERVAL = 30 * 1000;
+
+// Helper to get collectibles threshold from localStorage
+const getCollectiblesThreshold = () => {
+    try {
+        const saved = localStorage.getItem('collectiblesThreshold');
+        return saved !== null ? parseFloat(saved) : 1.0; // Default $1
+    } catch {
+        return 1.0;
+    }
+};
 
 /**
  * Custom hook for managing collectibles notifications
@@ -37,6 +49,26 @@ export function useCollectiblesNotifications() {
     const [error, setError] = useState(null);
     const [lastChecked, setLastChecked] = useState(cachedResult.lastChecked);
     const isFetching = useRef(false);
+    const [threshold, setThreshold] = useState(getCollectiblesThreshold);
+    
+    // Listen for threshold changes from settings and recalculate count
+    useEffect(() => {
+        const handleThresholdChange = (e) => {
+            const newThreshold = e.detail;
+            setThreshold(newThreshold);
+            
+            // Re-filter cached items with new threshold
+            if (cachedResult.items && cachedResult.items.length > 0) {
+                const filteredItems = cachedResult.items.filter(item => item.usdValue >= newThreshold);
+                cachedResult.filteredItems = filteredItems;
+                cachedResult.count = filteredItems.length;
+                cachedResult.threshold = newThreshold;
+                setCollectiblesCount(filteredItems.length);
+            }
+        };
+        window.addEventListener('collectiblesThresholdChanged', handleThresholdChange);
+        return () => window.removeEventListener('collectiblesThresholdChanged', handleThresholdChange);
+    }, []);
     
     // Extract auth values safely after all hooks are declared
     const isAuthenticated = authResult?.isAuthenticated ?? false;
@@ -66,10 +98,20 @@ export function useCollectiblesNotifications() {
         if (!force) {
             const principalChanged = currentPrincipal !== cachedResult.principalId;
             const timeSinceLastFetch = cachedResult.lastChecked ? (now - cachedResult.lastChecked) : Infinity;
+            const currentThreshold = getCollectiblesThreshold();
             
-            // If same principal and fetched recently, use cached result
+            // If same principal and fetched recently, use cached result (re-filter if threshold changed)
             if (!principalChanged && timeSinceLastFetch < MIN_FETCH_INTERVAL) {
                 console.log('Collectibles: Using cached result (fetched', Math.round(timeSinceLastFetch / 1000), 'seconds ago)');
+                
+                // Re-filter items if threshold changed
+                if (currentThreshold !== cachedResult.threshold) {
+                    const filteredItems = cachedResult.items.filter(item => item.usdValue >= currentThreshold);
+                    cachedResult.filteredItems = filteredItems;
+                    cachedResult.count = filteredItems.length;
+                    cachedResult.threshold = currentThreshold;
+                }
+                
                 setCollectiblesCount(cachedResult.count);
                 setCollectiblesItems([...cachedResult.items]);
                 setLastChecked(cachedResult.lastChecked);
@@ -328,21 +370,27 @@ export function useCollectiblesNotifications() {
             ]);
 
             allItems.push(...rewardsItems, ...feesItems, ...maturityItems);
-            const totalCount = allItems.length;
             
-            // Update module-level cache
+            // Filter items by threshold
+            const currentThreshold = getCollectiblesThreshold();
+            const filteredItems = allItems.filter(item => item.usdValue >= currentThreshold);
+            const totalCount = filteredItems.length;
+            
+            // Update module-level cache (store all items but filtered count)
             cachedResult = {
                 count: totalCount,
-                items: allItems,
+                items: allItems, // Store all items so modal shows everything
+                filteredItems: filteredItems,
                 principalId: currentPrincipal,
-                lastChecked: now
+                lastChecked: now,
+                threshold: currentThreshold
             };
             
             setCollectiblesCount(totalCount);
-            setCollectiblesItems(allItems);
+            setCollectiblesItems(allItems); // Pass all items to modal
             setLastChecked(now);
             
-            console.log(`Collectibles notifications: ${rewardsItems.length} rewards, ${feesItems.length} LP fees, ${maturityItems.length} maturity = ${totalCount} total`);
+            console.log(`Collectibles notifications: ${rewardsItems.length} rewards, ${feesItems.length} LP fees, ${maturityItems.length} maturity. ${filteredItems.length} items >= $${currentThreshold} threshold (${allItems.length} total)`);
             
         } catch (err) {
             console.error('Error checking for collectibles:', err);
@@ -537,9 +585,17 @@ export function useCollectiblesNotifications() {
         }
         
         const currentPrincipal = identity.getPrincipal().toString();
+        const currentThreshold = getCollectiblesThreshold();
         
         // If we have a cached result for this principal, use it immediately
         if (cachedResult.principalId === currentPrincipal && cachedResult.lastChecked) {
+            // Re-filter if threshold changed
+            if (currentThreshold !== cachedResult.threshold) {
+                const filteredItems = cachedResult.items.filter(item => item.usdValue >= currentThreshold);
+                cachedResult.filteredItems = filteredItems;
+                cachedResult.count = filteredItems.length;
+                cachedResult.threshold = currentThreshold;
+            }
             setCollectiblesCount(cachedResult.count);
             setCollectiblesItems([...cachedResult.items]);
             setLastChecked(cachedResult.lastChecked);
@@ -578,5 +634,5 @@ export function useCollectiblesNotifications() {
 
 // Export function to clear cache (useful for testing or after collecting)
 export function clearCollectiblesCache() {
-    cachedResult = { count: 0, items: [], principalId: null, lastChecked: null };
+    cachedResult = { count: 0, items: [], filteredItems: [], principalId: null, lastChecked: null, threshold: 1.0 };
 }

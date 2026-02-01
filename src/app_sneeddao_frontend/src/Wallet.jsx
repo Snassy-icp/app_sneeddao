@@ -491,6 +491,14 @@ function Wallet() {
             return true; // Default to expanded
         }
     });
+    const [collectiblesThreshold, setCollectiblesThreshold] = useState(() => {
+        try {
+            const saved = localStorage.getItem('collectiblesThreshold');
+            return saved !== null ? parseFloat(saved) : 1.0; // Default $1
+        } catch (error) {
+            return 1.0;
+        }
+    });
     
     // ICP Neuron Manager state
     const [neuronManagers, setNeuronManagers] = useState([]);
@@ -592,6 +600,15 @@ function Wallet() {
             console.warn('Could not save consolidation expanded state to localStorage:', error);
         }
     }, [consolidationExpanded]);
+    
+    // Listen for collectibles threshold changes from settings
+    useEffect(() => {
+        const handleThresholdChange = (e) => {
+            setCollectiblesThreshold(e.detail);
+        };
+        window.addEventListener('collectiblesThresholdChanged', handleThresholdChange);
+        return () => window.removeEventListener('collectiblesThresholdChanged', handleThresholdChange);
+    }, []);
 
     // Save neuronManagersExpanded state to localStorage
     useEffect(() => {
@@ -4527,8 +4544,9 @@ function Wallet() {
                                 </div>
                             )}
                             
-                            {/* Collect Card - only show if there's something collectable (maturity requires permission) */}
-                            {(totalBreakdown.hasAnyFees || totalBreakdown.hasAnyRewards || totalBreakdown.hasAnyCollectableMaturity) && (
+                            {/* Collect Card - only show if there's something collectable above threshold (maturity requires permission) */}
+                            {(totalBreakdown.hasAnyFees || totalBreakdown.hasAnyRewards || totalBreakdown.hasAnyCollectableMaturity) && 
+                             (totalBreakdown.fees + totalBreakdown.rewards + totalBreakdown.collectableMaturity) >= collectiblesThreshold && (
                                 <div style={{
                                     background: `linear-gradient(135deg, ${walletPrimary}15 0%, ${walletAccent}10 100%)`,
                                     border: `1px solid ${walletPrimary}30`,
