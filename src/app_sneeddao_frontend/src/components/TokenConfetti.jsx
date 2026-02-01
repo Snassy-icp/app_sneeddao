@@ -25,7 +25,9 @@ const TokenConfetti = ({
     const [loadedImages, setLoadedImages] = useState([]);
     const [screenFlash, setScreenFlash] = useState(false);
     const [showUsdSplash, setShowUsdSplash] = useState(false);
+    const [usdSplashFading, setUsdSplashFading] = useState(false);
     const [displayedUsdValue, setDisplayedUsdValue] = useState(0);
+    const usdFadeTimerRef = useRef(null);
     const animationRef = useRef(null);
     const particlesRef = useRef([]);
     const sparklesRef = useRef([]);
@@ -157,8 +159,26 @@ const TokenConfetti = ({
         // Show USD splash if value is over $0.01
         if (usdValue >= 0.01) {
             setDisplayedUsdValue(usdValue);
+            setUsdSplashFading(false);
+            
+            // Clear any existing fade timer
+            if (usdFadeTimerRef.current) {
+                clearTimeout(usdFadeTimerRef.current);
+            }
+            
             setTimeout(() => {
                 setShowUsdSplash(true);
+                
+                // Start fading after 4 seconds
+                usdFadeTimerRef.current = setTimeout(() => {
+                    setUsdSplashFading(true);
+                    
+                    // Hide completely after fade animation (1.5s)
+                    usdFadeTimerRef.current = setTimeout(() => {
+                        setShowUsdSplash(false);
+                        setUsdSplashFading(false);
+                    }, 1500);
+                }, 4000);
             }, 400); // Delay slightly after screen flash
         }
         
@@ -406,7 +426,7 @@ const TokenConfetti = ({
                 animationRef.current = requestAnimationFrame(animate);
             } else {
                 setIsActive(false);
-                setShowUsdSplash(false);
+                // Don't abruptly close USD splash - let the fade timer handle it
             }
         };
         
@@ -507,7 +527,9 @@ const TokenConfetti = ({
                         transform: 'translate(-50%, -50%)',
                         zIndex: 10002,
                         pointerEvents: 'none',
-                        animation: 'usdSplashIn 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards'
+                        animation: usdSplashFading 
+                            ? 'usdSplashOut 1.5s ease-out forwards' 
+                            : 'usdSplashIn 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards'
                     }}
                 >
                     {/* Outer glow ring */}
@@ -521,7 +543,7 @@ const TokenConfetti = ({
                             height: '300px',
                             borderRadius: '50%',
                             background: 'radial-gradient(circle, rgba(255,215,0,0.3) 0%, transparent 70%)',
-                            animation: 'usdGlowPulse 1.5s ease-in-out infinite'
+                            animation: usdSplashFading ? 'none' : 'usdGlowPulse 1.5s ease-in-out infinite'
                         }}
                     />
                     
@@ -530,52 +552,106 @@ const TokenConfetti = ({
                         style={{
                             position: 'relative',
                             textAlign: 'center',
-                            animation: 'usdTextGlow 1s ease-in-out infinite alternate'
+                            animation: usdSplashFading ? 'none' : 'usdTextGlow 1s ease-in-out infinite alternate'
                         }}
                     >
                         {/* "You received" text */}
                         <div
                             style={{
                                 fontSize: '1.5rem',
-                                fontWeight: '600',
+                                fontWeight: '700',
                                 color: '#FFFFFF',
-                                textShadow: '0 0 20px rgba(255,215,0,0.8), 0 0 40px rgba(255,215,0,0.4)',
+                                textShadow: `
+                                    -2px -2px 0 #B8860B,
+                                    2px -2px 0 #B8860B,
+                                    -2px 2px 0 #B8860B,
+                                    2px 2px 0 #B8860B,
+                                    0 0 20px rgba(255,215,0,0.8),
+                                    0 0 40px rgba(255,215,0,0.4)
+                                `,
                                 marginBottom: '0.5rem',
-                                opacity: 0,
-                                animation: 'usdLabelFadeIn 0.5s 0.3s forwards'
+                                opacity: usdSplashFading ? 1 : 0,
+                                animation: usdSplashFading ? 'none' : 'usdLabelFadeIn 0.5s 0.3s forwards'
                             }}
                         >
                             You received
                         </div>
                         
-                        {/* USD Amount */}
-                        <div
-                            style={{
-                                fontSize: displayedUsdValue >= 100 ? '5rem' : displayedUsdValue >= 10 ? '6rem' : '7rem',
-                                fontWeight: '900',
-                                background: 'linear-gradient(180deg, #FFD700 0%, #FFA500 50%, #FF8C00 100%)',
-                                WebkitBackgroundClip: 'text',
-                                WebkitTextFillColor: 'transparent',
-                                backgroundClip: 'text',
-                                textShadow: 'none',
-                                filter: 'drop-shadow(0 0 30px rgba(255,215,0,0.8)) drop-shadow(0 0 60px rgba(255,165,0,0.5))',
-                                letterSpacing: '-0.05em',
-                                lineHeight: 1
-                            }}
-                        >
-                            {formatUsdDisplay(displayedUsdValue)}
+                        {/* USD Amount - with outline effect using stacked text */}
+                        <div style={{ position: 'relative' }}>
+                            {/* Outline layer (behind) */}
+                            <div
+                                style={{
+                                    fontSize: displayedUsdValue >= 100 ? '5rem' : displayedUsdValue >= 10 ? '6rem' : '7rem',
+                                    fontWeight: '900',
+                                    color: '#8B4513',
+                                    WebkitTextStroke: '8px #8B4513',
+                                    letterSpacing: '-0.05em',
+                                    lineHeight: 1,
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: '50%',
+                                    transform: 'translateX(-50%)',
+                                    whiteSpace: 'nowrap'
+                                }}
+                            >
+                                {formatUsdDisplay(displayedUsdValue)}
+                            </div>
+                            {/* Second outline layer */}
+                            <div
+                                style={{
+                                    fontSize: displayedUsdValue >= 100 ? '5rem' : displayedUsdValue >= 10 ? '6rem' : '7rem',
+                                    fontWeight: '900',
+                                    color: 'transparent',
+                                    WebkitTextStroke: '4px #CD853F',
+                                    letterSpacing: '-0.05em',
+                                    lineHeight: 1,
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: '50%',
+                                    transform: 'translateX(-50%)',
+                                    whiteSpace: 'nowrap'
+                                }}
+                            >
+                                {formatUsdDisplay(displayedUsdValue)}
+                            </div>
+                            {/* Main gradient text (front) */}
+                            <div
+                                style={{
+                                    fontSize: displayedUsdValue >= 100 ? '5rem' : displayedUsdValue >= 10 ? '6rem' : '7rem',
+                                    fontWeight: '900',
+                                    background: 'linear-gradient(180deg, #FFD700 0%, #FFA500 50%, #FF8C00 100%)',
+                                    WebkitBackgroundClip: 'text',
+                                    WebkitTextFillColor: 'transparent',
+                                    backgroundClip: 'text',
+                                    filter: 'drop-shadow(0 0 30px rgba(255,215,0,0.8)) drop-shadow(0 0 60px rgba(255,165,0,0.5))',
+                                    letterSpacing: '-0.05em',
+                                    lineHeight: 1,
+                                    position: 'relative',
+                                    whiteSpace: 'nowrap'
+                                }}
+                            >
+                                {formatUsdDisplay(displayedUsdValue)}
+                            </div>
                         </div>
                         
                         {/* "in tips!" text */}
                         <div
                             style={{
                                 fontSize: '1.5rem',
-                                fontWeight: '600',
+                                fontWeight: '700',
                                 color: '#FFFFFF',
-                                textShadow: '0 0 20px rgba(255,215,0,0.8), 0 0 40px rgba(255,215,0,0.4)',
+                                textShadow: `
+                                    -2px -2px 0 #B8860B,
+                                    2px -2px 0 #B8860B,
+                                    -2px 2px 0 #B8860B,
+                                    2px 2px 0 #B8860B,
+                                    0 0 20px rgba(255,215,0,0.8),
+                                    0 0 40px rgba(255,215,0,0.4)
+                                `,
                                 marginTop: '0.5rem',
-                                opacity: 0,
-                                animation: 'usdLabelFadeIn 0.5s 0.5s forwards'
+                                opacity: usdSplashFading ? 1 : 0,
+                                animation: usdSplashFading ? 'none' : 'usdLabelFadeIn 0.5s 0.5s forwards'
                             }}
                         >
                             in tips!
@@ -593,7 +669,7 @@ const TokenConfetti = ({
                                 width: '20px',
                                 height: '20px',
                                 transform: `translate(-50%, -50%) rotate(${i * 45}deg) translateY(-120px)`,
-                                animation: `sparkleOrbit 3s linear infinite`,
+                                animation: usdSplashFading ? 'none' : `sparkleOrbit 3s linear infinite`,
                                 animationDelay: `${i * 0.2}s`
                             }}
                         >
@@ -603,7 +679,7 @@ const TokenConfetti = ({
                                     height: '100%',
                                     background: '#FFD700',
                                     clipPath: 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)',
-                                    animation: 'sparkleTwinkle 0.5s ease-in-out infinite alternate',
+                                    animation: usdSplashFading ? 'none' : 'sparkleTwinkle 0.5s ease-in-out infinite alternate',
                                     animationDelay: `${i * 0.1}s`
                                 }}
                             />
@@ -635,6 +711,21 @@ const TokenConfetti = ({
                     100% {
                         opacity: 1;
                         transform: translate(-50%, -50%) scale(1) rotate(0deg);
+                    }
+                }
+                
+                @keyframes usdSplashOut {
+                    0% {
+                        opacity: 1;
+                        transform: translate(-50%, -50%) scale(1) rotate(0deg);
+                    }
+                    30% {
+                        opacity: 0.9;
+                        transform: translate(-50%, -50%) scale(1.05) rotate(2deg);
+                    }
+                    100% {
+                        opacity: 0;
+                        transform: translate(-50%, -50%) scale(1.3) rotate(5deg) translateY(-30px);
                     }
                 }
                 
