@@ -3962,13 +3962,13 @@ function ThreadViewer({
                                                         padding: '10px 14px',
                                         backgroundColor: 'transparent',
                                         border: 'none',
-                                        color: theme.colors.warning,
+                                        color: theme.colors.mutedText,
                                         cursor: 'pointer',
                                                         fontSize: '14px',
                                                         textAlign: 'left'
                                     }}
                                 >
-                                                    <FaCoins size={14} /> Tip
+                                                    <FaCoins size={14} style={{ opacity: 0.7 }} /> Tip
                                 </button>
                             )}
 
@@ -3991,13 +3991,13 @@ function ThreadViewer({
                                                         padding: '10px 14px',
                                         backgroundColor: 'transparent',
                                         border: 'none',
-                                        color: theme.colors.success,
+                                        color: theme.colors.mutedText,
                                         cursor: 'pointer',
                                                         fontSize: '14px',
                                                         textAlign: 'left'
                                     }}
                                 >
-                                                    <FaEnvelope size={14} /> Message
+                                                    <FaEnvelope size={14} style={{ opacity: 0.7 }} /> Message
                                 </button>
                             )}
 
@@ -4019,13 +4019,13 @@ function ThreadViewer({
                                                         padding: '10px 14px',
                                         backgroundColor: 'transparent',
                                         border: 'none',
-                                        color: '#9b59b6',
+                                        color: theme.colors.mutedText,
                                         cursor: 'pointer',
                                                         fontSize: '14px',
                                                         textAlign: 'left'
                                     }}
                                 >
-                                                    <FaEdit size={14} /> Edit
+                                                    <FaEdit size={14} style={{ opacity: 0.7 }} /> Edit
                                 </button>
                             )}
 
@@ -4048,13 +4048,14 @@ function ThreadViewer({
                                                         padding: '10px 14px',
                                         backgroundColor: 'transparent',
                                         border: 'none',
-                                        color: deletingPost === Number(post.id) ? theme.colors.mutedText : theme.colors.error,
+                                        color: theme.colors.mutedText,
                                         cursor: deletingPost === Number(post.id) ? 'not-allowed' : 'pointer',
+                                        opacity: deletingPost === Number(post.id) ? 0.5 : 1,
                                                         fontSize: '14px',
                                                         textAlign: 'left'
                                     }}
                                 >
-                                                    <FaTrash size={14} /> {deletingPost === Number(post.id) ? 'Deleting...' : 'Delete'}
+                                                    <FaTrash size={14} style={{ opacity: 0.7 }} /> {deletingPost === Number(post.id) ? 'Deleting...' : 'Delete'}
                                 </button>
                             )}
 
@@ -4074,13 +4075,13 @@ function ThreadViewer({
                                                         padding: '10px 14px',
                                         backgroundColor: 'transparent',
                                         border: 'none',
-                                        color: theme.colors.accent,
+                                        color: theme.colors.mutedText,
                                         cursor: 'pointer',
                                                         fontSize: '14px',
                                                         textAlign: 'left'
                                     }}
                                 >
-                                                    <FaPoll size={14} /> Add Poll
+                                                    <FaPoll size={14} style={{ opacity: 0.7 }} /> Add Poll
                                 </button>
                                             )}
                                         </div>,
