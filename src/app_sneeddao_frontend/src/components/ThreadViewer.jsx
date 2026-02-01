@@ -414,6 +414,7 @@ function ThreadViewer({
     const [proposalInfo, setProposalInfo] = useState(null); // {proposalId, snsRoot, proposalData}
     const [discussionPosts, setDiscussionPosts] = useState([]);
     const [loadingDiscussion, setLoadingDiscussion] = useState(false);
+    const hasLoadedDataRef = useRef(false); // Track if we've loaded data at least once (prevents loading spinner on refreshes)
     const [commentText, setCommentText] = useState('');
     const commentBodyRef = useRef(null);
     
@@ -837,7 +838,11 @@ function ThreadViewer({
     const fetchThreadData = useCallback(async () => {
         if (!forumActor || !threadId) return;
         
-        setLoadingDiscussion(true);
+        // Only show loading spinner on initial load, not on refreshes (voting, editing)
+        // This prevents the page from replacing content with a spinner which causes scroll-to-top
+        if (!hasLoadedDataRef.current) {
+            setLoadingDiscussion(true);
+        }
         try {
             console.log('Fetching thread data for thread ID:', threadId);
             
@@ -882,6 +887,9 @@ function ThreadViewer({
             } else {
                 setDiscussionPosts([]);
             }
+            
+            // Mark that we've loaded data at least once
+            hasLoadedDataRef.current = true;
             
         } catch (err) {
             console.error('Error fetching thread data:', err);
