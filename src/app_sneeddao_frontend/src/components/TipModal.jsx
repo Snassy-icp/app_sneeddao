@@ -62,14 +62,23 @@ const TipModal = ({
     const [tokenDropdownOpen, setTokenDropdownOpen] = useState(false);
     const [tokenPrices, setTokenPrices] = useState({}); // USD prices per token
     const [isClosing, setIsClosing] = useState(false); // Track closing animation state
+    const [successLogo, setSuccessLogo] = useState(null); // Capture logo when tip succeeds
 
     // Close dropdown when modal closes, reset closing state
     useEffect(() => {
         if (!isOpen) {
             setTokenDropdownOpen(false);
             setIsClosing(false);
+            setSuccessLogo(null);
         }
     }, [isOpen]);
+    
+    // Capture the logo when entering success state (before any metadata updates can change it)
+    useEffect(() => {
+        if (tippingState === 'success' && selectedToken && tokenMetadata[selectedToken]?.logo && !successLogo) {
+            setSuccessLogo(tokenMetadata[selectedToken].logo);
+        }
+    }, [tippingState, selectedToken, tokenMetadata, successLogo]);
     
     // Handle animated close - fade out content, keep logo visible
     const handleAnimatedClose = () => {
@@ -77,7 +86,7 @@ const TipModal = ({
         // After fade animation completes, actually close
         setTimeout(() => {
             onClose();
-        }, 400); // Match the CSS transition duration
+        }, 600); // Give more time to see the logo
     };
 
     // Update selected token when defaultToken changes or modal opens
@@ -364,7 +373,8 @@ const TipModal = ({
     // Render different content based on tipping state
     const renderContent = () => {
         if (tippingState === 'success') {
-            const logo = tokenMetadata[selectedToken]?.logo;
+            // Use captured logo to prevent flickering during updates
+            const logo = successLogo || tokenMetadata[selectedToken]?.logo;
             
             return (
                 <div style={{ textAlign: 'center' }}>
@@ -379,9 +389,7 @@ const TipModal = ({
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        background: logo ? 'transparent' : 'linear-gradient(135deg, #ffd700, #ffaa00)',
-                        transition: 'opacity 0.3s ease',
-                        opacity: 1
+                        background: logo ? 'transparent' : 'linear-gradient(135deg, #ffd700, #ffaa00)'
                     }}>
                         {logo ? (
                             <img 
@@ -1228,6 +1236,9 @@ const TipModal = ({
         );
     };
 
+    // Only show closing animation for success state
+    const showClosingAnimation = isClosing && tippingState === 'success';
+    
     return (
         <div style={{
             position: 'fixed',
@@ -1235,27 +1246,26 @@ const TipModal = ({
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.8)',
-            backdropFilter: 'blur(8px)',
+            backgroundColor: showClosingAnimation ? 'transparent' : 'rgba(0, 0, 0, 0.8)',
+            backdropFilter: showClosingAnimation ? 'none' : 'blur(8px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: 1000,
             animation: 'fadeIn 0.2s ease-out',
-            opacity: isClosing ? 0 : 1,
-            transition: 'opacity 0.35s ease',
-            pointerEvents: isClosing ? 'none' : 'auto'
+            transition: 'background-color 0.3s ease, backdrop-filter 0.3s ease',
+            pointerEvents: showClosingAnimation ? 'none' : 'auto'
         }}>
             <div style={{
-                background: isClosing ? 'transparent' : 'linear-gradient(145deg, #1a1a1a 0%, #2a2a2a 100%)',
-                border: isClosing ? 'none' : '1px solid rgba(255, 215, 0, 0.2)',
+                background: showClosingAnimation ? 'transparent' : 'linear-gradient(145deg, #1a1a1a 0%, #2a2a2a 100%)',
+                border: showClosingAnimation ? 'none' : '1px solid rgba(255, 215, 0, 0.2)',
                 borderRadius: '20px',
                 padding: '32px',
                 width: '420px',
                 maxWidth: 'calc(100vw - 40px)', // Only shrink if screen is smaller than 460px (420px + 40px margin)
                 maxHeight: '90vh',
-                overflow: 'auto',
-                boxShadow: isClosing ? 'none' : '0 20px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05)',
+                overflow: showClosingAnimation ? 'visible' : 'auto',
+                boxShadow: showClosingAnimation ? 'none' : '0 20px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05)',
                 position: 'relative',
                 animation: 'slideIn 0.3s ease-out',
                 transition: 'background 0.3s ease, border 0.3s ease, box-shadow 0.3s ease'
