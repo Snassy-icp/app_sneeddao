@@ -2411,6 +2411,16 @@ export default function PrincipalPage() {
                                 embedded={true}
                                 showSubaccountFilter={true}
                                 initialSubaccountFilter={searchParams.get('subaccount') || null}
+                                onSubaccountFilterChange={(subaccountHex) => {
+                                    // Update URL with subaccount param for shareability
+                                    const newParams = new URLSearchParams(searchParams);
+                                    if (subaccountHex) {
+                                        newParams.set('subaccount', subaccountHex);
+                                    } else {
+                                        newParams.delete('subaccount');
+                                    }
+                                    setSearchParams(newParams, { replace: true });
+                                }}
                             />
                         </div>
                     )}

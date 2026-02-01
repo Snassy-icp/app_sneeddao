@@ -92,6 +92,7 @@ function TransactionList({
     subaccount = null, // Optional subaccount as Uint8Array or array of bytes - used with principalId for account-specific transactions
     showSubaccountFilter = false, // If true, show dropdown to filter by subaccount (fetches available subaccounts)
     initialSubaccountFilter = null, // Optional initial subaccount for the filter (as Uint8Array or hex string)
+    onSubaccountFilterChange = null, // Optional callback when subaccount filter changes (receives hex string or null)
     isCollapsed = false, 
     onToggleCollapse = () => {},
     showHeader = true,
@@ -182,6 +183,17 @@ function TransactionList({
             return false;
         }
     };
+    
+    // Helper to update subaccount filter and notify parent
+    const updateSubaccountFilter = useCallback((subaccountBytes, hexString = null) => {
+        setSelectedSubaccount(subaccountBytes);
+        const hex = hexString || (subaccountBytes ? subaccountToHex(subaccountBytes) : '');
+        setSubaccountInput(hex);
+        setPage(0);
+        if (onSubaccountFilterChange) {
+            onSubaccountFilterChange(hex || null);
+        }
+    }, [onSubaccountFilterChange]);
     
     // Only read from URL params if not embedded - embedded components shouldn't use URL state
     const [startTxIndex, setStartTxIndex] = useState(() => {
@@ -1713,6 +1725,7 @@ function TransactionList({
                                                                 const fromSub = transaction.transfer[0].from.subaccount[0];
                                                                 const fromSubHex = subaccountToHex(fromSub);
                                                                 const fromSubId = `from-${tx.id}`;
+                                                                const isSamePrincipal = principalId && fromPrincipal.toString() === principalId;
                                                                 return (
                                                                     <div style={{ 
                                                                         fontSize: '0.7rem', 
@@ -1723,19 +1736,38 @@ function TransactionList({
                                                                         alignItems: 'center',
                                                                         gap: '4px'
                                                                     }}>
-                                                                        <Link
-                                                                            to={`/principal?id=${fromPrincipal.toString()}&subaccount=${fromSubHex}`}
-                                                                            onClick={(e) => e.stopPropagation()}
-                                                                            style={{
-                                                                                color: theme.colors.mutedText,
-                                                                                textDecoration: 'none'
-                                                                            }}
-                                                                            onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                                                            onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                                                                            title={`View transactions for this subaccount\n${fromSubHex}`}
-                                                                        >
-                                                                            Sub: {fromSubHex.substring(0, 16)}...
-                                                                        </Link>
+                                                                        {isSamePrincipal && showSubaccountFilter ? (
+                                                                            <span
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    updateSubaccountFilter(fromSub, fromSubHex);
+                                                                                }}
+                                                                                style={{
+                                                                                    color: theme.colors.mutedText,
+                                                                                    textDecoration: 'none',
+                                                                                    cursor: 'pointer'
+                                                                                }}
+                                                                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                                                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                                                                title={`Filter by this subaccount\n${fromSubHex}`}
+                                                                            >
+                                                                                Sub: {fromSubHex.substring(0, 16)}...
+                                                                            </span>
+                                                                        ) : (
+                                                                            <Link
+                                                                                to={`/principal?id=${fromPrincipal.toString()}&subaccount=${fromSubHex}`}
+                                                                                onClick={(e) => e.stopPropagation()}
+                                                                                style={{
+                                                                                    color: theme.colors.mutedText,
+                                                                                    textDecoration: 'none'
+                                                                                }}
+                                                                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                                                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                                                                title={`View transactions for this subaccount\n${fromSubHex}`}
+                                                                            >
+                                                                                Sub: {fromSubHex.substring(0, 16)}...
+                                                                            </Link>
+                                                                        )}
                                                                         <button
                                                                             onClick={(e) => {
                                                                                 e.stopPropagation();
@@ -1779,6 +1811,7 @@ function TransactionList({
                                                                 const toSub = transaction.transfer[0].to.subaccount[0];
                                                                 const toSubHex = subaccountToHex(toSub);
                                                                 const toSubId = `to-${tx.id}`;
+                                                                const isSamePrincipal = principalId && toPrincipal.toString() === principalId;
                                                                 return (
                                                                     <div style={{ 
                                                                         fontSize: '0.7rem', 
@@ -1789,19 +1822,38 @@ function TransactionList({
                                                                         alignItems: 'center',
                                                                         gap: '4px'
                                                                     }}>
-                                                                        <Link
-                                                                            to={`/principal?id=${toPrincipal.toString()}&subaccount=${toSubHex}`}
-                                                                            onClick={(e) => e.stopPropagation()}
-                                                                            style={{
-                                                                                color: theme.colors.mutedText,
-                                                                                textDecoration: 'none'
-                                                                            }}
-                                                                            onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                                                            onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                                                                            title={`View transactions for this subaccount\n${toSubHex}`}
-                                                                        >
-                                                                            Sub: {toSubHex.substring(0, 16)}...
-                                                                        </Link>
+                                                                        {isSamePrincipal && showSubaccountFilter ? (
+                                                                            <span
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    updateSubaccountFilter(toSub, toSubHex);
+                                                                                }}
+                                                                                style={{
+                                                                                    color: theme.colors.mutedText,
+                                                                                    textDecoration: 'none',
+                                                                                    cursor: 'pointer'
+                                                                                }}
+                                                                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                                                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                                                                title={`Filter by this subaccount\n${toSubHex}`}
+                                                                            >
+                                                                                Sub: {toSubHex.substring(0, 16)}...
+                                                                            </span>
+                                                                        ) : (
+                                                                            <Link
+                                                                                to={`/principal?id=${toPrincipal.toString()}&subaccount=${toSubHex}`}
+                                                                                onClick={(e) => e.stopPropagation()}
+                                                                                style={{
+                                                                                    color: theme.colors.mutedText,
+                                                                                    textDecoration: 'none'
+                                                                                }}
+                                                                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                                                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                                                                title={`View transactions for this subaccount\n${toSubHex}`}
+                                                                            >
+                                                                                Sub: {toSubHex.substring(0, 16)}...
+                                                                            </Link>
+                                                                        )}
                                                                         <button
                                                                             onClick={(e) => {
                                                                                 e.stopPropagation();
