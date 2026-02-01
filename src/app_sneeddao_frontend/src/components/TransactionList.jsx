@@ -14,7 +14,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useSearchParams } from 'react-router-dom';
 import { subaccountToHex } from '../utils/StringUtils';
 import { getRelativeTime, getFullDate } from '../utils/DateUtils';
-import { FaExchangeAlt, FaCoins, FaFire, FaCheckCircle, FaSearch, FaFilter, FaDownload, FaChevronLeft, FaChevronRight, FaArrowUp, FaArrowDown, FaSort, FaWallet, FaTimes } from 'react-icons/fa';
+import { FaExchangeAlt, FaCoins, FaFire, FaCheckCircle, FaSearch, FaFilter, FaDownload, FaChevronLeft, FaChevronRight, FaArrowUp, FaArrowDown, FaSort, FaWallet, FaTimes, FaCopy } from 'react-icons/fa';
+import { encodeIcrcAccount } from '@dfinity/ledger-icrc';
 
 // Helper to parse ICRC-1 account from filter string (returns { principal, subaccount } or null)
 const parseFilterAsAccount = (filter) => {
@@ -125,6 +126,35 @@ function TransactionList({
     const [showSubaccountDropdown, setShowSubaccountDropdown] = useState(false);
     const subaccountInputRef = useRef(null);
     const subaccountDropdownRef = useRef(null);
+    const [copiedSubaccount, setCopiedSubaccount] = useState(null); // Track which subaccount was just copied
+    
+    // Helper to copy subaccount to clipboard
+    const copySubaccount = async (subaccountBytes, identifier) => {
+        try {
+            const hex = subaccountToHex(subaccountBytes);
+            await navigator.clipboard.writeText(hex);
+            setCopiedSubaccount(identifier);
+            setTimeout(() => setCopiedSubaccount(null), 2000);
+        } catch (err) {
+            console.error('Failed to copy subaccount:', err);
+        }
+    };
+    
+    // Helper to copy full ICRC-1 account (principal + subaccount) to clipboard
+    const copyIcrc1Account = async (principal, subaccountBytes) => {
+        try {
+            const account = encodeIcrcAccount({
+                owner: principal,
+                subaccount: subaccountBytes
+            });
+            await navigator.clipboard.writeText(account);
+            return true;
+        } catch (err) {
+            console.error('Failed to copy ICRC-1 account:', err);
+            return false;
+        }
+    };
+    
     // Only read from URL params if not embedded - embedded components shouldn't use URL state
     const [startTxIndex, setStartTxIndex] = useState(() => {
         if (embedded) return 0;
@@ -1649,12 +1679,45 @@ function TransactionList({
                                                                 showCopyButton={false}
                                                                 short={true}
                                                                 isAuthenticated={isAuthenticated}
+                                                                subaccount={txType === 'transfer' && transaction.transfer?.[0]?.from?.subaccount?.length > 0 ? transaction.transfer[0].from.subaccount[0] : null}
                                                             />
-                                                            {(txType === 'transfer' && transaction.transfer?.[0]?.from?.subaccount?.length > 0) && (
-                                                                <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginTop: '2px', fontFamily: 'monospace' }}>
-                                                                    Sub: {subaccountToHex(transaction.transfer[0].from.subaccount[0]).substring(0, 16)}...
-                                                                </div>
-                                                            )}
+                                                            {(txType === 'transfer' && transaction.transfer?.[0]?.from?.subaccount?.length > 0) && (() => {
+                                                                const fromSub = transaction.transfer[0].from.subaccount[0];
+                                                                const fromSubHex = subaccountToHex(fromSub);
+                                                                const fromSubId = `from-${tx.id}`;
+                                                                return (
+                                                                    <div style={{ 
+                                                                        fontSize: '0.7rem', 
+                                                                        color: theme.colors.mutedText, 
+                                                                        marginTop: '2px', 
+                                                                        fontFamily: 'monospace',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '4px'
+                                                                    }}>
+                                                                        <span>Sub: {fromSubHex.substring(0, 16)}...</span>
+                                                                        <button
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                copySubaccount(fromSub, fromSubId);
+                                                                            }}
+                                                                            style={{
+                                                                                background: 'transparent',
+                                                                                border: 'none',
+                                                                                cursor: 'pointer',
+                                                                                padding: '2px',
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                color: copiedSubaccount === fromSubId ? theme.colors.success : theme.colors.mutedText,
+                                                                                transition: 'color 0.2s'
+                                                                            }}
+                                                                            title="Copy subaccount"
+                                                                        >
+                                                                            <FaCopy size={10} />
+                                                                        </button>
+                                                                    </div>
+                                                                );
+                                                            })()}
                                                         </>
                                                     ) : (
                                                         <span style={{ color: theme.colors.mutedText }}>-</span>
@@ -1670,12 +1733,45 @@ function TransactionList({
                                                                 showCopyButton={false}
                                                                 short={true}
                                                                 isAuthenticated={isAuthenticated}
+                                                                subaccount={txType === 'transfer' && transaction.transfer?.[0]?.to?.subaccount?.length > 0 ? transaction.transfer[0].to.subaccount[0] : null}
                                                             />
-                                                            {(txType === 'transfer' && transaction.transfer?.[0]?.to?.subaccount?.length > 0) && (
-                                                                <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginTop: '2px', fontFamily: 'monospace' }}>
-                                                                    Sub: {subaccountToHex(transaction.transfer[0].to.subaccount[0]).substring(0, 16)}...
-                                                                </div>
-                                                            )}
+                                                            {(txType === 'transfer' && transaction.transfer?.[0]?.to?.subaccount?.length > 0) && (() => {
+                                                                const toSub = transaction.transfer[0].to.subaccount[0];
+                                                                const toSubHex = subaccountToHex(toSub);
+                                                                const toSubId = `to-${tx.id}`;
+                                                                return (
+                                                                    <div style={{ 
+                                                                        fontSize: '0.7rem', 
+                                                                        color: theme.colors.mutedText, 
+                                                                        marginTop: '2px', 
+                                                                        fontFamily: 'monospace',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '4px'
+                                                                    }}>
+                                                                        <span>Sub: {toSubHex.substring(0, 16)}...</span>
+                                                                        <button
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                copySubaccount(toSub, toSubId);
+                                                                            }}
+                                                                            style={{
+                                                                                background: 'transparent',
+                                                                                border: 'none',
+                                                                                cursor: 'pointer',
+                                                                                padding: '2px',
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                color: copiedSubaccount === toSubId ? theme.colors.success : theme.colors.mutedText,
+                                                                                transition: 'color 0.2s'
+                                                                            }}
+                                                                            title="Copy subaccount"
+                                                                        >
+                                                                            <FaCopy size={10} />
+                                                                        </button>
+                                                                    </div>
+                                                                );
+                                                            })()}
                                                         </>
                                                     ) : (
                                                         <span style={{ color: theme.colors.mutedText }}>-</span>

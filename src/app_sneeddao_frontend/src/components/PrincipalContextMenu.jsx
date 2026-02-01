@@ -12,7 +12,8 @@ const PrincipalContextMenu = ({
     onSetNickname,
     isAuthenticated = false,
     showSendMessage = true,
-    showViewProfile = true
+    showViewProfile = true,
+    extraMenuItems = [] // Array of { icon, label, onClick } objects
 }) => {
     const navigate = useNavigate();
     const menuRef = useRef(null);
@@ -217,6 +218,34 @@ const PrincipalContextMenu = ({
                 <span>📋</span>
                 <span>Copy Principal ID</span>
             </div>
+
+            {/* Extra menu items */}
+            {extraMenuItems.map((item, index) => (
+                <div
+                    key={index}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        item.onClick();
+                        onClose();
+                    }}
+                    style={{
+                        padding: '12px 16px',
+                        color: '#ffffff',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontSize: '14px',
+                        transition: 'background-color 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.target.style.backgroundColor = '#3a3a3a'}
+                    onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                >
+                    <span>{item.icon}</span>
+                    <span>{item.label}</span>
+                </div>
+            ))}
         </div>,
         document.body
     );

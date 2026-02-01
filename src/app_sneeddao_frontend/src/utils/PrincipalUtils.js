@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useContext, useMemo } from 'react';
 import { sha224 } from '@dfinity/principal/lib/esm/utils/sha224';
+import { encodeIcrcAccount } from '@dfinity/ledger-icrc';
 import { getPrincipalName, getPrincipalNickname } from './BackendUtils';
 import PrincipalContextMenu from '../components/PrincipalContextMenu';
 import MessageDialog from '../components/MessageDialog';
@@ -238,7 +239,8 @@ export const PrincipalDisplay = React.memo(({
     isAuthenticated = false,
     onNicknameUpdate = null,
     showSendMessage = true,
-    showViewProfile = true
+    showViewProfile = true,
+    subaccount = null // Optional subaccount for ICRC-1 account copy in context menu
 }) => {
     const [contextMenuOpen, setContextMenuOpen] = useState(false);
     const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
@@ -455,7 +457,22 @@ export const PrincipalDisplay = React.memo(({
                 onSetNickname: handleSetNickname,
                 isAuthenticated: isAuthenticated,
                 showSendMessage: showSendMessage,
-                showViewProfile: showViewProfile
+                showViewProfile: showViewProfile,
+                extraMenuItems: subaccount && principal ? [{
+                    icon: '📋',
+                    label: 'Copy ICRC-1 Account',
+                    onClick: () => {
+                        try {
+                            const account = encodeIcrcAccount({
+                                owner: principal,
+                                subaccount: subaccount
+                            });
+                            navigator.clipboard.writeText(account);
+                        } catch (err) {
+                            console.error('Failed to copy ICRC-1 account:', err);
+                        }
+                    }
+                }] : []
             }),
             // Message dialog
             React.createElement(MessageDialog, {
@@ -573,7 +590,22 @@ export const PrincipalDisplay = React.memo(({
             onSetNickname: handleSetNickname,
             isAuthenticated: isAuthenticated,
             showSendMessage: showSendMessage,
-            showViewProfile: showViewProfile
+            showViewProfile: showViewProfile,
+            extraMenuItems: subaccount && principal ? [{
+                icon: '📋',
+                label: 'Copy ICRC-1 Account',
+                onClick: () => {
+                    try {
+                        const account = encodeIcrcAccount({
+                            owner: principal,
+                            subaccount: subaccount
+                        });
+                        navigator.clipboard.writeText(account);
+                    } catch (err) {
+                        console.error('Failed to copy ICRC-1 account:', err);
+                    }
+                }
+            }] : []
         }),
         // Message dialog
         React.createElement(MessageDialog, {
