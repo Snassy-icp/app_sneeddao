@@ -18,7 +18,8 @@ const TokenConfetti = ({
     trigger = 0, 
     duration = 8000, 
     particleCount = 100,
-    usdValue = 0 // USD value of new tips for scaling and display
+    usdValue = 0, // USD value of new tips for scaling and display
+    particleEffectsEnabled = true // When false, only show USD splash, skip particle effects
 }) => {
     const canvasRef = useRef(null);
     const [isActive, setIsActive] = useState(false);
@@ -146,17 +147,20 @@ const TokenConfetti = ({
     
     // Initialize effect when triggered
     useEffect(() => {
-        if (trigger === 0 || trigger === lastTriggerRef.current || loadedImages.length === 0) return;
+        if (trigger === 0 || trigger === lastTriggerRef.current) return;
+        // Only require loaded images if particle effects are enabled
+        if (particleEffectsEnabled && loadedImages.length === 0) return;
         lastTriggerRef.current = trigger;
         
         const intensity = getIntensityMultiplier(usdValue);
-        console.log('🎉 TRIGGERING EPIC CONFETTI!', { imageCount: loadedImages.length, usdValue, intensity });
+        console.log('🎉 TRIGGERING EFFECT!', { 
+            imageCount: loadedImages.length, 
+            usdValue, 
+            intensity, 
+            particleEffectsEnabled 
+        });
         
-        // Screen flash
-        setScreenFlash(true);
-        setTimeout(() => setScreenFlash(false), 150);
-        
-        // Show USD splash if value is over $0.01
+        // Show USD splash if value is over $0.01 (always shown regardless of particle setting)
         if (usdValue >= 0.01) {
             setDisplayedUsdValue(usdValue);
             setUsdSplashFading(false);
@@ -179,8 +183,17 @@ const TokenConfetti = ({
                         setUsdSplashFading(false);
                     }, 1500);
                 }, 4000);
-            }, 400); // Delay slightly after screen flash
+            }, particleEffectsEnabled ? 400 : 100); // Faster if no particles
         }
+        
+        // Skip particle effects if disabled
+        if (!particleEffectsEnabled) {
+            return;
+        }
+        
+        // Screen flash (only with particle effects)
+        setScreenFlash(true);
+        setTimeout(() => setScreenFlash(false), 150);
         
         // Scale particle counts by intensity
         const scaledBurstCount = Math.floor(40 * intensity);
@@ -234,7 +247,7 @@ const TokenConfetti = ({
         setIsActive(true);
         startTimeRef.current = performance.now();
         
-    }, [trigger, loadedImages, particleCount, usdValue, createConfetti, createSparkle, createFireworkBurst, getIntensityMultiplier]);
+    }, [trigger, loadedImages, particleCount, usdValue, particleEffectsEnabled, createConfetti, createSparkle, createFireworkBurst, getIntensityMultiplier]);
     
     // Main animation loop
     useEffect(() => {

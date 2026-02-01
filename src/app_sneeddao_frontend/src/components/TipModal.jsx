@@ -122,6 +122,15 @@ const TipModal = ({
             return;
         }
         
+        // Check if particle effects are enabled
+        let particleEffectsEnabled = true;
+        try {
+            const saved = localStorage.getItem('particleEffectsEnabled');
+            particleEffectsEnabled = saved !== null ? JSON.parse(saved) : true;
+        } catch (e) {
+            particleEffectsEnabled = true;
+        }
+        
         // Find target pill by querying the DOM
         let targetElement = null;
         if (targetPillSelector) {
@@ -272,8 +281,8 @@ const TipModal = ({
                 const glowIntensity = 0.5 + progress * 0.3;
                 flyingEl.style.boxShadow = `0 4px ${20 + progress * 10}px rgba(255, 215, 0, ${glowIntensity})`;
                 
-                // Spawn sparkles during wind-up (increasing rate as spin speeds up)
-                if (currentTime - lastSparkleTime > 80 - progress * 60) {
+                // Spawn sparkles during wind-up (increasing rate as spin speeds up) - if enabled
+                if (particleEffectsEnabled && currentTime - lastSparkleTime > 80 - progress * 60) {
                     const sparkleCount = 1 + Math.floor(progress * 2);
                     for (let i = 0; i < sparkleCount; i++) {
                         const angle = Math.random() * Math.PI * 2;
@@ -287,7 +296,7 @@ const TipModal = ({
                     lastSparkleTime = currentTime;
                 }
                 
-                updateSparkles();
+                if (particleEffectsEnabled) updateSparkles();
                 
                 if (progress < 1) {
                     animationRef.current = requestAnimationFrame(windUpAnimate);
@@ -331,8 +340,8 @@ const TipModal = ({
                         flyingEl.style.height = `${size}px`;
                         flyingEl.style.transform = `rotate(${flightRotation}deg)`;
                         
-                        // Spawn sparkle trail during flight (more frequent, tapering off as logo shrinks)
-                        if (size > 5 && currentTime - lastSparkleTime > 30) {
+                        // Spawn sparkle trail during flight (more frequent, tapering off as logo shrinks) - if enabled
+                        if (particleEffectsEnabled && size > 5 && currentTime - lastSparkleTime > 30) {
                             const sparkleCount = Math.ceil(3 * (size / startSize));
                             for (let i = 0; i < sparkleCount; i++) {
                                 sparklesRef.current.push(createSparkle(x, y, size));
@@ -340,7 +349,7 @@ const TipModal = ({
                             lastSparkleTime = currentTime;
                         }
                         
-                        updateSparkles();
+                        if (particleEffectsEnabled) updateSparkles();
                         
                         // Adjust shadow based on size
                         if (size > 10) {
@@ -354,21 +363,30 @@ const TipModal = ({
                         if (progress < 1) {
                             animationRef.current = requestAnimationFrame(flightAnimate);
                         } else {
-                            // Continue updating sparkles until they fade
-                            const fadeOutSparkles = () => {
-                                updateSparkles();
-                                if (sparklesRef.current.length > 0) {
-                                    animationRef.current = requestAnimationFrame(fadeOutSparkles);
-                                } else {
-                                    // All sparkles faded, close modal
-                                    setShowFlyingLogo(false);
-                                    if (onAnimationComplete) {
-                                        onAnimationComplete();
+                            // Continue updating sparkles until they fade (if enabled)
+                            if (particleEffectsEnabled && sparklesRef.current.length > 0) {
+                                const fadeOutSparkles = () => {
+                                    updateSparkles();
+                                    if (sparklesRef.current.length > 0) {
+                                        animationRef.current = requestAnimationFrame(fadeOutSparkles);
+                                    } else {
+                                        // All sparkles faded, close modal
+                                        setShowFlyingLogo(false);
+                                        if (onAnimationComplete) {
+                                            onAnimationComplete();
+                                        }
+                                        onClose();
                                     }
-                                    onClose();
+                                };
+                                fadeOutSparkles();
+                            } else {
+                                // No sparkles, close immediately
+                                setShowFlyingLogo(false);
+                                if (onAnimationComplete) {
+                                    onAnimationComplete();
                                 }
-                            };
-                            fadeOutSparkles();
+                                onClose();
+                            }
                         }
                     };
                     

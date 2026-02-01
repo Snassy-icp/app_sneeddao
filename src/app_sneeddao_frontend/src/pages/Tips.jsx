@@ -253,6 +253,16 @@ const Tips = () => {
     const [confettiUsdValue, setConfettiUsdValue] = useState(0);
     const confettiTriggeredRef = useRef(false);
     
+    // Particle effects setting from localStorage
+    const [particleEffectsEnabled, setParticleEffectsEnabled] = useState(() => {
+        try {
+            const saved = localStorage.getItem('particleEffectsEnabled');
+            return saved !== null ? JSON.parse(saved) : true; // Default ON
+        } catch (e) {
+            return true;
+        }
+    });
+    
     // Debug: Press 'C' to test confetti (development only)
     // Press 'C' for small effect (~$0.10), 'V' for full effect (~$5.00)
     useEffect(() => {
@@ -945,6 +955,7 @@ const Tips = () => {
                 duration={8000}
                 particleCount={100}
                 usdValue={confettiUsdValue}
+                particleEffectsEnabled={particleEffectsEnabled}
             />
             
             <main style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>

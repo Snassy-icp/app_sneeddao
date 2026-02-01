@@ -221,6 +221,16 @@ export default function Me() {
             return false;
         }
     });
+    
+    // Particle effects setting (sparkles on tips, fireworks on /tips page)
+    const [particleEffectsEnabled, setParticleEffectsEnabled] = useState(() => {
+        try {
+            const saved = localStorage.getItem('particleEffectsEnabled');
+            return saved !== null ? JSON.parse(saved) : true; // Default ON
+        } catch (error) {
+            return true;
+        }
+    });
 
     const [canisterManagerSettingsExpanded, setCanisterManagerSettingsExpanded] = useState(false);
     const [canisterCycleThresholdRed, setCanisterCycleThresholdRed] = useState('');
@@ -1665,7 +1675,6 @@ export default function Me() {
                                         title="Expand Quick Links on Desktop"
                                         description="Show individual quick link buttons on desktop instead of hamburger menu"
                                         theme={theme}
-                                        isLast={true}
                                     >
                                         <ToggleSwitch
                                             checked={expandQuickLinksOnDesktop}
@@ -1674,6 +1683,22 @@ export default function Me() {
                                                 setExpandQuickLinksOnDesktop(newValue);
                                                 localStorage.setItem('expandQuickLinksOnDesktop', JSON.stringify(newValue));
                                                 window.dispatchEvent(new CustomEvent('expandQuickLinksOnDesktopChanged', { detail: newValue }));
+                                            }}
+                                        />
+                                    </SettingItem>
+                                    
+                                    <SettingItem
+                                        title="Particle Effects"
+                                        description="Show sparkle trails when tipping and fireworks on the Tips page for new tips"
+                                        theme={theme}
+                                        isLast={true}
+                                    >
+                                        <ToggleSwitch
+                                            checked={particleEffectsEnabled}
+                                            onChange={(e) => {
+                                                const newValue = e.target.checked;
+                                                setParticleEffectsEnabled(newValue);
+                                                localStorage.setItem('particleEffectsEnabled', JSON.stringify(newValue));
                                             }}
                                         />
                                     </SettingItem>
