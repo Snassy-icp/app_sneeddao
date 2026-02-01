@@ -453,6 +453,7 @@ function ThreadViewer({
     const [userVotes, setUserVotes] = useState(new Map());
     const [threadVotes, setThreadVotes] = useState(new Map()); // Map<postId, {upvoted_neurons: [], downvoted_neurons: []}>
     const [optimisticScores, setOptimisticScores] = useState(new Map()); // Map<postId, {upvote_score: number, downvote_score: number}>
+    const [optimisticEdits, setOptimisticEdits] = useState(new Map()); // Map<postId, {title: string|null, body: string}>
     const [voteAnimations, setVoteAnimations] = useState(new Map()); // Map<postId, 'upvote' | 'downvote' | 'score'>
     
     // Settings panel state
@@ -613,6 +614,24 @@ function ThreadViewer({
         // Fall back to actual threadVotes
         return threadVotes.get(postIdStr) || { upvoted_neurons: [], downvoted_neurons: [] };
     }, [optimisticScores, threadVotes]);
+
+    // Helper to get the effective post content (optimistic edit if available, otherwise actual)
+    const getEffectivePostContent = useCallback((post) => {
+        const postIdStr = post.id.toString();
+        const optimisticEdit = optimisticEdits.get(postIdStr);
+        
+        if (optimisticEdit) {
+            return {
+                title: optimisticEdit.title,
+                body: optimisticEdit.body
+            };
+        }
+        
+        return {
+            title: post.title,
+            body: post.body
+        };
+    }, [optimisticEdits]);
 
     // Sort posts based on selected criteria
     const sortPosts = useCallback((posts) => {
@@ -1728,23 +1747,34 @@ function ThreadViewer({
     const submitEditPost = useCallback(async (title, body) => {
         if (!forumActor || !editingPost) return;
 
+        const postIdStr = editingPost.toString();
+        
+        // Debug logging to see what we're getting
+        console.log('submitEditPost called with:', { title, body, titleType: typeof title });
+        
+        // Handle the title exactly like Discussion.jsx does
+        // If title is an array (empty array = []), convert to empty string, then to null if empty
+        let processedTitle = title;
+        if (Array.isArray(title)) {
+            processedTitle = title.length > 0 ? title[0] : '';
+        }
+        
+        // Convert empty strings to [] (None), but keep non-empty strings as [string] (Some)
+        const finalTitle = (processedTitle && processedTitle.trim()) ? [processedTitle.trim()] : [];
+        
+        console.log('Processed title:', { processedTitle, finalTitle });
+        
+        // Apply optimistic update immediately - show the new content right away
+        setOptimisticEdits(prev => new Map(prev.set(postIdStr, {
+            title: finalTitle.length > 0 ? finalTitle[0] : null,
+            body: body
+        })));
+        
+        // Close the edit form immediately (optimistic)
+        cancelEditPost();
+        
         setUpdatingPost(true);
         try {
-            // Debug logging to see what we're getting
-            console.log('submitEditPost called with:', { title, body, titleType: typeof title });
-            
-            // Handle the title exactly like Discussion.jsx does
-            // If title is an array (empty array = []), convert to empty string, then to null if empty
-            let processedTitle = title;
-            if (Array.isArray(title)) {
-                processedTitle = title.length > 0 ? title[0] : '';
-            }
-            
-            // Convert empty strings to [] (None), but keep non-empty strings as [string] (Some)
-            const finalTitle = (processedTitle && processedTitle.trim()) ? [processedTitle.trim()] : [];
-            
-            console.log('Processed title:', { processedTitle, finalTitle });
-            
             // Call update_post directly like Discussion.jsx does - pass title as string or null
             const result = await forumActor.update_post(
                 Number(editingPost),
@@ -1754,15 +1784,32 @@ function ThreadViewer({
 
             if ('ok' in result) {
                 console.log('Post updated successfully');
-                // Refresh thread data to show updated post
+                // Refresh thread data to get the server's version (clears optimistic edit)
                 await fetchThreadData();
-                cancelEditPost();
+                // Clear optimistic edit now that real data is loaded
+                setOptimisticEdits(prev => {
+                    const newState = new Map(prev);
+                    newState.delete(postIdStr);
+                    return newState;
+                });
             } else {
                 console.error('Failed to update post:', result.err);
+                // Clear optimistic edit on error (revert to original)
+                setOptimisticEdits(prev => {
+                    const newState = new Map(prev);
+                    newState.delete(postIdStr);
+                    return newState;
+                });
                 alert('Failed to update post: ' + (result.err?.InvalidInput || result.err?.Unauthorized || 'Unknown error'));
             }
         } catch (error) {
             console.error('Error updating post:', error);
+            // Clear optimistic edit on error (revert to original)
+            setOptimisticEdits(prev => {
+                const newState = new Map(prev);
+                newState.delete(postIdStr);
+                return newState;
+            });
             alert('Error updating post: ' + error.message);
         } finally {
             setUpdatingPost(false);
@@ -3121,6 +3168,9 @@ function ThreadViewer({
         const isUnread = isPostUnread(post);
         const hasBeenManuallyToggled = collapsedPosts.has(Number(post.id));
         
+        // Get effective post content (optimistic edit if available, otherwise actual)
+        const effectiveContent = getEffectivePostContent(post);
+        
         // Default state: negative posts are collapsed, positive posts are expanded
         // If manually toggled, use the opposite of the default state
         const defaultCollapsed = isNegative;
@@ -3215,14 +3265,14 @@ function ThreadViewer({
                         >
                             #{isNarrowScreen ? '' : post.id.toString()}
                         </a>
-                        {post.title && <span style={{ 
+                        {effectiveContent.title && <span style={{ 
                             margin: 0, 
                             wordBreak: 'break-word', 
                             overflowWrap: 'anywhere',
                             fontWeight: '600',
                             fontSize: '13px',
                             color: theme.colors.primaryText
-                        }}>{post.title}</span>}
+                        }}>{effectiveContent.title}</span>}
                         {isUnread && (
                             <span style={{
                                 backgroundColor: theme.colors.error,
@@ -3319,7 +3369,7 @@ function ThreadViewer({
                             {/* Post body - hide when editing */}
                             {editingPost !== Number(post.id) && (
                                 <div className="post-body">
-                                    <MarkdownBody text={post.body} style={{ color: theme.colors.primaryText }} />
+                                    <MarkdownBody text={effectiveContent.body} style={{ color: theme.colors.primaryText }} />
                                 </div>
                             )}
                             
@@ -3776,8 +3826,8 @@ function ThreadViewer({
                     {/* Edit Form */}
                     {editingPost === Number(post.id) && (
                         <EditForm 
-                            initialTitle={post.title || ''}
-                            initialBody={post.body || ''}
+                            initialTitle={effectiveContent.title || ''}
+                            initialBody={effectiveContent.body || ''}
                             onSubmit={submitEditPost}
                             onCancel={cancelEditPost}
                             submittingEdit={updatingPost}
