@@ -321,6 +321,13 @@ type SneedRLL =
                                                  principal;
                                                  nat;
                                                }) query;
+   get_all_user_balances: () -> (vec record {
+                                       principal;
+                                       vec record {
+                                             principal;
+                                             nat;
+                                           };
+                                     }) query;
    get_user_specific_distribution_events: (principal) ->
     (vec UserDistributionEvent) query;
    get_user_token_distribution: (principal, principal) -> (nat) query;

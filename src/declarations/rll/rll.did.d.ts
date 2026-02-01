@@ -244,6 +244,10 @@ export interface SneedRLL {
     [],
     Array<[Principal, bigint]>
   >,
+  'get_all_user_balances' : ActorMethod<
+    [],
+    Array<[Principal, Array<[Principal, bigint]>]>
+  >,
   'get_claim_events' : ActorMethod<[], Array<ClaimEvent>>,
   'get_claim_events_for_hotkey' : ActorMethod<[Principal], Array<ClaimEvent>>,
   'get_distribution_events' : ActorMethod<[], Array<DistributionEvent>>,

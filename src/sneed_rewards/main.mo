@@ -2053,6 +2053,23 @@ shared (deployer) actor class SneedRLL() = this {
     };
   };
 
+  // Query function to get all user balances (claimable amounts)
+  public query func get_all_user_balances() : async [(Principal, [(Principal, Nat)])] {
+    let results = Buffer.Buffer<(Principal, [(Principal, Nat)])>(balances.size());
+    for ((owner, local_balances) in balances.entries()) {
+      let token_balances = Buffer.Buffer<(Principal, Nat)>(local_balances.balances.size());
+      for (local_balance in local_balances.balances.vals()) {
+        if (local_balance.amount > 0) {
+          token_balances.add((local_balance.icrc1_ledger_canister_id, local_balance.amount));
+        };
+      };
+      if (token_balances.size() > 0) {
+        results.add((owner, Buffer.toArray(token_balances)));
+      };
+    };
+    Buffer.toArray(results);
+  };
+
   // Query function to get specific token distribution for a user
   public query func get_user_token_distribution(user : Principal, token_id : Principal) : async Nat {
     switch (user_distributions.get(user)) {

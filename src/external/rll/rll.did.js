@@ -563,6 +563,11 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Nat))],
         ['query'],
       ),
+    'get_all_user_balances' : IDL.Func(
+        [],
+        [IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Nat))))],
+        ['query'],
+      ),
     'get_user_specific_distribution_events' : IDL.Func(
         [IDL.Principal],
         [IDL.Vec(UserDistributionEvent)],

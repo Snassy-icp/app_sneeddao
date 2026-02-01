@@ -65,6 +65,12 @@ export default function RewardsAdmin() {
     const [userBalances, setUserBalances] = useState([]);
     const [loadingUserBalances, setLoadingUserBalances] = useState(false);
     
+    // All user balances
+    const [allUserBalances, setAllUserBalances] = useState([]);
+    const [loadingAllUserBalances, setLoadingAllUserBalances] = useState(false);
+    const [userBalancesPage, setUserBalancesPage] = useState(1);
+    const [userBalancesFilter, setUserBalancesFilter] = useState('');
+    
     // Neuron statistics
     const [neuronStats, setNeuronStats] = useState(null);
     const [loadingNeuronStats, setLoadingNeuronStats] = useState(false);
@@ -84,6 +90,7 @@ export default function RewardsAdmin() {
     const [claimPage, setClaimPage] = useState(1);
     const [errorClaimEvents, setErrorClaimEvents] = useState([]);
     const [loadingErrorClaims, setLoadingErrorClaims] = useState(false);
+    const [claimFilter, setClaimFilter] = useState(''); // Filter by principal/hotkey
     
     // Known and whitelisted tokens (for metadata lookup)
     const [knownTokens, setKnownTokens] = useState([]);
@@ -417,6 +424,22 @@ export default function RewardsAdmin() {
             showInfo('Error', 'Failed to fetch user balances: ' + err.message, 'error');
         } finally {
             setLoadingUserBalances(false);
+        }
+    };
+    
+    // Fetch all user balances
+    const fetchAllUserBalances = async () => {
+        setLoadingAllUserBalances(true);
+        try {
+            const actor = getRllActor();
+            const balances = await actor.get_all_user_balances();
+            setAllUserBalances(balances);
+            setUserBalancesPage(1);
+        } catch (err) {
+            console.error('Error fetching all user balances:', err);
+            showInfo('Error', 'Failed to fetch all user balances: ' + err.message, 'error');
+        } finally {
+            setLoadingAllUserBalances(false);
         }
     };
     
@@ -1202,8 +1225,75 @@ export default function RewardsAdmin() {
     // Paginated data
     const paginatedDistributions = getPaginatedData(distributionEvents, distributionPage);
     const distributionTotalPages = getTotalPages(distributionEvents);
-    const paginatedClaims = getPaginatedData(claimEvents, claimPage);
-    const claimTotalPages = getTotalPages(claimEvents);
+    
+    // Filter and pair claim events
+    const processedClaimEvents = useMemo(() => {
+        // First, filter by principal if filter is set
+        let filtered = claimEvents;
+        if (claimFilter.trim()) {
+            const filterLower = claimFilter.trim().toLowerCase();
+            filtered = claimEvents.filter(event => 
+                event.hotkey?.toString().toLowerCase().includes(filterLower)
+            );
+        }
+        
+        // Sort by sequence number descending (newest first)
+        const sorted = [...filtered].sort((a, b) => 
+            Number(b.sequence_number) - Number(a.sequence_number)
+        );
+        
+        // Pair pending + success events into single rows
+        const paired = [];
+        const seenPending = new Map(); // Map from key to pending event
+        
+        for (const event of sorted) {
+            const key = `${event.hotkey?.toString()}-${event.token_id?.toString()}-${event.amount?.toString()}`;
+            
+            if ('Pending' in event.status) {
+                // Check if we have a matching success for this pending
+                const existingSuccess = paired.find(e => 
+                    e.hotkey?.toString() === event.hotkey?.toString() &&
+                    e.token_id?.toString() === event.token_id?.toString() &&
+                    e.amount?.toString() === event.amount?.toString() &&
+                    'Success' in e.status &&
+                    !e._paired
+                );
+                
+                if (existingSuccess) {
+                    // Mark the success as paired and add pending info
+                    existingSuccess._paired = true;
+                    existingSuccess._pendingTimestamp = event.timestamp;
+                    existingSuccess._pendingSeq = event.sequence_number;
+                } else {
+                    // No matching success, add pending as standalone
+                    paired.push({ ...event });
+                }
+            } else if ('Success' in event.status) {
+                // Check if there's a pending event that will come later
+                paired.push({ ...event, _paired: false });
+            } else {
+                // Failed events - show as is
+                paired.push({ ...event });
+            }
+        }
+        
+        return paired;
+    }, [claimEvents, claimFilter]);
+    
+    const paginatedClaims = getPaginatedData(processedClaimEvents, claimPage);
+    const claimTotalPages = getTotalPages(processedClaimEvents);
+    
+    // Filter all user balances
+    const filteredUserBalances = useMemo(() => {
+        if (!userBalancesFilter.trim()) return allUserBalances;
+        const filterLower = userBalancesFilter.trim().toLowerCase();
+        return allUserBalances.filter(([principal, _]) => 
+            principal.toString().toLowerCase().includes(filterLower)
+        );
+    }, [allUserBalances, userBalancesFilter]);
+    
+    const paginatedUserBalances = getPaginatedData(filteredUserBalances, userBalancesPage);
+    const userBalancesTotalPages = getTotalPages(filteredUserBalances);
 
     return (
         <div className='page-container'>
@@ -1492,7 +1582,7 @@ export default function RewardsAdmin() {
                         )}
                     </div>
 
-                    {/* User Balance Lookup */}
+                    {/* User Balances */}
                     <div style={styles.section}>
                         <div 
                             style={styles.sectionHeader}
@@ -1500,7 +1590,7 @@ export default function RewardsAdmin() {
                         >
                             <h2 style={styles.sectionTitle}>
                                 <FaWallet style={styles.sectionIcon} />
-                                User Balance Lookup
+                                User Balances {allUserBalances.length > 0 && `(${allUserBalances.length} users)`}
                             </h2>
                             {expandedSections.userBalances ? <FaChevronUp /> : <FaChevronDown />}
                         </div>
@@ -1509,70 +1599,100 @@ export default function RewardsAdmin() {
                                 <div style={styles.helpText}>
                                     <FaInfoCircle style={styles.helpIcon} />
                                     <div style={styles.helpContent}>
-                                        Look up the accumulated reward balances for a specific user/owner principal. 
-                                        This shows the rewards earned by that user across all tokens, which they can claim.
+                                        View all user claimable reward balances. Load all balances to see everyone, 
+                                        or use the filter to search for a specific principal.
                                     </div>
                                 </div>
                                 
-                                <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: '20px' }}>
-                                    <div style={{ flex: 1, minWidth: '300px' }}>
-                                        <input
-                                            type="text"
-                                            placeholder="Enter user principal ID..."
-                                            value={userBalanceLookup}
-                                            onChange={(e) => setUserBalanceLookup(e.target.value)}
-                                            onKeyDown={(e) => e.key === 'Enter' && handleLookupUserBalances()}
-                                            style={styles.input}
-                                        />
-                                    </div>
+                                <div style={styles.buttonGroup}>
                                     <button
-                                        onClick={handleLookupUserBalances}
+                                        onClick={fetchAllUserBalances}
                                         style={{ ...styles.button, ...styles.primaryButton }}
-                                        disabled={loadingUserBalances || !userBalanceLookup.trim()}
+                                        disabled={loadingAllUserBalances}
                                     >
-                                        {loadingUserBalances ? <FaSpinner className="spin" /> : <FaSearch />}
-                                        Lookup Balances
+                                        {loadingAllUserBalances ? <FaSpinner className="spin" /> : <FaSync />}
+                                        Load All User Balances
                                     </button>
                                 </div>
                                 
-                                {userBalances.length > 0 && (
-                                    <div style={styles.subSection}>
-                                        <h3 style={styles.subSectionTitle}>
-                                            Balances for {shortenPrincipal(Principal.fromText(userBalanceLookup))}
-                                        </h3>
+                                {allUserBalances.length > 0 && (
+                                    <div style={{ ...styles.subSection, marginTop: '20px' }}>
+                                        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap' }}>
+                                            <h3 style={{ ...styles.subSectionTitle, marginBottom: 0 }}>
+                                                All User Balances
+                                            </h3>
+                                            <div style={{ flex: 1, minWidth: '250px', maxWidth: '400px' }}>
+                                                <input
+                                                    type="text"
+                                                    placeholder="Filter by principal..."
+                                                    value={userBalancesFilter}
+                                                    onChange={(e) => {
+                                                        setUserBalancesFilter(e.target.value);
+                                                        setUserBalancesPage(1);
+                                                    }}
+                                                    style={{ ...styles.input, marginBottom: 0 }}
+                                                />
+                                            </div>
+                                            {userBalancesFilter && (
+                                                <span style={{ color: '#888', fontSize: '0.9rem' }}>
+                                                    Showing {filteredUserBalances.length} of {allUserBalances.length} users
+                                                </span>
+                                            )}
+                                        </div>
                                         <div style={{ overflowX: 'auto' }}>
                                             <table style={styles.table}>
                                                 <thead style={styles.tableHead}>
                                                     <tr>
-                                                        <th style={styles.th}>Token</th>
-                                                        <th style={styles.th}>Balance</th>
+                                                        <th style={styles.th}>User Principal</th>
+                                                        <th style={styles.th}>Token Balances</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {userBalances.map(([tokenId, balance]) => {
-                                                        const meta = getTokenDisplay(tokenId);
-                                                        return (
-                                                            <tr key={tokenId.toString()}>
-                                                                <td style={styles.td}>
-                                                                    <TokenDisplay tokenId={tokenId} />
-                                                                </td>
-                                                                <td style={styles.td}>
-                                                                    <span style={{ color: goldPrimary, fontWeight: '600' }}>
-                                                                        {formatAmount(balance, meta.decimals)} {meta.symbol}
-                                                                    </span>
-                                                                </td>
-                                                            </tr>
-                                                        );
-                                                    })}
+                                                    {paginatedUserBalances.map(([principal, tokenBalances]) => (
+                                                        <tr key={principal.toString()}>
+                                                            <td style={styles.td}>
+                                                                <code style={{ fontSize: '0.8rem' }}>{shortenPrincipal(principal)}</code>
+                                                            </td>
+                                                            <td style={styles.td}>
+                                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                                                    {tokenBalances.map(([tokenId, balance]) => {
+                                                                        const meta = getTokenDisplay(tokenId);
+                                                                        return (
+                                                                            <span 
+                                                                                key={tokenId.toString()}
+                                                                                style={{
+                                                                                    background: 'rgba(212, 175, 55, 0.1)',
+                                                                                    border: '1px solid rgba(212, 175, 55, 0.3)',
+                                                                                    borderRadius: '4px',
+                                                                                    padding: '2px 8px',
+                                                                                    fontSize: '0.85rem',
+                                                                                    color: goldPrimary,
+                                                                                    fontWeight: '500'
+                                                                                }}
+                                                                            >
+                                                                                {formatAmount(balance, meta.decimals)} {meta.symbol}
+                                                                            </span>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
                                                 </tbody>
                                             </table>
                                         </div>
+                                        <Pagination
+                                            currentPage={userBalancesPage}
+                                            totalPages={userBalancesTotalPages}
+                                            onPageChange={setUserBalancesPage}
+                                            totalItems={filteredUserBalances.length}
+                                        />
                                     </div>
                                 )}
                                 
-                                {userBalances.length === 0 && userBalanceLookup && !loadingUserBalances && (
+                                {allUserBalances.length === 0 && !loadingAllUserBalances && (
                                     <div style={styles.emptyState}>
-                                        No balances found for this user. They may not have earned any rewards yet or have already claimed them.
+                                        Click "Load All User Balances" to view all users with claimable rewards.
                                     </div>
                                 )}
                             </div>
@@ -1863,7 +1983,35 @@ export default function RewardsAdmin() {
                                 
                                 {claimEvents.length > 0 && (
                                     <div style={{ ...styles.subSection, marginTop: '20px' }}>
-                                        <h3 style={styles.subSectionTitle}>All Claim Events</h3>
+                                        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap' }}>
+                                            <h3 style={{ ...styles.subSectionTitle, marginBottom: 0 }}>
+                                                Claim Events
+                                            </h3>
+                                            <div style={{ flex: 1, minWidth: '250px', maxWidth: '400px' }}>
+                                                <input
+                                                    type="text"
+                                                    placeholder="Filter by hotkey/principal..."
+                                                    value={claimFilter}
+                                                    onChange={(e) => {
+                                                        setClaimFilter(e.target.value);
+                                                        setClaimPage(1);
+                                                    }}
+                                                    style={{ ...styles.input, marginBottom: 0 }}
+                                                />
+                                            </div>
+                                            {claimFilter && (
+                                                <span style={{ color: '#888', fontSize: '0.9rem' }}>
+                                                    Showing {processedClaimEvents.length} of {claimEvents.length} events
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div style={styles.helpText}>
+                                            <FaInfoCircle style={styles.helpIcon} />
+                                            <div style={styles.helpContent}>
+                                                Successful claims are shown as single rows (pending + success merged). 
+                                                Pending claims without a matching success are shown separately.
+                                            </div>
+                                        </div>
                                         <div style={{ overflowX: 'auto' }}>
                                             <table style={styles.table}>
                                                 <thead style={styles.tableHead}>
@@ -1879,10 +2027,27 @@ export default function RewardsAdmin() {
                                                 <tbody>
                                                     {paginatedClaims.map((event, idx) => {
                                                         const meta = getTokenDisplay(event.token_id);
+                                                        const isPaired = event._paired && 'Success' in event.status;
                                                         return (
                                                             <tr key={idx}>
-                                                                <td style={styles.td}>{event.sequence_number?.toString()}</td>
-                                                                <td style={styles.td}>{formatTimestamp(event.timestamp)}</td>
+                                                                <td style={styles.td}>
+                                                                    {isPaired ? (
+                                                                        <span title={`Pending: #${event._pendingSeq?.toString()}, Success: #${event.sequence_number?.toString()}`}>
+                                                                            #{event.sequence_number?.toString()}
+                                                                        </span>
+                                                                    ) : (
+                                                                        `#${event.sequence_number?.toString()}`
+                                                                    )}
+                                                                </td>
+                                                                <td style={styles.td}>
+                                                                    {isPaired ? (
+                                                                        <span title={`Started: ${formatTimestamp(event._pendingTimestamp)}`}>
+                                                                            {formatTimestamp(event.timestamp)}
+                                                                        </span>
+                                                                    ) : (
+                                                                        formatTimestamp(event.timestamp)
+                                                                    )}
+                                                                </td>
                                                                 <td style={styles.td}>
                                                                     <code style={{ fontSize: '0.8rem' }}>{shortenPrincipal(event.hotkey)}</code>
                                                                 </td>
@@ -1901,9 +2066,14 @@ export default function RewardsAdmin() {
                                                                             'Pending' in event.status ? styles.statusPending :
                                                                             styles.statusFailed)
                                                                     }}>
-                                                                        {'Success' in event.status ? 'Success' :
+                                                                        {'Success' in event.status ? (isPaired ? 'Completed' : 'Success') :
                                                                          'Pending' in event.status ? 'Pending' : 'Failed'}
                                                                     </span>
+                                                                    {event.tx_index && event.tx_index[0] !== undefined && (
+                                                                        <span style={{ marginLeft: '8px', fontSize: '0.75rem', color: '#888' }}>
+                                                                            tx:{event.tx_index[0].toString()}
+                                                                        </span>
+                                                                    )}
                                                                 </td>
                                                             </tr>
                                                         );
@@ -1915,7 +2085,7 @@ export default function RewardsAdmin() {
                                             currentPage={claimPage}
                                             totalPages={claimTotalPages}
                                             onPageChange={setClaimPage}
-                                            totalItems={claimEvents.length}
+                                            totalItems={processedClaimEvents.length}
                                         />
                                     </div>
                                 )}

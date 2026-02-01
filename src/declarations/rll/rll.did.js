@@ -334,6 +334,15 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Nat))],
         ['query'],
       ),
+    'get_all_user_balances' : IDL.Func(
+        [],
+        [
+          IDL.Vec(
+            IDL.Tuple(IDL.Principal, IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Nat)))
+          ),
+        ],
+        ['query'],
+      ),
     'get_claim_events' : IDL.Func([], [IDL.Vec(ClaimEvent)], ['query']),
     'get_claim_events_for_hotkey' : IDL.Func(
         [IDL.Principal],
