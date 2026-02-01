@@ -1490,7 +1490,13 @@ export default function Me() {
                                     : theme.colors.secondaryText,
                             }}
                         >
-                            <FaExchangeAlt size={14} />
+                            <TokenIcon 
+                                logo={selectedSnsLogo} 
+                                size={18} 
+                                fallbackIcon={<FaExchangeAlt size={14} />}
+                                fallbackColor={activeTab === 'transactions' ? 'white' : theme.colors.secondaryText}
+                                rounded={false}
+                            />
                             <span>Transactions</span>
                         </button>
                         <button

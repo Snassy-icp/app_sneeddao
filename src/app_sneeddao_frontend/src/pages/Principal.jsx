@@ -16,6 +16,7 @@ import { getSnsById, fetchAndCacheSnsData, fetchSnsLogo, getAllSnses } from '../
 import { formatE8s, getDissolveState, uint8ArrayToHex } from '../utils/NeuronUtils';
 import { HttpAgent } from '@dfinity/agent';
 import TransactionList from '../components/TransactionList';
+import TokenIcon from '../components/TokenIcon';
 import { useNaming } from '../NamingContext';
 import usePremiumStatus, { PremiumBadge } from '../hooks/usePremiumStatus';
 import MarkdownBody from '../components/MarkdownBody';
@@ -1882,7 +1883,13 @@ export default function PrincipalPage() {
                                 : theme.colors.secondaryText,
                         }}
                     >
-                        <FaBrain size={14} />
+                        <TokenIcon 
+                            logo={snsLogo} 
+                            size={18} 
+                            fallbackIcon={<FaBrain size={14} />}
+                            fallbackColor={activeTab === 'neurons' ? 'white' : theme.colors.secondaryText}
+                            rounded={false}
+                        />
                         <span>Hotkeyed Neurons</span>
                     </button>
                     <button
@@ -1909,7 +1916,13 @@ export default function PrincipalPage() {
                                 : theme.colors.secondaryText,
                         }}
                     >
-                        <FaExchangeAlt size={14} />
+                        <TokenIcon 
+                            logo={snsLogo} 
+                            size={18} 
+                            fallbackIcon={<FaExchangeAlt size={14} />}
+                            fallbackColor={activeTab === 'transactions' ? 'white' : theme.colors.secondaryText}
+                            rounded={false}
+                        />
                         <span>Transactions</span>
                     </button>
                 </div>
