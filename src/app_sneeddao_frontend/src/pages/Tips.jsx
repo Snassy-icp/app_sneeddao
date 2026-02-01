@@ -74,7 +74,7 @@ const customStyles = `
 }
 
 .tips-new-glow {
-    animation: newTipGlow 2s ease-in-out 3;
+    animation: fadeInUp 0.5s ease-out forwards, newTipGlow 2s ease-in-out 3;
 }
 
 .tips-tab {

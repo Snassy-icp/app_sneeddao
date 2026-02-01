@@ -74,7 +74,7 @@ const customStyles = `
 }
 
 .posts-new-glow {
-    animation: newReplyGlow 2s ease-in-out 3;
+    animation: fadeInUp 0.5s ease-out forwards, newReplyGlow 2s ease-in-out 3;
 }
 
 .posts-tab {

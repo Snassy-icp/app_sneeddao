@@ -2198,13 +2198,25 @@ function ThreadViewer({
             }
         });
         
-        // Sort root posts by creation time
-        rootPosts.sort((a, b) => Number(a.created_at) - Number(b.created_at));
+        // Sort root posts: optimistic posts first (at top), then by creation time
+        rootPosts.sort((a, b) => {
+            // Optimistic posts should appear first (at the top)
+            if (a._isOptimistic && !b._isOptimistic) return -1;
+            if (!a._isOptimistic && b._isOptimistic) return 1;
+            // Both optimistic or both real: sort by creation time
+            return Number(a.created_at) - Number(b.created_at);
+        });
         
-        // Sort replies recursively
+        // Sort replies recursively (optimistic replies at the end of their parent's replies)
         const sortReplies = (post) => {
             if (post.replies && post.replies.length > 0) {
-                post.replies.sort((a, b) => Number(a.created_at) - Number(b.created_at));
+                post.replies.sort((a, b) => {
+                    // Optimistic replies should appear last (at the bottom, since they're newest)
+                    if (a._isOptimistic && !b._isOptimistic) return 1;
+                    if (!a._isOptimistic && b._isOptimistic) return -1;
+                    // Both optimistic or both real: sort by creation time
+                    return Number(a.created_at) - Number(b.created_at);
+                });
                 post.replies.forEach(sortReplies);
             }
         };
