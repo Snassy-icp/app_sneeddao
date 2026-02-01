@@ -157,6 +157,7 @@ const TipModal = ({
                 flyingEl.style.width = `${startSize}px`;
                 flyingEl.style.height = `${startSize}px`;
                 flyingEl.style.boxShadow = '0 4px 20px rgba(255, 215, 0, 0.5)';
+                flyingEl.style.opacity = '1';
                 
                 // Phase 1: Wind-up spin in place
                 const windUpDuration = 900; // ms to spin up before takeoff (longer for dramatic effect)
@@ -1453,8 +1454,8 @@ const TipModal = ({
                 ref={flyingLogoRef}
                 style={{
                     position: 'fixed',
-                    left: 'calc(50% - 32px)',
-                    top: 'calc(50% - 32px)',
+                    left: 0,
+                    top: 0,
                     width: '64px',
                     height: '64px',
                     borderRadius: '50%',
@@ -1468,7 +1469,8 @@ const TipModal = ({
                         ? 'transparent' 
                         : 'linear-gradient(135deg, #ffd700, #ffaa00)',
                     boxShadow: '0 4px 20px rgba(255, 215, 0, 0.5)',
-                    willChange: 'transform, left, top, width, height'
+                    willChange: 'transform, left, top, width, height, opacity',
+                    opacity: 0
                 }}
             >
                 {(successLogo || tokenMetadata[selectedToken]?.logo) ? (
