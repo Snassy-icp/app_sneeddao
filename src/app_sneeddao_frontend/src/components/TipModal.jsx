@@ -46,10 +46,11 @@ const TipModal = ({
     availableTokens = [], // Array of {principal, symbol, decimals, balance}
     userPrincipal,
     identity,
-    tippingState = 'idle' // 'idle', 'transferring', 'registering', 'success', 'error'
+    tippingState = 'idle', // 'idle', 'transferring', 'registering', 'success', 'error'
+    defaultToken = null // Optional: preselect a token by principal string
 }) => {
     const { principalNames, principalNicknames } = useContext(NamingContext);
-    const [selectedToken, setSelectedToken] = useState('');
+    const [selectedToken, setSelectedToken] = useState(defaultToken || '');
     const [amount, setAmount] = useState('');
     const [error, setError] = useState('');
     const [tokenBalances, setTokenBalances] = useState({});
@@ -57,6 +58,13 @@ const TipModal = ({
     const [tokenMetadata, setTokenMetadata] = useState({}); // Store metadata for each token
     const [tokenLogo, setTokenLogo] = useState(null);
     const [recipientDisplayInfo, setRecipientDisplayInfo] = useState(null);
+
+    // Update selected token when defaultToken changes or modal opens
+    useEffect(() => {
+        if (isOpen && defaultToken) {
+            setSelectedToken(defaultToken);
+        }
+    }, [isOpen, defaultToken]);
 
     // Fetch token metadata (fee, decimals, symbol)
     const fetchTokenMetadata = async (tokenPrincipal) => {

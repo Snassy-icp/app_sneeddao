@@ -5,11 +5,12 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
 import { formatPrincipal } from '../utils/PrincipalUtils';
 
-const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = new Map(), isNarrowScreen = false }) => {
+const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = new Map(), isNarrowScreen = false, onTip = null }) => {
     const { theme } = useTheme();
     const [hoveredToken, setHoveredToken] = useState(null);
     const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
     const [expandedTokens, setExpandedTokens] = useState(new Set()); // Track which pills are expanded
+    const [tooltipLocked, setTooltipLocked] = useState(false); // Prevent position updates when hovering tooltip
     
     // Use the token metadata hook
     const { fetchTokenMetadata, getTokenMetadata, isLoadingMetadata } = useTokenMetadata();
@@ -26,6 +27,14 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
             }
             return newSet;
         });
+    };
+    
+    // Handle tip button click
+    const handleTipClick = (tokenPrincipal, e) => {
+        e.stopPropagation();
+        if (onTip) {
+            onTip(tokenPrincipal);
+        }
     };
 
     // Fetch metadata for all unique tokens when tips change
@@ -122,31 +131,37 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
     };
 
     const handleMouseEnter = (tokenKey, event) => {
-        setHoveredToken(tokenKey);
-        updateTooltipPosition(event);
-    };
-
-    const handleMouseLeave = () => {
-        // Small delay to allow moving to tooltip
-        setTimeout(() => {
-            // Only close if we haven't re-entered
-            setHoveredToken(prev => prev);
-        }, 100);
+        // Only update position if tooltip isn't locked (not hovering over tooltip)
+        if (!tooltipLocked) {
+            setHoveredToken(tokenKey);
+            updateTooltipPosition(event);
+        } else if (hoveredToken !== tokenKey) {
+            // If switching to a different pill while tooltip is locked, update
+            setTooltipLocked(false);
+            setHoveredToken(tokenKey);
+            updateTooltipPosition(event);
+        }
     };
     
     const handlePillMouseLeave = (tokenKey) => {
         // Delay closing to allow moving to tooltip
         setTimeout(() => {
-            setHoveredToken(current => current === tokenKey ? null : current);
+            setHoveredToken(current => {
+                if (current === tokenKey && !tooltipLocked) {
+                    return null;
+                }
+                return current;
+            });
         }, 150);
     };
     
     const handleTooltipMouseEnter = () => {
-        // Keep tooltip open when hovering over it
-        // hoveredToken is already set, just keep it
+        // Lock the tooltip position when hovering over it
+        setTooltipLocked(true);
     };
     
     const handleTooltipMouseLeave = () => {
+        setTooltipLocked(false);
         setHoveredToken(null);
     };
 
@@ -270,6 +285,45 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                         }}>
                             {formatAmount(tokenData.totalAmount, decimals)} {symbol}
                         </span>
+                        
+                        {/* Tip button - only show when expanded and onTip is provided */}
+                        {onTip && (
+                            <button
+                                onClick={(e) => handleTipClick(tokenData.principal, e)}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    background: 'rgba(255,215,0,0.15)',
+                                    border: '1px solid rgba(255,215,0,0.4)',
+                                    borderRadius: '50%',
+                                    width: isExpanded ? '18px' : '0',
+                                    height: '18px',
+                                    minWidth: isExpanded ? '18px' : '0',
+                                    padding: 0,
+                                    cursor: 'pointer',
+                                    color: '#ffd700',
+                                    fontSize: '10px',
+                                    flexShrink: 0,
+                                    opacity: isExpanded ? 1 : 0,
+                                    overflow: 'hidden',
+                                    transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                                }}
+                                onMouseOver={(e) => {
+                                    e.currentTarget.style.background = 'rgba(255,215,0,0.3)';
+                                    e.currentTarget.style.borderColor = 'rgba(255,215,0,0.6)';
+                                    e.currentTarget.style.transform = 'scale(1.1)';
+                                }}
+                                onMouseOut={(e) => {
+                                    e.currentTarget.style.background = 'rgba(255,215,0,0.15)';
+                                    e.currentTarget.style.borderColor = 'rgba(255,215,0,0.4)';
+                                    e.currentTarget.style.transform = 'scale(1)';
+                                }}
+                                title={`Tip with ${symbol}`}
+                            >
+                                +
+                            </button>
+                        )}
                         
                         {/* Tip count badge */}
                         <span style={{ 

@@ -702,6 +702,7 @@ function ThreadViewer({
     const [tipModalOpen, setTipModalOpen] = useState(false);
     const [selectedPostForTip, setSelectedPostForTip] = useState(null);
     const [tippingState, setTippingState] = useState('idle'); // 'idle', 'transferring', 'registering', 'success', 'error'
+    const [defaultTipToken, setDefaultTipToken] = useState(null); // Preselected token for tip modal
 
     // Edit/Delete states
     const [editingPost, setEditingPost] = useState(null); // postId being edited
@@ -1717,14 +1718,16 @@ function ThreadViewer({
         }
     }, [forumActor, threadId, onError, fetchPosts, allNeurons, totalVotingPower, createOptimisticPost]);
 
-    const openTipModal = useCallback((post) => {
+    const openTipModal = useCallback((post, defaultToken = null) => {
         setSelectedPostForTip(post);
+        setDefaultTipToken(defaultToken);
         setTipModalOpen(true);
     }, []);
 
     const closeTipModal = useCallback(() => {
         setTipModalOpen(false);
         setSelectedPostForTip(null);
+        setDefaultTipToken(null);
         setTippingState('idle');
     }, []);
 
@@ -3230,6 +3233,7 @@ function ThreadViewer({
                     onClose={() => {
                         setTipModalOpen(false);
                         setSelectedPostForTip(null);
+                        setDefaultTipToken(null);
                         setTippingState('idle');
                     }}
                     post={selectedPostForTip}
@@ -3238,6 +3242,7 @@ function ThreadViewer({
                     isSubmitting={tippingState === 'transferring' || tippingState === 'registering'}
                     identity={identity}
                     tippingState={tippingState}
+                    defaultToken={defaultTipToken}
                 />
             )}
         </div>
@@ -3494,6 +3499,10 @@ function ThreadViewer({
                                     tips={postTips[Number(post.id)]}
                                     principalDisplayInfo={principalDisplayInfo}
                                     isNarrowScreen={isNarrowScreen}
+                                    onTip={identity && post.created_by.toString() !== identity.getPrincipal().toString() 
+                                        ? (tokenPrincipal) => openTipModal(post, tokenPrincipal.toString())
+                                        : null
+                                    }
                                 />
                             )}
                             
