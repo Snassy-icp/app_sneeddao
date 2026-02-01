@@ -20,6 +20,7 @@ import TokenIcon from '../components/TokenIcon';
 import { useNaming } from '../NamingContext';
 import usePremiumStatus, { PremiumBadge } from '../hooks/usePremiumStatus';
 import MarkdownBody from '../components/MarkdownBody';
+import MessageDialog from '../components/MessageDialog';
 import { FaUser, FaSearch, FaEdit, FaPen, FaComments, FaNewspaper, FaCoins, FaExchangeAlt, FaChevronDown, FaChevronUp, FaEnvelope, FaCrown, FaKey, FaCheckCircle, FaTimesCircle, FaCopy, FaCheck, FaArrowUp, FaArrowDown, FaNetworkWired, FaCube, FaExternalLinkAlt, FaBrain, FaGavel, FaHandHoldingUsd, FaClock, FaTimes } from 'react-icons/fa';
 import { 
     createSneedexActor, 
@@ -156,6 +157,9 @@ export default function PrincipalPage() {
     const [userPosts, setUserPosts] = useState([]);
     const [userThreads, setUserThreads] = useState([]);
     const [loadingPosts, setLoadingPosts] = useState(false);
+    
+    // Message dialog state
+    const [messageDialogOpen, setMessageDialogOpen] = useState(false);
     const [postsError, setPostsError] = useState(null);
     const [expandedPosts, setExpandedPosts] = useState(new Set());
     const [threadPostCounts, setThreadPostCounts] = useState(new Map());
@@ -1675,10 +1679,7 @@ export default function PrincipalPage() {
                                             ) : (
                                                 identity && (
                                                     <button
-                                                        onClick={() => {
-                                                            const recipientPrincipal = stablePrincipalId.current?.toString();
-                                                            navigate(`/sms?recipient=${encodeURIComponent(recipientPrincipal)}`);
-                                                        }}
+                                                        onClick={() => setMessageDialogOpen(true)}
                                                         style={{
                                                             background: `linear-gradient(135deg, ${theme.colors.success}, ${theme.colors.success}dd)`,
                                                             color: 'white',
@@ -2907,6 +2908,13 @@ export default function PrincipalPage() {
                 onSubmit={confirmAction}
                 message={confirmMessage}
                 doAwait={true}
+            />
+            
+            {/* Message Dialog */}
+            <MessageDialog
+                isOpen={messageDialogOpen}
+                onClose={() => setMessageDialogOpen(false)}
+                initialRecipient={stablePrincipalId.current?.toString() || ''}
             />
         </div>
     );

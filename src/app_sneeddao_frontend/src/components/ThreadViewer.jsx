@@ -28,6 +28,7 @@ import {
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import TipModal from './TipModal';
 import TipDisplay from './TipDisplay';
+import MessageDialog from './MessageDialog';
 import Poll from './Poll';
 import EmojiPicker from './EmojiPicker';
 import MarkdownButtons from './MarkdownButtons';
@@ -702,6 +703,10 @@ function ThreadViewer({
     const [tipModalOpen, setTipModalOpen] = useState(false);
     const [selectedPostForTip, setSelectedPostForTip] = useState(null);
     const [tippingState, setTippingState] = useState('idle'); // 'idle', 'transferring', 'registering', 'success', 'error'
+    
+    // Message dialog state
+    const [messageDialogOpen, setMessageDialogOpen] = useState(false);
+    const [messageRecipient, setMessageRecipient] = useState('');
     const [defaultTipToken, setDefaultTipToken] = useState(null); // Preselected token for tip modal
     const [lastTippedInfo, setLastTippedInfo] = useState(null); // { postId, tokenPrincipal } - for animation
     const [animatingTipToken, setAnimatingTipToken] = useState(null); // Token to animate after tip success
@@ -3360,6 +3365,16 @@ function ThreadViewer({
                     }}
                 />
             )}
+            
+            {/* Message Dialog */}
+            <MessageDialog
+                isOpen={messageDialogOpen}
+                onClose={() => {
+                    setMessageDialogOpen(false);
+                    setMessageRecipient('');
+                }}
+                initialRecipient={messageRecipient}
+            />
         </div>
     );
 
@@ -3811,8 +3826,8 @@ function ThreadViewer({
                                             onClick={(e) => {
                                                 e.preventDefault();
                                                 e.stopPropagation();
-                                                const recipientPrincipal = post.created_by.toString();
-                                                navigate(`/sms?recipient=${encodeURIComponent(recipientPrincipal)}`);
+                                                setMessageRecipient(post.created_by.toString());
+                                                setMessageDialogOpen(true);
                                             }}
                                             title="Send a private message to the post author"
                                         >
@@ -3964,9 +3979,9 @@ function ThreadViewer({
                                     onClick={(e) => {
                                         e.preventDefault();
                                         e.stopPropagation();
-                                        const recipientPrincipal = post.created_by.toString();
-                                        navigate(`/sms?recipient=${encodeURIComponent(recipientPrincipal)}`);
-                                                        setOpenOverflowMenu(null);
+                                        setMessageRecipient(post.created_by.toString());
+                                        setMessageDialogOpen(true);
+                                        setOpenOverflowMenu(null);
                                     }}
                                     style={{
                                                         display: 'flex',
