@@ -1278,44 +1278,116 @@ export default function PrincipalPage() {
                                     </div>
                                 )}
                                 
-                                {/* Principal ID - bottom right of banner */}
+                                {/* Principal ID & Subaccount - bottom right of banner */}
                                 <div style={{
                                     position: 'absolute',
                                     bottom: '8px',
                                     right: '12px',
                                     display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    background: 'rgba(0,0,0,0.25)',
-                                    backdropFilter: 'blur(4px)',
-                                    padding: '4px 10px',
-                                    borderRadius: '6px'
+                                    flexDirection: 'column',
+                                    alignItems: 'flex-end',
+                                    gap: '4px'
                                 }}>
-                                    <code style={{ 
-                                        color: 'rgba(255,255,255,0.9)', 
-                                        fontSize: '0.75rem',
-                                        fontWeight: '500'
+                                    <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        background: 'rgba(0,0,0,0.25)',
+                                        backdropFilter: 'blur(4px)',
+                                        padding: '4px 10px',
+                                        borderRadius: '6px'
                                     }}>
-                                        {stablePrincipalId.current?.toString().slice(0, 10)}...{stablePrincipalId.current?.toString().slice(-6)}
-                                    </code>
-                                    <button
-                                        onClick={copyPrincipal}
-                                        style={{
-                                            background: 'none',
-                                            border: 'none',
-                                            cursor: 'pointer',
-                                            padding: '2px',
+                                        <code style={{ 
+                                            color: 'rgba(255,255,255,0.9)', 
+                                            fontSize: '0.75rem',
+                                            fontWeight: '500'
+                                        }}>
+                                            {stablePrincipalId.current?.toString().slice(0, 10)}...{stablePrincipalId.current?.toString().slice(-6)}
+                                        </code>
+                                        <button
+                                            onClick={copyPrincipal}
+                                            style={{
+                                                background: 'none',
+                                                border: 'none',
+                                                cursor: 'pointer',
+                                                padding: '2px',
+                                                display: 'flex',
+                                                alignItems: 'center'
+                                            }}
+                                            title="Copy principal"
+                                        >
+                                            {copiedPrincipal ? (
+                                                <FaCheck size={11} color="rgba(255,255,255,0.9)" />
+                                            ) : (
+                                                <FaCopy size={11} color="rgba(255,255,255,0.7)" />
+                                            )}
+                                        </button>
+                                    </div>
+                                    {/* Subaccount display when filtered */}
+                                    {searchParams.get('subaccount') && (
+                                        <div style={{
                                             display: 'flex',
-                                            alignItems: 'center'
-                                        }}
-                                        title="Copy principal"
-                                    >
-                                        {copiedPrincipal ? (
-                                            <FaCheck size={11} color="rgba(255,255,255,0.9)" />
-                                        ) : (
-                                            <FaCopy size={11} color="rgba(255,255,255,0.7)" />
-                                        )}
-                                    </button>
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            background: 'rgba(0,0,0,0.25)',
+                                            backdropFilter: 'blur(4px)',
+                                            padding: '4px 10px',
+                                            borderRadius: '6px'
+                                        }}>
+                                            <span style={{ 
+                                                color: 'rgba(255,255,255,0.7)', 
+                                                fontSize: '0.65rem',
+                                                fontWeight: '500'
+                                            }}>
+                                                Sub:
+                                            </span>
+                                            <code style={{ 
+                                                color: 'rgba(255,255,255,0.9)', 
+                                                fontSize: '0.7rem',
+                                                fontWeight: '500'
+                                            }}>
+                                                {searchParams.get('subaccount').slice(0, 8)}...{searchParams.get('subaccount').slice(-8)}
+                                            </code>
+                                            <button
+                                                onClick={async () => {
+                                                    try {
+                                                        await navigator.clipboard.writeText(searchParams.get('subaccount'));
+                                                    } catch (err) {
+                                                        console.error('Failed to copy:', err);
+                                                    }
+                                                }}
+                                                style={{
+                                                    background: 'none',
+                                                    border: 'none',
+                                                    cursor: 'pointer',
+                                                    padding: '2px',
+                                                    display: 'flex',
+                                                    alignItems: 'center'
+                                                }}
+                                                title="Copy subaccount"
+                                            >
+                                                <FaCopy size={10} color="rgba(255,255,255,0.7)" />
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    const newParams = new URLSearchParams(searchParams);
+                                                    newParams.delete('subaccount');
+                                                    setSearchParams(newParams, { replace: true });
+                                                }}
+                                                style={{
+                                                    background: 'none',
+                                                    border: 'none',
+                                                    cursor: 'pointer',
+                                                    padding: '2px',
+                                                    display: 'flex',
+                                                    alignItems: 'center'
+                                                }}
+                                                title="Clear subaccount filter"
+                                            >
+                                                <FaTimes size={10} color="rgba(255,255,255,0.7)" />
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                             
