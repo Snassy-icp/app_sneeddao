@@ -3280,17 +3280,6 @@ function ThreadViewer({
                 <TipModal
                     isOpen={tipModalOpen}
                     onClose={() => {
-                        // If closing from success state and we have tip info, trigger animation
-                        if (tippingState === 'success' && lastTippedInfo) {
-                            setAnimatingTipToken({
-                                postId: lastTippedInfo.postId,
-                                tokenPrincipal: lastTippedInfo.tokenPrincipal
-                            });
-                            // Clear animation after it completes
-                            setTimeout(() => {
-                                setAnimatingTipToken(null);
-                            }, 900);
-                        }
                         setTipModalOpen(false);
                         setSelectedPostForTip(null);
                         setDefaultTipToken(null);
@@ -3304,6 +3293,23 @@ function ThreadViewer({
                     identity={identity}
                     tippingState={tippingState}
                     defaultToken={defaultTipToken}
+                    targetPillSelector={
+                        lastTippedInfo 
+                            ? `[data-tip-pill="${lastTippedInfo.postId}-${lastTippedInfo.tokenPrincipal}"]`
+                            : null
+                    }
+                    onAnimationComplete={() => {
+                        // Trigger tip pill animation when flying logo arrives
+                        if (lastTippedInfo) {
+                            setAnimatingTipToken({
+                                postId: lastTippedInfo.postId,
+                                tokenPrincipal: lastTippedInfo.tokenPrincipal
+                            });
+                            setTimeout(() => {
+                                setAnimatingTipToken(null);
+                            }, 900);
+                        }
+                    }}
                 />
             )}
         </div>
@@ -3570,6 +3576,7 @@ function ThreadViewer({
                                             ? animatingTipToken.tokenPrincipal 
                                             : null
                                     }
+                                    postId={Number(post.id)}
                                 />
                             )}
                             

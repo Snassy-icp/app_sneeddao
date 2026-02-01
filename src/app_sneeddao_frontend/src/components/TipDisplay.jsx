@@ -6,7 +6,7 @@ import { useTokenMetadata } from '../hooks/useTokenMetadata';
 import { formatPrincipal } from '../utils/PrincipalUtils';
 import { get_token_conversion_rate } from '../utils/TokenUtils';
 
-const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = new Map(), isNarrowScreen = false, onTip = null, animateToken = null }) => {
+const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = new Map(), isNarrowScreen = false, onTip = null, animateToken = null, postId = null }) => {
     const { theme } = useTheme();
     const [hoveredToken, setHoveredToken] = useState(null);
     const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
@@ -294,6 +294,7 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                 return (
                     <div
                         key={tokenKey}
+                        data-tip-pill={postId !== null ? `${postId}-${tokenKey}` : tokenKey}
                         ref={(el) => {
                             if (el) pillRefs.current.set(tokenKey, el);
                             else pillRefs.current.delete(tokenKey);
