@@ -177,14 +177,25 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
         }
     };
     
+    // Track when last touch event occurred to distinguish real mouse from simulated
+    const lastTouchTime = useRef(0);
+    
     // Handle touch start to track touch interactions
     const handleTouchStart = useCallback(() => {
         lastInteractionWasTouch.current = true;
+        lastTouchTime.current = Date.now();
     }, []);
     
-    // Handle mouse enter to track mouse interactions
+    // Handle mouse down to track mouse interactions
+    // Only reset if this is a real mouse event, not a simulated one from touch
     const handleMouseDown = useCallback(() => {
-        lastInteractionWasTouch.current = false;
+        // Touch devices simulate mousedown shortly after touchstart
+        // If mousedown happens within 500ms of a touch, it's likely simulated
+        const timeSinceTouch = Date.now() - lastTouchTime.current;
+        if (timeSinceTouch > 500) {
+            // This is a real mouse event
+            lastInteractionWasTouch.current = false;
+        }
     }, []);
     
     // Handle tip button click
