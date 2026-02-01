@@ -1719,9 +1719,14 @@ function ThreadViewer({
     }, [forumActor, threadId, onError, fetchPosts, allNeurons, totalVotingPower, createOptimisticPost]);
 
     const openTipModal = useCallback((post, defaultToken = null) => {
+        const scrollY = window.scrollY;
         setSelectedPostForTip(post);
         setDefaultTipToken(defaultToken);
         setTipModalOpen(true);
+        // Restore scroll position after React renders
+        requestAnimationFrame(() => {
+            window.scrollTo(0, scrollY);
+        });
     }, []);
 
     const closeTipModal = useCallback(() => {

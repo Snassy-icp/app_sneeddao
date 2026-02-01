@@ -58,6 +58,14 @@ const TipModal = ({
     const [tokenMetadata, setTokenMetadata] = useState({}); // Store metadata for each token
     const [tokenLogo, setTokenLogo] = useState(null);
     const [recipientDisplayInfo, setRecipientDisplayInfo] = useState(null);
+    const [tokenDropdownOpen, setTokenDropdownOpen] = useState(false);
+
+    // Close dropdown when modal closes
+    useEffect(() => {
+        if (!isOpen) {
+            setTokenDropdownOpen(false);
+        }
+    }, [isOpen]);
 
     // Update selected token when defaultToken changes or modal opens
     useEffect(() => {
@@ -159,7 +167,9 @@ const TipModal = ({
     // Reset form when modal opens and fetch balances
     useEffect(() => {
         if (isOpen) {
-            setSelectedToken(availableTokens.length > 0 ? availableTokens[0].principal : '');
+            // Use defaultToken if provided, otherwise use first available token
+            const initialToken = defaultToken || (availableTokens.length > 0 ? availableTokens[0].principal : '');
+            setSelectedToken(initialToken);
             setAmount('');
             setError('');
             setTokenBalances({});
@@ -172,7 +182,7 @@ const TipModal = ({
                 fetchTokenMetadata(token.principal);
             });
         }
-    }, [isOpen, availableTokens, identity]);
+    }, [isOpen, availableTokens, identity, defaultToken]);
 
     // Update logo when selected token changes
     useEffect(() => {
@@ -543,8 +553,8 @@ const TipModal = ({
                     alignItems: 'stretch', // Override global form align-items: baseline
                     flexFlow: 'column nowrap' // Override global form flex-flow: row wrap
                 }}>
-                    {/* Token Selection */}
-                    <div style={{ width: '100%', minWidth: '0' }}>
+                    {/* Token Selection - Custom Dropdown with Logos */}
+                    <div style={{ width: '100%', minWidth: '0', position: 'relative' }}>
                         <label style={{
                             display: 'block',
                             color: 'rgba(255, 255, 255, 0.9)',
@@ -555,46 +565,211 @@ const TipModal = ({
                         }}>
                             Choose Token
                         </label>
-                        <div style={{
-                            position: 'relative',
-                            background: 'rgba(255, 255, 255, 0.05)',
-                            borderRadius: '12px',
-                            border: '1px solid rgba(255, 255, 255, 0.1)',
-                            overflow: 'hidden',
-                            width: '100%',
-                            minWidth: '0'
-                        }}>
-                            <select
-                                value={selectedToken}
-                                onChange={(e) => setSelectedToken(e.target.value)}
+                        
+                        {/* Custom Dropdown Button */}
+                        <button
+                            type="button"
+                            onClick={() => setTokenDropdownOpen(!tokenDropdownOpen)}
+                            style={{
+                                width: '100%',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '12px',
+                                background: 'rgba(255, 255, 255, 0.05)',
+                                border: `1px solid ${tokenDropdownOpen ? 'rgba(255, 215, 0, 0.4)' : 'rgba(255, 255, 255, 0.1)'}`,
+                                borderRadius: '12px',
+                                padding: '14px 16px',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s ease',
+                                outline: 'none'
+                            }}
+                        >
+                            {selectedToken ? (
+                                <>
+                                    {/* Selected Token Logo */}
+                                    {tokenMetadata[selectedToken]?.logo ? (
+                                        <img 
+                                            src={tokenMetadata[selectedToken].logo} 
+                                            alt=""
+                                            style={{
+                                                width: '28px',
+                                                height: '28px',
+                                                borderRadius: '50%',
+                                                objectFit: 'cover',
+                                                boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                                            }}
+                                        />
+                                    ) : (
+                                        <div style={{
+                                            width: '28px',
+                                            height: '28px',
+                                            borderRadius: '50%',
+                                            background: 'linear-gradient(135deg, rgba(255,215,0,0.3) 0%, rgba(255,180,0,0.2) 100%)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            fontSize: '12px'
+                                        }}>
+                                            💎
+                                        </div>
+                                    )}
+                                    <div style={{ flex: 1, textAlign: 'left' }}>
+                                        <div style={{ 
+                                            color: '#ffffff', 
+                                            fontSize: '15px', 
+                                            fontWeight: '600',
+                                            marginBottom: '2px'
+                                        }}>
+                                            {tokenMetadata[selectedToken]?.symbol || availableTokens.find(t => t.principal === selectedToken)?.symbol || 'Token'}
+                                        </div>
+                                        <div style={{ 
+                                            color: 'rgba(255,255,255,0.5)', 
+                                            fontSize: '12px' 
+                                        }}>
+                                            Balance: {formatBalance(selectedToken)}
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '15px' }}>
+                                    Select a token...
+                                </span>
+                            )}
+                            {/* Dropdown Arrow */}
+                            <svg 
+                                width="16" 
+                                height="16" 
+                                viewBox="0 0 20 20" 
+                                fill="none"
                                 style={{
-                                    width: '100%',
-                                    backgroundColor: 'transparent',
-                                    border: 'none',
-                                    borderRadius: '12px',
-                                    color: '#ffffff',
-                                    padding: '16px 20px',
-                                    fontSize: '15px',
-                                    fontWeight: '500',
-                                    cursor: 'pointer',
-                                    outline: 'none',
-                                    appearance: 'none',
-                                    backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23ffffff' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
-                                    backgroundPosition: 'right 16px center',
-                                    backgroundRepeat: 'no-repeat',
-                                    backgroundSize: '16px',
-                                    paddingRight: '48px'
+                                    transform: tokenDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                                    transition: 'transform 0.2s ease',
+                                    flexShrink: 0
                                 }}
-                                required
                             >
-                                <option value="" style={{ backgroundColor: '#2a2a2a' }}>Select a token</option>
-                                {availableTokens.map(token => (
-                                    <option key={token.principal} value={token.principal} style={{ backgroundColor: '#2a2a2a' }}>
-                                        {token.symbol} - Balance: {formatBalance(token.principal)}
-                                    </option>
+                                <path 
+                                    d="M6 8l4 4 4-4" 
+                                    stroke="rgba(255,255,255,0.6)" 
+                                    strokeWidth="1.5" 
+                                    strokeLinecap="round" 
+                                    strokeLinejoin="round"
+                                />
+                            </svg>
+                        </button>
+                        
+                        {/* Dropdown Options */}
+                        {tokenDropdownOpen && (
+                            <div style={{
+                                position: 'absolute',
+                                top: '100%',
+                                left: 0,
+                                right: 0,
+                                marginTop: '4px',
+                                background: 'linear-gradient(180deg, #2a2a2a 0%, #1f1f1f 100%)',
+                                border: '1px solid rgba(255, 215, 0, 0.2)',
+                                borderRadius: '12px',
+                                overflow: 'hidden',
+                                zIndex: 100,
+                                boxShadow: '0 8px 24px rgba(0,0,0,0.4)'
+                            }}>
+                                {availableTokens.map((token, index) => (
+                                    <button
+                                        key={token.principal}
+                                        type="button"
+                                        onClick={() => {
+                                            setSelectedToken(token.principal);
+                                            setTokenDropdownOpen(false);
+                                        }}
+                                        style={{
+                                            width: '100%',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '12px',
+                                            padding: '12px 16px',
+                                            background: selectedToken === token.principal 
+                                                ? 'rgba(255, 215, 0, 0.1)' 
+                                                : 'transparent',
+                                            border: 'none',
+                                            borderBottom: index < availableTokens.length - 1 
+                                                ? '1px solid rgba(255,255,255,0.05)' 
+                                                : 'none',
+                                            cursor: 'pointer',
+                                            transition: 'background 0.15s ease',
+                                            textAlign: 'left'
+                                        }}
+                                        onMouseOver={(e) => {
+                                            if (selectedToken !== token.principal) {
+                                                e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                                            }
+                                        }}
+                                        onMouseOut={(e) => {
+                                            if (selectedToken !== token.principal) {
+                                                e.currentTarget.style.background = 'transparent';
+                                            }
+                                        }}
+                                    >
+                                        {/* Token Logo */}
+                                        {tokenMetadata[token.principal]?.logo ? (
+                                            <img 
+                                                src={tokenMetadata[token.principal].logo} 
+                                                alt=""
+                                                style={{
+                                                    width: '24px',
+                                                    height: '24px',
+                                                    borderRadius: '50%',
+                                                    objectFit: 'cover',
+                                                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                                                }}
+                                            />
+                                        ) : (
+                                            <div style={{
+                                                width: '24px',
+                                                height: '24px',
+                                                borderRadius: '50%',
+                                                background: 'linear-gradient(135deg, rgba(255,215,0,0.3) 0%, rgba(255,180,0,0.2) 100%)',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                fontSize: '10px'
+                                            }}>
+                                                💎
+                                            </div>
+                                        )}
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ 
+                                                color: selectedToken === token.principal ? '#ffd700' : '#ffffff', 
+                                                fontSize: '14px', 
+                                                fontWeight: '500',
+                                                marginBottom: '1px'
+                                            }}>
+                                                {tokenMetadata[token.principal]?.symbol || token.symbol}
+                                            </div>
+                                            <div style={{ 
+                                                color: 'rgba(255,255,255,0.4)', 
+                                                fontSize: '11px',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                whiteSpace: 'nowrap'
+                                            }}>
+                                                Balance: {formatBalance(token.principal)}
+                                            </div>
+                                        </div>
+                                        {/* Selected Checkmark */}
+                                        {selectedToken === token.principal && (
+                                            <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                                                <path 
+                                                    d="M5 10l3 3 7-7" 
+                                                    stroke="#ffd700" 
+                                                    strokeWidth="2" 
+                                                    strokeLinecap="round" 
+                                                    strokeLinejoin="round"
+                                                />
+                                            </svg>
+                                        )}
+                                    </button>
                                 ))}
-                            </select>
-                        </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Amount Input */}
