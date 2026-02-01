@@ -129,64 +129,57 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
         }
     }, [tooltipPosition.needsCorrection, hoveredToken, tooltipPosition.pillTop]);
     
-    // Toggle expansion of a tip pill (desktop only - whole pill click)
+    // Track tooltip fade-in state and pending tooltip timer
+    const [tooltipFadingIn, setTooltipFadingIn] = useState(false);
+    const tooltipTimerRef = useRef(null);
+    
+    // Toggle expansion of a tip pill
     const toggleExpanded = (tokenKey, e) => {
         e.stopPropagation();
         e.preventDefault();
         
-        // On touch devices, don't handle whole pill click - use separate handlers
-        if (lastInteractionWasTouch.current) {
-            return;
-        }
-        
-        // Desktop: toggle expansion
-        setExpandedTokens(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(tokenKey)) {
-                newSet.delete(tokenKey);
-            } else {
-                newSet.add(tokenKey);
-            }
-            return newSet;
-        });
-    };
-    
-    // Toggle tooltip only (mobile - tap on token icon)
-    const toggleTooltipOnly = (tokenKey, e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        
-        if (!lastInteractionWasTouch.current) return;
-        
+        const wasExpanded = expandedTokens.has(tokenKey);
         const wasShowingTooltip = hoveredToken === tokenKey;
         
-        if (wasShowingTooltip) {
+        // Clear any pending tooltip timer
+        if (tooltipTimerRef.current) {
+            clearTimeout(tooltipTimerRef.current);
+            tooltipTimerRef.current = null;
+        }
+        
+        if (wasExpanded) {
+            // Collapsing - hide tooltip and collapse
             setHoveredToken(null);
+            setTooltipFadingIn(false);
+            setExpandedTokens(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(tokenKey);
+                return newSet;
+            });
         } else {
-            setHoveredToken(tokenKey);
-            const pillElement = pillRefs.current.get(tokenKey);
-            if (pillElement) {
-                updateTooltipPositionFromElement(pillElement);
+            // Expanding
+            setExpandedTokens(prev => {
+                const newSet = new Set(prev);
+                newSet.add(tokenKey);
+                return newSet;
+            });
+            
+            // On mobile, wait for reflow then fade in tooltip
+            if (lastInteractionWasTouch.current) {
+                setTooltipFadingIn(false);
+                tooltipTimerRef.current = setTimeout(() => {
+                    const pillElement = pillRefs.current.get(tokenKey);
+                    if (pillElement) {
+                        updateTooltipPositionFromElement(pillElement);
+                    }
+                    setHoveredToken(tokenKey);
+                    // Start fade-in after a tiny delay to ensure position is set
+                    requestAnimationFrame(() => {
+                        setTooltipFadingIn(true);
+                    });
+                }, 800); // Wait for reflow
             }
         }
-    };
-    
-    // Toggle expand only (mobile - tap on count badge)
-    const toggleExpandOnly = (tokenKey, e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        
-        if (!lastInteractionWasTouch.current) return;
-        
-        setExpandedTokens(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(tokenKey)) {
-                newSet.delete(tokenKey);
-            } else {
-                newSet.add(tokenKey);
-            }
-            return newSet;
-        });
     };
     
     // Handle touch start to track touch interactions
@@ -345,6 +338,15 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
             return () => clearTimeout(timer);
         }
     }, [animateToken]);
+    
+    // Cleanup tooltip timer on unmount
+    useEffect(() => {
+        return () => {
+            if (tooltipTimerRef.current) {
+                clearTimeout(tooltipTimerRef.current);
+            }
+        };
+    }, []);
     
     // On mobile, dismiss tooltip when tapping outside
     useEffect(() => {
@@ -517,45 +519,36 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                             }
                         }}
                     >
-                        {/* Token icon - on mobile, tapping toggles tooltip */}
-                        <span 
-                            onClick={(e) => toggleTooltipOnly(tokenKey, e)}
-                            style={{ 
-                                display: 'flex', 
-                                alignItems: 'center',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            {isLoading ? (
-                                <span style={{ fontSize: '12px' }}>⏳</span>
-                            ) : logo ? (
-                                <img 
-                                    src={logo} 
-                                    alt={symbol}
-                                    style={{
-                                        width: '14px',
-                                        height: '14px',
-                                        borderRadius: '50%',
-                                        objectFit: 'cover',
-                                        boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
-                                        flexShrink: 0,
-                                        opacity: logoOpacity,
-                                        transition: 'opacity 0.3s ease-out'
-                                    }}
-                                    onError={(e) => {
-                                        e.target.style.display = 'none';
-                                        e.target.nextSibling.style.display = 'inline';
-                                    }}
-                                />
-                            ) : null}
-                            <span style={{ 
-                                display: logo && !isLoading ? 'none' : 'inline', 
-                                fontSize: '11px', 
-                                flexShrink: 0,
-                                opacity: logoOpacity,
-                                transition: 'opacity 0.3s ease-out'
-                            }}>💎</span>
-                        </span>
+                        {/* Token icon */}
+                        {isLoading ? (
+                            <span style={{ fontSize: '12px' }}>⏳</span>
+                        ) : logo ? (
+                            <img 
+                                src={logo} 
+                                alt={symbol}
+                                style={{
+                                    width: '14px',
+                                    height: '14px',
+                                    borderRadius: '50%',
+                                    objectFit: 'cover',
+                                    boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
+                                    flexShrink: 0,
+                                    opacity: logoOpacity,
+                                    transition: 'opacity 0.3s ease-out'
+                                }}
+                                onError={(e) => {
+                                    e.target.style.display = 'none';
+                                    e.target.nextSibling.style.display = 'inline';
+                                }}
+                            />
+                        ) : null}
+                        <span style={{ 
+                            display: logo && !isLoading ? 'none' : 'inline', 
+                            fontSize: '11px', 
+                            flexShrink: 0,
+                            opacity: logoOpacity,
+                            transition: 'opacity 0.3s ease-out'
+                        }}>💎</span>
                         
                         {/* Amount and symbol - only show when expanded */}
                         <span style={{ 
@@ -610,34 +603,31 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                             </button>
                         )}
                         
-                        {/* Tip count badge - on mobile, tapping toggles expand/collapse */}
-                        <span 
-                            onClick={(e) => toggleExpandOnly(tokenKey, e)}
-                            style={{ 
-                                background: isAnimating 
-                                    ? 'rgba(255,215,0,0.6)'
-                                    : isLoading 
-                                        ? 'rgba(100,100,100,0.25)'
-                                        : 'rgba(255,215,0,0.25)',
-                                color: isAnimating ? '#fff' : isLoading ? '#999' : '#d4aa00',
-                                borderRadius: '50%',
-                                padding: tokenData.tips.length > 9 ? '1px 5px' : '1px',
-                                fontSize: '9px',
-                                fontWeight: '600',
-                                width: tokenData.tips.length > 9 ? 'auto' : '14px',
-                                height: '14px',
-                                minWidth: '14px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                border: isAnimating 
-                                    ? '1px solid rgba(255,215,0,0.8)' 
-                                    : isLoading ? '1px solid rgba(150,150,150,0.3)' : '1px solid rgba(255,215,0,0.35)',
-                                flexShrink: 0,
-                                transition: 'all 0.3s ease',
-                                textShadow: isAnimating ? '0 0 8px rgba(255,255,255,0.8)' : 'none',
-                                cursor: 'pointer'
-                            }}>
+                        {/* Tip count badge */}
+                        <span style={{ 
+                            background: isAnimating 
+                                ? 'rgba(255,215,0,0.6)'
+                                : isLoading 
+                                    ? 'rgba(100,100,100,0.25)'
+                                    : 'rgba(255,215,0,0.25)',
+                            color: isAnimating ? '#fff' : isLoading ? '#999' : '#d4aa00',
+                            borderRadius: '50%',
+                            padding: tokenData.tips.length > 9 ? '1px 5px' : '1px',
+                            fontSize: '9px',
+                            fontWeight: '600',
+                            width: tokenData.tips.length > 9 ? 'auto' : '14px',
+                            height: '14px',
+                            minWidth: '14px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            border: isAnimating 
+                                ? '1px solid rgba(255,215,0,0.8)' 
+                                : isLoading ? '1px solid rgba(150,150,150,0.3)' : '1px solid rgba(255,215,0,0.35)',
+                            flexShrink: 0,
+                            transition: 'all 0.3s ease',
+                            textShadow: isAnimating ? '0 0 8px rgba(255,255,255,0.8)' : 'none'
+                        }}>
                             {tokenData.tips.length}
                         </span>
                     </div>
@@ -667,7 +657,11 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                         boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.05) inset',
                         pointerEvents: 'auto',
                         backdropFilter: 'blur(10px)',
-                        cursor: 'default'
+                        cursor: 'default',
+                        // Fade-in animation for mobile
+                        opacity: lastInteractionWasTouch.current ? (tooltipFadingIn ? 1 : 0) : 1,
+                        transform: lastInteractionWasTouch.current ? (tooltipFadingIn ? 'translateY(0)' : 'translateY(-8px)') : 'translateY(0)',
+                        transition: 'opacity 0.3s ease-out, transform 0.3s ease-out'
                     }}
                 >
                     {/* Header */}
