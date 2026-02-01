@@ -1205,7 +1205,7 @@ function Topic() {
                             <div style={{
                                 display: 'flex',
                                 flexDirection: 'column',
-                                gap: '0.75rem'
+                                gap: '12px'
                             }}>
                                 {threads.map((thread, index) => {
                                     const isHovered = hoveredThread === thread.id;
@@ -1224,74 +1224,180 @@ function Topic() {
                                             className="topic-card-animate"
                                             style={{
                                                 background: hasUnread 
-                                                    ? `linear-gradient(135deg, ${forumPrimary}15 0%, ${theme.colors.secondaryBg} 100%)`
-                                                    : theme.colors.secondaryBg,
-                                                borderRadius: '14px',
-                                                padding: '1.25rem',
-                                                border: `1px solid ${hasUnread ? forumPrimary : (isHovered ? forumPrimary : theme.colors.border)}`,
+                                                    ? `linear-gradient(145deg, ${forumPrimary}12 0%, rgba(139, 92, 246, 0.04) 50%, ${theme.colors.secondaryBg} 100%)`
+                                                    : `linear-gradient(145deg, ${theme.colors.secondaryBg} 0%, rgba(255,255,255,0.02) 100%)`,
+                                                borderRadius: '16px',
+                                                padding: '0',
+                                                border: `1px solid ${hasUnread ? `${forumPrimary}50` : (isHovered ? `${forumPrimary}40` : theme.colors.border)}`,
                                                 cursor: 'pointer',
-                                                transition: 'all 0.3s ease',
-                                                transform: isHovered ? 'translateX(4px)' : 'translateX(0)',
+                                                transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                                                transform: isHovered ? 'translateY(-2px)' : 'translateY(0)',
                                                 boxShadow: isHovered 
-                                                    ? `0 4px 20px ${forumPrimary}15`
-                                                    : 'none',
+                                                    ? `0 8px 30px ${forumPrimary}20, 0 4px 12px rgba(0,0,0,0.15)`
+                                                    : hasUnread
+                                                        ? `0 2px 8px ${forumPrimary}10`
+                                                        : '0 2px 8px rgba(0,0,0,0.08)',
                                                 animationDelay: `${index * 0.05}s`,
-                                                opacity: 0
+                                                opacity: 0,
+                                                overflow: 'hidden',
+                                                position: 'relative'
                                             }}
                                             onMouseEnter={() => setHoveredThread(thread.id)}
                                             onMouseLeave={() => setHoveredThread(null)}
                                             onClick={() => navigate(`/thread?threadid=${thread.id.toString()}`)}
                                         >
+                                            {/* Hover glow effect */}
+                                            <div style={{
+                                                position: 'absolute',
+                                                top: 0,
+                                                left: 0,
+                                                right: 0,
+                                                height: '1px',
+                                                background: isHovered 
+                                                    ? `linear-gradient(90deg, transparent, ${forumPrimary}60, transparent)`
+                                                    : hasUnread 
+                                                        ? `linear-gradient(90deg, transparent, ${forumPrimary}40, transparent)`
+                                                        : 'transparent',
+                                                transition: 'all 0.3s ease'
+                                            }} />
+                                            
                                             <div style={{
                                                 display: 'flex',
-                                                alignItems: 'flex-start',
-                                                gap: '1rem'
+                                                alignItems: 'stretch',
+                                                gap: '0'
                                             }}>
-                                                <div style={{ flex: 1, minWidth: 0 }}>
-                                                    {/* Thread Title */}
+                                                {/* Left accent bar with icon */}
+                                                <div style={{
+                                                    width: '52px',
+                                                    minHeight: '100%',
+                                                    background: hasUnread 
+                                                        ? `linear-gradient(180deg, ${forumPrimary}25 0%, ${forumPrimary}10 100%)`
+                                                        : isHovered 
+                                                            ? `linear-gradient(180deg, ${forumPrimary}15 0%, ${forumPrimary}05 100%)`
+                                                            : `linear-gradient(180deg, rgba(255,255,255,0.03) 0%, transparent 100%)`,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    borderRight: `1px solid ${hasUnread ? `${forumPrimary}20` : theme.colors.border}`,
+                                                    transition: 'all 0.25s ease',
+                                                    flexShrink: 0
+                                                }}>
                                                     <div style={{
+                                                        width: '32px',
+                                                        height: '32px',
+                                                        borderRadius: '10px',
+                                                        background: hasUnread 
+                                                            ? `linear-gradient(135deg, ${forumPrimary}40 0%, ${forumPrimary}20 100%)`
+                                                            : isHovered 
+                                                                ? `linear-gradient(135deg, ${forumPrimary}25 0%, ${forumPrimary}10 100%)`
+                                                                : `linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%)`,
                                                         display: 'flex',
                                                         alignItems: 'center',
-                                                        gap: '0.5rem',
-                                                        marginBottom: '0.5rem',
-                                                        flexWrap: 'wrap'
+                                                        justifyContent: 'center',
+                                                        transition: 'all 0.25s ease',
+                                                        boxShadow: hasUnread ? `0 2px 8px ${forumPrimary}30` : 'none'
                                                     }}>
-                                                        <h3 style={{
-                                                            color: theme.colors.primaryText,
-                                                            fontSize: '1.1rem',
-                                                            fontWeight: '600',
-                                                            margin: 0
+                                                        <FaComments 
+                                                            size={14} 
+                                                            style={{
+                                                                color: hasUnread ? forumPrimary : (isHovered ? forumPrimary : theme.colors.mutedText),
+                                                                transition: 'all 0.25s ease'
+                                                            }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                                
+                                                {/* Main content */}
+                                                <div style={{ 
+                                                    flex: 1, 
+                                                    minWidth: 0, 
+                                                    padding: '16px 16px 16px 14px',
+                                                    display: 'flex',
+                                                    flexDirection: 'column',
+                                                    gap: '10px'
+                                                }}>
+                                                    {/* Thread Title Row */}
+                                                    <div style={{
+                                                        display: 'flex',
+                                                        alignItems: 'flex-start',
+                                                        justifyContent: 'space-between',
+                                                        gap: '12px'
+                                                    }}>
+                                                        <div style={{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '10px',
+                                                            flexWrap: 'wrap',
+                                                            flex: 1,
+                                                            minWidth: 0
                                                         }}>
-                                                            {thread.title || `Thread #${thread.id}`}
-                                                        </h3>
-                                                        {hasUnread && (
-                                                            <span style={{
-                                                                background: theme.colors.error,
-                                                                color: 'white',
-                                                                padding: '2px 8px',
-                                                                borderRadius: '10px',
-                                                                fontSize: '0.7rem',
-                                                                fontWeight: '600'
+                                                            <h3 style={{
+                                                                color: isHovered ? theme.colors.primaryText : theme.colors.primaryText,
+                                                                fontSize: '1.05rem',
+                                                                fontWeight: '600',
+                                                                margin: 0,
+                                                                lineHeight: '1.4',
+                                                                transition: 'color 0.2s ease'
                                                             }}>
-                                                                {(() => {
-                                                                    const unreadCount = thread.unread_posts_count && thread.unread_posts_count.length > 0 
-                                                                        ? Number(thread.unread_posts_count[0]) : 0;
-                                                                    return unreadCount > 0 ? `${unreadCount} new` : 'NEW';
-                                                                })()}
-                                                            </span>
-                                                        )}
+                                                                {thread.title || `Thread #${thread.id}`}
+                                                            </h3>
+                                                            {hasUnread && (
+                                                                <span style={{
+                                                                    background: `linear-gradient(135deg, ${theme.colors.error} 0%, #dc2626 100%)`,
+                                                                    color: 'white',
+                                                                    padding: '3px 10px',
+                                                                    borderRadius: '12px',
+                                                                    fontSize: '0.7rem',
+                                                                    fontWeight: '700',
+                                                                    letterSpacing: '0.3px',
+                                                                    boxShadow: `0 2px 6px ${theme.colors.error}40`,
+                                                                    textTransform: 'uppercase',
+                                                                    flexShrink: 0
+                                                                }}>
+                                                                    {(() => {
+                                                                        const unreadCount = thread.unread_posts_count && thread.unread_posts_count.length > 0 
+                                                                            ? Number(thread.unread_posts_count[0]) : 0;
+                                                                        return unreadCount > 0 ? `${unreadCount} new` : 'NEW';
+                                                                    })()}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        
+                                                        {/* Arrow */}
+                                                        <div style={{
+                                                            width: '28px',
+                                                            height: '28px',
+                                                            borderRadius: '8px',
+                                                            background: isHovered 
+                                                                ? `linear-gradient(135deg, ${forumPrimary}20 0%, ${forumPrimary}10 100%)`
+                                                                : 'transparent',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            transition: 'all 0.25s ease',
+                                                            flexShrink: 0
+                                                        }}>
+                                                            <FaArrowRight 
+                                                                size={12} 
+                                                                style={{
+                                                                    color: isHovered ? forumPrimary : theme.colors.mutedText,
+                                                                    transition: 'all 0.25s ease',
+                                                                    transform: isHovered ? 'translateX(2px)' : 'translateX(0)'
+                                                                }}
+                                                            />
+                                                        </div>
                                                     </div>
                                                     
                                                     {/* Thread Body Preview */}
                                                     <div style={{
                                                         color: theme.colors.secondaryText,
-                                                        fontSize: '0.9rem',
-                                                        lineHeight: '1.5',
-                                                        marginBottom: '0.75rem',
+                                                        fontSize: '0.875rem',
+                                                        lineHeight: '1.6',
                                                         display: '-webkit-box',
                                                         WebkitLineClamp: 2,
                                                         WebkitBoxOrient: 'vertical',
-                                                        overflow: 'hidden'
+                                                        overflow: 'hidden',
+                                                        opacity: 0.85
                                                     }}>
                                                         <MarkdownBody text={thread.body} />
                                                     </div>
@@ -1300,19 +1406,28 @@ function Topic() {
                                                     {proposalInfo && (
                                                         <div 
                                                             style={{
-                                                                marginBottom: '0.75rem',
-                                                                padding: '0.5rem 0.75rem',
-                                                                background: `${forumPrimary}15`,
-                                                                border: `1px solid ${forumPrimary}30`,
-                                                                borderRadius: '8px',
-                                                                fontSize: '0.85rem',
+                                                                padding: '8px 12px',
+                                                                background: `linear-gradient(135deg, ${forumPrimary}12 0%, ${forumPrimary}06 100%)`,
+                                                                border: `1px solid ${forumPrimary}25`,
+                                                                borderRadius: '10px',
+                                                                fontSize: '0.8rem',
                                                                 display: 'inline-flex',
                                                                 alignItems: 'center',
-                                                                gap: '0.5rem'
+                                                                gap: '8px',
+                                                                alignSelf: 'flex-start',
+                                                                transition: 'all 0.2s ease'
                                                             }}
                                                             onClick={(e) => e.stopPropagation()}
+                                                            onMouseEnter={(e) => {
+                                                                e.currentTarget.style.background = `linear-gradient(135deg, ${forumPrimary}20 0%, ${forumPrimary}10 100%)`;
+                                                                e.currentTarget.style.borderColor = `${forumPrimary}40`;
+                                                            }}
+                                                            onMouseLeave={(e) => {
+                                                                e.currentTarget.style.background = `linear-gradient(135deg, ${forumPrimary}12 0%, ${forumPrimary}06 100%)`;
+                                                                e.currentTarget.style.borderColor = `${forumPrimary}25`;
+                                                            }}
                                                         >
-                                                            <span style={{ color: forumPrimary }}>📋</span>
+                                                            <span style={{ fontSize: '0.9rem' }}>📋</span>
                                                             <a 
                                                                 href={`/proposal?proposalid=${proposalInfo.proposalId}&sns=${selectedSnsRoot || ''}`}
                                                                 style={{
@@ -1332,40 +1447,51 @@ function Topic() {
                                                     <div style={{
                                                         display: 'flex',
                                                         alignItems: 'center',
-                                                        gap: '1rem',
+                                                        gap: '16px',
                                                         flexWrap: 'wrap',
                                                         fontSize: '0.8rem',
-                                                        color: theme.colors.mutedText
+                                                        color: theme.colors.mutedText,
+                                                        marginTop: '2px'
                                                     }}>
                                                         <span 
-                                                            style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                            style={{ 
+                                                                display: 'flex', 
+                                                                alignItems: 'center', 
+                                                                gap: '5px',
+                                                                padding: '4px 8px',
+                                                                background: 'rgba(255,255,255,0.03)',
+                                                                borderRadius: '6px'
+                                                            }}
                                                             title={getFullDate(thread.created_at)}
                                                         >
-                                                            <FaRegClock size={11} />
+                                                            <FaRegClock size={11} style={{ opacity: 0.7 }} />
                                                             {getRelativeTime(thread.created_at)}
                                                         </span>
                                                         {postCount !== undefined ? (
-                                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                                <FaComments size={11} />
-                                                                {postCount} post{postCount !== 1 ? 's' : ''}
+                                                            <span style={{ 
+                                                                display: 'flex', 
+                                                                alignItems: 'center', 
+                                                                gap: '5px',
+                                                                padding: '4px 8px',
+                                                                background: 'rgba(255,255,255,0.03)',
+                                                                borderRadius: '6px'
+                                                            }}>
+                                                                <FaComments size={11} style={{ opacity: 0.7 }} />
+                                                                {postCount} {postCount === 1 ? 'reply' : 'replies'}
                                                             </span>
                                                         ) : (
-                                                            <span style={{ fontStyle: 'italic' }}>Loading...</span>
+                                                            <span style={{ 
+                                                                fontStyle: 'italic',
+                                                                padding: '4px 8px',
+                                                                background: 'rgba(255,255,255,0.03)',
+                                                                borderRadius: '6px',
+                                                                opacity: 0.6
+                                                            }}>
+                                                                Loading...
+                                                            </span>
                                                         )}
                                                     </div>
                                                 </div>
-                                                
-                                                {/* Arrow */}
-                                                <FaArrowRight 
-                                                    size={16} 
-                                                    style={{
-                                                        color: isHovered ? forumPrimary : theme.colors.mutedText,
-                                                        transition: 'all 0.3s ease',
-                                                        transform: isHovered ? 'translateX(3px)' : 'translateX(0)',
-                                                        flexShrink: 0,
-                                                        marginTop: '0.25rem'
-                                                    }}
-                                                />
                                             </div>
                                         </div>
                                     );
