@@ -353,9 +353,37 @@ const TipModal = ({
     // Render different content based on tipping state
     const renderContent = () => {
         if (tippingState === 'success') {
+            const logo = tokenMetadata[selectedToken]?.logo;
+            
             return (
                 <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: '48px', marginBottom: '16px' }}>✨</div>
+                    {/* Token Logo */}
+                    <div style={{ 
+                        width: '64px',
+                        height: '64px',
+                        margin: '0 auto 16px',
+                        borderRadius: '50%',
+                        overflow: 'hidden',
+                        boxShadow: '0 4px 20px rgba(255, 215, 0, 0.4)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: logo ? 'transparent' : 'linear-gradient(135deg, #ffd700, #ffaa00)'
+                    }}>
+                        {logo ? (
+                            <img 
+                                src={logo} 
+                                alt="Token"
+                                style={{
+                                    width: '100%',
+                                    height: '100%',
+                                    objectFit: 'cover'
+                                }}
+                            />
+                        ) : (
+                            <span style={{ fontSize: '28px' }}>💎</span>
+                        )}
+                    </div>
                     <h3 style={{ 
                         color: '#ffffff', 
                         margin: '0 0 16px', 
