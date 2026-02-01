@@ -965,6 +965,9 @@ function ThreadViewer({
     const fetchPosts = useCallback(async () => {
         if (!forumActor || !threadId) return;
         
+        // Save scroll position before fetching
+        const scrollPosition = window.pageYOffset || document.documentElement.scrollTop;
+        
         try {
             console.log('Fetching posts for thread ID:', threadId);
             const posts = await forumActor.get_posts_by_thread(Number(threadId));
@@ -984,9 +987,23 @@ function ThreadViewer({
             } else {
                 setDiscussionPosts([]);
             }
+            
+            // Restore scroll position after state update (double rAF for React batching)
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    window.scrollTo(0, scrollPosition);
+                });
+            });
         } catch (err) {
             console.error('Error fetching posts:', err);
             setDiscussionPosts([]);
+            
+            // Restore scroll position even on error
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    window.scrollTo(0, scrollPosition);
+                });
+            });
         }
     }, [forumActor, threadId]);
 
@@ -1149,6 +1166,9 @@ function ThreadViewer({
 
     // Handler functions
     const handleVote = useCallback(async (postId, voteType) => {
+        // Save scroll position at the very beginning
+        const savedScrollY = window.scrollY;
+        
         const selectedNeurons = getSelectedNeurons();
         if (!forumActor || !selectedNeurons || selectedNeurons.length === 0) {
             return;
@@ -3342,8 +3362,13 @@ function ThreadViewer({
                             }}>
                                 {/* Upvote Button - Shows voting power */}
                                 <button
+                                    type="button"
                                     className={`vote-btn ${voteAnimations.get(post.id.toString()) === 'upvote' ? 'vote-upvote-animate' : ''}`}
-                                    onClick={() => {
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        // Save scroll position immediately
+                                        const scrollY = window.scrollY;
                                         const postIdStr = post.id.toString();
                                         const postVotes = threadVotes.get(postIdStr);
                                         const hasUpvotes = postVotes?.upvoted_neurons?.length > 0;
@@ -3355,6 +3380,12 @@ function ThreadViewer({
                                             // Regular upvote
                                             handleVote(post.id, 'up');
                                         }
+                                        // Restore scroll position after React's state updates (double rAF for batching)
+                                        requestAnimationFrame(() => {
+                                            requestAnimationFrame(() => {
+                                                window.scrollTo(0, scrollY);
+                                            });
+                                        });
                                     }}
                                     disabled={votingStates.get(post.id.toString()) === 'voting' || totalVotingPower === 0}
                                     style={getVoteButtonStyles(post.id, 'up')}
@@ -3398,8 +3429,13 @@ function ThreadViewer({
 
                                 {/* Downvote Button - Shows voting power */}
                                 <button
+                                    type="button"
                                     className={`vote-btn ${voteAnimations.get(post.id.toString()) === 'downvote' ? 'vote-downvote-animate' : ''}`}
-                                    onClick={() => {
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        // Save scroll position immediately
+                                        const scrollY = window.scrollY;
                                         const postIdStr = post.id.toString();
                                         const postVotes = threadVotes.get(postIdStr);
                                         const hasDownvotes = postVotes?.downvoted_neurons?.length > 0;
@@ -3411,6 +3447,12 @@ function ThreadViewer({
                                             // Regular downvote
                                             handleVote(post.id, 'down');
                                         }
+                                        // Restore scroll position after React's state updates (double rAF for batching)
+                                        requestAnimationFrame(() => {
+                                            requestAnimationFrame(() => {
+                                                window.scrollTo(0, scrollY);
+                                            });
+                                        });
                                     }}
                                     disabled={votingStates.get(post.id.toString()) === 'voting' || totalVotingPower === 0}
                                     style={getVoteButtonStyles(post.id, 'down')}
