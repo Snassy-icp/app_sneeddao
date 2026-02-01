@@ -2289,12 +2289,15 @@ function ThreadViewer({
             // 1. All ancestors of the focused post
             // 2. The focused post itself
             // 3. All descendants of the focused post
-            // 4. Collapse other branches initially
+            // 4. Direct children of ancestors that were created by the current user
+            // 5. Optimistic posts that are replies to any ancestor (so new replies don't disappear)
             
             const focusedPost = allPosts.find(p => Number(p.id) === Number(focusedPostId));
             if (!focusedPost) return buildPostTree(allPosts);
             
             const relevantPosts = new Set();
+            const ancestorIds = new Set(); // Track ancestor IDs
+            const currentUserPrincipal = identity?.getPrincipal()?.toString();
             
             // Add focused post
             relevantPosts.add(Number(focusedPostId));
@@ -2304,10 +2307,11 @@ function ThreadViewer({
             while (currentPost && currentPost.reply_to_post_id && currentPost.reply_to_post_id.length > 0) {
                 const parentId = Number(currentPost.reply_to_post_id[0]);
                 relevantPosts.add(parentId);
+                ancestorIds.add(parentId);
                 currentPost = allPosts.find(p => Number(p.id) === parentId);
             }
             
-            // Add all descendants (including optimistic replies)
+            // Helper to add all descendants recursively
             const addDescendants = (postId) => {
                 const children = allPosts.filter(p => 
                     p.reply_to_post_id && 
@@ -2319,7 +2323,40 @@ function ThreadViewer({
                     addDescendants(Number(child.id));
                 });
             };
+            
+            // Add all descendants of the focused post
             addDescendants(Number(focusedPostId));
+            
+            // For each ancestor, also include:
+            // - Direct children created by the current user (and their descendants)
+            // - Optimistic posts (and their descendants)
+            ancestorIds.forEach(ancestorId => {
+                const ancestorChildren = allPosts.filter(p => 
+                    p.reply_to_post_id && 
+                    p.reply_to_post_id.length > 0 && 
+                    Number(p.reply_to_post_id[0]) === ancestorId
+                );
+                
+                ancestorChildren.forEach(child => {
+                    const childId = Number(child.id);
+                    // Skip if already included (e.g., the focused post itself or another ancestor)
+                    if (relevantPosts.has(childId)) return;
+                    
+                    // Include if it's the current user's post
+                    const isCurrentUserPost = currentUserPrincipal && 
+                        child.created_by?.toString() === currentUserPrincipal;
+                    
+                    // Include if it's an optimistic post (negative ID or in optimisticPosts array)
+                    const isOptimisticPost = childId < 0 || 
+                        optimisticPosts.some(op => Number(op.id) === childId);
+                    
+                    if (isCurrentUserPost || isOptimisticPost) {
+                        relevantPosts.add(childId);
+                        // Also add descendants of this post
+                        addDescendants(childId);
+                    }
+                });
+            });
             
             // Filter posts to relevant ones and build tree
             const filteredPosts = allPosts.filter(p => relevantPosts.has(Number(p.id)));
@@ -2328,7 +2365,7 @@ function ThreadViewer({
         
         // Default: show all posts in tree
         return buildPostTree(allPosts);
-    }, [discussionPosts, optimisticPosts, mode, focusedPostId, buildPostTree]);
+    }, [discussionPosts, optimisticPosts, mode, focusedPostId, buildPostTree, identity]);
 
     // Ensure ancestor posts are expanded when in post mode
     useEffect(() => {
