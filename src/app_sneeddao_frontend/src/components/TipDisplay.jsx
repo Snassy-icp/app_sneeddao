@@ -63,25 +63,34 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
     // Track if the last interaction was touch-based
     const lastInteractionWasTouch = useRef(false);
     
+    // Track tooltip position mode (below or above)
+    const [tooltipAbove, setTooltipAbove] = useState(false);
+    const tooltipRef = useRef(null);
+    
     // Position tooltip relative to an element (below or above)
     const updateTooltipPositionFromElement = useCallback((element) => {
         const rect = element.getBoundingClientRect();
         const tooltipWidth = 320;
-        const tooltipHeight = 280;
+        const estimatedTooltipHeight = 300; // Conservative estimate for checking fit
         const margin = 8;
 
         // Center tooltip horizontally relative to pill
         let x = rect.left + (rect.width / 2) - (tooltipWidth / 2);
         
-        // Default: position below the pill
-        let y = rect.bottom + margin;
+        // Check if tooltip would fit below the pill
+        const spaceBelow = window.innerHeight - rect.bottom - margin;
+        const fitsBelow = spaceBelow >= estimatedTooltipHeight;
         
-        // Check if tooltip would go off-screen at the bottom
-        const fitsBelow = (y + tooltipHeight) <= window.innerHeight - margin;
-        
-        if (!fitsBelow) {
-            // Position above the pill instead
-            y = rect.top - tooltipHeight - margin;
+        let y;
+        if (fitsBelow) {
+            // Position below the pill
+            y = rect.bottom + margin;
+            setTooltipAbove(false);
+        } else {
+            // Position above the pill - bottom of tooltip flush with top of pill
+            // We'll set a placeholder y and adjust after render using the ref
+            y = rect.top - margin - estimatedTooltipHeight;
+            setTooltipAbove(true);
         }
 
         // Adjust horizontal position if tooltip would go off-screen
@@ -97,8 +106,23 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
             y = margin;
         }
 
-        setTooltipPosition({ x, y });
+        setTooltipPosition({ x, y, pillTop: rect.top, margin });
     }, []);
+    
+    // Adjust tooltip position after render when positioned above
+    useEffect(() => {
+        if (tooltipAbove && tooltipRef.current && hoveredToken) {
+            const tooltipRect = tooltipRef.current.getBoundingClientRect();
+            const pillTop = tooltipPosition.pillTop;
+            const margin = tooltipPosition.margin || 8;
+            
+            // Reposition so bottom of tooltip is flush with top of pill
+            const newY = pillTop - tooltipRect.height - margin;
+            if (newY >= 8) { // Ensure it doesn't go off-screen
+                setTooltipPosition(prev => ({ ...prev, y: newY }));
+            }
+        }
+    }, [tooltipAbove, hoveredToken, tooltipPosition.pillTop]);
     
     // Toggle expansion of a tip pill
     const toggleExpanded = (tokenKey, e) => {
@@ -330,11 +354,20 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
         
         setHoveredToken(tokenKey);
         
-        // Position tooltip based on the pill element
-        const pillElement = pillRefs.current.get(tokenKey);
-        if (pillElement) {
-            updateTooltipPositionFromElement(pillElement);
-        }
+        // Auto-expand the pill on hover (desktop)
+        setExpandedTokens(prev => {
+            const newSet = new Set(prev);
+            newSet.add(tokenKey);
+            return newSet;
+        });
+        
+        // Position tooltip based on the pill element (with small delay for expansion)
+        setTimeout(() => {
+            const pillElement = pillRefs.current.get(tokenKey);
+            if (pillElement) {
+                updateTooltipPositionFromElement(pillElement);
+            }
+        }, 50);
     }, [updateTooltipPositionFromElement]);
     
     const handlePillMouseLeave = useCallback((tokenKey) => {
@@ -348,6 +381,12 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
             // Only close if tooltip is not being hovered
             if (!tooltipHoveredRef.current) {
                 setHoveredToken(current => current === tokenKey ? null : current);
+                // Also collapse the pill when mouse leaves (desktop)
+                setExpandedTokens(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(tokenKey);
+                    return newSet;
+                });
             }
         }, 150);
     }, []);
@@ -358,7 +397,17 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
     
     const handleTooltipMouseLeave = useCallback(() => {
         tooltipHoveredRef.current = false;
-        setHoveredToken(null);
+        // Collapse the pill when leaving the tooltip (desktop)
+        setHoveredToken(current => {
+            if (current && !lastInteractionWasTouch.current) {
+                setExpandedTokens(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(current);
+                    return newSet;
+                });
+            }
+            return null;
+        });
     }, []);
 
     return (
@@ -552,6 +601,7 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
             {/* Tooltip */}
             {hoveredToken && createPortal(
                 <div
+                    ref={tooltipRef}
                     data-tip-tooltip="true"
                     onMouseEnter={handleTooltipMouseEnter}
                     onMouseLeave={handleTooltipMouseLeave}
