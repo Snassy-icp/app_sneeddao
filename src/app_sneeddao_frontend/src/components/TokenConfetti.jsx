@@ -2,26 +2,31 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 
 /**
- * TokenConfetti - A confetti rain effect using circular token logos
- * 
- * Props:
- * - tokenLogos: Array of logo URLs to use as confetti particles
- * - trigger: Boolean to trigger the confetti (or increment to retrigger)
- * - duration: How long the confetti runs (default 5000ms)
- * - particleCount: Number of particles (default 50)
+ * TokenConfetti - An EPIC celebration effect with token logos
+ * Features:
+ * - Initial explosion burst with screen flash
+ * - Sustained confetti rain of spinning token logos
+ * - Golden sparkle/glitter particles throughout
+ * - Firework bursts
+ * - Trail effects
+ * - Canvas-based for smooth 60fps with hundreds of particles
  */
 const TokenConfetti = ({ 
     tokenLogos = [], 
-    trigger = false, 
-    duration = 6000, 
-    particleCount = 60 
+    trigger = 0, 
+    duration = 8000, 
+    particleCount = 100 
 }) => {
-    const [particles, setParticles] = useState([]);
+    const canvasRef = useRef(null);
     const [isActive, setIsActive] = useState(false);
-    const [loadedImages, setLoadedImages] = useState(new Map());
+    const [loadedImages, setLoadedImages] = useState([]);
+    const [screenFlash, setScreenFlash] = useState(false);
     const animationRef = useRef(null);
-    const startTimeRef = useRef(null);
     const particlesRef = useRef([]);
+    const sparklesRef = useRef([]);
+    const fireworksRef = useRef([]);
+    const startTimeRef = useRef(null);
+    const lastTriggerRef = useRef(0);
     
     // Preload all images
     useEffect(() => {
@@ -30,143 +35,343 @@ const TokenConfetti = ({
         const loadImage = (url) => {
             return new Promise((resolve) => {
                 const img = new Image();
-                img.onload = () => resolve({ url, img, loaded: true });
-                img.onerror = () => resolve({ url, img: null, loaded: false });
+                img.crossOrigin = 'anonymous';
+                img.onload = () => resolve(img);
+                img.onerror = () => resolve(null);
                 img.src = url;
             });
         };
         
         Promise.all(tokenLogos.map(loadImage)).then(results => {
-            const loaded = new Map();
-            results.forEach(result => {
-                if (result.loaded) {
-                    loaded.set(result.url, result.img);
-                }
-            });
+            const loaded = results.filter(img => img !== null);
             setLoadedImages(loaded);
         });
     }, [tokenLogos]);
     
-    // Create a single particle with random properties
-    const createParticle = useCallback((id, logos) => {
-        const logoUrl = logos[Math.floor(Math.random() * logos.length)];
-        const size = 24 + Math.random() * 36; // 24-60px
-        const startX = Math.random() * window.innerWidth;
-        const startY = -size - Math.random() * 300; // Start above viewport, staggered
-        
-        // Determine spin direction (clockwise or counter-clockwise)
-        const spinDirection = Math.random() > 0.5 ? 1 : -1;
-        // Varying spin speeds - some fast, some slow
-        const spinSpeed = (2 + Math.random() * 10) * spinDirection; // 2-12 degrees/frame
+    // Create sparkle particle
+    const createSparkle = useCallback((x, y, isExplosion = false) => {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = isExplosion ? 8 + Math.random() * 15 : 2 + Math.random() * 4;
+        const colors = ['#FFD700', '#FFA500', '#FFEC8B', '#FFFACD', '#FFE4B5', '#FFFFFF', '#F0E68C'];
         
         return {
-            id,
-            logoUrl,
-            size,
-            x: startX,
-            y: startY,
-            baseX: startX, // Store initial X for wobble calculation
-            // Horizontal drift (slight wind effect)
-            vx: (Math.random() - 0.3) * 1.5, // Slight bias to the right like wind
-            // Vertical speed (falling) - larger particles fall faster
-            vy: 1.5 + (size / 60) * 2 + Math.random() * 2,
-            // Rotation
-            rotation: Math.random() * 360,
-            rotationSpeed: spinSpeed,
-            // Wobble (sinusoidal horizontal motion like a falling leaf)
-            wobbleOffset: Math.random() * Math.PI * 2,
-            wobbleSpeed: 0.015 + Math.random() * 0.025,
-            wobbleAmplitude: 30 + Math.random() * 60,
-            // Opacity - larger particles slightly more opaque
-            opacity: 0.75 + (size / 60) * 0.25,
-            // Delay before appearing - creates a rain effect
-            delay: Math.random() * 2000,
-            // Track when this particle started
-            startTime: null,
-            // Slight acceleration (gravity feel)
-            gravity: 0.02 + Math.random() * 0.03
+            x,
+            y,
+            vx: Math.cos(angle) * speed * (isExplosion ? 1 : 0.3),
+            vy: Math.sin(angle) * speed * (isExplosion ? 1 : 0.5) - (isExplosion ? 5 : 1),
+            size: 2 + Math.random() * 4,
+            color: colors[Math.floor(Math.random() * colors.length)],
+            alpha: 1,
+            decay: 0.015 + Math.random() * 0.02,
+            gravity: 0.1,
+            twinkle: Math.random() * Math.PI * 2,
+            twinkleSpeed: 0.1 + Math.random() * 0.2
         };
     }, []);
     
-    // Initialize particles when triggered
-    useEffect(() => {
-        if (!trigger || loadedImages.size === 0) return;
-        
-        const logos = Array.from(loadedImages.keys());
-        const newParticles = [];
+    // Create firework burst
+    const createFireworkBurst = useCallback((x, y) => {
+        const particles = [];
+        const particleCount = 30 + Math.floor(Math.random() * 20);
+        const colors = ['#FFD700', '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD'];
+        const burstColor = colors[Math.floor(Math.random() * colors.length)];
         
         for (let i = 0; i < particleCount; i++) {
-            newParticles.push(createParticle(i, logos));
+            const angle = (i / particleCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.5;
+            const speed = 4 + Math.random() * 8;
+            particles.push({
+                x,
+                y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                size: 3 + Math.random() * 3,
+                color: burstColor,
+                alpha: 1,
+                decay: 0.02 + Math.random() * 0.015,
+                gravity: 0.15,
+                trail: []
+            });
+        }
+        return particles;
+    }, []);
+    
+    // Create token confetti particle
+    const createConfetti = useCallback((images, isInitialBurst = false) => {
+        const img = images[Math.floor(Math.random() * images.length)];
+        const size = 30 + Math.random() * 50;
+        const x = isInitialBurst 
+            ? window.innerWidth / 2 + (Math.random() - 0.5) * 200
+            : Math.random() * window.innerWidth;
+        const y = isInitialBurst 
+            ? window.innerHeight / 2
+            : -size - Math.random() * 500;
+        
+        const angle = isInitialBurst ? Math.random() * Math.PI * 2 : 0;
+        const speed = isInitialBurst ? 10 + Math.random() * 15 : 0;
+        
+        return {
+            img,
+            x,
+            y,
+            vx: isInitialBurst ? Math.cos(angle) * speed : (Math.random() - 0.5) * 2,
+            vy: isInitialBurst ? Math.sin(angle) * speed - 5 : 2 + Math.random() * 3,
+            size,
+            rotation: Math.random() * 360,
+            rotationSpeed: (Math.random() - 0.5) * 15,
+            wobble: Math.random() * Math.PI * 2,
+            wobbleSpeed: 0.02 + Math.random() * 0.03,
+            wobbleAmp: 30 + Math.random() * 50,
+            baseX: x,
+            alpha: 1,
+            gravity: 0.12,
+            airResistance: 0.99,
+            glowIntensity: 0.5 + Math.random() * 0.5
+        };
+    }, []);
+    
+    // Initialize effect when triggered
+    useEffect(() => {
+        if (trigger === 0 || trigger === lastTriggerRef.current || loadedImages.length === 0) return;
+        lastTriggerRef.current = trigger;
+        
+        console.log('🎉 TRIGGERING EPIC CONFETTI!', { imageCount: loadedImages.length });
+        
+        // Screen flash
+        setScreenFlash(true);
+        setTimeout(() => setScreenFlash(false), 150);
+        
+        // Initial burst of confetti from center
+        const burstConfetti = [];
+        for (let i = 0; i < 40; i++) {
+            burstConfetti.push(createConfetti(loadedImages, true));
         }
         
-        particlesRef.current = newParticles;
-        setParticles(newParticles);
+        // Rain confetti
+        const rainConfetti = [];
+        for (let i = 0; i < particleCount; i++) {
+            const p = createConfetti(loadedImages, false);
+            p.delay = Math.random() * 3000; // Stagger the rain
+            rainConfetti.push(p);
+        }
+        
+        particlesRef.current = [...burstConfetti, ...rainConfetti];
+        
+        // Initial sparkle explosion
+        const initialSparkles = [];
+        for (let i = 0; i < 150; i++) {
+            initialSparkles.push(createSparkle(
+                window.innerWidth / 2 + (Math.random() - 0.5) * 100,
+                window.innerHeight / 2 + (Math.random() - 0.5) * 100,
+                true
+            ));
+        }
+        sparklesRef.current = initialSparkles;
+        
+        // Schedule firework bursts
+        fireworksRef.current = [];
+        const fireworkTimes = [500, 1200, 2000, 2800, 3500, 4500];
+        fireworkTimes.forEach(time => {
+            setTimeout(() => {
+                if (animationRef.current) {
+                    const x = 100 + Math.random() * (window.innerWidth - 200);
+                    const y = 100 + Math.random() * (window.innerHeight / 2);
+                    fireworksRef.current.push(...createFireworkBurst(x, y));
+                }
+            }, time);
+        });
+        
         setIsActive(true);
         startTimeRef.current = performance.now();
         
-    }, [trigger, loadedImages, particleCount, createParticle]);
+    }, [trigger, loadedImages, particleCount, createConfetti, createSparkle, createFireworkBurst]);
     
-    // Animation loop
+    // Main animation loop
     useEffect(() => {
-        if (!isActive || particles.length === 0) return;
+        if (!isActive) return;
+        
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
         
         const animate = (currentTime) => {
             const elapsed = currentTime - startTimeRef.current;
             
-            // Update each particle
-            const updatedParticles = particlesRef.current.map(particle => {
-                // Check if this particle should start yet
-                if (elapsed < particle.delay) {
-                    return particle;
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Add ambient sparkles throughout
+            if (Math.random() < 0.3 && elapsed < duration - 1000) {
+                sparklesRef.current.push(createSparkle(
+                    Math.random() * window.innerWidth,
+                    Math.random() * window.innerHeight * 0.7,
+                    false
+                ));
+            }
+            
+            // Update and draw sparkles
+            sparklesRef.current = sparklesRef.current.filter(s => {
+                s.x += s.vx;
+                s.y += s.vy;
+                s.vy += s.gravity;
+                s.alpha -= s.decay;
+                s.twinkle += s.twinkleSpeed;
+                
+                if (s.alpha <= 0) return false;
+                
+                const twinkleAlpha = s.alpha * (0.5 + 0.5 * Math.sin(s.twinkle));
+                
+                // Draw sparkle with glow
+                ctx.save();
+                ctx.globalAlpha = twinkleAlpha;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = s.color;
+                ctx.fillStyle = s.color;
+                ctx.beginPath();
+                
+                // Star shape
+                const spikes = 4;
+                const outerRadius = s.size;
+                const innerRadius = s.size * 0.4;
+                for (let i = 0; i < spikes * 2; i++) {
+                    const radius = i % 2 === 0 ? outerRadius : innerRadius;
+                    const angle = (i * Math.PI) / spikes - Math.PI / 2;
+                    if (i === 0) {
+                        ctx.moveTo(s.x + radius * Math.cos(angle), s.y + radius * Math.sin(angle));
+                    } else {
+                        ctx.lineTo(s.x + radius * Math.cos(angle), s.y + radius * Math.sin(angle));
+                    }
                 }
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
                 
-                // Track when this particle actually started
-                if (!particle.startTime) {
-                    particle.startTime = currentTime;
-                }
-                
-                const particleTime = currentTime - particle.startTime;
-                
-                // Calculate wobble (leaf-like motion)
-                const wobble = Math.sin(particleTime * particle.wobbleSpeed + particle.wobbleOffset) * particle.wobbleAmplitude;
-                
-                // Apply slight gravity acceleration
-                const newVy = particle.vy + particle.gravity;
-                
-                // Calculate new position
-                const newX = particle.baseX + wobble + (particle.vx * particleTime * 0.01);
-                const newY = particle.y + newVy;
-                
-                // Calculate opacity with smooth fade at end
-                let newOpacity = particle.opacity;
-                if (elapsed > duration - 1500) {
-                    newOpacity = particle.opacity * Math.max(0, (duration - elapsed) / 1500);
-                }
-                // Also fade as particle goes below screen
-                if (newY > window.innerHeight * 0.8) {
-                    const fadeProgress = (newY - window.innerHeight * 0.8) / (window.innerHeight * 0.3);
-                    newOpacity = newOpacity * Math.max(0, 1 - fadeProgress);
-                }
-                
-                return {
-                    ...particle,
-                    x: newX,
-                    y: newY,
-                    vy: Math.min(newVy, 8), // Cap max fall speed
-                    rotation: particle.rotation + particle.rotationSpeed,
-                    opacity: newOpacity
-                };
+                return true;
             });
             
-            particlesRef.current = updatedParticles;
-            setParticles([...updatedParticles]);
+            // Update and draw fireworks
+            fireworksRef.current = fireworksRef.current.filter(p => {
+                // Store trail
+                p.trail.push({ x: p.x, y: p.y, alpha: p.alpha });
+                if (p.trail.length > 8) p.trail.shift();
+                
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += p.gravity;
+                p.vx *= 0.98;
+                p.alpha -= p.decay;
+                
+                if (p.alpha <= 0) return false;
+                
+                // Draw trail
+                ctx.save();
+                p.trail.forEach((t, i) => {
+                    const trailAlpha = (i / p.trail.length) * p.alpha * 0.5;
+                    ctx.globalAlpha = trailAlpha;
+                    ctx.fillStyle = p.color;
+                    ctx.beginPath();
+                    ctx.arc(t.x, t.y, p.size * (i / p.trail.length), 0, Math.PI * 2);
+                    ctx.fill();
+                });
+                
+                // Draw particle with glow
+                ctx.globalAlpha = p.alpha;
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = p.color;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+                
+                return true;
+            });
             
-            // Stop animation after duration
-            if (elapsed < duration) {
+            // Update and draw confetti
+            particlesRef.current = particlesRef.current.filter(p => {
+                // Check delay
+                if (p.delay && elapsed < p.delay) {
+                    // Draw nothing yet, but keep particle
+                    return true;
+                }
+                
+                // Physics
+                p.vy += p.gravity;
+                p.vx *= p.airResistance;
+                p.vy *= p.airResistance;
+                
+                // Wobble
+                p.wobble += p.wobbleSpeed;
+                const wobbleOffset = Math.sin(p.wobble) * p.wobbleAmp;
+                
+                p.x += p.vx;
+                p.y += p.vy;
+                p.rotation += p.rotationSpeed;
+                
+                // Fade out
+                if (elapsed > duration - 2000) {
+                    p.alpha = Math.max(0, (duration - elapsed) / 2000);
+                }
+                if (p.y > window.innerHeight + 100) {
+                    p.alpha -= 0.05;
+                }
+                
+                if (p.alpha <= 0) return false;
+                
+                const drawX = p.baseX !== undefined ? p.baseX + wobbleOffset + (p.x - p.baseX) : p.x;
+                const drawY = p.y;
+                
+                // Draw token logo with effects
+                ctx.save();
+                ctx.translate(drawX, drawY);
+                ctx.rotate((p.rotation * Math.PI) / 180);
+                ctx.globalAlpha = p.alpha;
+                
+                // Outer glow
+                ctx.shadowBlur = 25 * p.glowIntensity;
+                ctx.shadowColor = `rgba(255, 215, 0, ${0.8 * p.alpha})`;
+                
+                // Draw circular clip for logo
+                ctx.beginPath();
+                ctx.arc(0, 0, p.size / 2, 0, Math.PI * 2);
+                ctx.closePath();
+                ctx.clip();
+                
+                // Draw the image
+                ctx.drawImage(
+                    p.img,
+                    -p.size / 2,
+                    -p.size / 2,
+                    p.size,
+                    p.size
+                );
+                
+                ctx.restore();
+                
+                // Draw golden ring around logo
+                ctx.save();
+                ctx.translate(drawX, drawY);
+                ctx.rotate((p.rotation * Math.PI) / 180);
+                ctx.globalAlpha = p.alpha * 0.8;
+                ctx.strokeStyle = '#FFD700';
+                ctx.lineWidth = 3;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#FFD700';
+                ctx.beginPath();
+                ctx.arc(0, 0, p.size / 2 + 2, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+                
+                return true;
+            });
+            
+            // Continue animation
+            if (elapsed < duration + 1000 && (particlesRef.current.length > 0 || sparklesRef.current.length > 0 || fireworksRef.current.length > 0)) {
                 animationRef.current = requestAnimationFrame(animate);
             } else {
                 setIsActive(false);
-                setParticles([]);
             }
         };
         
@@ -177,67 +382,84 @@ const TokenConfetti = ({
                 cancelAnimationFrame(animationRef.current);
             }
         };
-    }, [isActive, duration]);
+    }, [isActive, duration, createSparkle]);
     
-    if (!isActive || particles.length === 0) return null;
+    // Handle window resize
+    useEffect(() => {
+        if (!isActive) return;
+        
+        const handleResize = () => {
+            const canvas = canvasRef.current;
+            if (canvas) {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+        };
+        
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, [isActive]);
+    
+    if (!isActive && !screenFlash) return null;
     
     return createPortal(
-        <div
-            style={{
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                width: '100vw',
-                height: '100vh',
-                pointerEvents: 'none',
-                zIndex: 10000,
-                overflow: 'hidden'
-            }}
-        >
-            {particles.map(particle => {
-                // Don't render if still in delay period
-                const elapsed = performance.now() - startTimeRef.current;
-                if (elapsed < particle.delay) return null;
-                
-                // Don't render if off screen
-                if (particle.y > window.innerHeight + particle.size) return null;
-                
-                    return (
-                        <div
-                            key={particle.id}
-                            style={{
-                                position: 'absolute',
-                                left: particle.x,
-                                top: particle.y,
-                                width: particle.size,
-                                height: particle.size,
-                                transform: `rotate(${particle.rotation}deg) scale(${0.9 + particle.opacity * 0.1})`,
-                                opacity: particle.opacity,
-                                willChange: 'transform, left, top, opacity',
-                                transition: 'none',
-                                filter: `drop-shadow(0 0 ${particle.size * 0.15}px rgba(255,215,0,0.6))`
-                            }}
-                        >
-                            <img
-                                src={particle.logoUrl}
-                                alt=""
-                                style={{
-                                    width: '100%',
-                                    height: '100%',
-                                    borderRadius: '50%',
-                                    objectFit: 'cover',
-                                    boxShadow: `
-                                        0 2px 8px rgba(0,0,0,0.4),
-                                        0 0 ${particle.size * 0.4}px rgba(255,215,0,0.4),
-                                        inset 0 0 ${particle.size * 0.2}px rgba(255,255,255,0.1)
-                                    `,
-                                    border: '2px solid rgba(255,215,0,0.6)'
-                                }}
-                            />
-                        </div>
-                    );
-            })}
-        </div>,
+        <>
+            {/* Screen flash effect */}
+            {screenFlash && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        width: '100vw',
+                        height: '100vh',
+                        background: 'radial-gradient(circle at center, rgba(255,215,0,0.4) 0%, rgba(255,165,0,0.2) 50%, transparent 100%)',
+                        zIndex: 10001,
+                        pointerEvents: 'none',
+                        animation: 'flashPulse 150ms ease-out'
+                    }}
+                />
+            )}
+            
+            {/* Ambient glow overlay */}
+            {isActive && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        width: '100vw',
+                        height: '100vh',
+                        background: 'radial-gradient(ellipse at 50% 30%, rgba(255,215,0,0.08) 0%, transparent 60%)',
+                        zIndex: 9998,
+                        pointerEvents: 'none'
+                    }}
+                />
+            )}
+            
+            {/* Main canvas */}
+            <canvas
+                ref={canvasRef}
+                style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    width: '100vw',
+                    height: '100vh',
+                    pointerEvents: 'none',
+                    zIndex: 10000
+                }}
+            />
+            
+            {/* CSS for animations */}
+            <style>{`
+                @keyframes flashPulse {
+                    0% { opacity: 0; transform: scale(0.8); }
+                    50% { opacity: 1; transform: scale(1.1); }
+                    100% { opacity: 0; transform: scale(1.2); }
+                }
+            `}</style>
+        </>,
         document.body
     );
 };

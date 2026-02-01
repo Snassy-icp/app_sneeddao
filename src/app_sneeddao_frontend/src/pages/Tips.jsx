@@ -116,6 +116,34 @@ const Tips = () => {
     const [confettiLogos, setConfettiLogos] = useState([]);
     const [triggerConfetti, setTriggerConfetti] = useState(0);
     const confettiTriggeredRef = useRef(false);
+    
+    // Debug: Press 'C' to test confetti (development only)
+    useEffect(() => {
+        const handleKeyPress = (e) => {
+            if (e.key === 'c' || e.key === 'C') {
+                // Gather all token logos from tips
+                const allLogos = tipsReceived
+                    .map(tip => {
+                        const metadata = getTokenMetadata(tip.token_ledger_principal.toString());
+                        return metadata?.logo;
+                    })
+                    .filter(logo => logo != null);
+                
+                const uniqueLogos = [...new Set(allLogos)];
+                
+                if (uniqueLogos.length > 0) {
+                    console.log('🎉 Manual confetti trigger! Logos:', uniqueLogos);
+                    setConfettiLogos(uniqueLogos);
+                    setTimeout(() => setTriggerConfetti(prev => prev + 1), 100);
+                } else {
+                    console.log('⚠️ No token logos available for confetti');
+                }
+            }
+        };
+        
+        window.addEventListener('keypress', handleKeyPress);
+        return () => window.removeEventListener('keypress', handleKeyPress);
+    }, [tipsReceived, getTokenMetadata]);
 
     // Handle window resize for responsive layout
     useEffect(() => {
@@ -258,12 +286,22 @@ const Tips = () => {
     // Effect to trigger confetti when new tips are loaded
     useEffect(() => {
         // Only run once per page load, after tips are loaded
-        if (confettiTriggeredRef.current || loading || tipsReceived.length === 0 || !capturedOldTimestamp) {
+        if (confettiTriggeredRef.current || loading || tipsReceived.length === 0) {
             return;
         }
         
-        // Find new tips
-        const newTips = tipsReceived.filter(tip => Number(tip.created_at) > capturedOldTimestamp);
+        // Find new tips (if capturedOldTimestamp is 0, all tips are "new" for first-time users)
+        const newTips = capturedOldTimestamp > 0 
+            ? tipsReceived.filter(tip => Number(tip.created_at) > capturedOldTimestamp)
+            : []; // Don't show confetti for first-time users with no previous timestamp
+        
+        console.log('🎊 Checking for new tips:', { 
+            total: tipsReceived.length, 
+            newCount: newTips.length, 
+            capturedOldTimestamp,
+            loading,
+            alreadyTriggered: confettiTriggeredRef.current
+        });
         
         if (newTips.length === 0) {
             confettiTriggeredRef.current = true; // Mark as checked even if no new tips
@@ -279,8 +317,11 @@ const Tips = () => {
             })
             .filter(logo => logo != null);
         
+        console.log('🎊 Token logos found:', { uniqueTokenIds, logos });
+        
         if (logos.length === 0) {
-            // No logos loaded yet, wait for metadata
+            // No logos loaded yet, wait for metadata to load
+            // The effect will re-run when getTokenMetadata updates
             return;
         }
         
@@ -288,6 +329,7 @@ const Tips = () => {
         const preloadPromises = logos.map(url => {
             return new Promise((resolve) => {
                 const img = new Image();
+                img.crossOrigin = 'anonymous';
                 img.onload = () => resolve(true);
                 img.onerror = () => resolve(false);
                 img.src = url;
@@ -295,17 +337,19 @@ const Tips = () => {
         });
         
         Promise.all(preloadPromises).then(results => {
+            console.log('🎊 Images preloaded:', results);
             // Only proceed if at least one image loaded
             if (results.some(loaded => loaded) && !confettiTriggeredRef.current) {
                 confettiTriggeredRef.current = true;
                 setConfettiLogos(logos);
+                console.log('🎉🎉🎉 LAUNCHING CONFETTI! 🎉🎉🎉');
                 // Small delay for dramatic effect
                 setTimeout(() => {
                     setTriggerConfetti(prev => prev + 1);
-                }, 500);
+                }, 300);
             }
         });
-    }, [loading, tipsReceived, capturedOldTimestamp, getTokenMetadata]);
+    }, [loading, tipsReceived, capturedOldTimestamp, getTokenMetadata, loadingMetadata]);
 
     // Helper function to check if a tip is new (for highlighting)
     const isTipNew = (tipTimestamp) => {
