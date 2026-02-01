@@ -261,16 +261,20 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                         {/* Tip count badge */}
                         <span style={{ 
                             background: isLoading 
-                                ? 'rgba(100,100,100,0.4)'
-                                : 'linear-gradient(135deg, #ffd700 0%, #e6ac00 100%)',
-                            color: isLoading ? '#ccc' : '#1a1a00',
-                            borderRadius: '8px',
-                            padding: '1px 5px',
+                                ? 'rgba(100,100,100,0.25)'
+                                : 'rgba(255,215,0,0.25)',
+                            color: isLoading ? '#999' : '#d4aa00',
+                            borderRadius: '50%',
+                            padding: tokenData.tips.length > 9 ? '1px 5px' : '1px',
                             fontSize: '9px',
-                            fontWeight: '700',
+                            fontWeight: '600',
+                            width: tokenData.tips.length > 9 ? 'auto' : '14px',
+                            height: '14px',
                             minWidth: '14px',
-                            textAlign: 'center',
-                            boxShadow: isLoading ? 'none' : '0 1px 2px rgba(0,0,0,0.15)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            border: isLoading ? '1px solid rgba(150,150,150,0.3)' : '1px solid rgba(255,215,0,0.35)',
                             flexShrink: 0
                         }}>
                             {tokenData.tips.length}
