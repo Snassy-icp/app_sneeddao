@@ -241,7 +241,8 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
         });
     }, [tips]);
 
-    if (!tips || tips.length === 0) {
+    // If no tips and no onTip callback, don't render anything
+    if ((!tips || tips.length === 0) && !onTip) {
         return null;
     }
 
@@ -631,6 +632,51 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                     </div>
                 );
             })}
+            
+            {/* Add Tip button - circular + pill */}
+            {onTip && (
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onTip(null); // No token preselected
+                    }}
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: 'linear-gradient(135deg, rgba(255,215,0,0.08) 0%, rgba(255,180,0,0.04) 100%)',
+                        border: '1px dashed rgba(255,215,0,0.35)',
+                        borderRadius: '50%',
+                        width: '22px',
+                        height: '22px',
+                        padding: 0,
+                        cursor: 'pointer',
+                        color: '#d4aa00',
+                        fontSize: '14px',
+                        fontWeight: '400',
+                        transition: 'all 0.2s ease',
+                    }}
+                    onMouseOver={(e) => {
+                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(255,215,0,0.2) 0%, rgba(255,180,0,0.12) 100%)';
+                        e.currentTarget.style.borderColor = 'rgba(255,215,0,0.6)';
+                        e.currentTarget.style.borderStyle = 'solid';
+                        e.currentTarget.style.color = '#ffd700';
+                        e.currentTarget.style.transform = 'scale(1.1)';
+                        e.currentTarget.style.boxShadow = '0 2px 8px rgba(255,215,0,0.25)';
+                    }}
+                    onMouseOut={(e) => {
+                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(255,215,0,0.08) 0%, rgba(255,180,0,0.04) 100%)';
+                        e.currentTarget.style.borderColor = 'rgba(255,215,0,0.35)';
+                        e.currentTarget.style.borderStyle = 'dashed';
+                        e.currentTarget.style.color = '#d4aa00';
+                        e.currentTarget.style.transform = 'scale(1)';
+                        e.currentTarget.style.boxShadow = 'none';
+                    }}
+                    title="Add a tip"
+                >
+                    +
+                </button>
+            )}
 
             {/* Tooltip */}
             {hoveredToken && createPortal(

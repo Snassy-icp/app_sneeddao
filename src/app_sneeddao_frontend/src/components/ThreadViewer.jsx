@@ -3624,13 +3624,15 @@ function ThreadViewer({
                     {!isCollapsed && (
                         <>
                             {/* Tips Display - between header and body */}
-                            {postTips[Number(post.id)] && postTips[Number(post.id)].length > 0 && (
+                            {/* Show if there are tips OR if user can tip (to show the + button) */}
+                            {((postTips[Number(post.id)] && postTips[Number(post.id)].length > 0) || 
+                              (identity && post.created_by.toString() !== identity.getPrincipal().toString())) && (
                                 <TipDisplay 
-                                    tips={postTips[Number(post.id)]}
+                                    tips={postTips[Number(post.id)] || []}
                                     principalDisplayInfo={principalDisplayInfo}
                                     isNarrowScreen={isNarrowScreen}
                                     onTip={identity && post.created_by.toString() !== identity.getPrincipal().toString() 
-                                        ? (tokenPrincipal) => openTipModal(post, tokenPrincipal.toString())
+                                        ? (tokenPrincipal) => openTipModal(post, tokenPrincipal ? tokenPrincipal.toString() : null)
                                         : null
                                     }
                                     animateToken={
