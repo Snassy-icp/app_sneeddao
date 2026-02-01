@@ -1317,7 +1317,7 @@ function TransactionList({
                                                 onMouseEnter={(e) => e.target.style.background = `${txPrimary}15`}
                                                 onMouseLeave={(e) => e.target.style.background = !selectedSubaccount ? `${txPrimary}10` : 'transparent'}
                                             >
-                                                All subaccounts (main + others)
+                                                Main account (default subaccount)
                                             </div>
                                             {/* Filter and show available subaccounts */}
                                             {availableSubaccounts
