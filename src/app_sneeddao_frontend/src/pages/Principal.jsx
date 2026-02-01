@@ -2194,6 +2194,35 @@ export default function PrincipalPage() {
                     {/* Neurons Tab */}
                     {activeTab === 'neurons' && (
                         <div style={{ padding: '1.25rem' }}>
+                            {/* Neurons Header */}
+                            <div style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '0.75rem',
+                                marginBottom: '1rem'
+                            }}>
+                                <div style={{
+                                    width: '40px',
+                                    height: '40px',
+                                    borderRadius: '10px',
+                                    background: snsLogo ? 'transparent' : `linear-gradient(135deg, ${principalAccent}30, ${principalSecondary}20)`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: principalAccent,
+                                    overflow: 'hidden'
+                                }}>
+                                    {snsLogo ? (
+                                        <img src={snsLogo} alt="DAO" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px' }} />
+                                    ) : (
+                                        <FaBrain size={18} />
+                                    )}
+                                </div>
+                                <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '1.1rem' }}>
+                                    {snsInfo?.name || 'DAO'} Neurons
+                                </span>
+                            </div>
+
                             {loadingNeurons ? (
                                 <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
                                     <div className="principal-spin" style={{
@@ -2329,6 +2358,35 @@ export default function PrincipalPage() {
                     {/* Transactions Tab */}
                     {activeTab === 'transactions' && (
                         <div style={{ padding: '1rem' }}>
+                            {/* Transactions Header */}
+                            <div style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '0.75rem',
+                                marginBottom: '1rem'
+                            }}>
+                                <div style={{
+                                    width: '40px',
+                                    height: '40px',
+                                    borderRadius: '10px',
+                                    background: snsLogo ? 'transparent' : `linear-gradient(135deg, ${principalSecondary}30, ${principalPrimary}20)`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: principalSecondary,
+                                    overflow: 'hidden'
+                                }}>
+                                    {snsLogo ? (
+                                        <img src={snsLogo} alt="DAO" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px' }} />
+                                    ) : (
+                                        <FaExchangeAlt size={18} />
+                                    )}
+                                </div>
+                                <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '1.1rem' }}>
+                                    {snsInfo?.name || 'DAO'} Transactions
+                                </span>
+                            </div>
+
                             <TransactionList 
                                 snsRootCanisterId={searchParams.get('sns') || selectedSnsRoot || SNEED_SNS_ROOT}
                                 principalId={stablePrincipalId.current?.toString()}
