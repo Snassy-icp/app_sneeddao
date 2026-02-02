@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { Principal } from '@dfinity/principal';
 import { useAuth } from '../AuthContext';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
@@ -22,9 +22,11 @@ export const WalletProvider = ({ children }) => {
     const [hasFetchedInitial, setHasFetchedInitial] = useState(false);
     // Track if detailed wallet data has been loaded (from Wallet.jsx)
     const [hasDetailedData, setHasDetailedData] = useState(false);
+    // Track fetch session to prevent stale updates
+    const fetchSessionRef = useRef(0);
 
-    // Fetch token details for a single ledger
-    const fetchTokenDetails = useCallback(async (ledgerCanisterId) => {
+    // Fetch token details for a single ledger - FAST version (no conversion rate)
+    const fetchTokenDetailsFast = useCallback(async (ledgerCanisterId) => {
         if (!identity) return null;
 
         try {
@@ -44,12 +46,6 @@ export const WalletProvider = ({ children }) => {
             ]);
 
             const logo = getTokenLogo(metadata);
-            
-            // Fetch conversion rate
-            const conversion_rate = await get_token_conversion_rate(
-                ledgerCanisterId.toString(), 
-                decimals
-            );
 
             return {
                 principal: ledgerCanisterId.toString(),
@@ -59,8 +55,9 @@ export const WalletProvider = ({ children }) => {
                 fee,
                 logo: symbol.toLowerCase() === "icp" && logo === "" ? "icp_symbol.svg" : logo,
                 balance,
-                available: balance, // For compatibility with compact wallet display
-                conversion_rate
+                available: balance,
+                conversion_rate: null, // Will be fetched progressively
+                usdValue: null
             };
         } catch (error) {
             console.error(`Error fetching token details for ${ledgerCanisterId}:`, error);
@@ -68,7 +65,46 @@ export const WalletProvider = ({ children }) => {
         }
     }, [identity]);
 
-    // Fetch all tokens for the compact wallet
+    // Fetch conversion rate for a token and update it in place
+    const fetchAndUpdateConversionRate = useCallback(async (ledgerCanisterId, decimals, sessionId) => {
+        try {
+            const conversion_rate = await get_token_conversion_rate(
+                ledgerCanisterId.toString(), 
+                decimals
+            );
+            
+            // Only update if still in same fetch session
+            if (fetchSessionRef.current === sessionId) {
+                setWalletTokens(prev => prev.map(token => {
+                    if (token.principal === ledgerCanisterId.toString()) {
+                        const balance = BigInt(token.available || token.balance || 0n);
+                        const balanceNum = Number(balance) / (10 ** (token.decimals || 8));
+                        const usdValue = conversion_rate ? balanceNum * conversion_rate : null;
+                        return { ...token, conversion_rate, usdValue };
+                    }
+                    return token;
+                }));
+            }
+        } catch (error) {
+            console.warn(`Could not fetch conversion rate for ${ledgerCanisterId}:`, error);
+        }
+    }, []);
+
+    // Progressive token fetcher - adds tokens as they load
+    const addTokenProgressively = useCallback((token, sessionId) => {
+        if (fetchSessionRef.current !== sessionId) return;
+        
+        setWalletTokens(prev => {
+            // Check if token already exists
+            const exists = prev.some(t => t.principal === token.principal);
+            if (exists) {
+                return prev.map(t => t.principal === token.principal ? token : t);
+            }
+            return [...prev, token];
+        });
+    }, []);
+
+    // Fetch all tokens for the compact wallet - PROGRESSIVE
     const fetchCompactWalletTokens = useCallback(async () => {
         if (!identity || !isAuthenticated) {
             setWalletTokens([]);
@@ -76,7 +112,11 @@ export const WalletProvider = ({ children }) => {
             return;
         }
 
+        // Increment session to invalidate any in-flight requests from previous fetches
+        const sessionId = ++fetchSessionRef.current;
+        
         setWalletLoading(true);
+        // Don't clear tokens - keep showing existing while refreshing
 
         try {
             const backendActor = createBackendActor(backendCanisterId, { 
@@ -85,74 +125,98 @@ export const WalletProvider = ({ children }) => {
 
             // Track known ledgers to avoid duplicates
             const knownLedgers = new Set();
-            const allLedgers = [];
 
-            // 1. Get registered ledger canister IDs from backend
+            // 1. Get registered ledger canister IDs from backend FIRST (fastest)
             const registeredLedgers = await backendActor.get_ledger_canister_ids();
+            
+            // Start fetching registered tokens immediately (don't wait for RLL/tips)
             registeredLedgers.forEach(ledger => {
                 const ledgerId = ledger.toString();
                 if (!knownLedgers.has(ledgerId)) {
                     knownLedgers.add(ledgerId);
-                    allLedgers.push(ledger);
+                    // Fire and forget - will add progressively
+                    fetchTokenDetailsFast(ledger).then(token => {
+                        if (token && fetchSessionRef.current === sessionId) {
+                            addTokenProgressively(token, sessionId);
+                            // Then fetch USD value in background
+                            fetchAndUpdateConversionRate(ledger, token.decimals, sessionId);
+                        }
+                    });
                 }
             });
 
-            // 2. Get reward tokens from RLL
-            try {
-                const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
-                const sneedGovernanceCanisterId = 'fi3zi-fyaaa-aaaaq-aachq-cai';
-                const neurons = await fetchUserNeuronsForSns(identity, sneedGovernanceCanisterId);
-                const rewardBalances = await rllActor.balances_of_hotkey_neurons(neurons);
-                
-                rewardBalances.forEach(balance => {
-                    const ledger = balance[0];
-                    const ledgerId = ledger.toString();
-                    if (!knownLedgers.has(ledgerId)) {
-                        knownLedgers.add(ledgerId);
-                        allLedgers.push(ledger);
-                    }
-                });
-            } catch (rewardErr) {
-                console.warn('Could not fetch reward tokens:', rewardErr);
-            }
-
-            // 3. Get tokens from received tips
-            try {
-                const forumActor = createForumActor(forumCanisterId, {
-                    agentOptions: {
-                        host: process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943',
-                        identity: identity,
-                    },
-                });
-                const tipTokenSummaries = await getTipTokensReceivedByUser(forumActor, identity.getPrincipal());
-                
-                for (const summary of tipTokenSummaries) {
-                    const ledger = summary.token_ledger_principal;
-                    const ledgerId = ledger.toString();
-                    if (!knownLedgers.has(ledgerId)) {
-                        knownLedgers.add(ledgerId);
-                        allLedgers.push(ledger);
-                    }
+            // 2. Get reward tokens from RLL (in parallel, don't block)
+            (async () => {
+                try {
+                    const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
+                    const sneedGovernanceCanisterId = 'fi3zi-fyaaa-aaaaq-aachq-cai';
+                    const neurons = await fetchUserNeuronsForSns(identity, sneedGovernanceCanisterId);
+                    const rewardBalances = await rllActor.balances_of_hotkey_neurons(neurons);
+                    
+                    rewardBalances.forEach(balance => {
+                        const ledger = balance[0];
+                        const ledgerId = ledger.toString();
+                        if (!knownLedgers.has(ledgerId) && fetchSessionRef.current === sessionId) {
+                            knownLedgers.add(ledgerId);
+                            fetchTokenDetailsFast(ledger).then(token => {
+                                if (token && fetchSessionRef.current === sessionId) {
+                                    addTokenProgressively(token, sessionId);
+                                    fetchAndUpdateConversionRate(ledger, token.decimals, sessionId);
+                                }
+                            });
+                        }
+                    });
+                } catch (rewardErr) {
+                    console.warn('Could not fetch reward tokens:', rewardErr);
                 }
-            } catch (tipErr) {
-                console.warn('Could not fetch tip tokens:', tipErr);
-            }
+            })();
 
-            // Fetch details for all tokens in parallel
-            const tokenPromises = allLedgers.map(ledger => fetchTokenDetails(ledger));
-            const tokenResults = await Promise.all(tokenPromises);
-            const validTokens = tokenResults.filter(token => token !== null);
-            
-            setWalletTokens(validTokens);
+            // 3. Get tokens from received tips (in parallel, don't block)
+            (async () => {
+                try {
+                    const forumActor = createForumActor(forumCanisterId, {
+                        agentOptions: {
+                            host: process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943',
+                            identity: identity,
+                        },
+                    });
+                    const tipTokenSummaries = await getTipTokensReceivedByUser(forumActor, identity.getPrincipal());
+                    
+                    for (const summary of tipTokenSummaries) {
+                        const ledger = summary.token_ledger_principal;
+                        const ledgerId = ledger.toString();
+                        if (!knownLedgers.has(ledgerId) && fetchSessionRef.current === sessionId) {
+                            knownLedgers.add(ledgerId);
+                            fetchTokenDetailsFast(ledger).then(token => {
+                                if (token && fetchSessionRef.current === sessionId) {
+                                    addTokenProgressively(token, sessionId);
+                                    fetchAndUpdateConversionRate(ledger, token.decimals, sessionId);
+                                }
+                            });
+                        }
+                    }
+                } catch (tipErr) {
+                    console.warn('Could not fetch tip tokens:', tipErr);
+                }
+            })();
+
             setLastUpdated(new Date());
             setHasFetchedInitial(true);
+            
+            // Set loading to false after a short delay to allow first tokens to appear
+            setTimeout(() => {
+                if (fetchSessionRef.current === sessionId) {
+                    setWalletLoading(false);
+                }
+            }, 500);
+            
         } catch (err) {
             console.error('Error fetching compact wallet tokens:', err);
-            setWalletTokens([]);
-        } finally {
-            setWalletLoading(false);
+            if (fetchSessionRef.current === sessionId) {
+                setWalletLoading(false);
+            }
         }
-    }, [identity, isAuthenticated, fetchTokenDetails]);
+    }, [identity, isAuthenticated, fetchTokenDetailsFast, addTokenProgressively, fetchAndUpdateConversionRate]);
 
     // Fetch tokens when user authenticates
     useEffect(() => {

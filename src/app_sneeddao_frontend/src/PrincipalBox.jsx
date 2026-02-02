@@ -486,6 +486,10 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                   const rewards = BigInt(token.rewards || 0n);
                                   const totalBalance = available + locked + staked + maturity + rewards;
                                   
+                                  // Calculate USD value
+                                  const balanceNum = Number(totalBalance) / (10 ** (token.decimals || 8));
+                                  const usdValue = token.conversion_rate ? balanceNum * token.conversion_rate : token.usdValue;
+                                  
                                   return (
                                       <div 
                                           key={ledgerId || index}
@@ -500,8 +504,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                       >
                                           {/* Token Logo */}
                                           <div style={{ 
-                                              width: '24px', 
-                                              height: '24px', 
+                                              width: '28px', 
+                                              height: '28px', 
                                               flexShrink: 0,
                                               display: 'flex',
                                               alignItems: 'center',
@@ -512,8 +516,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                                       src={token.logo}
                                                       alt={token.symbol}
                                                       style={{
-                                                          width: '24px',
-                                                          height: '24px',
+                                                          width: '28px',
+                                                          height: '28px',
                                                           borderRadius: '50%',
                                                           objectFit: 'cover'
                                                       }}
@@ -525,14 +529,14 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                               ) : null}
                                               <div 
                                                   style={{
-                                                      width: '24px',
-                                                      height: '24px',
+                                                      width: '28px',
+                                                      height: '28px',
                                                       borderRadius: '50%',
                                                       backgroundColor: theme.colors.accent,
                                                       display: token.logo ? 'none' : 'flex',
                                                       alignItems: 'center',
                                                       justifyContent: 'center',
-                                                      fontSize: '10px',
+                                                      fontSize: '11px',
                                                       fontWeight: 'bold',
                                                       color: theme.colors.primaryText
                                                   }}
@@ -541,30 +545,47 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                               </div>
                                           </div>
                                           
-                                          {/* Balance and Symbol (together on the left) */}
+                                          {/* Balance, Symbol and USD Value */}
                                           <div style={{ 
                                               flex: 1, 
                                               minWidth: 0,
                                               display: 'flex',
-                                              alignItems: 'center',
-                                              gap: '4px'
+                                              flexDirection: 'column',
+                                              gap: '2px'
                                           }}>
-                                              <span style={{ 
-                                                  color: theme.colors.primaryText,
-                                                  fontSize: '13px',
-                                                  fontWeight: '500',
-                                                  overflow: 'hidden',
-                                                  textOverflow: 'ellipsis',
-                                                  whiteSpace: 'nowrap'
+                                              <div style={{
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  gap: '4px'
                                               }}>
-                                                  {formatAmount(totalBalance, token.decimals || 8)}
-                                              </span>
+                                                  <span style={{ 
+                                                      color: theme.colors.primaryText,
+                                                      fontSize: '13px',
+                                                      fontWeight: '500',
+                                                      overflow: 'hidden',
+                                                      textOverflow: 'ellipsis',
+                                                      whiteSpace: 'nowrap'
+                                                  }}>
+                                                      {formatAmount(totalBalance, token.decimals || 8)}
+                                                  </span>
+                                                  <span style={{ 
+                                                      color: theme.colors.mutedText,
+                                                      fontSize: '12px',
+                                                      flexShrink: 0
+                                                  }}>
+                                                      {token.symbol}
+                                                  </span>
+                                              </div>
+                                              {/* USD Value - shows loading indicator or value */}
                                               <span style={{ 
                                                   color: theme.colors.mutedText,
-                                                  fontSize: '12px',
-                                                  flexShrink: 0
+                                                  fontSize: '11px',
+                                                  opacity: 0.8
                                               }}>
-                                                  {token.symbol}
+                                                  {usdValue !== null && usdValue !== undefined 
+                                                      ? `$${usdValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                                      : <span style={{ opacity: 0.5 }}>...</span>
+                                                  }
                                               </span>
                                           </div>
                                           
