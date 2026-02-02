@@ -794,29 +794,32 @@ function FeedItemCard({
                 )}
                 
                 {/* Body preview */}
-                {item.body && item.body.length > 0 && !item._isAuction && (
-                    <div style={{
-                        ...styles.body,
-                        position: 'relative',
-                        maxHeight: '60px',
-                    }}>
-                        <MarkdownBody 
-                            text={(() => {
-                                const bodyText = Array.isArray(item.body) ? item.body[0] : item.body;
-                                return bodyText.length > 250 ? `${bodyText.substring(0, 250)}...` : bodyText;
-                            })()}
-                        />
+                {item.body && item.body.length > 0 && !item._isAuction && (() => {
+                    const bodyText = Array.isArray(item.body) ? item.body[0] : item.body;
+                    const isLongText = bodyText.length > 120; // Only fade if text is long enough to likely overflow
+                    return (
                         <div style={{
-                            position: 'absolute',
-                            bottom: 0,
-                            left: 0,
-                            right: 0,
-                            height: '40px',
-                            background: `linear-gradient(transparent, ${theme.colors.secondaryBg})`,
-                            pointerEvents: 'none'
-                        }} />
-                    </div>
-                )}
+                            ...styles.body,
+                            position: 'relative',
+                            maxHeight: '60px',
+                        }}>
+                            <MarkdownBody 
+                                text={bodyText.length > 250 ? `${bodyText.substring(0, 250)}...` : bodyText}
+                            />
+                            {isLongText && (
+                                <div style={{
+                                    position: 'absolute',
+                                    bottom: 0,
+                                    left: 0,
+                                    right: 0,
+                                    height: '40px',
+                                    background: `linear-gradient(transparent, ${theme.colors.secondaryBg})`,
+                                    pointerEvents: 'none'
+                                }} />
+                            )}
+                        </div>
+                    );
+                })()}
                 
                 {/* Auction public note */}
                 {item._isAuction && item.body && item.body.length > 0 && (
