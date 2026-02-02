@@ -1605,6 +1605,7 @@ function Hub() {
                     gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 500px), 1fr))',
                     gap: '1.5rem',
                     marginBottom: '2.5rem',
+                    alignItems: 'start',
                 }}>
                     {/* Sneed Forum Activity */}
                     <div style={{
