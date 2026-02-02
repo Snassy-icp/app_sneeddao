@@ -432,11 +432,22 @@ function Hub() {
     
     // Helper to get token info
     const getTokenInfo = useCallback((ledgerId) => {
-        // Read directly from the metadata state Map to ensure we get fresh data
+        // Read directly from the metadata state Map to ensure we get fresh data (ICRC1 metadata)
         const globalMeta = tokenMetadataState.get(ledgerId) || getTokenMetadata(ledgerId);
+        
+        // Always prioritize ICRC1 metadata for tokens
+        if (globalMeta?.symbol) {
+            return {
+                symbol: globalMeta.symbol,
+                decimals: globalMeta.decimals || 8,
+                logo: globalMeta.logo || null,
+                fee: globalMeta.fee ? BigInt(globalMeta.fee) : null,
+            };
+        }
+        
         const cachedLogo = globalMeta?.logo || null;
         
-        // Check SNS list for tokens (SNS data uses canisters.ledger)
+        // Fallback: Check SNS list for tokens (SNS data uses canisters.ledger)
         const snsMatch = snsList.find(s => s.canisters?.ledger === ledgerId);
         if (snsMatch) {
             return {
@@ -1659,7 +1670,7 @@ function Hub() {
                         {/* Feed Items */}
                         <div style={{ 
                             padding: '16px',
-                            maxHeight: feedExpanded ? 'none' : '320px',
+                            maxHeight: feedExpanded ? 'none' : '480px',
                             overflow: 'hidden',
                             transition: 'max-height 0.3s ease-out',
                         }}>
@@ -1791,7 +1802,7 @@ function Hub() {
                         {/* Enhanced Offer Cards */}
                         <div style={{ 
                             padding: '16px',
-                            maxHeight: offersExpanded ? 'none' : '320px',
+                            maxHeight: offersExpanded ? 'none' : '480px',
                             overflow: 'hidden',
                             transition: 'max-height 0.3s ease-out',
                         }}>
