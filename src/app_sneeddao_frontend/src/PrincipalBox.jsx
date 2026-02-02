@@ -1,12 +1,17 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FaCopy, FaCheck, FaWallet, FaPaperPlane, FaKey, FaIdCard, FaExternalLinkAlt } from 'react-icons/fa';
+import { Principal } from '@dfinity/principal';
+import { principalToSubAccount } from '@dfinity/utils';
 import { useAuth } from './AuthContext';
 import { useTheme } from './contexts/ThemeContext';
 import { useNaming } from './NamingContext';
 import { useWalletOptional } from './contexts/WalletContext';
 import { computeAccountId } from './utils/PrincipalUtils';
 import { formatAmount } from './utils/StringUtils';
+import { get_available_backend } from './utils/TokenUtils';
+import { createActor as createLedgerActor } from 'external/icrc1_ledger';
+import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
 import SendTokenModal from './SendTokenModal';
 import TokenCardModal from './components/TokenCardModal';
 import LockModal from './LockModal';
@@ -81,16 +86,113 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     // Handle lock from token detail modal - open lock modal
     const handleOpenLockFromDetail = (token) => {
         setShowTokenDetailModal(false);
-        setLockToken(token);
+        // Normalize token for LockModal - ensure all required fields exist
+        const normalizedToken = {
+            ...token,
+            // Ensure BigInt fields have proper defaults
+            balance: BigInt(token.balance || token.available || 0n),
+            available: BigInt(token.available || token.balance || 0n),
+            available_backend: BigInt(token.available_backend || 0n),
+            locked: BigInt(token.locked || 0n),
+            fee: BigInt(token.fee || 10000n),
+            decimals: token.decimals ?? 8,
+            // Ensure ledger_canister_id is preserved properly
+            ledger_canister_id: token.ledger_canister_id || 
+                (token.principal ? Principal.fromText(token.principal) : null),
+        };
+        setLockToken(normalizedToken);
         setShowLockModal(true);
     };
     
-    // Handle when a lock is added - refresh wallet data
-    const handleAddLock = () => {
-        if (walletContext?.refreshWallet) {
-            walletContext.refreshWallet();
+    // Handle when a lock is added - performs the actual locking operation
+    const handleAddLock = useCallback(async (token, amount, expiry, onProgress) => {
+        try {
+            // Get the ledger principal - token should be normalized by handleOpenLockFromDetail
+            let ledgerPrincipal = token.ledger_canister_id;
+            
+            // If it's a string (shouldn't be after normalization, but just in case)
+            if (typeof ledgerPrincipal === 'string') {
+                ledgerPrincipal = Principal.fromText(ledgerPrincipal);
+            } else if (!ledgerPrincipal && token.principal) {
+                ledgerPrincipal = Principal.fromText(token.principal);
+            }
+            
+            if (!ledgerPrincipal) {
+                throw new Error('Token ledger canister ID not found');
+            }
+            
+            const ledgerActor = createLedgerActor(ledgerPrincipal, { agentOptions: { identity } });
+            const decimals = await ledgerActor.icrc1_decimals();
+            
+            // Convert to BigInt safely - handle decimal inputs
+            const amountFloat = parseFloat(amount);
+            const scaledAmount = amountFloat * (10 ** decimals);
+            const bigIntAmount = BigInt(Math.floor(scaledAmount));
+            
+            // Get backend balance - use 0n if not available (compact wallet may not have this)
+            let available_balance_backend = 0n;
+            try {
+                if (token.balance_backend !== undefined) {
+                    available_balance_backend = get_available_backend(token);
+                } else {
+                    available_balance_backend = BigInt(token.available_backend || 0n);
+                }
+            } catch (e) {
+                // Token may not have balance_backend, treat as 0
+                available_balance_backend = 0n;
+            }
+            
+            const bigIntAmountSendToBackend = bigIntAmount - available_balance_backend;
+
+            if (bigIntAmountSendToBackend > 0n) {
+                // Report progress: depositing
+                if (onProgress) onProgress('depositing');
+                
+                const principal_subaccount = principalToSubAccount(identity.getPrincipal());
+                const recipientPrincipal = Principal.fromText(sneedLockCanisterId);
+                await ledgerActor.icrc1_transfer({
+                    to: { owner: recipientPrincipal, subaccount: [principal_subaccount] },
+                    fee: [],
+                    memo: [],
+                    from_subaccount: [],
+                    created_at_time: [],
+                    amount: bigIntAmountSendToBackend
+                });
+            }
+
+            // Report progress: locking
+            if (onProgress) onProgress('locking');
+
+            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, {
+                agentOptions: { identity }
+            });
+
+            const result = await sneedLockActor.create_lock(
+                bigIntAmount,
+                ledgerPrincipal,
+                BigInt(expiry) * (10n ** 6n)
+            );
+
+            console.log('create_lock result:', result);
+
+            // Refresh wallet data after successful lock
+            if (walletContext?.refreshWallet) {
+                walletContext.refreshWallet();
+            }
+
+            // Ensure we return a valid result object
+            // LockModal expects either { Ok: ... } or { Err: ... }
+            if (result === undefined || result === null) {
+                // If result is undefined, assume success (lock was created)
+                return { Ok: true };
+            }
+
+            return result;
+        } catch (error) {
+            console.error('Error in handleAddLock:', error);
+            throw error;
         }
-    };
+    }, [identity, walletContext]);
 
     // Add click outside handler
     useEffect(() => {
