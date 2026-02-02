@@ -708,7 +708,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                               backgroundColor: theme.colors.primaryBg,
                               borderRadius: '8px',
                               maxHeight: '200px',
-                              overflowY: 'auto'
+                              overflowY: 'auto',
+                              overflowX: 'hidden'
                           }}
                       >
                           {(walletLoading || !hasFetchedInitial) ? (
@@ -765,7 +766,10 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                               padding: '8px 12px',
                                               borderBottom: index < tokensWithBalance.length - 1 ? `1px solid ${theme.colors.border}` : 'none',
                                               gap: '10px',
-                                              cursor: 'pointer'
+                                              cursor: 'pointer',
+                                              minWidth: 0,
+                                              maxWidth: '100%',
+                                              boxSizing: 'border-box'
                                           }}
                                       >
                                           {/* Token Logo */}
@@ -869,7 +873,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                                   alignItems: 'center',
                                                   gap: '4px',
                                                   borderRadius: '4px',
-                                                  transition: 'background-color 0.15s ease'
+                                                  transition: 'background-color 0.15s ease',
+                                                  flexShrink: 0
                                               }}
                                               onMouseOver={(e) => e.currentTarget.style.backgroundColor = `${theme.colors.accent}20`}
                                               onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
