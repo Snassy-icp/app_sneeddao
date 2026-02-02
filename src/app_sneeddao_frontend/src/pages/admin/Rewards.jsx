@@ -7,6 +7,7 @@ import { createActor as createRllActor, canisterId as rllCanisterId } from 'decl
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { getTokenLogo } from '../../utils/TokenUtils';
 import { PrincipalDisplay } from '../../utils/PrincipalUtils';
+import PrincipalInput from '../../components/PrincipalInput';
 import InfoModal from '../../components/InfoModal';
 import ConfirmationModal from '../../ConfirmationModal';
 import { useNavigate } from 'react-router-dom';
@@ -1618,15 +1619,16 @@ export default function RewardsAdmin() {
                                                 All User Balances
                                             </h3>
                                             <div style={{ flex: 1, minWidth: '250px', maxWidth: '400px' }}>
-                                                <input
-                                                    type="text"
-                                                    placeholder="Filter by principal..."
+                                                <PrincipalInput
                                                     value={userBalancesFilter}
-                                                    onChange={(e) => {
-                                                        setUserBalancesFilter(e.target.value);
+                                                    onChange={(value) => {
+                                                        setUserBalancesFilter(value);
                                                         setUserBalancesPage(1);
                                                     }}
-                                                    style={{ ...styles.input, marginBottom: 0 }}
+                                                    placeholder="Filter by principal..."
+                                                    isAuthenticated={isAuthenticated}
+                                                    defaultPrincipalType="users"
+                                                    style={{ maxWidth: '100%' }}
                                                 />
                                             </div>
                                             {userBalancesFilter && (
@@ -1990,15 +1992,16 @@ export default function RewardsAdmin() {
                                                 Claim Events
                                             </h3>
                                             <div style={{ flex: 1, minWidth: '250px', maxWidth: '400px' }}>
-                                                <input
-                                                    type="text"
-                                                    placeholder="Filter by hotkey/principal..."
+                                                <PrincipalInput
                                                     value={claimFilter}
-                                                    onChange={(e) => {
-                                                        setClaimFilter(e.target.value);
+                                                    onChange={(value) => {
+                                                        setClaimFilter(value);
                                                         setClaimPage(1);
                                                     }}
-                                                    style={{ ...styles.input, marginBottom: 0 }}
+                                                    placeholder="Filter by hotkey/principal..."
+                                                    isAuthenticated={isAuthenticated}
+                                                    defaultPrincipalType="users"
+                                                    style={{ maxWidth: '100%' }}
                                                 />
                                             </div>
                                             {claimFilter && (
