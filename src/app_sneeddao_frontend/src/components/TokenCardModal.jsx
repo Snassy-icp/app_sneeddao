@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { FaTimes, FaSync } from 'react-icons/fa';
 import { useTheme } from '../contexts/ThemeContext';
 import TokenCard from '../TokenCard';
@@ -27,6 +27,19 @@ const TokenCardModal = ({
     isSnsToken = false
 }) => {
     const { theme } = useTheme();
+    const [refreshClicked, setRefreshClicked] = useState(false);
+
+    // Handle refresh click with visual feedback
+    const handleRefreshClick = () => {
+        if (isRefreshing || !handleRefreshToken) return;
+        
+        // Visual feedback
+        setRefreshClicked(true);
+        setTimeout(() => setRefreshClicked(false), 300);
+        
+        // Trigger refresh
+        handleRefreshToken(normalizedToken);
+    };
 
     // Normalize token data to ensure all required fields exist
     const normalizedToken = useMemo(() => {
@@ -80,6 +93,24 @@ const TokenCardModal = ({
         }
         return {};
     }, [lockDetailsLoading, token]);
+
+    // Convert locks array to object keyed by ledger_canister_id (format expected by TokenCard)
+    const normalizedLocks = useMemo(() => {
+        const ledgerId = token?.ledger_canister_id?.toString?.() || token?.ledger_canister_id || token?.principal;
+        
+        // If locks is already an object with the right structure, use it
+        if (locks && typeof locks === 'object' && !Array.isArray(locks)) {
+            return locks;
+        }
+        
+        // If locks is an array, convert to object
+        if (Array.isArray(locks) && ledgerId) {
+            return { [ledgerId]: locks };
+        }
+        
+        // Default empty object
+        return ledgerId ? { [ledgerId]: [] } : {};
+    }, [locks, token]);
 
     // Handle escape key to close
     useEffect(() => {
@@ -153,10 +184,12 @@ const TokenCardModal = ({
                     {/* Refresh button */}
                     {handleRefreshToken && (
                         <button
-                            onClick={() => handleRefreshToken(normalizedToken)}
+                            onClick={handleRefreshClick}
                             disabled={isRefreshing}
                             style={{
-                                background: 'rgba(255, 255, 255, 0.1)',
+                                background: refreshClicked 
+                                    ? 'rgba(59, 130, 246, 0.5)' 
+                                    : 'rgba(255, 255, 255, 0.1)',
                                 border: 'none',
                                 borderRadius: '50%',
                                 width: '32px',
@@ -165,19 +198,22 @@ const TokenCardModal = ({
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 cursor: isRefreshing ? 'not-allowed' : 'pointer',
-                                color: theme.colors.mutedText,
-                                transition: 'all 0.2s ease',
-                                opacity: isRefreshing ? 0.5 : 1
+                                color: refreshClicked ? '#fff' : theme.colors.mutedText,
+                                transition: 'all 0.15s ease',
+                                opacity: isRefreshing ? 0.5 : 1,
+                                transform: refreshClicked ? 'scale(0.9)' : 'scale(1)'
                             }}
                             onMouseOver={(e) => {
-                                if (!isRefreshing) {
+                                if (!isRefreshing && !refreshClicked) {
                                     e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
                                     e.currentTarget.style.color = theme.colors.primaryText;
                                 }
                             }}
                             onMouseOut={(e) => {
-                                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                                e.currentTarget.style.color = theme.colors.mutedText;
+                                if (!refreshClicked) {
+                                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                                    e.currentTarget.style.color = theme.colors.mutedText;
+                                }
                             }}
                             title="Refresh token data"
                         >
@@ -224,7 +260,7 @@ const TokenCardModal = ({
                 <div style={{ padding: '8px' }}>
                     <TokenCard
                         token={normalizedToken}
-                        locks={locks}
+                        locks={normalizedLocks}
                         lockDetailsLoading={normalizedLockDetailsLoading}
                         showDebug={false}
                         hideButtons={hideButtons}

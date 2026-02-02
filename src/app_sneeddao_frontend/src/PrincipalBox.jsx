@@ -29,6 +29,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const [showLockModal, setShowLockModal] = useState(false);
     const [lockToken, setLockToken] = useState(null);
     const [isRefreshingToken, setIsRefreshingToken] = useState(false);
+    const [tokenLocks, setTokenLocks] = useState([]);
+    const [lockDetailsLoading, setLockDetailsLoading] = useState({});
     const popupRef = useRef(null);
     const { login, identity } = useAuth();
     const { theme } = useTheme();
@@ -68,13 +70,6 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         if (sendToken) {
             await sendToken(token, recipient, amount, subaccount);
         }
-    };
-    
-    // Open token detail modal
-    const openTokenDetailModal = (token) => {
-        setDetailToken(token);
-        setShowTokenDetailModal(true);
-        setShowPopup(false); // Close the popup when opening the modal
     };
     
     // Handle send from token detail modal
@@ -195,21 +190,74 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         }
     }, [identity, walletContext]);
 
+    // Fetch locks for a specific token
+    const fetchLocksForToken = useCallback(async (token) => {
+        if (!identity || !token) return;
+        
+        const ledgerId = token.principal || token.ledger_canister_id?.toString?.();
+        if (!ledgerId) return;
+        
+        setLockDetailsLoading(prev => ({ ...prev, [ledgerId]: true }));
+        
+        try {
+            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
+            
+            // Clear expired locks first
+            if (await sneedLockActor.has_expired_locks()) {
+                await sneedLockActor.clear_expired_locks();
+            }
+            
+            const locks_from_backend = await sneedLockActor.get_token_locks();
+            
+            const tokenLocksList = [];
+            for (const lock of locks_from_backend) {
+                const lockLedgerId = lock[1]?.toText?.() || lock[1]?.toString?.();
+                if (lockLedgerId === ledgerId) {
+                    const readableDateFromHugeInt = new Date(Number(lock[3] / (10n ** 6n)));
+                    tokenLocksList.push({
+                        lock_id: lock[0],
+                        amount: lock[2],
+                        expiry: readableDateFromHugeInt
+                    });
+                }
+            }
+            
+            setTokenLocks(tokenLocksList);
+        } catch (error) {
+            console.error('Error fetching locks:', error);
+            setTokenLocks([]);
+        } finally {
+            setLockDetailsLoading(prev => ({ ...prev, [ledgerId]: false }));
+        }
+    }, [identity]);
+
+    // Open token detail modal
+    const openTokenDetailModal = useCallback((token) => {
+        setDetailToken(token);
+        setTokenLocks([]); // Reset locks
+        setShowTokenDetailModal(true);
+        setShowPopup(false); // Close the popup when opening the modal
+        // Fetch locks for this token
+        fetchLocksForToken(token);
+    }, [fetchLocksForToken]);
+
     // Handle refresh token in detail modal
     const handleRefreshToken = useCallback(async (token) => {
         if (!walletContext?.refreshWallet) return;
         
         setIsRefreshingToken(true);
         try {
-            await walletContext.refreshWallet();
-            // Update detailToken with fresh data from walletTokens after refresh
-            // The token will be updated via the walletTokens state change
+            // Refresh wallet and locks in parallel
+            await Promise.all([
+                walletContext.refreshWallet(),
+                fetchLocksForToken(token)
+            ]);
         } catch (error) {
             console.error('Error refreshing token:', error);
         } finally {
             setIsRefreshingToken(false);
         }
-    }, [walletContext]);
+    }, [walletContext, fetchLocksForToken]);
 
     // Keep detailToken in sync with walletTokens
     useEffect(() => {
@@ -877,6 +925,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
           onClose={() => {
               setShowTokenDetailModal(false);
               setDetailToken(null);
+              setTokenLocks([]);
           }}
           token={detailToken}
           openSendModal={handleOpenSendFromDetail}
@@ -885,6 +934,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
           isSnsToken={detailToken && isTokenSns ? isTokenSns(detailToken.ledger_canister_id) : false}
           handleRefreshToken={handleRefreshToken}
           isRefreshing={isRefreshingToken}
+          locks={tokenLocks}
+          lockDetailsLoading={lockDetailsLoading}
       />
       
       {/* Lock Modal */}
