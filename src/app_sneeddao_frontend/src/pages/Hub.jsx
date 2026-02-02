@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import Header from '../components/Header';
 import { Link } from 'react-router-dom';
-import { FaExchangeAlt, FaCoins, FaLock, FaComments, FaWallet, FaServer, FaNewspaper, FaUsers, FaVoteYea, FaRss, FaArrowRight, FaHistory, FaStar, FaUnlock, FaShieldAlt, FaGlobe, FaBrain, FaGavel, FaCube, FaLayerGroup, FaStream, FaReply } from 'react-icons/fa';
+import { FaExchangeAlt, FaCoins, FaLock, FaComments, FaWallet, FaServer, FaNewspaper, FaUsers, FaVoteYea, FaRss, FaArrowRight, FaHistory, FaStar, FaUnlock, FaShieldAlt, FaGlobe, FaBrain, FaGavel, FaCube, FaLayerGroup, FaStream, FaReply, FaClock, FaRobot, FaCubes, FaNetworkWired } from 'react-icons/fa';
 import { HttpAgent } from '@dfinity/agent';
 import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
 import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
@@ -40,7 +40,7 @@ const customStyles = `
 
 @keyframes float {
     0%, 100% { transform: translateY(0px); }
-    50% { transform: translateY(-8px); }
+    50% { transform: translateY(-10px); }
 }
 
 @keyframes gradientShift {
@@ -50,8 +50,8 @@ const customStyles = `
 }
 
 @keyframes glow {
-    0%, 100% { box-shadow: 0 0 20px rgba(99, 102, 241, 0.3); }
-    50% { box-shadow: 0 0 40px rgba(99, 102, 241, 0.5); }
+    0%, 100% { box-shadow: 0 0 30px rgba(99, 102, 241, 0.4); }
+    50% { box-shadow: 0 0 60px rgba(99, 102, 241, 0.7); }
 }
 
 @keyframes tickerPulse {
@@ -62,6 +62,48 @@ const customStyles = `
 @keyframes priceGlow {
     0%, 100% { text-shadow: 0 0 10px rgba(34, 197, 94, 0.3); }
     50% { text-shadow: 0 0 20px rgba(34, 197, 94, 0.6); }
+}
+
+@keyframes orbit {
+    from { transform: rotate(0deg) translateX(120px) rotate(0deg); }
+    to { transform: rotate(360deg) translateX(120px) rotate(-360deg); }
+}
+
+@keyframes orbit2 {
+    from { transform: rotate(180deg) translateX(100px) rotate(-180deg); }
+    to { transform: rotate(540deg) translateX(100px) rotate(-540deg); }
+}
+
+@keyframes orbit3 {
+    from { transform: rotate(90deg) translateX(80px) rotate(-90deg); }
+    to { transform: rotate(450deg) translateX(80px) rotate(-450deg); }
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes scaleIn {
+    from {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes borderGlow {
+    0%, 100% { border-color: rgba(99, 102, 241, 0.3); }
+    50% { border-color: rgba(139, 92, 246, 0.6); }
 }
 
 .hub-card-animate {
@@ -112,6 +154,50 @@ const customStyles = `
 .hub-activity-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+}
+
+.hub-hero-glow {
+    animation: glow 3s ease-in-out infinite;
+}
+
+.hub-orbit-1 {
+    animation: orbit 20s linear infinite;
+}
+
+.hub-orbit-2 {
+    animation: orbit2 15s linear infinite;
+}
+
+.hub-orbit-3 {
+    animation: orbit3 25s linear infinite;
+}
+
+.hub-stat-card:hover {
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+}
+
+.hub-cta-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 35px rgba(99, 102, 241, 0.5);
+}
+
+.hub-cta-secondary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 35px rgba(34, 197, 94, 0.4);
+}
+
+.hub-offer-card {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hub-offer-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+}
+
+.hub-border-glow {
+    animation: borderGlow 3s ease-in-out infinite;
 }
 `;
 
@@ -593,111 +679,180 @@ function Hub() {
                 margin: '0 auto',
                 padding: '2rem'
             }}>
-                {/* Hero Section */}
+                {/* ============================================ */}
+                {/* HERO SECTION - Modern & Engaging Design */}
+                {/* ============================================ */}
                 <div style={{
-                    background: `linear-gradient(135deg, ${theme.colors.secondaryBg} 0%, ${hubPrimary}15 50%, ${hubSecondary}10 100%)`,
-                    borderRadius: '24px',
-                    padding: '3.5rem 2.5rem',
+                    background: `linear-gradient(165deg, ${theme.colors.secondaryBg} 0%, ${hubPrimary}08 30%, ${hubSecondary}12 60%, ${theme.colors.primaryBg} 100%)`,
+                    borderRadius: '32px',
+                    padding: '0',
                     marginBottom: '2rem',
                     border: `1px solid ${theme.colors.border}`,
-                    textAlign: 'center',
                     position: 'relative',
                     overflow: 'hidden',
                 }}>
-                    {/* Background decorations */}
-                    <div style={{
-                        position: 'absolute',
-                        top: '-60%',
-                        right: '-10%',
-                        width: '500px',
-                        height: '500px',
-                        background: `radial-gradient(circle, ${hubPrimary}20 0%, transparent 70%)`,
-                        borderRadius: '50%',
-                        pointerEvents: 'none',
-                    }} />
-                    <div style={{
-                        position: 'absolute',
-                        bottom: '-40%',
-                        left: '-5%',
-                        width: '400px',
-                        height: '400px',
-                        background: `radial-gradient(circle, ${hubSecondary}15 0%, transparent 70%)`,
-                        borderRadius: '50%',
-                        pointerEvents: 'none',
-                    }} />
-                    <div style={{
-                        position: 'absolute',
-                        top: '20%',
-                        left: '10%',
-                        width: '200px',
-                        height: '200px',
-                        background: `radial-gradient(circle, ${hubAccent}10 0%, transparent 70%)`,
-                        borderRadius: '50%',
-                        pointerEvents: 'none',
-                    }} />
+                    {/* Animated Background Elements */}
+                    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+                        {/* Main glow */}
+                        <div style={{
+                            position: 'absolute',
+                            top: '-30%',
+                            right: '-15%',
+                            width: '700px',
+                            height: '700px',
+                            background: `radial-gradient(circle, ${hubPrimary}25 0%, ${hubPrimary}10 30%, transparent 70%)`,
+                            borderRadius: '50%',
+                        }} />
+                        <div style={{
+                            position: 'absolute',
+                            bottom: '-40%',
+                            left: '-10%',
+                            width: '600px',
+                            height: '600px',
+                            background: `radial-gradient(circle, ${hubSecondary}20 0%, ${hubSecondary}08 40%, transparent 70%)`,
+                            borderRadius: '50%',
+                        }} />
+                        <div style={{
+                            position: 'absolute',
+                            top: '50%',
+                            left: '50%',
+                            width: '400px',
+                            height: '400px',
+                            background: `radial-gradient(circle, ${hubAccent}12 0%, transparent 60%)`,
+                            borderRadius: '50%',
+                            transform: 'translate(-50%, -50%)',
+                        }} />
+                        
+                        {/* Floating orbs */}
+                        <div className="hub-orbit-1" style={{
+                            position: 'absolute',
+                            top: '50%',
+                            left: '50%',
+                            width: '16px',
+                            height: '16px',
+                            background: `linear-gradient(135deg, ${hubPrimary}, ${hubSecondary})`,
+                            borderRadius: '50%',
+                            boxShadow: `0 0 20px ${hubPrimary}60`,
+                        }} />
+                        <div className="hub-orbit-2" style={{
+                            position: 'absolute',
+                            top: '50%',
+                            left: '50%',
+                            width: '10px',
+                            height: '10px',
+                            background: `linear-gradient(135deg, ${hubAccent}, ${theme.colors.success})`,
+                            borderRadius: '50%',
+                            boxShadow: `0 0 15px ${hubAccent}60`,
+                        }} />
+                        <div className="hub-orbit-3" style={{
+                            position: 'absolute',
+                            top: '50%',
+                            left: '50%',
+                            width: '8px',
+                            height: '8px',
+                            background: `linear-gradient(135deg, ${theme.colors.success}, ${hubPrimary})`,
+                            borderRadius: '50%',
+                            boxShadow: `0 0 12px ${theme.colors.success}60`,
+                        }} />
+                        
+                        {/* Grid pattern overlay */}
+                        <div style={{
+                            position: 'absolute',
+                            inset: 0,
+                            backgroundImage: `radial-gradient(${theme.colors.border} 1px, transparent 1px)`,
+                            backgroundSize: '30px 30px',
+                            opacity: 0.3,
+                        }} />
+                    </div>
                     
                     {/* Hero Content */}
-                    <div style={{ position: 'relative', zIndex: 1 }}>
-                        {/* Animated Icon */}
-                        <div 
-                            className="hub-float hub-glow"
-                            style={{
-                                width: '80px',
-                                height: '80px',
-                                borderRadius: '50%',
-                                background: `linear-gradient(135deg, ${hubPrimary}, ${hubSecondary})`,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                margin: '0 auto 1.5rem auto',
-                                padding: '12px',
-                                boxSizing: 'border-box',
-                            }}
-                        >
-                            <img 
-                                src="sneed_logo.png" 
-                                alt="Sneed Logo" 
+                    <div style={{ 
+                        position: 'relative', 
+                        zIndex: 1,
+                        padding: '4rem 2.5rem 3.5rem',
+                    }}>
+                        {/* Logo with animated glow */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'center',
+                            marginBottom: '2rem',
+                        }}>
+                            <div 
+                                className="hub-float hub-hero-glow"
                                 style={{
+                                    width: '100px',
+                                    height: '100px',
+                                    borderRadius: '28px',
+                                    background: `linear-gradient(145deg, ${hubPrimary}, ${hubSecondary})`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    padding: '4px',
+                                    boxSizing: 'border-box',
+                                }}
+                            >
+                                <div style={{
                                     width: '100%',
                                     height: '100%',
-                                    borderRadius: '50%',
-                                    objectFit: 'cover',
-                                }}
-                            />
+                                    borderRadius: '24px',
+                                    background: theme.colors.secondaryBg,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    padding: '12px',
+                                    boxSizing: 'border-box',
+                                }}>
+                                    <img 
+                                        src="sneed_logo.png" 
+                                        alt="Sneed Logo" 
+                                        style={{
+                                            width: '100%',
+                                            height: '100%',
+                                            borderRadius: '16px',
+                                            objectFit: 'cover',
+                                        }}
+                                    />
+                                </div>
+                            </div>
                         </div>
                         
+                        {/* Main headline */}
                         <h1 style={{
-                            fontSize: 'clamp(2rem, 5vw, 3rem)',
-                            fontWeight: '800',
+                            fontSize: 'clamp(2.5rem, 6vw, 3.75rem)',
+                            fontWeight: '900',
                             color: theme.colors.primaryText,
                             marginBottom: '1.5rem',
-                            letterSpacing: '-0.02em',
-                            lineHeight: '1.2',
+                            letterSpacing: '-0.03em',
+                            lineHeight: '1.1',
+                            textAlign: 'center',
                         }}>
-                            Your Home on the{' '}
+                            Your Gateway to the{' '}
                             <span style={{
-                                background: `linear-gradient(135deg, ${hubPrimary}, ${hubSecondary})`,
+                                background: `linear-gradient(135deg, ${hubPrimary} 0%, ${hubSecondary} 50%, ${hubAccent} 100%)`,
+                                backgroundSize: '200% 200%',
                                 WebkitBackgroundClip: 'text',
                                 WebkitTextFillColor: 'transparent',
                                 backgroundClip: 'text',
+                                animation: 'gradientShift 5s ease infinite',
                             }}>
                                 Internet Computer
                             </span>
                         </h1>
                         
+                        {/* Subtitle */}
                         <p style={{
                             color: theme.colors.secondaryText,
-                            fontSize: '1.15rem',
+                            fontSize: '1.25rem',
                             lineHeight: '1.8',
-                            maxWidth: '800px',
-                            margin: '0 auto 2rem auto',
+                            maxWidth: '700px',
+                            margin: '0 auto 2.5rem auto',
+                            textAlign: 'center',
+                            fontWeight: '400',
                         }}>
-                            Trade assets on <Link to="/sneedex_offers" style={{ color: hubPrimary, fontWeight: '600', textDecoration: 'none' }}>Sneedex</Link>, 
-                            unlock <Link to="/liquid_staking" style={{ color: theme.colors.success, fontWeight: '600', textDecoration: 'none' }}>liquid staking</Link> for ICP and SNS neurons, 
-                            secure tokens with <Link to="/sneedlock_info" style={{ color: '#9b59b6', fontWeight: '600', textDecoration: 'none' }}>Sneed Lock</Link>, 
-                            engage in <Link to="/proposals" style={{ color: hubPrimary, fontWeight: '600', textDecoration: 'none' }}>DAO governance</Link>, 
-                            discuss in <Link to="/forum" style={{ color: '#e74c3c', fontWeight: '600', textDecoration: 'none' }}>forums</Link>, 
-                            and manage everything from your <Link to="/wallet" style={{ color: hubAccent, fontWeight: '600', textDecoration: 'none' }}>wallet</Link>.
+                            The all-in-one platform for <strong style={{ color: hubPrimary }}>trading</strong>,{' '}
+                            <strong style={{ color: theme.colors.success }}>staking</strong>,{' '}
+                            <strong style={{ color: '#9b59b6' }}>locking</strong>, and{' '}
+                            <strong style={{ color: hubAccent }}>governing</strong> across all SNS DAOs.
                         </p>
                         
                         {/* CTA Buttons */}
@@ -706,189 +861,227 @@ function Hub() {
                             justifyContent: 'center',
                             gap: '1rem',
                             flexWrap: 'wrap',
+                            marginBottom: '3rem',
                         }}>
                             <Link 
                                 to="/sneedex_offers" 
+                                className="hub-cta-primary"
                                 style={{
                                     display: 'inline-flex',
                                     alignItems: 'center',
-                                    gap: '8px',
+                                    gap: '10px',
                                     background: `linear-gradient(135deg, ${hubPrimary}, ${hubSecondary})`,
                                     color: '#fff',
-                                    padding: '14px 28px',
-                                    borderRadius: '12px',
+                                    padding: '16px 32px',
+                                    borderRadius: '16px',
                                     textDecoration: 'none',
                                     fontWeight: '700',
-                                    fontSize: '1rem',
-                                    boxShadow: `0 4px 20px ${hubPrimary}40`,
+                                    fontSize: '1.05rem',
+                                    boxShadow: `0 8px 30px ${hubPrimary}50`,
                                     transition: 'all 0.3s ease',
                                 }}
                             >
-                                <FaExchangeAlt />
-                                Browse Sneedex
+                                <FaGavel size={18} />
+                                Explore Marketplace
+                                <FaArrowRight size={14} />
                             </Link>
                             <Link 
                                 to="/liquid_staking" 
+                                className="hub-cta-secondary"
                                 style={{
                                     display: 'inline-flex',
                                     alignItems: 'center',
-                                    gap: '8px',
-                                    background: theme.colors.success,
+                                    gap: '10px',
+                                    background: `linear-gradient(135deg, ${theme.colors.success}, #059669)`,
                                     color: '#fff',
-                                    padding: '14px 28px',
-                                    borderRadius: '12px',
+                                    padding: '16px 32px',
+                                    borderRadius: '16px',
                                     textDecoration: 'none',
                                     fontWeight: '700',
-                                    fontSize: '1rem',
-                                    boxShadow: `0 4px 20px ${theme.colors.success}40`,
+                                    fontSize: '1.05rem',
+                                    boxShadow: `0 8px 30px ${theme.colors.success}40`,
                                     transition: 'all 0.3s ease',
                                 }}
                             >
-                                <FaCoins />
-                                Liquid Staking
+                                <FaCoins size={18} />
+                                Start Staking
                             </Link>
                             <Link 
                                 to="/sneedlock_info" 
                                 style={{
                                     display: 'inline-flex',
                                     alignItems: 'center',
-                                    gap: '8px',
-                                    background: '#9b59b6',
-                                    color: '#fff',
-                                    padding: '14px 28px',
-                                    borderRadius: '12px',
+                                    gap: '10px',
+                                    background: theme.colors.secondaryBg,
+                                    color: theme.colors.primaryText,
+                                    padding: '16px 32px',
+                                    borderRadius: '16px',
                                     textDecoration: 'none',
-                                    fontWeight: '700',
-                                    fontSize: '1rem',
-                                    boxShadow: '0 4px 20px rgba(155, 89, 182, 0.4)',
+                                    fontWeight: '600',
+                                    fontSize: '1.05rem',
+                                    border: `2px solid ${theme.colors.border}`,
                                     transition: 'all 0.3s ease',
                                 }}
                             >
-                                <FaLock />
-                                Sneed Lock
+                                <FaLock size={16} style={{ color: '#9b59b6' }} />
+                                Lock Tokens
                             </Link>
                         </div>
+                        
+                        {/* Quick Stats Row */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'center',
+                            gap: '2rem',
+                            flexWrap: 'wrap',
+                        }}>
+                            {/* ICP Price */}
+                            <div 
+                                className="hub-stat-card"
+                                style={{ 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: '14px',
+                                    padding: '14px 24px',
+                                    background: `linear-gradient(135deg, ${theme.colors.secondaryBg}, ${theme.colors.primaryBg})`,
+                                    borderRadius: '16px',
+                                    border: `1px solid ${theme.colors.success}30`,
+                                    boxShadow: `0 4px 20px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.05)`,
+                                    transition: 'all 0.3s ease',
+                                }}
+                            >
+                                <div style={{
+                                    width: '48px',
+                                    height: '48px',
+                                    borderRadius: '14px',
+                                    background: `linear-gradient(135deg, ${theme.colors.success}20, ${theme.colors.success}08)`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    border: `1px solid ${theme.colors.success}30`,
+                                }}>
+                                    <img 
+                                        src="https://swaprunner.com/icp_symbol.svg" 
+                                        alt="ICP" 
+                                        style={{ width: '28px', height: '28px', borderRadius: '50%' }}
+                                    />
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.8px' }}>ICP</div>
+                                    <div style={{ 
+                                        fontSize: '1.75rem', 
+                                        fontWeight: '800', 
+                                        color: theme.colors.success,
+                                        lineHeight: 1,
+                                        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace',
+                                    }}>
+                                        ${prices.loading ? '—' : formatPrice(prices.icpUsd, 2)}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* SNEED Price */}
+                            <div 
+                                className="hub-stat-card"
+                                style={{ 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: '14px',
+                                    padding: '14px 24px',
+                                    background: `linear-gradient(135deg, ${theme.colors.secondaryBg}, ${theme.colors.primaryBg})`,
+                                    borderRadius: '16px',
+                                    border: `1px solid ${hubPrimary}30`,
+                                    boxShadow: `0 4px 20px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.05)`,
+                                    transition: 'all 0.3s ease',
+                                }}
+                            >
+                                <div style={{
+                                    width: '48px',
+                                    height: '48px',
+                                    borderRadius: '14px',
+                                    background: `linear-gradient(135deg, ${hubPrimary}20, ${hubPrimary}08)`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    border: `1px solid ${hubPrimary}30`,
+                                    overflow: 'hidden',
+                                }}>
+                                    <img 
+                                        src="sneed_logo.png" 
+                                        alt="SNEED" 
+                                        style={{ width: '32px', height: '32px', borderRadius: '8px' }}
+                                    />
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.8px' }}>SNEED</div>
+                                    <div style={{ 
+                                        fontSize: '1.75rem', 
+                                        fontWeight: '800', 
+                                        color: hubPrimary,
+                                        lineHeight: 1,
+                                        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace',
+                                    }}>
+                                        ${prices.loading ? '—' : formatPrice(prices.sneedUsd, 6)}
+                                    </div>
+                                    <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '2px' }}>
+                                        {prices.loading ? '' : `≈ ${formatPrice(prices.sneedIcp, 8)} ICP`}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* DAO Neurons */}
+                            <div 
+                                className="hub-stat-card"
+                                style={{ 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: '14px',
+                                    padding: '14px 24px',
+                                    background: `linear-gradient(135deg, ${theme.colors.secondaryBg}, ${theme.colors.primaryBg})`,
+                                    borderRadius: '16px',
+                                    border: `1px solid ${hubAccent}30`,
+                                    boxShadow: `0 4px 20px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.05)`,
+                                    transition: 'all 0.3s ease',
+                                }}
+                            >
+                                <div style={{
+                                    width: '48px',
+                                    height: '48px',
+                                    borderRadius: '14px',
+                                    background: `linear-gradient(135deg, ${hubAccent}25, ${hubAccent}10)`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    border: `1px solid ${hubAccent}30`,
+                                }}>
+                                    <FaBrain size={22} style={{ color: hubAccent }} />
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Active Neurons</div>
+                                    <div style={{ 
+                                        fontSize: '1.75rem', 
+                                        fontWeight: '800', 
+                                        color: hubAccent,
+                                        lineHeight: 1,
+                                        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace',
+                                    }}>
+                                        {daoStats.loading ? '—' : (daoStats.activeNeurons?.toLocaleString() || '0')}
+                                    </div>
+                                    <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '2px' }}>
+                                        Sneed DAO
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                {/* Live Price Ticker - Prominent at top */}
-                <div style={{
-                    background: `linear-gradient(135deg, ${theme.colors.secondaryBg} 0%, rgba(34, 197, 94, 0.08) 50%, rgba(99, 102, 241, 0.08) 100%)`,
-                    border: `1px solid ${theme.colors.border}`,
-                    borderRadius: '20px',
-                    padding: '1.5rem 2rem',
-                    marginBottom: '1.5rem',
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
-                }}>
-                    <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '2.5rem',
-                        flexWrap: 'wrap',
-                    }}>
-                        {/* ICP Price */}
-                        <div style={{ 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            gap: '14px',
-                            padding: '12px 20px',
-                            background: 'rgba(34, 197, 94, 0.1)',
-                            borderRadius: '14px',
-                            border: '1px solid rgba(34, 197, 94, 0.2)',
-                        }}>
-                            <img 
-                                src="https://swaprunner.com/icp_symbol.svg" 
-                                alt="ICP" 
-                                style={{ width: '40px', height: '40px', borderRadius: '50%' }}
-                            />
-                            <div>
-                                <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>ICP Price</div>
-                                <div style={{ 
-                                    fontSize: '1.5rem', 
-                                    fontWeight: '800', 
-                                    color: '#22c55e',
-                                    lineHeight: 1.1
-                                }}>
-                                    ${prices.loading ? '...' : formatPrice(prices.icpUsd, 2)}
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* SNEED Price */}
-                        <div style={{ 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            gap: '14px',
-                            padding: '12px 20px',
-                            background: `${hubPrimary}10`,
-                            borderRadius: '14px',
-                            border: `1px solid ${hubPrimary}20`,
-                        }}>
-                            <img 
-                                src="sneed_logo.png" 
-                                alt="SNEED" 
-                                style={{ width: '40px', height: '40px', borderRadius: '50%' }}
-                            />
-                            <div>
-                                <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>SNEED Price</div>
-                                <div style={{ 
-                                    fontSize: '1.5rem', 
-                                    fontWeight: '800', 
-                                    color: hubPrimary,
-                                    lineHeight: 1.1
-                                }}>
-                                    ${prices.loading ? '...' : formatPrice(prices.sneedUsd, 6)}
-                                </div>
-                                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '2px' }}>
-                                    {prices.loading ? '' : `${formatPrice(prices.sneedIcp, 8)} ICP`}
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* DAO Stats */}
-                        <div style={{ 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            gap: '14px',
-                            padding: '12px 20px',
-                            background: 'rgba(16, 185, 129, 0.1)',
-                            borderRadius: '14px',
-                            border: '1px solid rgba(16, 185, 129, 0.2)',
-                        }}>
-                            <div style={{ 
-                                width: '40px', 
-                                height: '40px', 
-                                borderRadius: '50%',
-                                background: 'linear-gradient(135deg, #10b981, #059669)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center'
-                            }}>
-                                <FaBrain size={18} style={{ color: 'white' }} />
-                            </div>
-                            <div>
-                                <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Sneed DAO</div>
-                                <div style={{ 
-                                    fontSize: '1.5rem', 
-                                    fontWeight: '800', 
-                                    color: '#10b981',
-                                    lineHeight: 1.1
-                                }}>
-                                    {daoStats.loading ? '...' : daoStats.activeNeurons?.toLocaleString() || '0'}
-                                </div>
-                                <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '2px' }}>
-                                    Active Neurons
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Live Activity Section */}
+                {/* ============================================ */}
+                {/* LIVE ACTIVITY SECTION */}
+                {/* ============================================ */}
                 <div style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
                     gap: '1.5rem',
                     marginBottom: '2.5rem',
                 }}>
@@ -896,33 +1089,34 @@ function Hub() {
                     <div style={{
                         background: `linear-gradient(145deg, ${theme.colors.secondaryBg} 0%, ${theme.colors.primaryBg} 100%)`,
                         border: `1px solid ${theme.colors.border}`,
-                        borderRadius: '20px',
+                        borderRadius: '24px',
                         overflow: 'hidden',
-                        boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+                        boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
                     }}>
                         {/* Branded Header */}
                         <div style={{
-                            background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
-                            padding: '16px 20px',
+                            background: 'linear-gradient(135deg, #f97316 0%, #ea580c 50%, #dc2626 100%)',
+                            padding: '18px 24px',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'space-between',
                         }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                                 <div style={{
-                                    width: '42px',
-                                    height: '42px',
-                                    borderRadius: '12px',
+                                    width: '48px',
+                                    height: '48px',
+                                    borderRadius: '14px',
                                     background: 'rgba(255,255,255,0.2)',
+                                    backdropFilter: 'blur(10px)',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                 }}>
-                                    <FaComments size={20} style={{ color: 'white' }} />
+                                    <FaComments size={22} style={{ color: 'white' }} />
                                 </div>
                                 <div>
-                                    <div style={{ color: 'white', fontWeight: '700', fontSize: '1.1rem' }}>Sneed Forum</div>
-                                    <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.75rem' }}>Latest discussions</div>
+                                    <div style={{ color: 'white', fontWeight: '800', fontSize: '1.2rem', letterSpacing: '-0.01em' }}>Sneed Forum</div>
+                                    <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.8rem', fontWeight: '500' }}>Latest discussions</div>
                                 </div>
                             </div>
                             <Link 
@@ -930,14 +1124,15 @@ function Hub() {
                                 style={{ 
                                     color: 'white', 
                                     textDecoration: 'none', 
-                                    fontSize: '0.85rem',
+                                    fontSize: '0.9rem',
                                     fontWeight: '600',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '6px',
+                                    gap: '8px',
                                     background: 'rgba(255,255,255,0.2)',
-                                    padding: '8px 14px',
-                                    borderRadius: '8px',
+                                    backdropFilter: 'blur(10px)',
+                                    padding: '10px 18px',
+                                    borderRadius: '10px',
                                     transition: 'all 0.2s ease',
                                 }}
                             >
@@ -948,12 +1143,14 @@ function Hub() {
                         {/* Feed Items */}
                         <div style={{ padding: '16px' }}>
                             {activityLoading ? (
-                                <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
-                                    <div style={{ marginBottom: '8px' }}>Loading...</div>
+                                <div style={{ textAlign: 'center', padding: '3rem', color: theme.colors.mutedText }}>
+                                    <div className="hub-pulse" style={{ fontSize: '2rem', marginBottom: '12px' }}>💬</div>
+                                    <div>Loading discussions...</div>
                                 </div>
                             ) : feedItems.length === 0 ? (
-                                <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
-                                    No recent activity
+                                <div style={{ textAlign: 'center', padding: '3rem', color: theme.colors.mutedText }}>
+                                    <div style={{ fontSize: '2rem', marginBottom: '12px' }}>📭</div>
+                                    <div>No recent activity</div>
                                 </div>
                             ) : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -983,7 +1180,7 @@ function Hub() {
                                                     gap: '12px',
                                                     padding: '14px 16px',
                                                     background: theme.colors.primaryBg,
-                                                    borderRadius: '12px',
+                                                    borderRadius: '14px',
                                                     textDecoration: 'none',
                                                     border: `1px solid ${theme.colors.border}`,
                                                     transition: 'all 0.2s ease',
@@ -991,28 +1188,31 @@ function Hub() {
                                                 onMouseEnter={(e) => {
                                                     e.currentTarget.style.transform = 'translateX(4px)';
                                                     e.currentTarget.style.borderColor = typeColor;
+                                                    e.currentTarget.style.boxShadow = `0 4px 16px ${typeColor}20`;
                                                 }}
                                                 onMouseLeave={(e) => {
                                                     e.currentTarget.style.transform = 'translateX(0)';
                                                     e.currentTarget.style.borderColor = theme.colors.border;
+                                                    e.currentTarget.style.boxShadow = 'none';
                                                 }}
                                             >
                                                 {/* SNS Logo */}
                                                 <div style={{
-                                                    width: '40px',
-                                                    height: '40px',
-                                                    borderRadius: '10px',
+                                                    width: '44px',
+                                                    height: '44px',
+                                                    borderRadius: '12px',
                                                     background: `linear-gradient(135deg, ${typeColor}30, ${typeColor}15)`,
                                                     display: 'flex',
                                                     alignItems: 'center',
                                                     justifyContent: 'center',
                                                     flexShrink: 0,
                                                     overflow: 'hidden',
+                                                    border: `1px solid ${typeColor}30`,
                                                 }}>
                                                     {snsLogo ? (
                                                         <img src={snsLogo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                                     ) : (
-                                                        getFeedTypeIcon(itemType)
+                                                        <span style={{ color: typeColor }}>{getFeedTypeIcon(itemType)}</span>
                                                     )}
                                                 </div>
                                                 
@@ -1023,13 +1223,14 @@ function Hub() {
                                                             display: 'inline-flex',
                                                             alignItems: 'center',
                                                             gap: '4px',
-                                                            padding: '3px 8px',
-                                                            borderRadius: '6px',
+                                                            padding: '4px 10px',
+                                                            borderRadius: '8px',
                                                             background: typeColor,
                                                             color: 'white',
                                                             fontSize: '0.7rem',
                                                             fontWeight: '700',
                                                             textTransform: 'uppercase',
+                                                            letterSpacing: '0.3px',
                                                         }}>
                                                             {getFeedTypeIcon(itemType)}
                                                             {itemType}
@@ -1037,15 +1238,16 @@ function Hub() {
                                                         {snsData && (
                                                             <span style={{
                                                                 fontSize: '0.75rem',
-                                                                color: theme.colors.mutedText,
+                                                                color: theme.colors.secondaryText,
                                                                 background: theme.colors.secondaryBg,
-                                                                padding: '3px 8px',
-                                                                borderRadius: '6px',
+                                                                padding: '4px 10px',
+                                                                borderRadius: '8px',
+                                                                fontWeight: '500',
                                                             }}>
                                                                 {snsData.name}
                                                             </span>
                                                         )}
-                                                        <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginLeft: 'auto' }}>
+                                                        <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginLeft: 'auto', fontWeight: '500' }}>
                                                             {formatRelativeTime(item.created_at)}
                                                         </span>
                                                     </div>
@@ -1084,37 +1286,38 @@ function Hub() {
                         </div>
                     </div>
 
-                    {/* Sneedex Marketplace */}
+                    {/* Sneedex Marketplace - Enhanced Offer Cards */}
                     <div style={{
                         background: `linear-gradient(145deg, ${theme.colors.secondaryBg} 0%, ${theme.colors.primaryBg} 100%)`,
                         border: `1px solid ${theme.colors.border}`,
-                        borderRadius: '20px',
+                        borderRadius: '24px',
                         overflow: 'hidden',
-                        boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+                        boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
                     }}>
                         {/* Branded Header */}
                         <div style={{
-                            background: `linear-gradient(135deg, ${hubPrimary} 0%, ${hubSecondary} 100%)`,
-                            padding: '16px 20px',
+                            background: `linear-gradient(135deg, ${hubPrimary} 0%, ${hubSecondary} 50%, #7c3aed 100%)`,
+                            padding: '18px 24px',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'space-between',
                         }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                                 <div style={{
-                                    width: '42px',
-                                    height: '42px',
-                                    borderRadius: '12px',
+                                    width: '48px',
+                                    height: '48px',
+                                    borderRadius: '14px',
                                     background: 'rgba(255,255,255,0.2)',
+                                    backdropFilter: 'blur(10px)',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                 }}>
-                                    <FaExchangeAlt size={20} style={{ color: 'white' }} />
+                                    <FaGavel size={22} style={{ color: 'white' }} />
                                 </div>
                                 <div>
-                                    <div style={{ color: 'white', fontWeight: '700', fontSize: '1.1rem' }}>Sneedex</div>
-                                    <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.75rem' }}>Active marketplace offers</div>
+                                    <div style={{ color: 'white', fontWeight: '800', fontSize: '1.2rem', letterSpacing: '-0.01em' }}>Sneedex</div>
+                                    <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.8rem', fontWeight: '500' }}>Active marketplace offers</div>
                                 </div>
                             </div>
                             <Link 
@@ -1122,14 +1325,15 @@ function Hub() {
                                 style={{ 
                                     color: 'white', 
                                     textDecoration: 'none', 
-                                    fontSize: '0.85rem',
+                                    fontSize: '0.9rem',
                                     fontWeight: '600',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '6px',
+                                    gap: '8px',
                                     background: 'rgba(255,255,255,0.2)',
-                                    padding: '8px 14px',
-                                    borderRadius: '8px',
+                                    backdropFilter: 'blur(10px)',
+                                    padding: '10px 18px',
+                                    borderRadius: '10px',
                                     transition: 'all 0.2s ease',
                                 }}
                             >
@@ -1137,138 +1341,315 @@ function Hub() {
                             </Link>
                         </div>
 
-                        {/* Offers */}
+                        {/* Enhanced Offer Cards */}
                         <div style={{ padding: '16px' }}>
                             {activityLoading ? (
-                                <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
-                                    <div style={{ marginBottom: '8px' }}>Loading...</div>
+                                <div style={{ textAlign: 'center', padding: '3rem', color: theme.colors.mutedText }}>
+                                    <div className="hub-pulse" style={{ fontSize: '2rem', marginBottom: '12px' }}>🔨</div>
+                                    <div>Loading offers...</div>
                                 </div>
                             ) : offers.length === 0 ? (
-                                <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
-                                    No active offers
+                                <div style={{ textAlign: 'center', padding: '3rem', color: theme.colors.mutedText }}>
+                                    <div style={{ fontSize: '2rem', marginBottom: '12px' }}>📭</div>
+                                    <div>No active offers</div>
+                                    <Link 
+                                        to="/sneedex_create" 
+                                        style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            marginTop: '1rem',
+                                            padding: '10px 20px',
+                                            background: `linear-gradient(135deg, ${hubPrimary}, ${hubSecondary})`,
+                                            color: 'white',
+                                            borderRadius: '10px',
+                                            textDecoration: 'none',
+                                            fontWeight: '600',
+                                            fontSize: '0.9rem',
+                                        }}
+                                    >
+                                        <FaGavel size={14} /> Create First Offer
+                                    </Link>
                                 </div>
                             ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                     {offers.map((offer, index) => {
+                                        // Get asset details
                                         const assetCount = offer.assets?.length || 0;
                                         const firstAsset = offer.assets?.[0];
                                         let assetType = 'Asset';
                                         let assetIcon = <FaCube size={16} style={{ color: 'white' }} />;
                                         let assetColor = hubPrimary;
+                                        let assetLabel = 'Asset';
                                         
-                                        if (firstAsset) {
-                                            if ('Canister' in firstAsset) {
-                                                assetType = 'Canister';
-                                                assetIcon = <FaServer size={16} style={{ color: 'white' }} />;
-                                                assetColor = '#3b82f6';
-                                            } else if ('SNSNeuron' in firstAsset) {
-                                                assetType = 'SNS Neuron';
+                                        // Determine asset type and styling
+                                        if (firstAsset?.asset) {
+                                            const asset = firstAsset.asset;
+                                            if ('Canister' in asset) {
+                                                const canisterKind = asset.Canister.kind?.[0];
+                                                // Check if it's an ICP Neuron Manager (kind = 1)
+                                                if (canisterKind === 1 || canisterKind === 1n) {
+                                                    assetType = 'NeuronManager';
+                                                    assetIcon = <FaRobot size={16} style={{ color: 'white' }} />;
+                                                    assetColor = '#8b5cf6';
+                                                    assetLabel = 'ICP Neuron';
+                                                } else {
+                                                    assetType = 'Canister';
+                                                    assetIcon = <FaCubes size={16} style={{ color: 'white' }} />;
+                                                    assetColor = '#3b82f6';
+                                                    assetLabel = asset.Canister.title?.[0] 
+                                                        ? (asset.Canister.title[0].length > 15 
+                                                            ? asset.Canister.title[0].slice(0, 15) + '...' 
+                                                            : asset.Canister.title[0])
+                                                        : 'Canister';
+                                                }
+                                            } else if ('SNSNeuron' in asset) {
+                                                assetType = 'SNSNeuron';
                                                 assetIcon = <FaBrain size={16} style={{ color: 'white' }} />;
                                                 assetColor = '#10b981';
-                                            } else if ('ICRC1Token' in firstAsset) {
-                                                assetType = 'Tokens';
+                                                assetLabel = 'SNS Neuron';
+                                            } else if ('ICRC1Token' in asset) {
+                                                assetType = 'Token';
                                                 assetIcon = <FaCoins size={16} style={{ color: 'white' }} />;
                                                 assetColor = '#f59e0b';
-                                            } else if ('NeuronManager' in firstAsset) {
-                                                assetType = 'ICP Neuron';
-                                                assetIcon = <FaBrain size={16} style={{ color: 'white' }} />;
-                                                assetColor = '#8b5cf6';
+                                                assetLabel = 'Tokens';
                                             }
                                         }
+                                        
+                                        // Get price token info - use simple lookup for common tokens
+                                        const priceTokenLedger = offer.price_token_ledger?.toString();
+                                        const getSimpleTokenInfo = (ledgerId) => {
+                                            // Common ICP ecosystem tokens
+                                            if (ledgerId === 'ryjl3-tyaaa-aaaaa-aaaba-cai') return { symbol: 'ICP', decimals: 8 };
+                                            if (ledgerId === 'hvgxa-wqaaa-aaaaq-aacia-cai') return { symbol: 'SNEED', decimals: 8 };
+                                            if (ledgerId === 'mxzaz-hqaaa-aaaar-qaada-cai') return { symbol: 'ckBTC', decimals: 8 };
+                                            if (ledgerId === 'ss2fx-dyaaa-aaaar-qacoq-cai') return { symbol: 'ckETH', decimals: 18 };
+                                            if (ledgerId === 'xevnm-gaaaa-aaaar-qafnq-cai') return { symbol: 'ckUSDC', decimals: 6 };
+                                            return { symbol: 'TOKEN', decimals: 8 };
+                                        };
+                                        const tokenInfo = getSimpleTokenInfo(priceTokenLedger);
+                                        const tokenDecimals = tokenInfo.decimals;
+                                        const tokenSymbol = tokenInfo.symbol;
+                                        
+                                        // Format prices
+                                        const minBid = offer.min_bid_price?.[0];
+                                        const buyout = offer.buyout_price?.[0];
+                                        
+                                        const formatOfferAmount = (amount) => {
+                                            if (!amount) return '—';
+                                            const num = Number(amount) / Math.pow(10, tokenDecimals);
+                                            if (num < 0.01) return num.toExponential(2);
+                                            if (num < 100) return num.toFixed(2);
+                                            return num.toLocaleString(undefined, { maximumFractionDigits: 2 });
+                                        };
                                         
                                         return (
                                             <Link
                                                 key={`offer-${offer.id}-${index}`}
                                                 to={`/sneedex_offer?id=${offer.id}`}
+                                                className="hub-offer-card"
                                                 style={{
-                                                    display: 'flex',
-                                                    alignItems: 'flex-start',
-                                                    gap: '12px',
-                                                    padding: '14px 16px',
-                                                    background: theme.colors.primaryBg,
-                                                    borderRadius: '12px',
+                                                    display: 'block',
+                                                    padding: '16px',
+                                                    background: `linear-gradient(145deg, ${theme.colors.primaryBg} 0%, ${theme.colors.secondaryBg} 100%)`,
+                                                    borderRadius: '16px',
                                                     textDecoration: 'none',
                                                     border: `1px solid ${theme.colors.border}`,
-                                                    transition: 'all 0.2s ease',
+                                                    position: 'relative',
+                                                    overflow: 'hidden',
                                                 }}
                                                 onMouseEnter={(e) => {
-                                                    e.currentTarget.style.transform = 'translateX(4px)';
                                                     e.currentTarget.style.borderColor = assetColor;
                                                 }}
                                                 onMouseLeave={(e) => {
-                                                    e.currentTarget.style.transform = 'translateX(0)';
                                                     e.currentTarget.style.borderColor = theme.colors.border;
                                                 }}
                                             >
-                                                {/* Asset Icon */}
-                                                <div style={{
-                                                    width: '40px',
-                                                    height: '40px',
-                                                    borderRadius: '10px',
-                                                    background: `linear-gradient(135deg, ${assetColor}, ${assetColor}cc)`,
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    flexShrink: 0,
+                                                {/* Header Row */}
+                                                <div style={{ 
+                                                    display: 'flex', 
+                                                    alignItems: 'center', 
+                                                    justifyContent: 'space-between',
+                                                    marginBottom: '12px',
                                                 }}>
-                                                    {assetIcon}
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                        {/* Asset Icon */}
+                                                        <div style={{
+                                                            width: '40px',
+                                                            height: '40px',
+                                                            borderRadius: '12px',
+                                                            background: `linear-gradient(135deg, ${assetColor}, ${assetColor}cc)`,
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            boxShadow: `0 4px 12px ${assetColor}40`,
+                                                        }}>
+                                                            {assetIcon}
+                                                        </div>
+                                                        
+                                                        <div>
+                                                            <div style={{ 
+                                                                display: 'flex', 
+                                                                alignItems: 'center', 
+                                                                gap: '8px',
+                                                            }}>
+                                                                <span style={{
+                                                                    color: hubPrimary,
+                                                                    fontWeight: '700',
+                                                                    fontSize: '0.95rem',
+                                                                }}>
+                                                                    #{offer.id?.toString()}
+                                                                </span>
+                                                                <span style={{
+                                                                    padding: '3px 8px',
+                                                                    borderRadius: '6px',
+                                                                    background: assetColor,
+                                                                    color: 'white',
+                                                                    fontSize: '0.65rem',
+                                                                    fontWeight: '700',
+                                                                    textTransform: 'uppercase',
+                                                                    letterSpacing: '0.3px',
+                                                                }}>
+                                                                    {assetLabel}
+                                                                </span>
+                                                                {assetCount > 1 && (
+                                                                    <span style={{
+                                                                        fontSize: '0.7rem',
+                                                                        color: theme.colors.mutedText,
+                                                                        background: theme.colors.tertiaryBg,
+                                                                        padding: '3px 8px',
+                                                                        borderRadius: '6px',
+                                                                        fontWeight: '500',
+                                                                    }}>
+                                                                        +{assetCount - 1}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    {/* Status Badge */}
+                                                    <span style={{
+                                                        padding: '5px 12px',
+                                                        borderRadius: '20px',
+                                                        background: `linear-gradient(135deg, ${theme.colors.success}, ${theme.colors.success}dd)`,
+                                                        color: 'white',
+                                                        fontSize: '0.65rem',
+                                                        fontWeight: '700',
+                                                        textTransform: 'uppercase',
+                                                        letterSpacing: '0.5px',
+                                                        boxShadow: `0 2px 8px ${theme.colors.success}40`,
+                                                    }}>
+                                                        Active
+                                                    </span>
                                                 </div>
                                                 
-                                                <div style={{ flex: 1, minWidth: 0 }}>
-                                                    {/* Header row */}
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
-                                                        <span style={{
-                                                            display: 'inline-flex',
-                                                            alignItems: 'center',
-                                                            gap: '4px',
-                                                            padding: '3px 8px',
-                                                            borderRadius: '6px',
-                                                            background: assetColor,
-                                                            color: 'white',
-                                                            fontSize: '0.7rem',
-                                                            fontWeight: '700',
+                                                {/* Price Row */}
+                                                <div style={{
+                                                    display: 'grid',
+                                                    gridTemplateColumns: '1fr 1fr',
+                                                    gap: '10px',
+                                                    marginBottom: '12px',
+                                                }}>
+                                                    {/* Min Bid */}
+                                                    <div style={{
+                                                        background: `linear-gradient(135deg, ${theme.colors.tertiaryBg}, ${hubPrimary}08)`,
+                                                        borderRadius: '10px',
+                                                        padding: '10px 12px',
+                                                        textAlign: 'center',
+                                                        border: `1px solid ${hubPrimary}15`,
+                                                    }}>
+                                                        <div style={{ 
+                                                            fontSize: '0.65rem', 
+                                                            color: hubPrimary, 
+                                                            fontWeight: '600',
                                                             textTransform: 'uppercase',
+                                                            letterSpacing: '0.5px',
+                                                            marginBottom: '4px',
                                                         }}>
-                                                            {assetType}
-                                                        </span>
-                                                        {assetCount > 1 && (
-                                                            <span style={{
-                                                                fontSize: '0.75rem',
-                                                                color: theme.colors.mutedText,
-                                                                background: theme.colors.secondaryBg,
-                                                                padding: '3px 8px',
-                                                                borderRadius: '6px',
-                                                            }}>
-                                                                +{assetCount - 1} more
-                                                            </span>
-                                                        )}
-                                                        <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginLeft: 'auto' }}>
-                                                            {formatRelativeTime(offer.created_at)}
-                                                        </span>
+                                                            Min Bid
+                                                        </div>
+                                                        <div style={{ 
+                                                            fontSize: '1rem', 
+                                                            fontWeight: '700',
+                                                            color: theme.colors.primaryText,
+                                                        }}>
+                                                            {formatOfferAmount(minBid)}
+                                                        </div>
+                                                        <div style={{ 
+                                                            fontSize: '0.7rem', 
+                                                            color: theme.colors.mutedText,
+                                                            fontWeight: '500',
+                                                        }}>
+                                                            {tokenSymbol}
+                                                        </div>
                                                     </div>
                                                     
-                                                    {/* Offer title */}
+                                                    {/* Buyout */}
                                                     <div style={{
-                                                        color: theme.colors.primaryText,
-                                                        fontSize: '0.95rem',
-                                                        fontWeight: '600',
-                                                        marginBottom: '4px',
+                                                        background: `linear-gradient(135deg, ${theme.colors.tertiaryBg}, ${theme.colors.success}08)`,
+                                                        borderRadius: '10px',
+                                                        padding: '10px 12px',
+                                                        textAlign: 'center',
+                                                        border: `1px solid ${theme.colors.success}15`,
                                                     }}>
-                                                        Offer #{offer.id?.toString()}
+                                                        <div style={{ 
+                                                            fontSize: '0.65rem', 
+                                                            color: theme.colors.success, 
+                                                            fontWeight: '600',
+                                                            textTransform: 'uppercase',
+                                                            letterSpacing: '0.5px',
+                                                            marginBottom: '4px',
+                                                        }}>
+                                                            Buyout
+                                                        </div>
+                                                        <div style={{ 
+                                                            fontSize: '1rem', 
+                                                            fontWeight: '700',
+                                                            color: buyout ? theme.colors.success : theme.colors.mutedText,
+                                                        }}>
+                                                            {formatOfferAmount(buyout)}
+                                                        </div>
+                                                        <div style={{ 
+                                                            fontSize: '0.7rem', 
+                                                            color: theme.colors.mutedText,
+                                                            fontWeight: '500',
+                                                        }}>
+                                                            {tokenSymbol}
+                                                        </div>
                                                     </div>
-                                                    
-                                                    {/* Public note or asset summary */}
+                                                </div>
+                                                
+                                                {/* Footer Row */}
+                                                <div style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'space-between',
+                                                    paddingTop: '10px',
+                                                    borderTop: `1px solid ${theme.colors.border}`,
+                                                }}>
                                                     <div style={{
-                                                        color: theme.colors.secondaryText,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '6px',
                                                         fontSize: '0.8rem',
-                                                        overflow: 'hidden',
-                                                        textOverflow: 'ellipsis',
-                                                        whiteSpace: 'nowrap',
+                                                        color: theme.colors.mutedText,
+                                                        fontWeight: '500',
                                                     }}>
-                                                        {offer.public_note?.[0] 
-                                                            ? offer.public_note[0].slice(0, 60) + (offer.public_note[0].length > 60 ? '...' : '')
-                                                            : `${assetCount} asset${assetCount !== 1 ? 's' : ''} for sale`
-                                                        }
+                                                        <FaClock size={12} />
+                                                        <span>{formatRelativeTime(offer.created_at)}</span>
+                                                    </div>
+                                                    
+                                                    <div style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '6px',
+                                                        fontSize: '0.8rem',
+                                                        color: hubPrimary,
+                                                        fontWeight: '600',
+                                                    }}>
+                                                        View Details
+                                                        <FaArrowRight size={10} />
                                                     </div>
                                                 </div>
                                             </Link>
@@ -1280,77 +1661,54 @@ function Hub() {
                     </div>
                 </div>
 
-                {/* Context Note */}
-                <div 
-                    className="hub-card-animate hub-shimmer"
-                    style={{
-                        background: `linear-gradient(135deg, ${hubPrimary}10 0%, ${hubSecondary}08 100%)`,
-                        border: `1px solid ${hubPrimary}30`,
-                        borderRadius: '14px',
-                        padding: '1rem 1.5rem',
-                        marginBottom: '2.5rem',
-                        textAlign: 'center',
-                        color: theme.colors.secondaryText,
-                        fontSize: '0.95rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '10px',
-                        animationDelay: '0.25s',
-                        opacity: 0,
-                    }}
-                >
-                    <span style={{ fontSize: '1.2rem' }}>💡</span>
-                    <span>
-                        Use the <strong style={{ color: hubPrimary }}>SNS dropdown</strong> in the header to switch context across DAOs anywhere on the site.
-                    </span>
-                </div>
-
-                {/* Value Props */}
+                {/* ============================================ */}
+                {/* FEATURES HIGHLIGHT STRIP */}
+                {/* ============================================ */}
                 <div style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
                     gap: '1rem',
                     marginBottom: '3rem',
                 }}>
                     {[
-                        { icon: <FaShieldAlt size={20} />, title: 'Secure Escrow', desc: 'On-chain trading', color: hubPrimary },
-                        { icon: <FaCoins size={20} />, title: 'Liquid Positions', desc: 'Tradable staking', color: theme.colors.success },
-                        { icon: <FaGlobe size={20} />, title: 'Multi-DAO', desc: 'All SNS in one place', color: '#9b59b6' },
+                        { icon: <FaShieldAlt size={22} />, title: 'Secure Escrow', desc: '100% on-chain trading', color: hubPrimary, gradient: `linear-gradient(135deg, ${hubPrimary}15, ${hubPrimary}05)` },
+                        { icon: <FaCoins size={22} />, title: 'Liquid Staking', desc: 'Tradable ICP & SNS positions', color: theme.colors.success, gradient: `linear-gradient(135deg, ${theme.colors.success}15, ${theme.colors.success}05)` },
+                        { icon: <FaNetworkWired size={22} />, title: 'Multi-DAO Hub', desc: 'All SNS DAOs in one place', color: hubAccent, gradient: `linear-gradient(135deg, ${hubAccent}15, ${hubAccent}05)` },
+                        { icon: <FaLock size={22} />, title: 'Token Locks', desc: 'Transferable vesting & locks', color: '#9b59b6', gradient: `linear-gradient(135deg, #9b59b615, #9b59b605)` },
                     ].map((item, idx) => (
                         <div 
                             key={item.title}
-                            className="hub-card-animate"
+                            className="hub-stat-card"
                             style={{
-                                background: theme.colors.secondaryBg,
-                                borderRadius: '14px',
-                                padding: '1.25rem',
-                                border: `1px solid ${theme.colors.border}`,
+                                background: item.gradient,
+                                borderRadius: '18px',
+                                padding: '1.5rem',
+                                border: `1px solid ${item.color}20`,
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: '1rem',
-                                animationDelay: `${0.15 + idx * 0.08}s`,
-                                opacity: 0,
+                                transition: 'all 0.3s ease',
                             }}
                         >
                             <div style={{
-                                width: '44px',
-                                height: '44px',
-                                borderRadius: '12px',
-                                background: `linear-gradient(135deg, ${item.color}25, ${item.color}10)`,
+                                width: '52px',
+                                height: '52px',
+                                borderRadius: '14px',
+                                background: `linear-gradient(135deg, ${item.color}30, ${item.color}15)`,
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 color: item.color,
                                 flexShrink: 0,
+                                border: `1px solid ${item.color}25`,
                             }}>
                                 {item.icon}
                             </div>
                             <div>
-                                <div style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '1rem' }}>
+                                <div style={{ color: theme.colors.primaryText, fontWeight: '700', fontSize: '1.05rem', marginBottom: '2px' }}>
                                     {item.title}
                                 </div>
-                                <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>
+                                <div style={{ color: theme.colors.secondaryText, fontSize: '0.85rem', fontWeight: '500' }}>
                                     {item.desc}
                                 </div>
                             </div>
