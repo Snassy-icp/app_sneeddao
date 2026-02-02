@@ -1,13 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import Header from '../components/Header';
 import { Link } from 'react-router-dom';
-import { FaExchangeAlt, FaCoins, FaLock, FaComments, FaWallet, FaServer, FaNewspaper, FaUsers, FaVoteYea, FaRss, FaArrowRight, FaHistory, FaStar, FaUnlock, FaShieldAlt, FaGlobe, FaBrain, FaGavel, FaCube, FaLayerGroup, FaStream, FaReply, FaClock, FaRobot, FaCubes, FaNetworkWired } from 'react-icons/fa';
+import { FaExchangeAlt, FaCoins, FaLock, FaComments, FaWallet, FaServer, FaNewspaper, FaUsers, FaVoteYea, FaRss, FaArrowRight, FaHistory, FaStar, FaUnlock, FaShieldAlt, FaGlobe, FaBrain, FaGavel, FaLayerGroup, FaStream, FaReply, FaNetworkWired } from 'react-icons/fa';
 import { HttpAgent } from '@dfinity/agent';
 import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
 import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
 import { createSneedexActor } from '../utils/SneedexUtils';
-import { getSnsById } from '../utils/SnsUtils';
+import { getSnsById, getAllSnses } from '../utils/SnsUtils';
+import { useTokenMetadata } from '../hooks/useTokenMetadata';
+import OfferCard from '../components/OfferCard';
 import priceService from '../services/PriceService';
 
 // Constants
@@ -258,6 +260,13 @@ function Hub() {
     const { theme } = useTheme();
     const [hoveredCard, setHoveredCard] = useState(null);
     
+    // Use global token metadata cache
+    const { getTokenMetadata, metadata: tokenMetadataState } = useTokenMetadata();
+    
+    // SNS data
+    const [snsList, setSnsList] = useState([]);
+    const [snsLogosMap, setSnsLogosMap] = useState(new Map());
+    
     // Dynamic data state
     const [prices, setPrices] = useState({
         sneedUsd: null,
@@ -274,6 +283,64 @@ function Hub() {
     const [offers, setOffers] = useState([]);
     const [activityLoading, setActivityLoading] = useState(true);
     const [snsLogos, setSnsLogos] = useState({});
+    
+    // Helper to get token info
+    const getTokenInfo = useCallback((ledgerId) => {
+        const globalMeta = getTokenMetadata(ledgerId);
+        const cachedLogo = globalMeta?.logo || null;
+        
+        // Check SNS list for tokens
+        const snsMatch = snsList.find(s => s.ledger_canister_id === ledgerId);
+        if (snsMatch) {
+            return {
+                symbol: snsMatch.token_symbol || snsMatch.symbol || 'TOKEN',
+                decimals: snsMatch.decimals || 8,
+                logo: cachedLogo || snsMatch.logo,
+                fee: snsMatch.fee ? BigInt(snsMatch.fee) : null,
+                name: snsMatch.name
+            };
+        }
+        
+        // Known tokens
+        if (ledgerId === 'ryjl3-tyaaa-aaaaa-aaaba-cai') return { symbol: 'ICP', decimals: 8, logo: cachedLogo || '/icp_symbol.svg', fee: BigInt(10000) };
+        if (ledgerId === 'hvgxa-wqaaa-aaaaq-aacia-cai') return { symbol: 'SNEED', decimals: 8, logo: cachedLogo || '/sneed_logo.png', fee: BigInt(10000) };
+        if (ledgerId === 'mxzaz-hqaaa-aaaar-qaada-cai') return { symbol: 'ckBTC', decimals: 8, logo: cachedLogo, fee: BigInt(10) };
+        if (ledgerId === 'ss2fx-dyaaa-aaaar-qacoq-cai') return { symbol: 'ckETH', decimals: 18, logo: cachedLogo, fee: BigInt(2000000000000) };
+        
+        return { symbol: globalMeta?.symbol || 'TOKEN', decimals: globalMeta?.decimals || 8, logo: cachedLogo, fee: null };
+    }, [snsList, getTokenMetadata, tokenMetadataState]);
+    
+    // Helper to get SNS info by governance ID
+    const getSnsInfo = useCallback((governanceId) => {
+        const sns = snsList.find(s => s.governance_canister_id === governanceId);
+        if (sns) {
+            return {
+                name: sns.name,
+                symbol: sns.token_symbol || sns.symbol,
+                logo: sns.logo,
+                ledgerId: sns.ledger_canister_id,
+            };
+        }
+        return null;
+    }, [snsList]);
+    
+    // Helper to get SNS logo by governance ID
+    const getSnsLogo = useCallback((governanceId) => {
+        return snsLogosMap.get(governanceId) || null;
+    }, [snsLogosMap]);
+    
+    // Fetch SNS list on mount
+    useEffect(() => {
+        const fetchSnsList = async () => {
+            try {
+                const list = await getAllSnses();
+                setSnsList(list || []);
+            } catch (e) {
+                console.warn('Could not fetch SNS list:', e);
+            }
+        };
+        fetchSnsList();
+    }, []);
 
     // Fetch prices
     useEffect(() => {
@@ -1373,288 +1440,16 @@ function Hub() {
                                 </div>
                             ) : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                    {offers.map((offer, index) => {
-                                        // Get asset details
-                                        const assetCount = offer.assets?.length || 0;
-                                        const firstAsset = offer.assets?.[0];
-                                        let assetType = 'Asset';
-                                        let assetIcon = <FaCube size={16} style={{ color: 'white' }} />;
-                                        let assetColor = hubPrimary;
-                                        let assetLabel = 'Asset';
-                                        
-                                        // Determine asset type and styling
-                                        if (firstAsset?.asset) {
-                                            const asset = firstAsset.asset;
-                                            if ('Canister' in asset) {
-                                                const canisterKind = asset.Canister.kind?.[0];
-                                                // Check if it's an ICP Neuron Manager (kind = 1)
-                                                if (canisterKind === 1 || canisterKind === 1n) {
-                                                    assetType = 'NeuronManager';
-                                                    assetIcon = <FaRobot size={16} style={{ color: 'white' }} />;
-                                                    assetColor = '#8b5cf6';
-                                                    assetLabel = 'ICP Neuron';
-                                                } else {
-                                                    assetType = 'Canister';
-                                                    assetIcon = <FaCubes size={16} style={{ color: 'white' }} />;
-                                                    assetColor = '#3b82f6';
-                                                    assetLabel = asset.Canister.title?.[0] 
-                                                        ? (asset.Canister.title[0].length > 15 
-                                                            ? asset.Canister.title[0].slice(0, 15) + '...' 
-                                                            : asset.Canister.title[0])
-                                                        : 'Canister';
-                                                }
-                                            } else if ('SNSNeuron' in asset) {
-                                                assetType = 'SNSNeuron';
-                                                assetIcon = <FaBrain size={16} style={{ color: 'white' }} />;
-                                                assetColor = '#10b981';
-                                                assetLabel = 'SNS Neuron';
-                                            } else if ('ICRC1Token' in asset) {
-                                                assetType = 'Token';
-                                                assetIcon = <FaCoins size={16} style={{ color: 'white' }} />;
-                                                assetColor = '#f59e0b';
-                                                assetLabel = 'Tokens';
-                                            }
-                                        }
-                                        
-                                        // Get price token info - use simple lookup for common tokens
-                                        const priceTokenLedger = offer.price_token_ledger?.toString();
-                                        const getSimpleTokenInfo = (ledgerId) => {
-                                            // Common ICP ecosystem tokens
-                                            if (ledgerId === 'ryjl3-tyaaa-aaaaa-aaaba-cai') return { symbol: 'ICP', decimals: 8 };
-                                            if (ledgerId === 'hvgxa-wqaaa-aaaaq-aacia-cai') return { symbol: 'SNEED', decimals: 8 };
-                                            if (ledgerId === 'mxzaz-hqaaa-aaaar-qaada-cai') return { symbol: 'ckBTC', decimals: 8 };
-                                            if (ledgerId === 'ss2fx-dyaaa-aaaar-qacoq-cai') return { symbol: 'ckETH', decimals: 18 };
-                                            if (ledgerId === 'xevnm-gaaaa-aaaar-qafnq-cai') return { symbol: 'ckUSDC', decimals: 6 };
-                                            return { symbol: 'TOKEN', decimals: 8 };
-                                        };
-                                        const tokenInfo = getSimpleTokenInfo(priceTokenLedger);
-                                        const tokenDecimals = tokenInfo.decimals;
-                                        const tokenSymbol = tokenInfo.symbol;
-                                        
-                                        // Format prices
-                                        const minBid = offer.min_bid_price?.[0];
-                                        const buyout = offer.buyout_price?.[0];
-                                        
-                                        const formatOfferAmount = (amount) => {
-                                            if (!amount) return '—';
-                                            const num = Number(amount) / Math.pow(10, tokenDecimals);
-                                            if (num < 0.01) return num.toExponential(2);
-                                            if (num < 100) return num.toFixed(2);
-                                            return num.toLocaleString(undefined, { maximumFractionDigits: 2 });
-                                        };
-                                        
-                                        return (
-                                            <Link
-                                                key={`offer-${offer.id}-${index}`}
-                                                to={`/sneedex_offer?id=${offer.id}`}
-                                                className="hub-offer-card"
-                                                style={{
-                                                    display: 'block',
-                                                    padding: '16px',
-                                                    background: `linear-gradient(145deg, ${theme.colors.primaryBg} 0%, ${theme.colors.secondaryBg} 100%)`,
-                                                    borderRadius: '16px',
-                                                    textDecoration: 'none',
-                                                    border: `1px solid ${theme.colors.border}`,
-                                                    position: 'relative',
-                                                    overflow: 'hidden',
-                                                }}
-                                                onMouseEnter={(e) => {
-                                                    e.currentTarget.style.borderColor = assetColor;
-                                                }}
-                                                onMouseLeave={(e) => {
-                                                    e.currentTarget.style.borderColor = theme.colors.border;
-                                                }}
-                                            >
-                                                {/* Header Row */}
-                                                <div style={{ 
-                                                    display: 'flex', 
-                                                    alignItems: 'center', 
-                                                    justifyContent: 'space-between',
-                                                    marginBottom: '12px',
-                                                }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                        {/* Asset Icon */}
-                                                        <div style={{
-                                                            width: '40px',
-                                                            height: '40px',
-                                                            borderRadius: '12px',
-                                                            background: `linear-gradient(135deg, ${assetColor}, ${assetColor}cc)`,
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'center',
-                                                            boxShadow: `0 4px 12px ${assetColor}40`,
-                                                        }}>
-                                                            {assetIcon}
-                                                        </div>
-                                                        
-                                                        <div>
-                                                            <div style={{ 
-                                                                display: 'flex', 
-                                                                alignItems: 'center', 
-                                                                gap: '8px',
-                                                            }}>
-                                                                <span style={{
-                                                                    color: hubPrimary,
-                                                                    fontWeight: '700',
-                                                                    fontSize: '0.95rem',
-                                                                }}>
-                                                                    #{offer.id?.toString()}
-                                                                </span>
-                                                                <span style={{
-                                                                    padding: '3px 8px',
-                                                                    borderRadius: '6px',
-                                                                    background: assetColor,
-                                                                    color: 'white',
-                                                                    fontSize: '0.65rem',
-                                                                    fontWeight: '700',
-                                                                    textTransform: 'uppercase',
-                                                                    letterSpacing: '0.3px',
-                                                                }}>
-                                                                    {assetLabel}
-                                                                </span>
-                                                                {assetCount > 1 && (
-                                                                    <span style={{
-                                                                        fontSize: '0.7rem',
-                                                                        color: theme.colors.mutedText,
-                                                                        background: theme.colors.tertiaryBg,
-                                                                        padding: '3px 8px',
-                                                                        borderRadius: '6px',
-                                                                        fontWeight: '500',
-                                                                    }}>
-                                                                        +{assetCount - 1}
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    
-                                                    {/* Status Badge */}
-                                                    <span style={{
-                                                        padding: '5px 12px',
-                                                        borderRadius: '20px',
-                                                        background: `linear-gradient(135deg, ${theme.colors.success}, ${theme.colors.success}dd)`,
-                                                        color: 'white',
-                                                        fontSize: '0.65rem',
-                                                        fontWeight: '700',
-                                                        textTransform: 'uppercase',
-                                                        letterSpacing: '0.5px',
-                                                        boxShadow: `0 2px 8px ${theme.colors.success}40`,
-                                                    }}>
-                                                        Active
-                                                    </span>
-                                                </div>
-                                                
-                                                {/* Price Row */}
-                                                <div style={{
-                                                    display: 'grid',
-                                                    gridTemplateColumns: '1fr 1fr',
-                                                    gap: '10px',
-                                                    marginBottom: '12px',
-                                                }}>
-                                                    {/* Min Bid */}
-                                                    <div style={{
-                                                        background: `linear-gradient(135deg, ${theme.colors.tertiaryBg}, ${hubPrimary}08)`,
-                                                        borderRadius: '10px',
-                                                        padding: '10px 12px',
-                                                        textAlign: 'center',
-                                                        border: `1px solid ${hubPrimary}15`,
-                                                    }}>
-                                                        <div style={{ 
-                                                            fontSize: '0.65rem', 
-                                                            color: hubPrimary, 
-                                                            fontWeight: '600',
-                                                            textTransform: 'uppercase',
-                                                            letterSpacing: '0.5px',
-                                                            marginBottom: '4px',
-                                                        }}>
-                                                            Min Bid
-                                                        </div>
-                                                        <div style={{ 
-                                                            fontSize: '1rem', 
-                                                            fontWeight: '700',
-                                                            color: theme.colors.primaryText,
-                                                        }}>
-                                                            {formatOfferAmount(minBid)}
-                                                        </div>
-                                                        <div style={{ 
-                                                            fontSize: '0.7rem', 
-                                                            color: theme.colors.mutedText,
-                                                            fontWeight: '500',
-                                                        }}>
-                                                            {tokenSymbol}
-                                                        </div>
-                                                    </div>
-                                                    
-                                                    {/* Buyout */}
-                                                    <div style={{
-                                                        background: `linear-gradient(135deg, ${theme.colors.tertiaryBg}, ${theme.colors.success}08)`,
-                                                        borderRadius: '10px',
-                                                        padding: '10px 12px',
-                                                        textAlign: 'center',
-                                                        border: `1px solid ${theme.colors.success}15`,
-                                                    }}>
-                                                        <div style={{ 
-                                                            fontSize: '0.65rem', 
-                                                            color: theme.colors.success, 
-                                                            fontWeight: '600',
-                                                            textTransform: 'uppercase',
-                                                            letterSpacing: '0.5px',
-                                                            marginBottom: '4px',
-                                                        }}>
-                                                            Buyout
-                                                        </div>
-                                                        <div style={{ 
-                                                            fontSize: '1rem', 
-                                                            fontWeight: '700',
-                                                            color: buyout ? theme.colors.success : theme.colors.mutedText,
-                                                        }}>
-                                                            {formatOfferAmount(buyout)}
-                                                        </div>
-                                                        <div style={{ 
-                                                            fontSize: '0.7rem', 
-                                                            color: theme.colors.mutedText,
-                                                            fontWeight: '500',
-                                                        }}>
-                                                            {tokenSymbol}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                
-                                                {/* Footer Row */}
-                                                <div style={{
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'space-between',
-                                                    paddingTop: '10px',
-                                                    borderTop: `1px solid ${theme.colors.border}`,
-                                                }}>
-                                                    <div style={{
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '6px',
-                                                        fontSize: '0.8rem',
-                                                        color: theme.colors.mutedText,
-                                                        fontWeight: '500',
-                                                    }}>
-                                                        <FaClock size={12} />
-                                                        <span>{formatRelativeTime(offer.created_at)}</span>
-                                                    </div>
-                                                    
-                                                    <div style={{
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '6px',
-                                                        fontSize: '0.8rem',
-                                                        color: hubPrimary,
-                                                        fontWeight: '600',
-                                                    }}>
-                                                        View Details
-                                                        <FaArrowRight size={10} />
-                                                    </div>
-                                                </div>
-                                            </Link>
-                                        );
-                                    })}
+                                    {offers.map((offer) => (
+                                        <OfferCard
+                                            key={`offer-${offer.id}`}
+                                            offer={offer}
+                                            getTokenInfo={getTokenInfo}
+                                            getSnsInfo={getSnsInfo}
+                                            getSnsLogo={getSnsLogo}
+                                            compact={true}
+                                        />
+                                    ))}
                                 </div>
                             )}
                         </div>
