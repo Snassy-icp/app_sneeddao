@@ -1625,7 +1625,7 @@ function Hub() {
                                 }}
                             >
                                 <FaCoins size={18} />
-                                Start Staking
+                                Liquid Staking
                             </Link>
                             <Link 
                                 to="/tools/sns_jailbreak" 
