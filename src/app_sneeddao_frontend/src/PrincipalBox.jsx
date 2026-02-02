@@ -1,18 +1,21 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaCopy, FaCheck, FaWallet } from 'react-icons/fa';
+import { FaCopy, FaCheck, FaWallet, FaPaperPlane } from 'react-icons/fa';
 import { useAuth } from './AuthContext';
 import { useTheme } from './contexts/ThemeContext';
 import { useNaming } from './NamingContext';
 import { useWalletOptional } from './contexts/WalletContext';
 import { computeAccountId } from './utils/PrincipalUtils';
 import { formatAmount } from './utils/StringUtils';
+import SendTokenModal from './SendTokenModal';
 import './PrincipalBox.css';
 
 function PrincipalBox({ principalText, onLogout, compact = false }) {
     const [showPopup, setShowPopup] = useState(false);
     const [copyFeedback, setCopyFeedback] = useState('');
     const [copied, setCopied] = useState(false);
+    const [showSendModal, setShowSendModal] = useState(false);
+    const [selectedToken, setSelectedToken] = useState(null);
     const popupRef = useRef(null);
     const { login, identity } = useAuth();
     const { theme } = useTheme();
@@ -23,6 +26,34 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     // Get wallet tokens from context
     const walletTokens = walletContext?.walletTokens || [];
     const walletLoading = walletContext?.walletLoading || false;
+    const sendToken = walletContext?.sendToken;
+    
+    // Filter tokens to only show those with balance > 0
+    const tokensWithBalance = useMemo(() => {
+        return walletTokens.filter(token => {
+            const available = BigInt(token.available || token.balance || 0n);
+            const locked = BigInt(token.locked || 0n);
+            const staked = BigInt(token.staked || 0n);
+            const maturity = BigInt(token.maturity || 0n);
+            const rewards = BigInt(token.rewards || 0n);
+            const totalBalance = available + locked + staked + maturity + rewards;
+            return totalBalance > 0n;
+        });
+    }, [walletTokens]);
+    
+    // Open send modal for a token
+    const openSendModal = (token, e) => {
+        e.stopPropagation();
+        setSelectedToken(token);
+        setShowSendModal(true);
+    };
+    
+    // Handle send token
+    const handleSendToken = async (token, recipient, amount, subaccount = []) => {
+        if (sendToken) {
+            await sendToken(token, recipient, amount, subaccount);
+        }
+    };
 
     // Add click outside handler
     useEffect(() => {

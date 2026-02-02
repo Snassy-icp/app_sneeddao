@@ -5,6 +5,7 @@ import { createActor as createBackendActor, canisterId as backendCanisterId } fr
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'declarations/rll';
 import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
+import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
 import { getTokenLogo, get_token_conversion_rate } from '../utils/TokenUtils';
 import { fetchUserNeuronsForSns } from '../utils/NeuronUtils';
 import { getTipTokensReceivedByUser } from '../utils/BackendUtils';
@@ -194,6 +195,82 @@ export const WalletProvider = ({ children }) => {
         fetchCompactWalletTokens();
     }, [fetchCompactWalletTokens]);
 
+    // Helper to calculate send amounts (frontend vs backend balance)
+    const calcSendAmounts = useCallback((token, bigintAmount) => {
+        const available = BigInt(token.available || token.balance || 0n);
+        const balance = BigInt(token.balance || token.available || 0n);
+        const available_backend = BigInt(token.available_backend || 0n);
+        const fee = BigInt(token.fee || 0n);
+
+        let send_from_frontend = 0n;
+        let send_from_backend = 0n;
+
+        if (available_backend > 0n) {
+            // Has backend balance, prefer sending from backend first
+            if (bigintAmount <= available_backend) {
+                send_from_backend = bigintAmount;
+            } else {
+                send_from_backend = available_backend;
+                send_from_frontend = bigintAmount - available_backend;
+            }
+        } else {
+            // No backend balance, send from frontend only
+            send_from_frontend = bigintAmount;
+        }
+
+        return { send_from_frontend, send_from_backend };
+    }, []);
+
+    // Send token function - can be used from anywhere
+    const sendToken = useCallback(async (token, recipient, amount, subaccount = []) => {
+        if (!identity) throw new Error('Not authenticated');
+
+        const decimals = token.decimals || 8;
+        const amountFloat = parseFloat(amount);
+        const scaledAmount = amountFloat * (10 ** decimals);
+        const bigintAmount = BigInt(Math.floor(scaledAmount));
+
+        const sendAmounts = calcSendAmounts(token, bigintAmount);
+
+        if (sendAmounts.send_from_backend + sendAmounts.send_from_frontend <= 0n) {
+            throw new Error('Invalid send amounts calculated');
+        }
+
+        // Send from backend if needed
+        if (sendAmounts.send_from_backend > 0n) {
+            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
+            const recipientPrincipal = Principal.fromText(recipient);
+            
+            await sneedLockActor.transfer_tokens(
+                recipientPrincipal,
+                subaccount,
+                token.ledger_canister_id,
+                sendAmounts.send_from_backend
+            );
+        }
+
+        // Send from frontend if needed
+        if (sendAmounts.send_from_frontend > 0n) {
+            const ledgerActor = createLedgerActor(token.ledger_canister_id, {
+                agentOptions: { identity }
+            });
+
+            const recipientPrincipal = Principal.fromText(recipient);
+            
+            await ledgerActor.icrc1_transfer({
+                to: { owner: recipientPrincipal, subaccount: subaccount },
+                fee: [],
+                memo: [],
+                from_subaccount: [],
+                created_at_time: [],
+                amount: sendAmounts.send_from_frontend
+            });
+        }
+
+        // Refresh wallet after send
+        refreshWallet();
+    }, [identity, calcSendAmounts, refreshWallet]);
+
     return (
         <WalletContext.Provider value={{
             walletTokens,
@@ -203,7 +280,8 @@ export const WalletProvider = ({ children }) => {
             updateWalletTokens,
             setLoading,
             clearWallet,
-            refreshWallet
+            refreshWallet,
+            sendToken
         }}>
             {children}
         </WalletContext.Provider>
