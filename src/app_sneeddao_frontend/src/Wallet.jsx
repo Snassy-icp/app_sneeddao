@@ -55,7 +55,7 @@ import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings, getCanis
 import { PERM } from './utils/NeuronPermissionUtils.jsx';
 import { Actor } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
-import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle, FaTint, FaSeedling, FaGift, FaHourglassHalf, FaWater, FaUnlock, FaCheck } from 'react-icons/fa';
+import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle, FaTint, FaSeedling, FaGift, FaHourglassHalf, FaWater, FaUnlock, FaCheck, FaExclamationTriangle, FaCrown, FaBox, FaDatabase, FaCog, FaExternalLinkAlt, FaTimes, FaLightbulb, FaArrowRight, FaDollarSign, FaChartBar, FaBullseye, FaMoneyBillWave } from 'react-icons/fa';
 
 // Custom CSS for Wallet page animations
 const walletCustomStyles = `
@@ -4604,7 +4604,7 @@ function Wallet() {
                                                     alignItems: 'center',
                                                     gap: '0.2rem'
                                                 }}>
-                                                    💸 ${totalBreakdown.fees.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                    <FaMoneyBillWave size={12} style={{ marginRight: '4px' }} /> ${totalBreakdown.fees.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                                 </span>
                                             )}
                                         </div>
@@ -4692,7 +4692,7 @@ function Wallet() {
                                                 onMouseEnter={(e) => e.target.style.background = `${walletPrimary}20`}
                                                 onMouseLeave={(e) => e.target.style.background = 'transparent'}
                                             >
-                                                💸 ${totalBreakdown.fees.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                <FaMoneyBillWave size={12} style={{ marginRight: '4px' }} /> ${totalBreakdown.fees.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                             </span>
                                         )}
                                         {totalBreakdown.hasAnyRewards && (
@@ -4750,7 +4750,7 @@ function Wallet() {
                                     alignItems: 'center',
                                     gap: '0.5rem'
                                 }}>
-                                    <span>⚠️</span>
+                                    <FaExclamationTriangle size={14} style={{ color: '#f59e0b' }} />
                                     <span>{consolidateError}</span>
                                     <button
                                         onClick={() => setConsolidateError('')}
@@ -5266,7 +5266,7 @@ function Wallet() {
                                 onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
                                 onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
                             >
-                                Learn how it works →
+                                Learn how it works <FaArrowRight size={10} style={{ marginLeft: '4px' }} />
                             </Link>
                         </div>
                         {/* Add existing manager input */}
@@ -5395,7 +5395,7 @@ function Wallet() {
                                         fontWeight: '600',
                                     }}
                                 >
-                                    Create Your First Manager →
+                                    Create Your First Manager <FaArrowRight size={10} style={{ marginLeft: '4px' }} />
                                 </Link>
                             </div>
                         ) : (
@@ -5442,12 +5442,12 @@ function Wallet() {
                                                             style={{ 
                                                                 position: 'absolute', 
                                                                 top: 0, 
-                                                                right: 0, 
-                                                                fontSize: '14px',
+                                                                right: 0,
+                                                                color: theme.colors.accent
                                                             }}
                                                             title="You are a controller"
                                                         >
-                                                            👑
+                                                            <FaCrown size={14} />
                                                         </span>
                                                     )}
                                                 </div>
@@ -5520,7 +5520,7 @@ function Wallet() {
                                                                 : undefined
                                                             }
                                                         >
-                                                            {isVersionOutdated(manager.version) && '⚠️ '}
+                                                            {isVersionOutdated(manager.version) && <FaExclamationTriangle size={10} style={{ marginRight: '4px', color: '#f59e0b' }} />}
                                                             v{Number(manager.version.major)}.{Number(manager.version.minor)}.{Number(manager.version.patch)}
                                                         </span>
                                                         {/* Cycles badge */}
@@ -5678,7 +5678,7 @@ function Wallet() {
                                                             textAlign: 'center',
                                                             padding: '16px' 
                                                         }}>
-                                                            No neurons found. <Link to={`/icp_neuron_manager/${canisterId}`} style={{ color: theme.colors.accent }}>Stake ICP →</Link>
+                                                            No neurons found. <Link to={`/icp_neuron_manager/${canisterId}`} style={{ color: theme.colors.accent, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Stake ICP <FaArrowRight size={10} /></Link>
                                                         </div>
                                                     ) : (
                                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -5819,7 +5819,7 @@ function Wallet() {
                                                                                             gap: '6px',
                                                                                         }}
                                                                                     >
-                                                                                        ⚙️ Manage
+                                                                                        <FaCog size={10} style={{ marginRight: '4px' }} /> Manage
                                                                                     </Link>
                                                                                     <a
                                                                                         href={`https://dashboard.internetcomputer.org/neuron/${neuronIdStr}`}
@@ -5839,7 +5839,7 @@ function Wallet() {
                                                                                             gap: '6px',
                                                                                         }}
                                                                                     >
-                                                                                        🔗 Dashboard
+                                                                                        <FaExternalLinkAlt size={10} style={{ marginRight: '4px' }} /> Dashboard
                                                                                     </a>
                                                                                 </div>
                                                                                 
@@ -5909,7 +5909,7 @@ function Wallet() {
                                                                                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                                                                         <span style={{ color: theme.colors.secondaryText }}>Auto-stake Maturity:</span>
                                                                                         <span style={{ color: autoStakeMaturity ? theme.colors.success : theme.colors.mutedText }}>
-                                                                                            {autoStakeMaturity ? '✅ Enabled' : '❌ Disabled'}
+                                                                                            {autoStakeMaturity ? <><FaCheck size={10} style={{ marginRight: '4px' }} /> Enabled</> : <><FaTimes size={10} style={{ marginRight: '4px' }} /> Disabled</>}
                                                                                         </span>
                                                                                     </div>
                                                                                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -5937,7 +5937,7 @@ function Wallet() {
                                                                                     alignItems: 'center',
                                                                                     gap: '8px'
                                                                                 }}>
-                                                                                    <span>💡</span>
+                                                                                    <FaLightbulb size={14} style={{ color: theme.colors.accent }} />
                                                                                     <span>
                                                                                         For advanced actions like dissolving, disburse maturity, staking, or following, 
                                                                                         use the <strong style={{ color: theme.colors.primaryText }}>Manage</strong> button above.
@@ -6263,7 +6263,7 @@ function Wallet() {
                                 onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
                                 onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
                             >
-                                Manage custom canister groups →
+                                Manage custom canister groups <FaArrowRight size={10} style={{ marginLeft: '4px' }} />
                             </Link>
                         </div>
                         {/* Add canister input */}
@@ -6374,18 +6374,18 @@ function Wallet() {
                                                 onClick={() => setExpandedCanisterCards(prev => ({ ...prev, [canisterId]: !prev[canisterId] }))}
                                             >
                                                 <div className="header-logo-column" style={{ alignSelf: 'flex-start', minWidth: '48px', minHeight: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-                                                    <span style={{ fontSize: '36px' }}>📦</span>
+                                                    <FaBox size={36} style={{ color: theme.colors.mutedText }} />
                                                     {isController && (
                                                         <span 
                                                             style={{ 
                                                                 position: 'absolute', 
                                                                 top: 0, 
-                                                                right: 0, 
-                                                                fontSize: '14px',
+                                                                right: 0,
+                                                                color: theme.colors.accent
                                                             }}
                                                             title="You are a controller"
                                                         >
-                                                            👑
+                                                            <FaCrown size={14} />
                                                         </span>
                                                     )}
                                                 </div>
@@ -6465,7 +6465,7 @@ function Wallet() {
                                                                 }}
                                                                 title={`${memory.toLocaleString()} bytes`}
                                                             >
-                                                                💾 {formatMemory(memory)}
+                                                                <FaDatabase size={10} style={{ marginRight: '4px' }} /> {formatMemory(memory)}
                                                             </span>
                                                         )}
                                                         {/* Loading indicator if status not yet fetched */}
@@ -6863,7 +6863,7 @@ function Wallet() {
                                     fontSize: '1.1rem',
                                     fontWeight: '600'
                                 }}>
-                                    ⚠️ Transfer Neuron Manager
+                                    <FaExclamationTriangle size={14} style={{ marginRight: '8px', color: '#f59e0b' }} /> Transfer Neuron Manager
                                 </h3>
                                 <button
                                     onClick={() => {
@@ -7019,7 +7019,7 @@ function Wallet() {
                                             : `0 4px 12px ${dangerPrimary}40`
                                     }}
                                 >
-                                    {transferring ? '⏳ Transferring...' : '⚠️ Transfer Control'}
+                                    {transferring ? <><FaSync size={12} style={{ marginRight: '6px', animation: 'spin 1s linear infinite' }} /> Transferring...</> : <><FaExclamationTriangle size={12} style={{ marginRight: '6px' }} /> Transfer Control</>}
                                 </button>
                             </div>
                             </div>
@@ -7073,7 +7073,7 @@ function Wallet() {
                                     fontSize: '1.1rem',
                                     fontWeight: '600'
                                 }}>
-                                    ⚠️ Transfer Canister
+                                    <FaExclamationTriangle size={14} style={{ marginRight: '8px', color: '#f59e0b' }} /> Transfer Canister
                                 </h3>
                                 <button
                                     onClick={() => {
@@ -7229,7 +7229,7 @@ function Wallet() {
                                             : `0 4px 12px ${dangerPrimary}40`
                                     }}
                                 >
-                                    {transferringCanister ? '⏳ Transferring...' : '⚠️ Transfer Control'}
+                                    {transferringCanister ? <><FaSync size={12} style={{ marginRight: '6px', animation: 'spin 1s linear infinite' }} /> Transferring...</> : <><FaExclamationTriangle size={12} style={{ marginRight: '6px' }} /> Transfer Control</>}
                                 </button>
                             </div>
                             </div>

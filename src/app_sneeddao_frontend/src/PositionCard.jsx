@@ -8,6 +8,7 @@ import { useNaming } from './NamingContext';
 import { useAuth } from './AuthContext';
 import { Principal } from '@dfinity/principal';
 import { Link } from 'react-router-dom';
+import { FaBriefcase, FaLock, FaSync, FaCoins, FaArrowDown, FaQuestionCircle, FaExternalLinkAlt, FaCheck, FaCopy, FaInfoCircle, FaUnlock, FaTimes } from 'react-icons/fa';
 
 // Countdown timer component for position locks expiring within 1 hour
 const PositionLockCountdown = ({ expiryNanos }) => {
@@ -120,18 +121,18 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
     // Helper function to get location status
     const getLocationStatus = () => {
         if (positionDetails.frontendOwnership) {
-            return { text: 'In Your Wallet', color: theme.colors.success, icon: '💼' };
+            return { text: 'In Your Wallet', color: theme.colors.success, icon: <FaBriefcase size={12} /> };
         } else if (isLockedPosition(positionDetails)) {
             const now = new Date();
             // Convert BigInt nanoseconds to milliseconds for Date
             const lockExpiry = new Date(Number(positionDetails.lockInfo.expiry / 1000000n));
             if (lockExpiry > now) {
-                return { text: 'Deposited (Locked)', color: theme.colors.warning, icon: '🔒' };
+                return { text: 'Deposited (Locked)', color: theme.colors.warning, icon: <FaLock size={12} /> };
             } else {
-                return { text: 'Deposited (Unlocked)', color: theme.colors.accent, icon: '🔓' };
+                return { text: 'Deposited (Unlocked)', color: theme.colors.accent, icon: <FaUnlock size={12} /> };
             }
         } else {
-            return { text: 'Deposited (Unlocked)', color: theme.colors.accent, icon: '🔓' };
+            return { text: 'Deposited (Unlocked)', color: theme.colors.accent, icon: <FaUnlock size={12} /> };
         }
     };
 
@@ -214,7 +215,7 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                 onMouseLeave={(e) => !isRefreshing && (e.target.style.color = theme.colors.mutedText)}
                                 title="Refresh position data"
                             >
-                                {isRefreshing ? '⏳' : '🔄'}
+                                <FaSync size={12} style={{ animation: isRefreshing ? 'spin 1s linear infinite' : 'none' }} />
                             </button>
                         )}
                     </div>
@@ -229,12 +230,12 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                         <div className="header-row-4" style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
                             {isLockedPosition(positionDetails) && (
                                 <span style={{
-                                    fontSize: '14px',
                                     display: 'inline-flex',
                                     alignItems: 'center',
-                                    cursor: 'help'
+                                    cursor: 'help',
+                                    color: theme.colors.mutedText
                                 }} title="Position is locked">
-                                    🔒
+                                    <FaLock size={12} />
                                 </span>
                             )}
                             {(positionDetails.tokensOwed0 > 0n || positionDetails.tokensOwed1 > 0n) && (() => {
@@ -253,9 +254,10 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                         display: 'inline-flex',
                                         alignItems: 'center',
                                         gap: '4px',
-                                        cursor: 'help'
+                                        cursor: 'help',
+                                        color: theme.colors.mutedText
                                     }} title={`Unclaimed fees: ${formatAmount(positionDetails.tokensOwed0, position.token0Decimals)} ${position.token0Symbol} + ${formatAmount(positionDetails.tokensOwed1, position.token1Decimals)} ${position.token1Symbol}`}>
-                                        💸
+                                        <FaCoins size={12} />
                                         <span style={{ fontSize: '12px', color: theme.colors.secondaryText }}>
                                             ${totalFeesUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                         </span>
@@ -463,7 +465,7 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                 {!hideUnclaimedFees &&
                     <div className="balance-item">
                         <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-start' }}>
-                            <span style={{ fontSize: '14px' }}>💸</span>
+                            <FaCoins size={14} style={{ color: theme.colors.mutedText }} />
                             Unclaimed Fees
                         </div>
                         <div className="token-amounts">
@@ -668,7 +670,7 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                     e.target.style.transform = 'translateY(0)';
                                 }}
                             >
-                                <span style={{ fontSize: '18px' }}>⬇️</span>
+                                <FaArrowDown size={14} style={{ marginRight: '6px' }} />
                                 Withdraw to Wallet
                             </button>
                         </div>
@@ -691,7 +693,7 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                     }}
                 >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '14px' }}>🔒</span>
+                        <FaLock size={14} style={{ color: theme.colors.mutedText }} />
                         <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
                             {isLockedPosition(positionDetails) ? '1 Lock' : '0 Locks'}
                         </span>
@@ -720,7 +722,7 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                             }}
                             title="Learn about Sneed Lock"
                         >
-                            ❓
+                            <FaQuestionCircle size={14} />
                         </Link>
                         {/* Expand/Collapse Indicator */}
                         <span 
@@ -844,7 +846,7 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                                 onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
                                                 onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
                                             >
-                                                🔗 View
+                                                <FaExternalLinkAlt size={10} style={{ marginRight: '4px' }} /> View
                                             </a>
                                         )}
                                     </span>
@@ -924,9 +926,9 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                                     theme.colors.error
                                                 }30`
                                 }}>
-                                    {positionDetails.ownershipStatus === 'match' ? '✓ Match!' :
-                                     positionDetails.ownershipStatus === 'locked' ? '✓ Match!' :
-                                     '✗ Mismatch!'}
+                                    {positionDetails.ownershipStatus === 'match' ? <><FaCheck size={10} style={{ marginRight: '4px' }} /> Match!</> :
+                                     positionDetails.ownershipStatus === 'locked' ? <><FaCheck size={10} style={{ marginRight: '4px' }} /> Match!</> :
+                                     <><FaTimes size={10} style={{ marginRight: '4px' }} /> Mismatch!</>}
                                 </span>
                             )}
                                     </span>
@@ -952,7 +954,7 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                 }}
                                 title="Copy to clipboard"
                             >
-                                📋
+                                <FaCopy size={10} />
                             </button>
                                     </span>
                                 </div>
@@ -979,8 +981,9 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                     }}
                 >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <FaInfoCircle size={14} style={{ color: theme.colors.mutedText }} />
                         <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
-                            ℹ️ Position Info
+                            Position Info
                         </span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -1040,7 +1043,7 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                         }}
                                         title="Copy to clipboard"
                                     >
-                                        📋
+                                        <FaCopy size={10} />
                                     </button>
                                 )}
                             </div>
@@ -1117,7 +1120,7 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                         }}
                                         title="Copy to clipboard"
                                     >
-                                        📋
+                                        <FaCopy size={10} />
                                     </button>
                                 )}
                             </div>
@@ -1177,7 +1180,7 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                         }}
                                         title="Copy to clipboard"
                                     >
-                                        📋
+                                        <FaCopy size={10} />
                                     </button>
                                 )}
                             </div>
