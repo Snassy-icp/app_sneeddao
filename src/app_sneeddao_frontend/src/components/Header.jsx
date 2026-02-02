@@ -586,7 +586,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         </>
                     )}
                     
-                    {/* Subtle collapse toggle */}
+                    {/* Subtle collapse/expand pill */}
                     <span
                         onClick={(e) => {
                             e.stopPropagation();
@@ -596,37 +596,31 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                             display: 'inline-flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            width: '16px',
-                            height: '16px',
+                            padding: isHeaderCollapsed ? '1px 6px' : '1px 5px',
+                            borderRadius: '8px',
+                            backgroundColor: 'rgba(255, 255, 255, 0.08)',
                             cursor: 'pointer',
-                            opacity: 0.4,
-                            transition: 'opacity 0.2s ease, transform 0.2s ease',
-                            transform: isHeaderCollapsed ? 'rotate(180deg)' : 'rotate(0deg)',
-                            marginLeft: '-2px'
+                            opacity: 0.5,
+                            transition: 'opacity 0.2s ease, background-color 0.2s ease',
+                            alignSelf: 'flex-end',
+                            marginBottom: '2px',
+                            fontSize: '10px',
+                            fontWeight: 'bold',
+                            letterSpacing: isHeaderCollapsed ? '1px' : '0px',
+                            color: theme.colors.mutedText,
+                            lineHeight: 1
                         }}
                         onMouseEnter={(e) => {
-                            e.currentTarget.style.opacity = '0.8';
+                            e.currentTarget.style.opacity = '0.9';
+                            e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.12)';
                         }}
                         onMouseLeave={(e) => {
-                            e.currentTarget.style.opacity = '0.4';
+                            e.currentTarget.style.opacity = '0.5';
+                            e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.08)';
                         }}
                         title={isHeaderCollapsed ? "Expand header" : "Collapse header"}
                     >
-                        <svg 
-                            width="10" 
-                            height="6" 
-                            viewBox="0 0 10 6" 
-                            fill="none"
-                            style={{ display: 'block' }}
-                        >
-                            <path 
-                                d="M1 1L5 5L9 1" 
-                                stroke="currentColor" 
-                                strokeWidth="1.5" 
-                                strokeLinecap="round" 
-                                strokeLinejoin="round"
-                            />
-                        </svg>
+                        {isHeaderCollapsed ? '...' : '−'}
                     </span>
                 </div>
                 </div>
