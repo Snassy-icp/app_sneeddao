@@ -225,11 +225,16 @@
 }
 
 .compact-wallet-token {
-  transition: background-color 0.15s ease;
+  transition: all 0.15s ease;
 }
 
 .compact-wallet-token:hover {
-  background-color: var(--color-accent-hover);
+  background-color: rgba(16, 185, 129, 0.1);
+  transform: translateX(2px);
+}
+
+.compact-wallet-token:active {
+  transform: scale(0.98);
 }
 
 /* Mobile optimizations for compact wallet */

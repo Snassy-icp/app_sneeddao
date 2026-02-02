@@ -8,6 +8,7 @@ import { useWalletOptional } from './contexts/WalletContext';
 import { computeAccountId } from './utils/PrincipalUtils';
 import { formatAmount } from './utils/StringUtils';
 import SendTokenModal from './SendTokenModal';
+import TokenCardModal from './components/TokenCardModal';
 import './PrincipalBox.css';
 
 function PrincipalBox({ principalText, onLogout, compact = false }) {
@@ -16,6 +17,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const [copied, setCopied] = useState(false);
     const [showSendModal, setShowSendModal] = useState(false);
     const [selectedToken, setSelectedToken] = useState(null);
+    const [showTokenDetailModal, setShowTokenDetailModal] = useState(false);
+    const [detailToken, setDetailToken] = useState(null);
     const popupRef = useRef(null);
     const { login, identity } = useAuth();
     const { theme } = useTheme();
@@ -43,7 +46,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     
     // Open send modal for a token
     const openSendModal = (token, e) => {
-        e.stopPropagation();
+        if (e) e.stopPropagation();
         setSelectedToken(token);
         setShowSendModal(true);
     };
@@ -53,6 +56,20 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         if (sendToken) {
             await sendToken(token, recipient, amount, subaccount);
         }
+    };
+    
+    // Open token detail modal
+    const openTokenDetailModal = (token) => {
+        setDetailToken(token);
+        setShowTokenDetailModal(true);
+        setShowPopup(false); // Close the popup when opening the modal
+    };
+    
+    // Handle send from token detail modal
+    const handleOpenSendFromDetail = (token) => {
+        setShowTokenDetailModal(false);
+        setSelectedToken(token);
+        setShowSendModal(true);
     };
 
     // Add click outside handler
@@ -494,12 +511,14 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                       <div 
                                           key={ledgerId || index}
                                           className="compact-wallet-token"
+                                          onClick={() => openTokenDetailModal(token)}
                                           style={{
                                               display: 'flex',
                                               alignItems: 'center',
                                               padding: '8px 12px',
                                               borderBottom: index < tokensWithBalance.length - 1 ? `1px solid ${theme.colors.border}` : 'none',
-                                              gap: '10px'
+                                              gap: '10px',
+                                              cursor: 'pointer'
                                           }}
                                       >
                                           {/* Token Logo */}
@@ -698,6 +717,18 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
           }}
           onSend={handleSendToken}
           token={selectedToken}
+      />
+      
+      {/* Token Detail Modal */}
+      <TokenCardModal
+          show={showTokenDetailModal}
+          onClose={() => {
+              setShowTokenDetailModal(false);
+              setDetailToken(null);
+          }}
+          token={detailToken}
+          openSendModal={handleOpenSendFromDetail}
+          hideButtons={false}
       />
   </>
   );
