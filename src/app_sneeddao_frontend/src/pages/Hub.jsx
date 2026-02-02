@@ -1592,8 +1592,8 @@ function Hub() {
                 {/* LIVE ACTIVITY SECTION */}
                 {/* ============================================ */}
                 <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 420px), 1fr))',
+                    display: 'flex',
+                    flexDirection: 'column',
                     gap: '1.5rem',
                     marginBottom: '2.5rem',
                 }}>
