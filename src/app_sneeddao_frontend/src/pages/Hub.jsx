@@ -333,6 +333,26 @@ const customStyles = `
         margin-bottom: 1.5rem !important;
         padding: 0 0.5rem;
     }
+    
+    .hub-card-subtitle {
+        display: none !important;
+    }
+    
+    .hub-link-full {
+        display: none !important;
+    }
+    
+    .hub-link-short {
+        display: inline !important;
+    }
+    
+    .hub-text-full {
+        display: none !important;
+    }
+    
+    .hub-text-short {
+        display: inline !important;
+    }
 }
 `;
 
@@ -1732,7 +1752,10 @@ function Hub() {
                                         transition: 'all 0.2s ease',
                                     }}
                                 >
-                                    <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Total Supply</div>
+                                    <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+                                        <span className="hub-text-full">Total Supply</span>
+                                        <span className="hub-text-short" style={{ display: 'none' }}>Supply</span>
+                                    </div>
                                     <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.primaryText, fontFamily: 'monospace' }}>
                                         {financialStats.loading ? '—' : Math.round(financialStats.totalSupply).toLocaleString()}
                                     </div>
@@ -1896,7 +1919,7 @@ function Hub() {
                                 </div>
                                 <div>
                                     <div style={{ color: 'white', fontWeight: '800', fontSize: '1.2rem', letterSpacing: '-0.01em' }}>Sneed Forum</div>
-                                    <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.8rem', fontWeight: '500' }}>Latest discussions</div>
+                                    <div className="hub-card-subtitle" style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.8rem', fontWeight: '500' }}>Latest discussions</div>
                                 </div>
                             </div>
                             <Link 
@@ -1917,7 +1940,9 @@ function Hub() {
                                     transition: 'all 0.2s ease',
                                 }}
                             >
-                                View All <FaArrowRight size={12} />
+                                <span className="hub-link-full">View All</span>
+                                <span className="hub-link-short" style={{ display: 'none' }}>All</span>
+                                <FaArrowRight size={12} />
                             </Link>
                         </div>
 
@@ -2028,7 +2053,7 @@ function Hub() {
                                 </div>
                                 <div>
                                     <div style={{ color: 'white', fontWeight: '800', fontSize: '1.2rem', letterSpacing: '-0.01em' }}>Sneedex</div>
-                                    <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.8rem', fontWeight: '500' }}>Active marketplace offers</div>
+                                    <div className="hub-card-subtitle" style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.8rem', fontWeight: '500' }}>Active marketplace offers</div>
                                 </div>
                             </div>
                             <Link 
@@ -2049,7 +2074,9 @@ function Hub() {
                                     transition: 'all 0.2s ease',
                                 }}
                             >
-                                Browse All <FaArrowRight size={12} />
+                                <span className="hub-link-full">Browse All</span>
+                                <span className="hub-link-short" style={{ display: 'none' }}>All</span>
+                                <FaArrowRight size={12} />
                             </Link>
                         </div>
 
