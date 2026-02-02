@@ -556,7 +556,7 @@ function Hub() {
     useEffect(() => {
         if (sneedNeurons.length > 0 && !neuronsLoading) {
             const totalStaked = sneedNeurons.reduce((sum, neuron) => {
-                const stake = neuron.cached_neuron_stake_e8s?.[0] || neuron.stake_e8s || BigInt(0);
+                const stake = BigInt(neuron.cached_neuron_stake_e8s || 0);
                 return sum + Number(stake);
             }, 0) / Math.pow(10, SNEED_DECIMALS);
             
@@ -1320,29 +1320,6 @@ function Hub() {
                             </div>
                         </div>
                         
-                        {/* Main headline */}
-                        <h1 style={{
-                            fontSize: 'clamp(2.5rem, 6vw, 3.75rem)',
-                            fontWeight: '900',
-                            color: theme.colors.primaryText,
-                            marginBottom: '1.5rem',
-                            letterSpacing: '-0.03em',
-                            lineHeight: '1.1',
-                            textAlign: 'center',
-                        }}>
-                            Your home on the{' '}
-                            <span style={{
-                                background: `linear-gradient(135deg, ${hubPrimary} 0%, ${hubSecondary} 50%, ${hubAccent} 100%)`,
-                                backgroundSize: '200% 200%',
-                                WebkitBackgroundClip: 'text',
-                                WebkitTextFillColor: 'transparent',
-                                backgroundClip: 'text',
-                                animation: 'gradientShift 5s ease infinite',
-                            }}>
-                                Internet Computer
-                            </span>
-                        </h1>
-                        
                         {/* Subtitle */}
                         <p style={{
                             color: theme.colors.secondaryText,
@@ -1441,60 +1418,80 @@ function Hub() {
                             margin: '0 auto',
                         }}>
                             {/* Total Supply */}
-                            <div style={{
-                                padding: '12px 16px',
-                                background: `${theme.colors.secondaryBg}80`,
-                                borderRadius: '12px',
-                                border: `1px solid ${theme.colors.border}`,
-                                textAlign: 'center',
-                            }}>
+                            <Link 
+                                to="/rll_info"
+                                style={{
+                                    padding: '12px 16px',
+                                    background: `${theme.colors.secondaryBg}80`,
+                                    borderRadius: '12px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    textAlign: 'center',
+                                    textDecoration: 'none',
+                                    transition: 'all 0.2s ease',
+                                }}
+                            >
                                 <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Total Supply</div>
                                 <div style={{ fontSize: '1.1rem', fontWeight: '700', color: theme.colors.primaryText, fontFamily: 'monospace' }}>
-                                    {financialStats.loading ? '—' : `${(financialStats.totalSupply / 1e6).toFixed(2)}M`}
+                                    {financialStats.loading ? '—' : Math.round(financialStats.totalSupply).toLocaleString()}
                                 </div>
-                            </div>
+                            </Link>
                             
                             {/* Circulating Supply */}
-                            <div style={{
-                                padding: '12px 16px',
-                                background: `${theme.colors.secondaryBg}80`,
-                                borderRadius: '12px',
-                                border: `1px solid ${theme.colors.border}`,
-                                textAlign: 'center',
-                            }}>
+                            <Link 
+                                to="/rll_info"
+                                style={{
+                                    padding: '12px 16px',
+                                    background: `${theme.colors.secondaryBg}80`,
+                                    borderRadius: '12px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    textAlign: 'center',
+                                    textDecoration: 'none',
+                                    transition: 'all 0.2s ease',
+                                }}
+                            >
                                 <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Circulating</div>
                                 <div style={{ fontSize: '1.1rem', fontWeight: '700', color: theme.colors.primaryText, fontFamily: 'monospace' }}>
-                                    {financialStats.circulatingSupply ? `${(financialStats.circulatingSupply / 1e6).toFixed(2)}M` : '—'}
+                                    {financialStats.circulatingSupply ? Math.round(financialStats.circulatingSupply).toLocaleString() : '—'}
                                 </div>
-                            </div>
+                            </Link>
                             
                             {/* FDV */}
-                            <div style={{
-                                padding: '12px 16px',
-                                background: `${hubPrimary}15`,
-                                borderRadius: '12px',
-                                border: `1px solid ${hubPrimary}30`,
-                                textAlign: 'center',
-                            }}>
+                            <Link 
+                                to="/rll_info"
+                                style={{
+                                    padding: '12px 16px',
+                                    background: `${hubPrimary}15`,
+                                    borderRadius: '12px',
+                                    border: `1px solid ${hubPrimary}30`,
+                                    textAlign: 'center',
+                                    textDecoration: 'none',
+                                    transition: 'all 0.2s ease',
+                                }}
+                            >
                                 <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>FDV</div>
                                 <div style={{ fontSize: '1.1rem', fontWeight: '700', color: hubPrimary, fontFamily: 'monospace' }}>
                                     {financialStats.fdv > 0 ? `$${financialStats.fdv >= 1e6 ? (financialStats.fdv / 1e6).toFixed(2) + 'M' : financialStats.fdv >= 1e3 ? (financialStats.fdv / 1e3).toFixed(1) + 'K' : financialStats.fdv.toFixed(0)}` : '—'}
                                 </div>
-                            </div>
+                            </Link>
                             
                             {/* Market Cap */}
-                            <div style={{
-                                padding: '12px 16px',
-                                background: `${theme.colors.success}15`,
-                                borderRadius: '12px',
-                                border: `1px solid ${theme.colors.success}30`,
-                                textAlign: 'center',
-                            }}>
+                            <Link 
+                                to="/rll_info"
+                                style={{
+                                    padding: '12px 16px',
+                                    background: `${theme.colors.success}15`,
+                                    borderRadius: '12px',
+                                    border: `1px solid ${theme.colors.success}30`,
+                                    textAlign: 'center',
+                                    textDecoration: 'none',
+                                    transition: 'all 0.2s ease',
+                                }}
+                            >
                                 <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Circ. MCap</div>
                                 <div style={{ fontSize: '1.1rem', fontWeight: '700', color: theme.colors.success, fontFamily: 'monospace' }}>
                                     {financialStats.marketCap > 0 ? `$${financialStats.marketCap >= 1e6 ? (financialStats.marketCap / 1e6).toFixed(2) + 'M' : financialStats.marketCap >= 1e3 ? (financialStats.marketCap / 1e3).toFixed(1) + 'K' : financialStats.marketCap.toFixed(0)}` : '—'}
                                 </div>
-                            </div>
+                            </Link>
                             
                             {/* Total Staked */}
                             <Link 
@@ -1511,7 +1508,7 @@ function Hub() {
                             >
                                 <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Staked</div>
                                 <div style={{ fontSize: '1.1rem', fontWeight: '700', color: hubAccent, fontFamily: 'monospace' }}>
-                                    {financialStats.totalStaked > 0 ? `${(financialStats.totalStaked / 1e6).toFixed(2)}M` : daoStats.loading ? '...' : '—'}
+                                    {financialStats.totalStaked > 0 ? Math.round(financialStats.totalStaked).toLocaleString() : daoStats.loading ? '...' : '—'}
                                 </div>
                                 <div style={{ fontSize: '0.65rem', color: hubAccent, marginTop: '2px' }}>View Neurons →</div>
                             </Link>
@@ -1608,14 +1605,19 @@ function Hub() {
                         overflow: 'hidden',
                         boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
                     }}>
-                        {/* Branded Header */}
-                        <div style={{
-                            background: 'linear-gradient(135deg, #f97316 0%, #ea580c 50%, #dc2626 100%)',
-                            padding: '18px 24px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                        }}>
+                        {/* Branded Header - Clickable to expand/collapse */}
+                        <div 
+                            onClick={() => setFeedExpanded(!feedExpanded)}
+                            style={{
+                                background: 'linear-gradient(135deg, #f97316 0%, #ea580c 50%, #dc2626 100%)',
+                                padding: '18px 24px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                cursor: 'pointer',
+                                transition: 'filter 0.2s ease',
+                            }}
+                        >
                             <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                                 <div style={{
                                     width: '48px',
@@ -1633,9 +1635,11 @@ function Hub() {
                                     <div style={{ color: 'white', fontWeight: '800', fontSize: '1.2rem', letterSpacing: '-0.01em' }}>Sneed Forum</div>
                                     <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.8rem', fontWeight: '500' }}>Latest discussions</div>
                                 </div>
+                                {feedExpanded ? <FaChevronUp size={14} style={{ color: 'rgba(255,255,255,0.7)', marginLeft: '8px' }} /> : <FaChevronDown size={14} style={{ color: 'rgba(255,255,255,0.7)', marginLeft: '8px' }} />}
                             </div>
                             <Link 
                                 to="/feed" 
+                                onClick={(e) => e.stopPropagation()}
                                 style={{ 
                                     color: 'white', 
                                     textDecoration: 'none', 
@@ -1734,14 +1738,19 @@ function Hub() {
                         overflow: 'hidden',
                         boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
                     }}>
-                        {/* Branded Header */}
-                        <div style={{
-                            background: `linear-gradient(135deg, ${hubPrimary} 0%, ${hubSecondary} 50%, #7c3aed 100%)`,
-                            padding: '18px 24px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                        }}>
+                        {/* Branded Header - Clickable to expand/collapse */}
+                        <div 
+                            onClick={() => setOffersExpanded(!offersExpanded)}
+                            style={{
+                                background: `linear-gradient(135deg, ${hubPrimary} 0%, ${hubSecondary} 50%, #7c3aed 100%)`,
+                                padding: '18px 24px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                cursor: 'pointer',
+                                transition: 'filter 0.2s ease',
+                            }}
+                        >
                             <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                                 <div style={{
                                     width: '48px',
@@ -1759,9 +1768,11 @@ function Hub() {
                                     <div style={{ color: 'white', fontWeight: '800', fontSize: '1.2rem', letterSpacing: '-0.01em' }}>Sneedex</div>
                                     <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.8rem', fontWeight: '500' }}>Active marketplace offers</div>
                                 </div>
+                                {offersExpanded ? <FaChevronUp size={14} style={{ color: 'rgba(255,255,255,0.7)', marginLeft: '8px' }} /> : <FaChevronDown size={14} style={{ color: 'rgba(255,255,255,0.7)', marginLeft: '8px' }} />}
                             </div>
                             <Link 
                                 to="/sneedex_offers" 
+                                onClick={(e) => e.stopPropagation()}
                                 style={{ 
                                     color: 'white', 
                                     textDecoration: 'none', 
