@@ -1593,7 +1593,7 @@ function Hub() {
                 {/* ============================================ */}
                 <div style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 420px), 1fr))',
                     gap: '1.5rem',
                     marginBottom: '2.5rem',
                 }}>
@@ -1831,7 +1831,7 @@ function Hub() {
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                     {offers.map((offer) => (
                                         <OfferCard
-                                            key={`offer-${offer.id}-${tokenMetadataState.size}`}
+                                            key={`offer-${offer.id}-${tokenMetadataState.size}-${snsList.length}`}
                                             offer={offer}
                                             getTokenInfo={getTokenInfo}
                                             getSnsInfo={getSnsInfo}

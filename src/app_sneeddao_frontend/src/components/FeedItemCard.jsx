@@ -210,8 +210,7 @@ function FeedItemCard({
             case 'thread':
                 return `/thread?threadid=${Array.isArray(item.thread_id) ? item.thread_id[0] : item.thread_id || item.id}`;
             case 'post':
-                const threadId = Array.isArray(item.thread_id) ? item.thread_id[0] : item.thread_id;
-                return `/thread?threadid=${threadId}&postid=${item.id}`;
+                return `/post/${item.id}`;
             default:
                 return '/feed';
         }
@@ -228,9 +227,13 @@ function FeedItemCard({
         return `New ${typeStr}`;
     })();
 
-    const handleItemClick = () => navigate(navigationUrl);
+    const handleItemClick = (e) => {
+        if (e) e.stopPropagation();
+        navigate(navigationUrl);
+    };
     
-    const handleSnsLogoClick = () => {
+    const handleSnsLogoClick = (e) => {
+        if (e) e.stopPropagation();
         if (snsRootStr) navigate(`/forum?sns=${snsRootStr}`);
     };
 
@@ -405,9 +408,11 @@ function FeedItemCard({
             className="feed-card feed-item-animate" 
             style={{
                 ...styles.card,
-                animationDelay: `${Math.min(index * 0.05, 0.5)}s`
+                animationDelay: `${Math.min(index * 0.05, 0.5)}s`,
+                cursor: 'pointer',
             }} 
             data-feed-item-id={item.id?.toString()}
+            onClick={handleItemClick}
         >
             {/* Status banners for auctions */}
             {item._isAuction && (() => {
@@ -508,13 +513,15 @@ function FeedItemCard({
                             {typeDisplayText}
                         </span>
                         {creatorPrincipal && (
-                            <PrincipalDisplay
-                                principal={creatorPrincipal}
-                                displayInfo={creatorDisplayInfo}
-                                short={true}
-                                style={{ fontSize: '0.8rem' }}
-                                isAuthenticated={isAuthenticated}
-                            />
+                            <span onClick={(e) => e.stopPropagation()}>
+                                <PrincipalDisplay
+                                    principal={creatorPrincipal}
+                                    displayInfo={creatorDisplayInfo}
+                                    short={true}
+                                    style={{ fontSize: '0.8rem' }}
+                                    isAuthenticated={isAuthenticated}
+                                />
+                            </span>
                         )}
                         {item._isAuction ? (
                             <>
