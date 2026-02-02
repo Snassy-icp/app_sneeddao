@@ -1,22 +1,25 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import Header from '../components/Header';
 import { Link } from 'react-router-dom';
 import { FaExchangeAlt, FaCoins, FaLock, FaComments, FaWallet, FaServer, FaNewspaper, FaUsers, FaVoteYea, FaRss, FaArrowRight, FaHistory, FaStar, FaUnlock, FaShieldAlt, FaGlobe, FaBrain, FaGavel, FaNetworkWired } from 'react-icons/fa';
 import { HttpAgent } from '@dfinity/agent';
+import { Principal } from '@dfinity/principal';
 import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
-import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
+import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { createSneedexActor } from '../utils/SneedexUtils';
-import { getSnsById, getAllSnses } from '../utils/SnsUtils';
+import { getSnsById, getAllSnses, fetchAndCacheSnsData } from '../utils/SnsUtils';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
 import OfferCard from '../components/OfferCard';
 import FeedItemCard from '../components/FeedItemCard';
 import priceService from '../services/PriceService';
 
-// Constants
+// Constants - Sneed DAO canister IDs (hardcoded to avoid waiting for SNS list)
 const SNEED_LEDGER_ID = 'hvgxa-wqaaa-aaaaq-aacia-cai';
 const SNEED_DECIMALS = 8;
 const ICP_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
+const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
+const SNEED_GOVERNANCE_ID = 'fi3zi-fyaaa-aaaaq-aachq-cai';
 
 // Custom CSS for animations
 const customStyles = `
@@ -216,9 +219,15 @@ function Hub() {
     // Use global token metadata cache
     const { getTokenMetadata, metadata: tokenMetadataState } = useTokenMetadata();
     
-    // SNS data
+    // SNS data for other features (not needed for Sneed neuron count)
     const [snsList, setSnsList] = useState([]);
     const [snsLogosMap, setSnsLogosMap] = useState(new Map());
+    
+    // Direct Sneed neuron state (no SNS list dependency - uses hardcoded governance canister)
+    const [sneedNeurons, setSneedNeurons] = useState([]);
+    const [neuronsLoading, setNeuronsLoading] = useState(true);
+    const [neuronsProgress, setNeuronsProgress] = useState({ count: 0, message: 'Loading...', percent: 0 });
+    const [neuronsError, setNeuronsError] = useState('');
     
     // Dynamic data state
     const [prices, setPrices] = useState({
@@ -227,16 +236,158 @@ function Hub() {
         icpUsd: null,
         loading: true
     });
-    const [daoStats, setDaoStats] = useState({
-        activeMembers: null,
-        totalNeurons: null,
-        loading: true
-    });
     const [feedItems, setFeedItems] = useState([]);
     const [offers, setOffers] = useState([]);
     const [activityLoading, setActivityLoading] = useState(true);
     const [snsLogos, setSnsLogos] = useState({});
     const [tokenPrices, setTokenPrices] = useState({}); // ledger_id -> USD price
+    
+    // Fetch Sneed neurons directly using hardcoded governance canister (no SNS list needed)
+    useEffect(() => {
+        const fetchSneedNeurons = async () => {
+            console.log('Hub: Starting direct Sneed neuron fetch...');
+            setNeuronsLoading(true);
+            setNeuronsError('');
+            setNeuronsProgress({ count: 0, message: 'Connecting to Sneed governance...', percent: 5 });
+            
+            try {
+                const agent = new HttpAgent({ host: 'https://ic0.app' });
+                const snsGovActor = createSnsGovernanceActor(SNEED_GOVERNANCE_ID, { agent });
+                
+                // Fetch all neurons using pagination
+                let allNeurons = [];
+                let hasMore = true;
+                let lastNeuron = [];
+                let pageCount = 0;
+                
+                while (hasMore) {
+                    pageCount++;
+                    setNeuronsProgress({ 
+                        count: allNeurons.length, 
+                        message: `Loading page ${pageCount}...`, 
+                        percent: Math.min(90, 5 + (pageCount * 5))
+                    });
+                    
+                    const response = await snsGovActor.list_neurons({
+                        of_principal: [],
+                        limit: 100,
+                        start_page_at: lastNeuron.length > 0 ? [{ id: lastNeuron[0] }] : []
+                    });
+                    
+                    const neurons = response?.neurons || [];
+                    console.log(`Hub: Fetched page ${pageCount} with ${neurons.length} neurons`);
+                    
+                    if (neurons.length > 0) {
+                        allNeurons = [...allNeurons, ...neurons];
+                        // Store the raw id bytes for the next page
+                        lastNeuron = [neurons[neurons.length - 1].id.id];
+                        
+                        // Update progress
+                        setNeuronsProgress({ 
+                            count: allNeurons.length, 
+                            message: `Loaded ${allNeurons.length} neurons...`, 
+                            percent: Math.min(90, 5 + (pageCount * 5))
+                        });
+                    }
+                    
+                    hasMore = neurons.length === 100;
+                }
+                
+                console.log(`Hub: Total neurons fetched: ${allNeurons.length}`);
+                setSneedNeurons(allNeurons);
+                setNeuronsProgress({ count: allNeurons.length, message: 'Complete', percent: 100 });
+            } catch (error) {
+                console.error('Hub: Error fetching Sneed neurons:', error);
+                setNeuronsError(error.message || 'Failed to fetch neurons');
+            } finally {
+                setNeuronsLoading(false);
+            }
+        };
+        
+        fetchSneedNeurons();
+    }, []);
+    
+    // Calculate active members from neurons (same logic as /users page)
+    const daoStats = useMemo(() => {
+        // Show loading state
+        const loading = neuronsLoading && sneedNeurons.length === 0;
+        
+        if (sneedNeurons.length === 0) {
+            return { 
+                activeMembers: null, 
+                totalNeurons: null, 
+                loading,
+                progress: neuronsProgress,
+                error: neuronsError
+            };
+        }
+        
+        // Group neurons by owner and sum stake (same logic as Users.jsx)
+        const ownerStakes = new Map();
+        const MANAGE_PRINCIPALS = 2; // ManageVotingPermission = owner-level permission
+        
+        // Helper to safely extract principal string from various formats
+        // Handles: Principal object, [Principal] opt array, serialized {_arr} from IndexedDB
+        const extractPrincipalString = (principalData) => {
+            if (!principalData) return null;
+            
+            // If it's an array (opt type), get first element
+            const principal = Array.isArray(principalData) ? principalData[0] : principalData;
+            if (!principal) return null;
+            
+            // If it has a toString method that returns a valid principal string, use it
+            if (typeof principal.toString === 'function') {
+                const str = principal.toString();
+                // Check if it's a valid principal string (not "[object Object]")
+                if (str && !str.includes('[object')) {
+                    return str;
+                }
+            }
+            
+            // If it has toText method (Principal object), use it
+            if (typeof principal.toText === 'function') {
+                return principal.toText();
+            }
+            
+            // If it has _arr property (serialized from IndexedDB), try to reconstruct
+            if (principal._arr && Array.isArray(principal._arr)) {
+                try {
+                    return Principal.fromUint8Array(new Uint8Array(principal._arr)).toText();
+                } catch (e) {
+                    return null;
+                }
+            }
+            
+            return null;
+        };
+        
+        sneedNeurons.forEach(neuron => {
+            const stake = BigInt(neuron.cached_neuron_stake_e8s || 0);
+            
+            neuron.permissions?.forEach(p => {
+                const principalStr = extractPrincipalString(p.principal);
+                if (!principalStr) return;
+                
+                // Check if this principal has MANAGE_PRINCIPALS permission (owner)
+                const permTypes = p.permission_type || [];
+                if (permTypes.includes(MANAGE_PRINCIPALS)) {
+                    const currentStake = ownerStakes.get(principalStr) || BigInt(0);
+                    ownerStakes.set(principalStr, currentStake + stake);
+                }
+            });
+        });
+        
+        // Count owners with stake > 0
+        const activeMembers = Array.from(ownerStakes.values()).filter(stake => stake > BigInt(0)).length;
+        
+        return {
+            activeMembers,
+            totalNeurons: sneedNeurons.length,
+            loading: neuronsLoading,
+            progress: neuronsProgress,
+            error: neuronsError
+        };
+    }, [sneedNeurons, neuronsLoading, neuronsProgress, neuronsError]);
     
     // Helper to get token info
     const getTokenInfo = useCallback((ledgerId) => {
@@ -290,14 +441,20 @@ function Hub() {
         return sns?.logo || null;
     }, [snsLogosMap, snsList]);
     
-    // Fetch SNS list on mount
+    // Fetch SNS list on mount - must complete before neurons can load
     useEffect(() => {
         const fetchSnsList = async () => {
             try {
-                const list = await getAllSnses();
+                console.log('Hub: Starting SNS data fetch (for offer cards)...');
+                
+                // Fetch SNS list for offer cards (not needed for Sneed neuron count)
+                const freshList = await fetchAndCacheSnsData();
+                const list = freshList || getAllSnses();
+                
+                console.log('Hub: SNS data fetched, count:', list?.length);
                 setSnsList(list || []);
             } catch (e) {
-                console.warn('Could not fetch SNS list:', e);
+                console.warn('Hub: Could not fetch SNS list:', e);
             }
         };
         fetchSnsList();
@@ -331,65 +488,6 @@ function Hub() {
         return () => clearInterval(interval);
     }, []);
 
-    // Fetch DAO stats - count unique owners (active members)
-    useEffect(() => {
-        const fetchDaoStats = async () => {
-            try {
-                const isLocal = process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging';
-                const host = isLocal ? 'http://localhost:4943' : 'https://ic0.app';
-                const agent = new HttpAgent({ host });
-                if (isLocal) await agent.fetchRootKey().catch(() => {});
-                
-                const snsGovActor = createSnsGovernanceActor(snsGovernanceCanisterId, { agent });
-                const response = await snsGovActor.list_neurons({
-                    limit: 0,
-                    start_page_at: [],
-                    of_principal: []
-                });
-                
-                // Count unique owners with stake > 0 (active members)
-                // Group neurons by owner principal and sum their stake
-                const ownerStakes = new Map();
-                
-                for (const neuron of response.neurons) {
-                    // Get the owner principal
-                    const permissions = neuron.permissions || [];
-                    for (const perm of permissions) {
-                        // Check if this permission includes MANAGE_VOTING_PERMISSION (owner-level)
-                        // Permission types: 1=Unspecified, 2=ManageVotingPermission, 3=ConfigureDissolveState, etc.
-                        const MANAGE_VOTING_PERMISSION = 2;
-                        const hasOwnerPerm = perm.permission_type?.some(pt => pt === MANAGE_VOTING_PERMISSION);
-                        
-                        if (hasOwnerPerm && perm.principal?.[0]) {
-                            const principalStr = perm.principal[0].toString();
-                            
-                            // Get neuron stake
-                            const stake = neuron.cached_neuron_stake_e8s?.[0] || BigInt(0);
-                            
-                            // Add to owner's total stake
-                            const currentStake = ownerStakes.get(principalStr) || BigInt(0);
-                            ownerStakes.set(principalStr, currentStake + stake);
-                        }
-                    }
-                }
-                
-                // Count owners with stake > 0
-                const activeMembers = Array.from(ownerStakes.values()).filter(stake => stake > BigInt(0)).length;
-                
-                setDaoStats({
-                    activeMembers,
-                    totalNeurons: response.neurons.length,
-                    loading: false
-                });
-            } catch (error) {
-                console.error('Error fetching DAO stats:', error);
-                setDaoStats(prev => ({ ...prev, loading: false }));
-            }
-        };
-        
-        fetchDaoStats();
-    }, []);
-
     // Fetch feed items and offers
     useEffect(() => {
         const fetchActivity = async () => {
@@ -401,12 +499,14 @@ function Hub() {
                 if (isLocal) await agent.fetchRootKey().catch(() => {});
                 
                 // Fetch forum feed items
+                console.log('Hub: Fetching forum feed from', forumCanisterId);
                 const forumActor = createForumActor(forumCanisterId, { agent });
                 const feedResponse = await forumActor.get_feed({
                     start_id: [],
                     length: 5,
                     filter: []
                 });
+                console.log('Hub: Forum response:', feedResponse);
                 
                 // Get SNS logos from cached SNS data (no network calls needed)
                 const snsRoots = [...new Set(feedResponse.items
@@ -425,6 +525,7 @@ function Hub() {
                     setSnsLogos(prev => ({ ...prev, ...logos }));
                 }
                 
+                console.log('Hub: Feed items fetched:', feedResponse.items.length);
                 setFeedItems(feedResponse.items.slice(0, 5));
                 
                 // Fetch Sneedex offers
@@ -941,10 +1042,12 @@ function Hub() {
                         zIndex: 1,
                         padding: '4rem 2.5rem 3.5rem',
                     }}>
-                        {/* Logo with animated glow */}
+                        {/* Logo with title */}
                         <div style={{
                             display: 'flex',
                             justifyContent: 'center',
+                            alignItems: 'center',
+                            gap: '1.5rem',
                             marginBottom: '2rem',
                         }}>
                             <div 
@@ -959,6 +1062,7 @@ function Hub() {
                                     justifyContent: 'center',
                                     padding: '4px',
                                     boxSizing: 'border-box',
+                                    flexShrink: 0,
                                 }}
                             >
                                 <div style={{
@@ -984,6 +1088,20 @@ function Hub() {
                                     />
                                 </div>
                             </div>
+                            <h2 style={{
+                                fontSize: 'clamp(2.5rem, 7vw, 4rem)',
+                                fontWeight: '900',
+                                margin: 0,
+                                background: `linear-gradient(135deg, ${hubPrimary} 0%, ${hubSecondary} 50%, ${hubAccent} 100%)`,
+                                backgroundSize: '200% 200%',
+                                WebkitBackgroundClip: 'text',
+                                WebkitTextFillColor: 'transparent',
+                                backgroundClip: 'text',
+                                animation: 'gradientShift 5s ease infinite',
+                                letterSpacing: '-0.02em',
+                            }}>
+                                Sneed Hub
+                            </h2>
                         </div>
                         
                         {/* Main headline */}
@@ -996,7 +1114,7 @@ function Hub() {
                             lineHeight: '1.1',
                             textAlign: 'center',
                         }}>
-                            Your Gateway to the{' '}
+                            Your home on the{' '}
                             <span style={{
                                 background: `linear-gradient(135deg, ${hubPrimary} 0%, ${hubSecondary} 50%, ${hubAccent} 100%)`,
                                 backgroundSize: '200% 200%',
@@ -1022,7 +1140,7 @@ function Hub() {
                             The all-in-one platform for <strong style={{ color: hubPrimary }}>trading</strong>,{' '}
                             <strong style={{ color: theme.colors.success }}>staking</strong>,{' '}
                             <strong style={{ color: '#9b59b6' }}>locking</strong>, and{' '}
-                            <strong style={{ color: hubAccent }}>governing</strong> across all SNS DAOs.
+                            <strong style={{ color: hubAccent }}>governing</strong>.
                         </p>
                         
                         {/* CTA Buttons */}
@@ -1231,14 +1349,29 @@ function Hub() {
                                     <div style={{ 
                                         fontSize: '1.75rem', 
                                         fontWeight: '800', 
-                                        color: hubAccent,
+                                        color: daoStats.error ? '#ef4444' : hubAccent,
                                         lineHeight: 1,
                                         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace',
                                     }}>
-                                        {daoStats.loading ? '—' : (daoStats.activeMembers?.toLocaleString() || '0')}
+                                        {daoStats.activeMembers !== null 
+                                            ? daoStats.activeMembers.toLocaleString()
+                                            : daoStats.error 
+                                                ? '—' 
+                                                : (daoStats.progress?.count > 0 
+                                                    ? `${daoStats.progress.count}...` 
+                                                    : '...'
+                                                )
+                                        }
                                     </div>
                                     <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '2px' }}>
-                                        Sneed DAO
+                                        {daoStats.error 
+                                            ? 'Error loading'
+                                            : daoStats.waitingForSns
+                                                ? 'Loading SNS data...'
+                                                : daoStats.loading && daoStats.progress?.message
+                                                    ? daoStats.progress.message
+                                                    : 'Sneed DAO'
+                                        }
                                     </div>
                                 </div>
                             </div>
@@ -1323,13 +1456,13 @@ function Hub() {
                                     <div>No recent activity</div>
                                 </div>
                             ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                     {feedItems.map((item, index) => (
                                         <FeedItemCard
                                             key={`feed-${item.id}-${index}`}
                                             item={item}
                                             index={index}
-                                            compact={true}
+                                            compact={false}
                                             getSnsInfo={getSnsById}
                                             snsLogos={snsLogos}
                                         />

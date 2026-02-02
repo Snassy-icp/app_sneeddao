@@ -151,11 +151,25 @@ function FeedItemCard({
     const itemType = extractVariant(item.item_type);
     const typeColor = getFeedTypeColor(itemType);
 
+    // Helper to convert principal to text
+    const convertPrincipalToText = (principal) => {
+        if (!principal) return null;
+        if (principalToText) return principalToText(principal);
+        // Default implementation
+        if (typeof principal === 'string') return principal;
+        if (principal.toText) return principal.toText();
+        if (principal.toString) {
+            const str = principal.toString();
+            if (!str.includes('[object')) return str;
+        }
+        return null;
+    };
+
     // Get SNS info
     const snsRootId = Array.isArray(item.sns_root_canister_id) 
         ? item.sns_root_canister_id[0] 
         : item.sns_root_canister_id;
-    const snsRootStr = snsRootId && principalToText ? principalToText(snsRootId) : null;
+    const snsRootStr = convertPrincipalToText(snsRootId);
     const snsInfo = getSnsInfo ? getSnsInfo(snsRootStr) : null;
     
     // Get SNS logo - check both Map and object formats
@@ -316,6 +330,14 @@ function FeedItemCard({
 
     // Compact mode for Hub
     if (compact) {
+        // Safety check for required data
+        if (!item) {
+            console.warn('FeedItemCard: No item provided');
+            return null;
+        }
+        
+        const bodyText = item.body ? (Array.isArray(item.body) ? item.body[0] : item.body) : '';
+        
         return (
             <Link
                 to={navigationUrl}
@@ -355,8 +377,8 @@ function FeedItemCard({
                                 {snsInfo.name}
                             </span>
                         )}
-                        <span style={styles.time} title={getFullDate(item.created_at)}>
-                            {formatRelativeTime(item.created_at)}
+                        <span style={styles.time} title={item.created_at ? getFullDate(item.created_at) : ''}>
+                            {item.created_at ? formatRelativeTime(item.created_at) : ''}
                         </span>
                     </div>
                     
@@ -366,10 +388,10 @@ function FeedItemCard({
                     </div>
                     
                     {/* Body preview */}
-                    {item.body && (
+                    {bodyText && (
                         <div style={styles.body}>
-                            {(Array.isArray(item.body) ? item.body[0] : item.body).slice(0, 80)}
-                            {(Array.isArray(item.body) ? item.body[0] : item.body).length > 80 ? '...' : ''}
+                            {bodyText.slice(0, 80)}
+                            {bodyText.length > 80 ? '...' : ''}
                         </div>
                     )}
                 </div>
