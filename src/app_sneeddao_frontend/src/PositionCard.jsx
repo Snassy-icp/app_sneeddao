@@ -8,7 +8,7 @@ import { useNaming } from './NamingContext';
 import { useAuth } from './AuthContext';
 import { Principal } from '@dfinity/principal';
 import { Link } from 'react-router-dom';
-import { FaBriefcase, FaLock, FaSync, FaCoins, FaArrowDown, FaQuestionCircle, FaExternalLinkAlt, FaCheck, FaCopy, FaInfoCircle, FaUnlock, FaTimes } from 'react-icons/fa';
+import { FaBriefcase, FaLock, FaSync, FaCoins, FaArrowDown, FaQuestionCircle, FaExternalLinkAlt, FaCheck, FaCopy, FaInfoCircle, FaUnlock, FaTimes, FaWater } from 'react-icons/fa';
 
 // Countdown timer component for position locks expiring within 1 hour
 const PositionLockCountdown = ({ expiryNanos }) => {
@@ -448,7 +448,7 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                 <>
                 <div className="balance-item">
                     <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-start' }}>
-                        <span style={{ fontSize: '14px' }}>🌊</span>
+                        <FaWater size={14} style={{ color: theme.colors.mutedText }} />
                         Liquidity
                     </div>
                     <div className="token-amounts">

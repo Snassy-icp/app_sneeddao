@@ -4574,7 +4574,7 @@ function Wallet() {
                                                     alignItems: 'center',
                                                     gap: '0.2rem'
                                                 }}>
-                                                    🌊 ${totalBreakdown.liquidity.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                    <FaWater size={12} style={{ marginRight: '4px' }} /> ${totalBreakdown.liquidity.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                                 </span>
                                             )}
                                             {totalBreakdown.hasAnyMaturity && totalBreakdown.maturity > 0 && (
