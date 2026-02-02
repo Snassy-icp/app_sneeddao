@@ -55,7 +55,7 @@ import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings, getCanis
 import { PERM } from './utils/NeuronPermissionUtils.jsx';
 import { Actor } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
-import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle } from 'react-icons/fa';
+import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle, FaTint, FaSeedling, FaGift, FaHourglassHalf, FaWater, FaUnlock, FaCheck } from 'react-icons/fa';
 
 // Custom CSS for Wallet page animations
 const walletCustomStyles = `
@@ -260,7 +260,7 @@ const EmptyPositionCard = ({ position, onRemove, handleRefreshPosition, isRefres
                                 onMouseLeave={(e) => !isRefreshing && (e.target.style.color = theme.colors.mutedText)}
                                 title="Refresh position data"
                             >
-                                {isRefreshing ? '⏳' : '🔄'}
+                                <FaSync size={12} style={{ animation: isRefreshing ? 'spin 1s linear infinite' : 'none' }} />
                             </button>
                         )}
                     </div>
@@ -396,7 +396,7 @@ const SectionHeader = ({ title, subtitle, isExpanded, onToggle, onAdd, addButton
                         onMouseLeave={(e) => !isRefreshing && (e.target.style.color = theme.colors.mutedText)}
                         title="Refresh section"
                     >
-                        {isRefreshing ? '⏳' : '🔄'}
+                        <FaSync size={12} style={{ animation: isRefreshing ? 'spin 1s linear infinite' : 'none' }} />
                     </button>
                 )}
             </div>
@@ -4544,7 +4544,7 @@ function Wallet() {
                                                     alignItems: 'center',
                                                     gap: '0.2rem'
                                                 }}>
-                                                    💧 ${totalBreakdown.liquid.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                    <FaTint size={12} style={{ marginRight: '4px' }} /> ${totalBreakdown.liquid.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                                 </span>
                                             )}
                                             {totalBreakdown.staked > 0 && (
@@ -4554,7 +4554,7 @@ function Wallet() {
                                                     alignItems: 'center',
                                                     gap: '0.2rem'
                                                 }}>
-                                                    🧠 ${totalBreakdown.staked.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                    <FaBrain size={12} style={{ marginRight: '4px' }} /> ${totalBreakdown.staked.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                                 </span>
                                             )}
                                             {totalBreakdown.locked > 0 && (
@@ -4564,7 +4564,7 @@ function Wallet() {
                                                     alignItems: 'center',
                                                     gap: '0.2rem'
                                                 }}>
-                                                    🔐 ${totalBreakdown.locked.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                    <FaLock size={12} style={{ marginRight: '4px' }} /> ${totalBreakdown.locked.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                                 </span>
                                             )}
                                             {totalBreakdown.liquidity > 0 && (
@@ -4584,7 +4584,7 @@ function Wallet() {
                                                     alignItems: 'center',
                                                     gap: '0.2rem'
                                                 }}>
-                                                    🌱 ${totalBreakdown.maturity.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                    <FaSeedling size={12} style={{ marginRight: '4px' }} /> ${totalBreakdown.maturity.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                                 </span>
                                             )}
                                             {totalBreakdown.hasAnyRewards && totalBreakdown.rewards > 0 && (
@@ -4594,7 +4594,7 @@ function Wallet() {
                                                     alignItems: 'center',
                                                     gap: '0.2rem'
                                                 }}>
-                                                    🎁 ${totalBreakdown.rewards.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                    <FaGift size={12} style={{ marginRight: '4px' }} /> ${totalBreakdown.rewards.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                                 </span>
                                             )}
                                             {totalBreakdown.hasAnyFees && totalBreakdown.fees > 0 && (
@@ -4711,7 +4711,7 @@ function Wallet() {
                                                 onMouseEnter={(e) => e.target.style.background = `${walletPrimary}20`}
                                                 onMouseLeave={(e) => e.target.style.background = 'transparent'}
                                             >
-                                                🎁 ${totalBreakdown.rewards.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                <FaGift size={12} style={{ marginRight: '4px' }} /> ${totalBreakdown.rewards.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                             </span>
                                         )}
                                         {totalBreakdown.hasAnyCollectableMaturity && (
@@ -4730,7 +4730,7 @@ function Wallet() {
                                                 onMouseEnter={(e) => e.target.style.background = `${walletPrimary}20`}
                                                 onMouseLeave={(e) => e.target.style.background = 'transparent'}
                                             >
-                                                🌱 ${totalBreakdown.collectableMaturity.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                <FaSeedling size={12} style={{ marginRight: '4px' }} /> ${totalBreakdown.collectableMaturity.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                             </span>
                                         )}
                                     </div>
@@ -4804,7 +4804,7 @@ function Wallet() {
                                 marginBottom: '20px',
                                 fontSize: '1.5rem'
                             }}>
-                                🔐 Login Required
+                                <FaLock size={20} style={{ marginRight: '10px', verticalAlign: 'middle' }} /> Login Required
                             </h2>
                             <p style={{ 
                                 color: theme.colors.secondaryText, 
@@ -5436,7 +5436,7 @@ function Wallet() {
                                                 onClick={() => toggleManagerCard(canisterId)}
                                             >
                                                 <div className="header-logo-column" style={{ alignSelf: 'flex-start', minWidth: '48px', minHeight: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-                                                    <span style={{ fontSize: '36px' }}>🧠</span>
+                                                    <FaBrain size={36} style={{ color: theme.colors.mutedText }} />
                                                     {neuronManagerIsController[canisterId] && (
                                                         <span 
                                                             style={{ 
@@ -5490,7 +5490,7 @@ function Wallet() {
                                                             onMouseLeave={(e) => refreshingManagerCard !== canisterId && (e.target.style.color = theme.colors.mutedText)}
                                                             title="Refresh manager data"
                                                         >
-                                                            {refreshingManagerCard === canisterId ? '⏳' : '🔄'}
+                                                            <FaSync size={12} style={{ animation: refreshingManagerCard === canisterId ? 'spin 1s linear infinite' : 'none' }} />
                                                         </button>
                                                     </div>
                                                     {/* Row 2: Total ICP amount */}
@@ -5553,16 +5553,16 @@ function Wallet() {
                                                                 }} 
                                                                 title={`${managerTotalMaturity.toFixed(4)} ICP maturity available`}
                                                             >
-                                                                🌱 {managerTotalMaturity.toFixed(2)}
+                                                                <FaSeedling size={12} style={{ marginRight: '4px' }} /> {managerTotalMaturity.toFixed(2)}
                                                             </span>
                                                         )}
                                                         {/* Neurons icon */}
                                                         {neuronCount > 0 && (
                                                             <span 
-                                                                style={{ fontSize: '14px', cursor: 'help' }} 
+                                                                style={{ fontSize: '14px', cursor: 'help', display: 'flex', alignItems: 'center', color: theme.colors.mutedText }} 
                                                                 title={`${neuronCount} neuron${neuronCount > 1 ? 's' : ''}`}
                                                             >
-                                                                🧠
+                                                                <FaBrain size={12} />
                                                             </span>
                                                         )}
                                                     </div>
@@ -5698,7 +5698,7 @@ function Wallet() {
                                                                     : stateNum === 2 ? (theme.colors.warning || '#f59e0b')
                                                                     : stateNum === 3 ? (theme.colors.accent || '#3b82f6')
                                                                     : theme.colors.mutedText;
-                                                                const stateIcon = stateNum === 1 ? '🔒' : stateNum === 2 ? '⏳' : stateNum === 3 ? '✅' : '❓';
+                                                                const stateIcon = stateNum === 1 ? <FaLock size={12} /> : stateNum === 2 ? <FaHourglassHalf size={12} /> : stateNum === 3 ? <FaCheck size={12} /> : <FaQuestionCircle size={12} />;
                                                                 
                                                                 const neuronIdStr = neuron.id?.id?.toString() || neuron.id?.toString() || 'Unknown';
                                                                 const neuronExpandKey = `${canisterId}:${neuronIdStr}`;
@@ -5762,10 +5762,10 @@ function Wallet() {
                                                                                 {/* Maturity indicator */}
                                                                                 {maturity > 0 && (
                                                                                     <span 
-                                                                                        style={{ fontSize: '1rem', cursor: 'help' }} 
+                                                                                        style={{ cursor: 'help', display: 'flex', alignItems: 'center', color: theme.colors.mutedText }} 
                                                                                         title={`${maturity.toFixed(4)} ICP maturity`}
                                                                                     >
-                                                                                        🌱
+                                                                                        <FaSeedling size={12} />
                                                                                     </span>
                                                                                 )}
                                                                                 {/* State icon */}
@@ -6423,7 +6423,7 @@ function Wallet() {
                                                             onMouseLeave={(e) => refreshingCanisterCard !== canisterId && (e.target.style.color = theme.colors.mutedText)}
                                                             title="Refresh canister data"
                                                         >
-                                                            {refreshingCanisterCard === canisterId ? '⏳' : '🔄'}
+                                                            <FaSync size={12} style={{ animation: refreshingCanisterCard === canisterId ? 'spin 1s linear infinite' : 'none' }} />
                                                         </button>
                                                     </div>
                                                     {/* Row 2: Status indicator */}

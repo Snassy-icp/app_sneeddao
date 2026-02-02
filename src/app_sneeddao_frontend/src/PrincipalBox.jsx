@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaCopy, FaCheck, FaWallet, FaPaperPlane, FaKey, FaIdCard, FaExternalLinkAlt } from 'react-icons/fa';
+import { FaCopy, FaCheck, FaWallet, FaPaperPlane, FaKey, FaIdCard, FaExternalLinkAlt, FaSync } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import { principalToSubAccount } from '@dfinity/utils';
 import { useAuth } from './AuthContext';
@@ -53,6 +53,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const hasFetchedInitial = walletContext?.hasFetchedInitial || false;
     const sendToken = walletContext?.sendToken;
     const isTokenSns = walletContext?.isTokenSns;
+    const refreshWallet = walletContext?.refreshWallet;
+    const [isRefreshingWallet, setIsRefreshingWallet] = useState(false);
     
     // Sync hideDust with localStorage and listen for changes from other components
     useEffect(() => {
@@ -765,6 +767,36 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                   }}>
                                       ${totalPortfolioUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </span>
+                              )}
+                              {refreshWallet && (
+                                  <button
+                                      onClick={async (e) => {
+                                          e.stopPropagation();
+                                          setIsRefreshingWallet(true);
+                                          try {
+                                              await refreshWallet();
+                                          } finally {
+                                              setIsRefreshingWallet(false);
+                                          }
+                                      }}
+                                      disabled={isRefreshingWallet || walletLoading}
+                                      style={{
+                                          background: 'none',
+                                          border: 'none',
+                                          cursor: (isRefreshingWallet || walletLoading) ? 'default' : 'pointer',
+                                          padding: '2px',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          color: theme.colors.mutedText,
+                                          opacity: (isRefreshingWallet || walletLoading) ? 0.5 : 1,
+                                          transition: 'color 0.2s ease'
+                                      }}
+                                      onMouseEnter={(e) => !(isRefreshingWallet || walletLoading) && (e.currentTarget.style.color = theme.colors.primaryText)}
+                                      onMouseLeave={(e) => !(isRefreshingWallet || walletLoading) && (e.currentTarget.style.color = theme.colors.mutedText)}
+                                      title="Refresh wallet"
+                                  >
+                                      <FaSync size={10} style={{ animation: (isRefreshingWallet || walletLoading) ? 'spin 1s linear infinite' : 'none' }} />
+                                  </button>
                               )}
                           </div>
                       </div>
