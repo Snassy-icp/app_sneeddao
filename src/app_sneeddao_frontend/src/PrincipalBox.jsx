@@ -31,6 +31,14 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const [isRefreshingToken, setIsRefreshingToken] = useState(false);
     const [tokenLocks, setTokenLocks] = useState([]);
     const [lockDetailsLoading, setLockDetailsLoading] = useState({});
+    const [hideDust, setHideDust] = useState(() => {
+        try {
+            const saved = localStorage.getItem('hideDust_Wallet');
+            return saved !== null ? JSON.parse(saved) : false;
+        } catch {
+            return false;
+        }
+    });
     const popupRef = useRef(null);
     const { login, identity } = useAuth();
     const { theme } = useTheme();
@@ -46,7 +54,26 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const sendToken = walletContext?.sendToken;
     const isTokenSns = walletContext?.isTokenSns;
     
-    // Filter tokens to only show those with balance > 0
+    // Sync hideDust with localStorage and listen for changes from other components
+    useEffect(() => {
+        localStorage.setItem('hideDust_Wallet', JSON.stringify(hideDust));
+    }, [hideDust]);
+
+    useEffect(() => {
+        const handleStorageChange = (e) => {
+            if (e.key === 'hideDust_Wallet') {
+                try {
+                    setHideDust(JSON.parse(e.newValue));
+                } catch {
+                    // ignore
+                }
+            }
+        };
+        window.addEventListener('storage', handleStorageChange);
+        return () => window.removeEventListener('storage', handleStorageChange);
+    }, []);
+
+    // Filter tokens based on hideDust setting
     const tokensWithBalance = useMemo(() => {
         return walletTokens.filter(token => {
             const available = BigInt(token.available || token.balance || 0n);
@@ -58,9 +85,20 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
             const neuronStake = BigInt(token.neuronStake || 0n);
             const neuronMaturity = BigInt(token.neuronMaturity || 0n);
             const totalBalance = available + locked + staked + maturity + rewards + neuronStake + neuronMaturity;
-            return totalBalance > 0n;
+            
+            // Always filter out zero balance
+            if (totalBalance === 0n) return false;
+            
+            // If hideDust is enabled, filter by USD value
+            if (hideDust && token.conversion_rate) {
+                const balanceNum = Number(totalBalance) / (10 ** (token.decimals || 8));
+                const usdValue = balanceNum * token.conversion_rate;
+                return usdValue >= 0.01;
+            }
+            
+            return true;
         });
-    }, [walletTokens]);
+    }, [walletTokens, hideDust]);
     
     // Calculate total portfolio USD value
     const totalPortfolioUSD = useMemo(() => {
@@ -690,17 +728,45 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                               <FaWallet size={10} />
                               Wallet
                           </div>
-                          {totalPortfolioUSD !== null && (
-                              <span style={{ 
-                                  color: '#10b981',
-                                  fontSize: '12px',
-                                  fontWeight: '600',
-                                  textTransform: 'none',
-                                  letterSpacing: 'normal'
-                              }}>
-                                  ${totalPortfolioUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </span>
-                          )}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <label 
+                                  style={{ 
+                                      display: 'flex', 
+                                      alignItems: 'center', 
+                                      gap: '4px',
+                                      cursor: 'pointer',
+                                      fontSize: '9px',
+                                      textTransform: 'none',
+                                      letterSpacing: 'normal',
+                                      color: hideDust ? theme.colors.accent : theme.colors.mutedText
+                                  }}
+                                  title="Hide tokens worth less than $0.01"
+                              >
+                                  <input
+                                      type="checkbox"
+                                      checked={hideDust}
+                                      onChange={(e) => setHideDust(e.target.checked)}
+                                      style={{ 
+                                          width: '12px', 
+                                          height: '12px',
+                                          cursor: 'pointer',
+                                          accentColor: theme.colors.accent
+                                      }}
+                                  />
+                                  Hide dust
+                              </label>
+                              {totalPortfolioUSD !== null && (
+                                  <span style={{ 
+                                      color: '#10b981',
+                                      fontSize: '12px',
+                                      fontWeight: '600',
+                                      textTransform: 'none',
+                                      letterSpacing: 'normal'
+                                  }}>
+                                      ${totalPortfolioUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </span>
+                              )}
+                          </div>
                       </div>
                       <div 
                           className="compact-wallet-container"

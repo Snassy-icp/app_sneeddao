@@ -462,6 +462,14 @@ function Wallet() {
     const [totalDollarValue, setTotalDollarValue] = useState(0.0);
     const [snsTokens, setSnsTokens] = useState(new Set()); // Set of ledger canister IDs that are SNS tokens
     const [neuronTotals, setNeuronTotals] = useState({}); // Track neuron USD values by token ledger ID
+    const [hideDust, setHideDust] = useState(() => {
+        try {
+            const saved = localStorage.getItem('hideDust_Wallet');
+            return saved !== null ? JSON.parse(saved) : false;
+        } catch {
+            return false;
+        }
+    });
     const [totalBreakdown, setTotalBreakdown] = useState({
         liquid: 0.0,
         liquidity: 0.0,
@@ -620,6 +628,26 @@ function Wallet() {
             console.warn('Could not save neuron managers expanded state to localStorage:', error);
         }
     }, [neuronManagersExpanded]);
+
+    // Sync hideDust with localStorage
+    useEffect(() => {
+        localStorage.setItem('hideDust_Wallet', JSON.stringify(hideDust));
+    }, [hideDust]);
+
+    // Listen for hideDust changes from other components (e.g., PrincipalBox quick wallet)
+    useEffect(() => {
+        const handleStorageChange = (e) => {
+            if (e.key === 'hideDust_Wallet') {
+                try {
+                    setHideDust(JSON.parse(e.newValue));
+                } catch {
+                    // ignore
+                }
+            }
+        };
+        window.addEventListener('storage', handleStorageChange);
+        return () => window.removeEventListener('storage', handleStorageChange);
+    }, []);
 
     // Save trackedCanistersExpanded state to localStorage
     useEffect(() => {
@@ -4873,7 +4901,36 @@ function Wallet() {
                                 </span>
                             )}
                         </h3>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            <label 
+                                style={{ 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: '6px',
+                                    cursor: 'pointer',
+                                    fontSize: '0.85rem',
+                                    color: hideDust ? walletPrimary : theme.colors.mutedText,
+                                    padding: '0.5rem 0.75rem',
+                                    borderRadius: '8px',
+                                    background: hideDust ? `${walletPrimary}15` : 'transparent',
+                                    border: `1px solid ${hideDust ? walletPrimary + '30' : 'transparent'}`,
+                                    transition: 'all 0.2s ease'
+                                }}
+                                title="Hide tokens worth less than $0.01"
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={hideDust}
+                                    onChange={(e) => setHideDust(e.target.checked)}
+                                    style={{ 
+                                        width: '14px', 
+                                        height: '14px',
+                                        cursor: 'pointer',
+                                        accentColor: walletPrimary
+                                    }}
+                                />
+                                Hide dust
+                            </label>
                             <button
                                 onClick={handleRefreshTokensSection}
                                 disabled={refreshingTokensSection}
@@ -4915,7 +4972,40 @@ function Wallet() {
                         </div>
                     </div>
                     <div className="card-grid">
-                    {tokens.map((token, index) => {
+                    {tokens
+                        .filter(token => {
+                            // If hideDust is enabled, filter by USD value
+                            if (hideDust) {
+                                const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
+                                
+                                // Calculate base token USD value
+                                let usdValue = 0;
+                                if (token.conversion_rate) {
+                                    const available = BigInt(token.available || token.balance || 0n);
+                                    const locked = BigInt(token.locked || 0n);
+                                    const staked = BigInt(token.staked || 0n);
+                                    const maturity = BigInt(token.maturity || 0n);
+                                    const rewards = BigInt(token.rewards || 0n);
+                                    const totalBalance = available + locked + staked + maturity + rewards;
+                                    const balanceNum = Number(totalBalance) / (10 ** (token.decimals || 8));
+                                    usdValue = balanceNum * token.conversion_rate;
+                                }
+                                
+                                // Add neuron totals if available (in USD)
+                                if (neuronTotals[ledgerId]) {
+                                    const neuronData = neuronTotals[ledgerId];
+                                    if (typeof neuronData === 'object') {
+                                        usdValue += neuronData.total || 0;
+                                    } else {
+                                        usdValue += neuronData;
+                                    }
+                                }
+                                
+                                return usdValue >= 0.01;
+                            }
+                            return true;
+                        })
+                        .map((token, index) => {
                         // Convert Principal to string for comparison
                         const ledgerIdString = typeof token.ledger_canister_id === 'string' 
                             ? token.ledger_canister_id 

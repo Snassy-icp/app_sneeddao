@@ -87,7 +87,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         return (token.available_backend || 0n) > 0n;
     });
     const [isExpanded, setIsExpanded] = useState(defaultExpanded);
-    const [activeTab, setActiveTab] = useState(defaultLocksExpanded ? 'locks' : null); // null = no tab selected, 'locks', 'neurons', 'info'
+    const [activeTab, setActiveTab] = useState(defaultLocksExpanded ? 'locks' : 'balance'); // 'balance', 'locks', 'neurons', 'info'
     const [balanceSectionExpanded, setBalanceSectionExpanded] = useState(true);
     
     // Image loading state
@@ -1472,256 +1472,13 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     )}
                 </div>
             )}
-            <div className="balance-section">
-                {!hideAvailable && (
-                    <>
-                        <div 
-                            className="balance-item" 
-                            style={{ position: 'relative', cursor: 'pointer' }}
-                            onClick={() => setBalanceSectionExpanded(!balanceSectionExpanded)}
-                        >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <div className="balance-label">Total</div>
-                                <span 
-                                    style={{ 
-                                        fontSize: '0.9rem',
-                                        color: theme.colors.secondaryText,
-                                        transition: 'transform 0.2s ease',
-                                        userSelect: 'none'
-                                    }}
-                                >
-                                    {balanceSectionExpanded ? '▼' : '▶'}
-                                </span>
-                            </div>
-                            <div className="balance-value">{formatAmount(availableOrZero(token.available) + token.locked + getTotalNeuronStake() + getTotalNeuronMaturity() + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)}{getUSD(availableOrZero(token.available) + token.locked + getTotalNeuronStake() + getTotalNeuronMaturity() + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate)}</div>
-                        </div>
-                        {balanceSectionExpanded && (
-                            <>
-                        <div className="balance-item" style={{ cursor: 'pointer' }} onClick={() => setShowBalanceBreakdown(!showBalanceBreakdown)}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <span style={{ fontSize: '14px' }}>💧</span>
-                                    Liquid
-                                </div>
-                                <span style={{ 
-                                    fontSize: '0.9rem',
-                                    color: theme.colors.secondaryText,
-                                    userSelect: 'none'
-                                }}>
-                                    {showBalanceBreakdown ? '▼' : '▶'}
-                                </span>
-                            </div>
-                            <div className="balance-value">{formatAmount(token.available || 0n, token.decimals)}{getUSD(token.available || 0n, token.decimals, token.conversion_rate)}</div>
-                        </div>
-                        
-                        {showBalanceBreakdown && (
-                            <div className="balance-breakdown" style={{ 
-                                padding: '10px', 
-                                background: theme.colors.tertiaryBg, 
-                                borderRadius: '4px',
-                                border: `1px solid ${theme.colors.border}`
-                            }}>
-                                <div className="balance-breakdown-item" style={{ 
-                                    display: 'flex', 
-                                    justifyContent: 'space-between', 
-                                    alignItems: 'center',
-                                    marginBottom: '8px'
-                                }}>
-                                    <div>
-                                        <div style={{ fontSize: '12px', color: theme.colors.secondaryText }}>Wallet</div>
-                                        <div style={{ fontSize: '14px', fontWeight: 'bold', color: theme.colors.primaryText }}>
-                                            {formatAmount(token.balance || 0n, token.decimals)} {token.symbol}
-                                        </div>
-                                        {(() => {
-                                            const shouldShowButton = token.balance > BigInt(token.fee) && !hideButtons;
-                                            
-                                        return shouldShowButton ? (
-                                            <button
-                                                onClick={(e) => {
-                                                    console.log('Deposit button clicked!');
-                                                    e.stopPropagation();
-                                                    handleDepositToBackend(token);
-                                                }}
-                                                style={{
-                                                    padding: '0.4rem 0.75rem',
-                                                    fontSize: '0.75rem',
-                                                    fontWeight: '600',
-                                                    background: 'linear-gradient(135deg, #10b981, #059669)',
-                                                    color: 'white',
-                                                    border: 'none',
-                                                    borderRadius: '6px',
-                                                    cursor: 'pointer',
-                                                    marginTop: '0.5rem',
-                                                    display: 'inline-flex',
-                                                    alignItems: 'center',
-                                                    gap: '0.35rem',
-                                                    textAlign: 'center',
-                                                    userSelect: 'none',
-                                                    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
-                                                    transition: 'all 0.2s ease'
-                                                }}
-                                                onMouseEnter={(e) => {
-                                                    e.target.style.transform = 'translateY(-1px)';
-                                                    e.target.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.4)';
-                                                }}
-                                                onMouseLeave={(e) => {
-                                                    e.target.style.transform = 'translateY(0)';
-                                                    e.target.style.boxShadow = '0 2px 8px rgba(16, 185, 129, 0.3)';
-                                                }}
-                                            >
-                                                ↓ Deposit
-                                            </button>
-                                        ) : null;
-                                        })()}
-                                    </div>
-                                </div>
-                                
-                                <div className="balance-breakdown-item">
-                                    <div style={{ fontSize: '12px', color: theme.colors.secondaryText }}>Deposited</div>
-                                    <div style={{ fontSize: '14px', fontWeight: 'bold', color: theme.colors.primaryText }}>
-                                        {formatAmount(token.available_backend || 0n, token.decimals)} {token.symbol}
-                                    </div>
-                                    {(() => {
-                                        const shouldShowButton = token.available_backend > 0n && !hideButtons;
-                                        
-                                        return shouldShowButton ? (
-                                            <button
-                                                onClick={(e) => {
-                                                    console.log('Withdraw button clicked!');
-                                                    e.stopPropagation();
-                                                    handleWithdrawFromBackend(token);
-                                                }}
-                                                style={{
-                                                    padding: '0.4rem 0.75rem',
-                                                    fontSize: '0.75rem',
-                                                    fontWeight: '600',
-                                                    background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-                                                    color: 'white',
-                                                    border: 'none',
-                                                    borderRadius: '6px',
-                                                    cursor: 'pointer',
-                                                    marginTop: '0.5rem',
-                                                    display: 'inline-flex',
-                                                    alignItems: 'center',
-                                                    gap: '0.35rem',
-                                                    textAlign: 'center',
-                                                    userSelect: 'none',
-                                                    boxShadow: '0 2px 8px rgba(245, 158, 11, 0.3)',
-                                                    transition: 'all 0.2s ease'
-                                                }}
-                                                onMouseEnter={(e) => {
-                                                    e.target.style.transform = 'translateY(-1px)';
-                                                    e.target.style.boxShadow = '0 4px 12px rgba(245, 158, 11, 0.4)';
-                                                }}
-                                                onMouseLeave={(e) => {
-                                                    e.target.style.transform = 'translateY(0)';
-                                                    e.target.style.boxShadow = '0 2px 8px rgba(245, 158, 11, 0.3)';
-                                                }}
-                                            >
-                                                ↑ Withdraw
-                                            </button>
-                                        ) : null;
-                                    })()}
-                                </div>
-                            </div>
-                        )}
-                        {(token.locked || 0n) > 0n && (
-                            <div className="balance-item">
-                                <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-start' }}>
-                                    <span style={{ fontSize: '14px' }}>🔐</span>
-                                    Locked
-                                </div>
-                                <div className="balance-value">{formatAmount(token.locked || 0n, token.decimals)}{getUSD(token.locked || 0n, token.decimals, token.conversion_rate)}</div>
-                            </div>
-                        )}
-                        {isSnsToken && neurons.length > 0 && (
-                            <>
-                                <div className="balance-item">
-                                    <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-start' }}>
-                                        <span style={{ fontSize: '14px' }}>🧠</span>
-                                        Staked
-                                    </div>
-                                    <div className="balance-value">{formatAmount(getTotalNeuronStake(), token.decimals)}{getUSD(getTotalNeuronStake(), token.decimals, token.conversion_rate)}</div>
-                                </div>
-                                {getTotalNeuronMaturity() > 0n && (
-                                    <div className="balance-item">
-                                        <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-start' }}>
-                                            <span style={{ fontSize: '14px' }}>🌱</span>
-                                            Maturity
-                                        </div>
-                                        <div className="balance-value">{formatAmount(getTotalNeuronMaturity(), token.decimals)}{getUSD(getTotalNeuronMaturity(), token.decimals, token.conversion_rate)}</div>
-                                    </div>
-                                )}
-                                {getTotalDisbursingMaturity() > 0n && (
-                                    <div className="balance-item">
-                                        <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-start' }}>
-                                            <span style={{ fontSize: '14px' }}>⏳</span>
-                                            Disbursing
-                                        </div>
-                                        <div className="balance-value" style={{ color: theme.colors.accent }}>{formatAmount(getTotalDisbursingMaturity(), token.decimals)}{getUSD(getTotalDisbursingMaturity(), token.decimals, token.conversion_rate)}</div>
-                                    </div>
-                                )}
-                            </>
-                        )}
-                        {(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable) > 0) ? (
-                            <div className="balance-item">
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                                    <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                        <span style={{ fontSize: '14px' }}>🎁</span>
-                                        Rewards
-                                    </div>
-                                    <button 
-                                        onClick={() => handleClaimRewards(token)}
-                                        style={{
-                                            background: theme.colors.success || theme.colors.accent,
-                                            color: theme.colors.primaryBg,
-                                            border: 'none',
-                                            borderRadius: '6px',
-                                            padding: '4px 8px',
-                                            cursor: 'pointer',
-                                            fontSize: '0.75rem',
-                                            fontWeight: '500',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '4px',
-                                            transition: 'all 0.2s ease'
-                                        }}
-                                        onMouseEnter={(e) => {
-                                            e.target.style.background = theme.colors.successHover || theme.colors.accentHover;
-                                        }}
-                                        onMouseLeave={(e) => {
-                                            e.target.style.background = theme.colors.success || theme.colors.accent;
-                                        }}
-                                    >
-                                        <img 
-                                            src="grasp-white.png" 
-                                            alt="Claim" 
-                                            style={{ width: '12px', height: '12px' }}
-                                        />
-                                        Claim
-                                    </button>
-                                </div>
-                                <div className="balance-value">{formatAmount(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)}{getUSD(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate)}</div>
-                            </div>
-                        ) : (
-                            ((Object.keys(rewardDetailsLoading).length === 0 || (rewardDetailsLoading[token.ledger_canister_id] != null && rewardDetailsLoading[token.ledger_canister_id] < 0))) && (
-                                <div className="spinner-container">
-                                    <div className="spinner"></div>
-                                </div>
-                            )
-                        )}
-                            </>
-                        )}
-                    </>
-                )}
-            </div>
             {showDebug && (
                 <div className="debug-section">
                     <p>Frontend: {formatAmount(token.balance || 0n, token.decimals)}</p>
                     <p>Backend: {formatAmount(token.balance_backend || 0n, token.decimals)}</p>
                 </div>
             )}
-            {/* Tab Bar for Locks, Neurons, and Info */}
+            {/* Tab Bar for Balance, Locks, Neurons, and Info */}
             <div style={{
                 display: 'flex',
                 gap: '4px',
@@ -1730,6 +1487,28 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 marginBottom: activeTab ? '15px' : '0',
                 flexWrap: 'wrap'
             }}>
+                {/* Balance Tab */}
+                <button
+                    onClick={() => setActiveTab(activeTab === 'balance' ? null : 'balance')}
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '8px 12px',
+                        background: activeTab === 'balance' ? `${theme.colors.accent}20` : 'transparent',
+                        border: `1px solid ${activeTab === 'balance' ? theme.colors.accent : theme.colors.border}`,
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        color: activeTab === 'balance' ? theme.colors.accent : theme.colors.primaryText,
+                        fontSize: '0.85rem',
+                        fontWeight: activeTab === 'balance' ? '600' : '500',
+                        transition: 'all 0.2s ease'
+                    }}
+                >
+                    <span style={{ fontSize: '0.9rem' }}>💰</span>
+                    Balance
+                </button>
+
                 {/* Locks Tab */}
                 <button
                     onClick={() => setActiveTab(activeTab === 'locks' ? null : 'locks')}
@@ -1810,6 +1589,251 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     Info
                 </button>
             </div>
+
+            {/* Balance Tab Content */}
+            {activeTab === 'balance' && (
+                <div className="balance-section" style={{ marginBottom: '15px' }}>
+                    {!hideAvailable && (
+                        <>
+                            <div 
+                                className="balance-item" 
+                                style={{ position: 'relative', cursor: 'pointer' }}
+                                onClick={() => setBalanceSectionExpanded(!balanceSectionExpanded)}
+                            >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div className="balance-label">Total</div>
+                                    <span 
+                                        style={{ 
+                                            fontSize: '0.9rem',
+                                            color: theme.colors.secondaryText,
+                                            transition: 'transform 0.2s ease',
+                                            userSelect: 'none'
+                                        }}
+                                    >
+                                        {balanceSectionExpanded ? '▼' : '▶'}
+                                    </span>
+                                </div>
+                                <div className="balance-value">{formatAmount(availableOrZero(token.available) + token.locked + getTotalNeuronStake() + getTotalNeuronMaturity() + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)}{getUSD(availableOrZero(token.available) + token.locked + getTotalNeuronStake() + getTotalNeuronMaturity() + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate)}</div>
+                            </div>
+                            {balanceSectionExpanded && (
+                                <>
+                                    <div className="balance-item" style={{ cursor: 'pointer' }} onClick={() => setShowBalanceBreakdown(!showBalanceBreakdown)}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <span style={{ fontSize: '14px' }}>💧</span>
+                                                Liquid
+                                            </div>
+                                            <span style={{ 
+                                                fontSize: '0.9rem',
+                                                color: theme.colors.secondaryText,
+                                                userSelect: 'none'
+                                            }}>
+                                                {showBalanceBreakdown ? '▼' : '▶'}
+                                            </span>
+                                        </div>
+                                        <div className="balance-value">{formatAmount(token.available || 0n, token.decimals)}{getUSD(token.available || 0n, token.decimals, token.conversion_rate)}</div>
+                                    </div>
+                                    
+                                    {showBalanceBreakdown && (
+                                        <div className="balance-breakdown" style={{ 
+                                            padding: '10px', 
+                                            background: theme.colors.tertiaryBg, 
+                                            borderRadius: '4px',
+                                            border: `1px solid ${theme.colors.border}`
+                                        }}>
+                                            <div className="balance-breakdown-item" style={{ 
+                                                display: 'flex', 
+                                                justifyContent: 'space-between', 
+                                                alignItems: 'center',
+                                                marginBottom: '8px'
+                                            }}>
+                                                <div>
+                                                    <div style={{ fontSize: '12px', color: theme.colors.secondaryText }}>Wallet</div>
+                                                    <div style={{ fontSize: '14px', fontWeight: 'bold', color: theme.colors.primaryText }}>
+                                                        {formatAmount(token.balance || 0n, token.decimals)} {token.symbol}
+                                                    </div>
+                                                    {(() => {
+                                                        const shouldShowButton = token.balance > BigInt(token.fee) && !hideButtons;
+                                                        
+                                                        return shouldShowButton ? (
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleDepositToBackend(token);
+                                                                }}
+                                                                style={{
+                                                                    padding: '0.4rem 0.75rem',
+                                                                    fontSize: '0.75rem',
+                                                                    fontWeight: '600',
+                                                                    background: 'linear-gradient(135deg, #10b981, #059669)',
+                                                                    color: 'white',
+                                                                    border: 'none',
+                                                                    borderRadius: '6px',
+                                                                    cursor: 'pointer',
+                                                                    marginTop: '0.5rem',
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '0.35rem',
+                                                                    textAlign: 'center',
+                                                                    userSelect: 'none',
+                                                                    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
+                                                                    transition: 'all 0.2s ease'
+                                                                }}
+                                                                onMouseEnter={(e) => {
+                                                                    e.target.style.transform = 'translateY(-1px)';
+                                                                    e.target.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.4)';
+                                                                }}
+                                                                onMouseLeave={(e) => {
+                                                                    e.target.style.transform = 'translateY(0)';
+                                                                    e.target.style.boxShadow = '0 2px 8px rgba(16, 185, 129, 0.3)';
+                                                                }}
+                                                            >
+                                                                ↓ Deposit
+                                                            </button>
+                                                        ) : null;
+                                                    })()}
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="balance-breakdown-item">
+                                                <div style={{ fontSize: '12px', color: theme.colors.secondaryText }}>Deposited</div>
+                                                <div style={{ fontSize: '14px', fontWeight: 'bold', color: theme.colors.primaryText }}>
+                                                    {formatAmount(token.available_backend || 0n, token.decimals)} {token.symbol}
+                                                </div>
+                                                {(() => {
+                                                    const shouldShowButton = token.available_backend > 0n && !hideButtons;
+                                                    
+                                                    return shouldShowButton ? (
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleWithdrawFromBackend(token);
+                                                            }}
+                                                            style={{
+                                                                padding: '0.4rem 0.75rem',
+                                                                fontSize: '0.75rem',
+                                                                fontWeight: '600',
+                                                                background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                                                                color: 'white',
+                                                                border: 'none',
+                                                                borderRadius: '6px',
+                                                                cursor: 'pointer',
+                                                                marginTop: '0.5rem',
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                gap: '0.35rem',
+                                                                textAlign: 'center',
+                                                                userSelect: 'none',
+                                                                boxShadow: '0 2px 8px rgba(245, 158, 11, 0.3)',
+                                                                transition: 'all 0.2s ease'
+                                                            }}
+                                                            onMouseEnter={(e) => {
+                                                                e.target.style.transform = 'translateY(-1px)';
+                                                                e.target.style.boxShadow = '0 4px 12px rgba(245, 158, 11, 0.4)';
+                                                            }}
+                                                            onMouseLeave={(e) => {
+                                                                e.target.style.transform = 'translateY(0)';
+                                                                e.target.style.boxShadow = '0 2px 8px rgba(245, 158, 11, 0.3)';
+                                                            }}
+                                                        >
+                                                            ↑ Withdraw
+                                                        </button>
+                                                    ) : null;
+                                                })()}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {(token.locked || 0n) > 0n && (
+                                        <div className="balance-item">
+                                            <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-start' }}>
+                                                <span style={{ fontSize: '14px' }}>🔐</span>
+                                                Locked
+                                            </div>
+                                            <div className="balance-value">{formatAmount(token.locked || 0n, token.decimals)}{getUSD(token.locked || 0n, token.decimals, token.conversion_rate)}</div>
+                                        </div>
+                                    )}
+                                    {isSnsToken && neurons.length > 0 && (
+                                        <>
+                                            <div className="balance-item">
+                                                <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-start' }}>
+                                                    <span style={{ fontSize: '14px' }}>🧠</span>
+                                                    Staked
+                                                </div>
+                                                <div className="balance-value">{formatAmount(getTotalNeuronStake(), token.decimals)}{getUSD(getTotalNeuronStake(), token.decimals, token.conversion_rate)}</div>
+                                            </div>
+                                            {getTotalNeuronMaturity() > 0n && (
+                                                <div className="balance-item">
+                                                    <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-start' }}>
+                                                        <span style={{ fontSize: '14px' }}>🌱</span>
+                                                        Maturity
+                                                    </div>
+                                                    <div className="balance-value">{formatAmount(getTotalNeuronMaturity(), token.decimals)}{getUSD(getTotalNeuronMaturity(), token.decimals, token.conversion_rate)}</div>
+                                                </div>
+                                            )}
+                                            {getTotalDisbursingMaturity() > 0n && (
+                                                <div className="balance-item">
+                                                    <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-start' }}>
+                                                        <span style={{ fontSize: '14px' }}>⏳</span>
+                                                        Disbursing
+                                                    </div>
+                                                    <div className="balance-value" style={{ color: theme.colors.accent }}>{formatAmount(getTotalDisbursingMaturity(), token.decimals)}{getUSD(getTotalDisbursingMaturity(), token.decimals, token.conversion_rate)}</div>
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
+                                    {(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable) > 0) ? (
+                                        <div className="balance-item">
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                                                <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    <span style={{ fontSize: '14px' }}>🎁</span>
+                                                    Rewards
+                                                </div>
+                                                <button 
+                                                    onClick={() => handleClaimRewards(token)}
+                                                    style={{
+                                                        background: theme.colors.success || theme.colors.accent,
+                                                        color: theme.colors.primaryBg,
+                                                        border: 'none',
+                                                        borderRadius: '6px',
+                                                        padding: '4px 8px',
+                                                        cursor: 'pointer',
+                                                        fontSize: '0.75rem',
+                                                        fontWeight: '500',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px',
+                                                        transition: 'all 0.2s ease'
+                                                    }}
+                                                    onMouseEnter={(e) => {
+                                                        e.target.style.background = theme.colors.successHover || theme.colors.accentHover;
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                        e.target.style.background = theme.colors.success || theme.colors.accent;
+                                                    }}
+                                                >
+                                                    <img 
+                                                        src="grasp-white.png" 
+                                                        alt="Claim" 
+                                                        style={{ width: '12px', height: '12px' }}
+                                                    />
+                                                    Claim
+                                                </button>
+                                            </div>
+                                            <div className="balance-value">{formatAmount(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)}{getUSD(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate)}</div>
+                                        </div>
+                                    ) : (
+                                        ((Object.keys(rewardDetailsLoading).length === 0 || (rewardDetailsLoading[token.ledger_canister_id] != null && rewardDetailsLoading[token.ledger_canister_id] < 0))) && (
+                                            <div className="spinner-container">
+                                                <div className="spinner"></div>
+                                            </div>
+                                        )
+                                    )}
+                                </>
+                            )}
+                        </>
+                    )}
+                </div>
+            )}
 
             {/* Locks Tab Content */}
             {activeTab === 'locks' && (
