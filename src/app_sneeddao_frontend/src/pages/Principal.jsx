@@ -1235,7 +1235,8 @@ export default function PrincipalPage() {
                                     inset: 0,
                                     opacity: 0.1,
                                     backgroundImage: 'radial-gradient(circle at 20% 50%, white 1px, transparent 1px), radial-gradient(circle at 80% 50%, white 1px, transparent 1px)',
-                                    backgroundSize: '40px 40px'
+                                    backgroundSize: '40px 40px',
+                                    pointerEvents: 'none'
                                 }} />
                                 
                                 {/* Nickname - top of banner */}
