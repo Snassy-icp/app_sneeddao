@@ -206,6 +206,59 @@ const customStyles = `
 .hub-border-glow {
     animation: borderGlow 3s ease-in-out infinite;
 }
+
+/* Custom Tooltip Styles */
+.hub-stat-tooltip {
+    position: relative;
+}
+
+.hub-stat-tooltip .tooltip-content {
+    visibility: hidden;
+    opacity: 0;
+    position: absolute;
+    bottom: calc(100% + 10px);
+    left: 50%;
+    transform: translateX(-50%) translateY(5px);
+    min-width: 200px;
+    max-width: 280px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    text-align: left;
+    z-index: 1000;
+    pointer-events: none;
+    transition: all 0.2s ease;
+}
+
+.hub-stat-tooltip .tooltip-content::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border-width: 6px;
+    border-style: solid;
+}
+
+.hub-stat-tooltip:hover .tooltip-content {
+    visibility: visible;
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+.tooltip-title {
+    font-weight: 700;
+    font-size: 0.85rem;
+    margin-bottom: 6px;
+    display: block;
+}
+
+.tooltip-text {
+    font-weight: 400;
+    color: inherit;
+    opacity: 0.9;
+}
 `;
 
 // Accent colors for the hub
@@ -1430,118 +1483,161 @@ function Hub() {
                             margin: '0 auto',
                         }}>
                             {/* FDV */}
-                            <Link 
-                                to="/rll_info"
-                                style={{
-                                    padding: '10px 8px',
-                                    background: `${hubPrimary}15`,
-                                    borderRadius: '12px',
-                                    border: `1px solid ${hubPrimary}30`,
-                                    textAlign: 'center',
-                                    textDecoration: 'none',
-                                    transition: 'all 0.2s ease',
-                                }}
-                            >
-                                <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>FDV</div>
-                                <div style={{ fontSize: '1rem', fontWeight: '700', color: hubPrimary, fontFamily: 'monospace' }}>
-                                    {financialStats.fdv > 0 ? `$${financialStats.fdv >= 1e6 ? (financialStats.fdv / 1e6).toFixed(2) + 'M' : financialStats.fdv >= 1e3 ? (financialStats.fdv / 1e3).toFixed(1) + 'K' : financialStats.fdv.toFixed(0)}` : '—'}
+                            <div className="hub-stat-tooltip">
+                                <Link 
+                                    to="/rll_info"
+                                    style={{
+                                        display: 'block',
+                                        padding: '10px 8px',
+                                        background: `${hubPrimary}15`,
+                                        borderRadius: '12px',
+                                        border: `1px solid ${hubPrimary}30`,
+                                        textAlign: 'center',
+                                        textDecoration: 'none',
+                                        transition: 'all 0.2s ease',
+                                    }}
+                                >
+                                    <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>FDV</div>
+                                    <div style={{ fontSize: '1rem', fontWeight: '700', color: hubPrimary, fontFamily: 'monospace' }}>
+                                        {financialStats.fdv > 0 ? `$${financialStats.fdv >= 1e6 ? (financialStats.fdv / 1e6).toFixed(2) + 'M' : financialStats.fdv >= 1e3 ? (financialStats.fdv / 1e3).toFixed(1) + 'K' : financialStats.fdv.toFixed(0)}` : '—'}
+                                    </div>
+                                </Link>
+                                <div className="tooltip-content" style={{ background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText }}>
+                                    <span className="tooltip-title" style={{ color: hubPrimary }}>Fully Diluted Valuation</span>
+                                    <span className="tooltip-text">The theoretical market cap if all tokens were in circulation. Calculated as Total Supply × Current Price.</span>
+                                    <style>{`.hub-stat-tooltip:nth-child(1) .tooltip-content::after { border-color: ${theme.colors.secondaryBg} transparent transparent transparent; }`}</style>
                                 </div>
-                            </Link>
+                            </div>
                             
                             {/* Market Cap */}
-                            <Link 
-                                to="/rll_info"
-                                style={{
-                                    padding: '10px 8px',
-                                    background: `${theme.colors.success}15`,
-                                    borderRadius: '12px',
-                                    border: `1px solid ${theme.colors.success}30`,
-                                    textAlign: 'center',
-                                    textDecoration: 'none',
-                                    transition: 'all 0.2s ease',
-                                }}
-                            >
-                                <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Circ. MCap</div>
-                                <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.success, fontFamily: 'monospace' }}>
-                                    {financialStats.marketCap > 0 ? `$${financialStats.marketCap >= 1e6 ? (financialStats.marketCap / 1e6).toFixed(2) + 'M' : financialStats.marketCap >= 1e3 ? (financialStats.marketCap / 1e3).toFixed(1) + 'K' : financialStats.marketCap.toFixed(0)}` : '—'}
+                            <div className="hub-stat-tooltip">
+                                <Link 
+                                    to="/rll_info"
+                                    style={{
+                                        display: 'block',
+                                        padding: '10px 8px',
+                                        background: `${theme.colors.success}15`,
+                                        borderRadius: '12px',
+                                        border: `1px solid ${theme.colors.success}30`,
+                                        textAlign: 'center',
+                                        textDecoration: 'none',
+                                        transition: 'all 0.2s ease',
+                                    }}
+                                >
+                                    <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Circ. MCap</div>
+                                    <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.success, fontFamily: 'monospace' }}>
+                                        {financialStats.marketCap > 0 ? `$${financialStats.marketCap >= 1e6 ? (financialStats.marketCap / 1e6).toFixed(2) + 'M' : financialStats.marketCap >= 1e3 ? (financialStats.marketCap / 1e3).toFixed(1) + 'K' : financialStats.marketCap.toFixed(0)}` : '—'}
+                                    </div>
+                                </Link>
+                                <div className="tooltip-content" style={{ background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText }}>
+                                    <span className="tooltip-title" style={{ color: theme.colors.success }}>Circulating Market Cap</span>
+                                    <span className="tooltip-text">The current market value based on tokens in circulation. Calculated as Circulating Supply × Current Price.</span>
                                 </div>
-                            </Link>
+                            </div>
                             
                             {/* Total Staked */}
-                            <Link 
-                                to={`/neurons?sns=${SNEED_SNS_ROOT}`}
-                                style={{
-                                    padding: '10px 8px',
-                                    background: `${hubAccent}15`,
-                                    borderRadius: '12px',
-                                    border: `1px solid ${hubAccent}30`,
-                                    textAlign: 'center',
-                                    textDecoration: 'none',
-                                    transition: 'all 0.2s ease',
-                                }}
-                            >
-                                <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Staked</div>
-                                <div style={{ fontSize: '1rem', fontWeight: '700', color: hubAccent, fontFamily: 'monospace' }}>
-                                    {financialStats.totalStaked > 0 ? Math.round(financialStats.totalStaked).toLocaleString() : daoStats.loading ? '...' : '—'}
+                            <div className="hub-stat-tooltip">
+                                <Link 
+                                    to={`/neurons?sns=${SNEED_SNS_ROOT}`}
+                                    style={{
+                                        display: 'block',
+                                        padding: '10px 8px',
+                                        background: `${hubAccent}15`,
+                                        borderRadius: '12px',
+                                        border: `1px solid ${hubAccent}30`,
+                                        textAlign: 'center',
+                                        textDecoration: 'none',
+                                        transition: 'all 0.2s ease',
+                                    }}
+                                >
+                                    <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Staked</div>
+                                    <div style={{ fontSize: '1rem', fontWeight: '700', color: hubAccent, fontFamily: 'monospace' }}>
+                                        {financialStats.totalStaked > 0 ? Math.round(financialStats.totalStaked).toLocaleString() : daoStats.loading ? '...' : '—'}
+                                    </div>
+                                </Link>
+                                <div className="tooltip-content" style={{ background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText }}>
+                                    <span className="tooltip-title" style={{ color: hubAccent }}>Total Staked</span>
+                                    <span className="tooltip-text">SNEED tokens locked in neurons for governance participation. Staked tokens are still part of circulating supply as they can be dissolved.</span>
                                 </div>
-                            </Link>
+                            </div>
                             
                             {/* Total Supply */}
-                            <Link 
-                                to="/rll_info"
-                                style={{
-                                    padding: '10px 8px',
-                                    background: `${theme.colors.secondaryBg}80`,
-                                    borderRadius: '12px',
-                                    border: `1px solid ${theme.colors.border}`,
-                                    textAlign: 'center',
-                                    textDecoration: 'none',
-                                    transition: 'all 0.2s ease',
-                                }}
-                            >
-                                <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Total Supply</div>
-                                <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.primaryText, fontFamily: 'monospace' }}>
-                                    {financialStats.loading ? '—' : Math.round(financialStats.totalSupply).toLocaleString()}
+                            <div className="hub-stat-tooltip">
+                                <Link 
+                                    to="/rll_info"
+                                    style={{
+                                        display: 'block',
+                                        padding: '10px 8px',
+                                        background: `${theme.colors.secondaryBg}80`,
+                                        borderRadius: '12px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        textAlign: 'center',
+                                        textDecoration: 'none',
+                                        transition: 'all 0.2s ease',
+                                    }}
+                                >
+                                    <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Total Supply</div>
+                                    <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.primaryText, fontFamily: 'monospace' }}>
+                                        {financialStats.loading ? '—' : Math.round(financialStats.totalSupply).toLocaleString()}
+                                    </div>
+                                </Link>
+                                <div className="tooltip-content" style={{ background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText }}>
+                                    <span className="tooltip-title">Total Supply</span>
+                                    <span className="tooltip-text">The total number of SNEED tokens that exist, including locked tokens in the treasury and neurons.</span>
                                 </div>
-                            </Link>
+                            </div>
                             
                             {/* Circulating Supply */}
-                            <Link 
-                                to="/rll_info"
-                                style={{
-                                    padding: '10px 8px',
-                                    background: `${theme.colors.secondaryBg}80`,
-                                    borderRadius: '12px',
-                                    border: `1px solid ${theme.colors.border}`,
-                                    textAlign: 'center',
-                                    textDecoration: 'none',
-                                    transition: 'all 0.2s ease',
-                                }}
-                            >
-                                <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Circulating</div>
-                                <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.primaryText, fontFamily: 'monospace' }}>
-                                    {financialStats.circulatingSupply ? Math.round(financialStats.circulatingSupply).toLocaleString() : '—'}
+                            <div className="hub-stat-tooltip">
+                                <Link 
+                                    to="/rll_info"
+                                    style={{
+                                        display: 'block',
+                                        padding: '10px 8px',
+                                        background: `${theme.colors.secondaryBg}80`,
+                                        borderRadius: '12px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        textAlign: 'center',
+                                        textDecoration: 'none',
+                                        transition: 'all 0.2s ease',
+                                    }}
+                                >
+                                    <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Circulating</div>
+                                    <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.primaryText, fontFamily: 'monospace' }}>
+                                        {financialStats.circulatingSupply ? Math.round(financialStats.circulatingSupply).toLocaleString() : '—'}
+                                    </div>
+                                </Link>
+                                <div className="tooltip-content" style={{ background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText }}>
+                                    <span className="tooltip-title">Circulating Supply</span>
+                                    <span className="tooltip-text">Tokens available in the market, excluding those locked in the treasury. Includes staked tokens since they can be dissolved.</span>
                                 </div>
-                            </Link>
+                            </div>
                             
                             {/* Active Members */}
-                            <Link 
-                                to="/dao_info"
-                                style={{
-                                    padding: '10px 8px',
-                                    background: `${theme.colors.secondaryBg}80`,
-                                    borderRadius: '12px',
-                                    border: `1px solid ${theme.colors.border}`,
-                                    textAlign: 'center',
-                                    textDecoration: 'none',
-                                    transition: 'all 0.2s ease',
-                                }}
-                            >
-                                <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Members</div>
-                                <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.primaryText, fontFamily: 'monospace' }}>
-                                    {daoStats.activeMembers !== null ? daoStats.activeMembers.toLocaleString() : daoStats.loading ? '...' : '—'}
+                            <div className="hub-stat-tooltip">
+                                <Link 
+                                    to="/dao_info"
+                                    style={{
+                                        display: 'block',
+                                        padding: '10px 8px',
+                                        background: `${theme.colors.secondaryBg}80`,
+                                        borderRadius: '12px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        textAlign: 'center',
+                                        textDecoration: 'none',
+                                        transition: 'all 0.2s ease',
+                                    }}
+                                >
+                                    <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Members</div>
+                                    <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.primaryText, fontFamily: 'monospace' }}>
+                                        {daoStats.activeMembers !== null ? daoStats.activeMembers.toLocaleString() : daoStats.loading ? '...' : '—'}
+                                    </div>
+                                </Link>
+                                <div className="tooltip-content" style={{ background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText }}>
+                                    <span className="tooltip-title">DAO Members</span>
+                                    <span className="tooltip-text">Unique principals with at least one SNEED neuron, giving them voting rights in DAO governance.</span>
                                 </div>
-                            </Link>
+                            </div>
                         </div>
                         
                         {/* Links row */}
