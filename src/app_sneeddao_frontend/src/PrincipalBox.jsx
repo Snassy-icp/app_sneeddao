@@ -140,6 +140,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     }
 
     return (
+      <>
       <div className="principal-box-container" ref={popupRef} style={{ position: 'relative' }}>
           <button 
               className={compact ? "principal-button-compact" : "principal-button"} 
@@ -162,6 +163,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
           {showPopup && (
               <div 
                   className="principal-popup"
+                  onMouseDown={(e) => e.stopPropagation()}
                   style={{
                       position: 'absolute',
                       top: '100%',
@@ -174,11 +176,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                       minWidth: '280px',
                       maxWidth: '320px',
                       width: 'calc(100vw - 32px)',
-                      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
-                      '@media (max-width: 480px)': {
-                          right: '-16px',
-                          width: 'calc(100vw - 64px)'
-                      }
+                      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)'
                   }}
               >
                   {/* User Name Section */}
@@ -309,23 +307,24 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                               }}>
                                   Loading...
                               </div>
-                          ) : walletTokens.length === 0 ? (
+                          ) : tokensWithBalance.length === 0 ? (
                               <div 
                                   style={{ 
                                       padding: '12px', 
                                       textAlign: 'center',
                                       color: theme.colors.mutedText,
-                                      fontSize: '12px'
+                                      fontSize: '12px',
+                                      cursor: 'pointer'
                                   }}
                                   onClick={() => {
                                       navigate('/wallet');
                                       setShowPopup(false);
                                   }}
                               >
-                                  No tokens yet. Visit wallet to add tokens.
+                                  No tokens with balance. Visit wallet to add tokens.
                               </div>
                           ) : (
-                              walletTokens.map((token, index) => {
+                              tokensWithBalance.map((token, index) => {
                                   const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
                                   // Calculate total balance (available + locked + staked + maturity + rewards)
                                   const available = BigInt(token.available || token.balance || 0n);
@@ -343,7 +342,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                               display: 'flex',
                                               alignItems: 'center',
                                               padding: '8px 12px',
-                                              borderBottom: index < walletTokens.length - 1 ? `1px solid ${theme.colors.border}` : 'none',
+                                              borderBottom: index < tokensWithBalance.length - 1 ? `1px solid ${theme.colors.border}` : 'none',
                                               gap: '10px'
                                           }}
                                       >
@@ -390,14 +389,13 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                               </div>
                                           </div>
                                           
-                                          {/* Balance and Symbol */}
+                                          {/* Balance and Symbol (together on the left) */}
                                           <div style={{ 
                                               flex: 1, 
                                               minWidth: 0,
                                               display: 'flex',
                                               alignItems: 'center',
-                                              justifyContent: 'space-between',
-                                              gap: '8px'
+                                              gap: '4px'
                                           }}>
                                               <span style={{ 
                                                   color: theme.colors.primaryText,
@@ -417,12 +415,36 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                                   {token.symbol}
                                               </span>
                                           </div>
+                                          
+                                          {/* Send Button */}
+                                          <button
+                                              onClick={(e) => openSendModal(token, e)}
+                                              style={{
+                                                  background: 'none',
+                                                  border: 'none',
+                                                  padding: '4px 8px',
+                                                  cursor: 'pointer',
+                                                  color: theme.colors.accent,
+                                                  fontSize: '11px',
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  gap: '4px',
+                                                  borderRadius: '4px',
+                                                  transition: 'background-color 0.15s ease'
+                                              }}
+                                              onMouseOver={(e) => e.currentTarget.style.backgroundColor = `${theme.colors.accent}20`}
+                                              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                              title={`Send ${token.symbol}`}
+                                          >
+                                              <FaPaperPlane size={10} />
+                                              <span>Send</span>
+                                          </button>
                                       </div>
                                   );
                               })
                           )}
                       </div>
-                      {walletTokens.length > 0 && (
+                      {tokensWithBalance.length > 0 && (
                           <button
                               onClick={() => {
                                   navigate('/wallet');
@@ -471,7 +493,20 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                   </div>
               </div>
           )}
+          
       </div>
+      
+      {/* Send Token Modal - rendered outside the popup container to avoid event interference */}
+      <SendTokenModal
+          show={showSendModal}
+          onClose={() => {
+              setShowSendModal(false);
+              setSelectedToken(null);
+          }}
+          onSend={handleSendToken}
+          token={selectedToken}
+      />
+  </>
   );
 }
 

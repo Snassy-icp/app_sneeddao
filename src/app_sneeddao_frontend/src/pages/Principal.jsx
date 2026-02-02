@@ -1291,7 +1291,8 @@ export default function PrincipalPage() {
                                     display: 'flex',
                                     flexDirection: 'column',
                                     alignItems: 'flex-end',
-                                    gap: '4px'
+                                    gap: '4px',
+                                    zIndex: 2
                                 }}>
                                     <div style={{
                                         display: 'flex',
