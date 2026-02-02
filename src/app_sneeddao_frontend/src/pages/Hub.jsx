@@ -271,16 +271,18 @@ function Hub() {
                     const response = await snsGovActor.list_neurons({
                         of_principal: [],
                         limit: 100,
-                        start_page_at: lastNeuron.length > 0 ? [{ id: lastNeuron[0] }] : []
+                        start_page_at: lastNeuron
                     });
                     
                     const neurons = response?.neurons || [];
                     console.log(`Hub: Fetched page ${pageCount} with ${neurons.length} neurons`);
                     
-                    if (neurons.length > 0) {
+                    if (neurons.length === 0) {
+                        hasMore = false;
+                    } else {
                         allNeurons = [...allNeurons, ...neurons];
-                        // Store the raw id bytes for the next page
-                        lastNeuron = [neurons[neurons.length - 1].id.id];
+                        // Store the neuron id object directly for pagination
+                        lastNeuron = neurons[neurons.length - 1].id;
                         
                         // Update progress
                         setNeuronsProgress({ 
@@ -288,9 +290,9 @@ function Hub() {
                             message: `Loaded ${allNeurons.length} neurons...`, 
                             percent: Math.min(90, 5 + (pageCount * 5))
                         });
+                        
+                        hasMore = neurons.length === 100;
                     }
-                    
-                    hasMore = neurons.length === 100;
                 }
                 
                 console.log(`Hub: Total neurons fetched: ${allNeurons.length}`);
