@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaCopy, FaCheck, FaWallet, FaPaperPlane } from 'react-icons/fa';
+import { FaCopy, FaCheck, FaWallet, FaPaperPlane, FaKey, FaIdCard, FaExternalLinkAlt } from 'react-icons/fa';
 import { useAuth } from './AuthContext';
 import { useTheme } from './contexts/ThemeContext';
 import { useNaming } from './NamingContext';
@@ -158,7 +158,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                   fontSize: '18px'
               } : undefined}
           >
-              {compact ? '👤' : truncateString(principalText, 15, "...", 3, 3)}
+              {compact ? <FaWallet size={18} /> : truncateString(principalText, 15, "...", 3, 3)}
           </button>
           {showPopup && (
               <div 
@@ -170,117 +170,269 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                       right: '0',
                       backgroundColor: theme.colors.secondaryBg,
                       border: `1px solid ${theme.colors.border}`,
-                      borderRadius: '12px',
-                      padding: '16px',
+                      borderRadius: '16px',
+                      padding: '0',
                       zIndex: 1000,
-                      minWidth: '280px',
-                      maxWidth: '320px',
+                      minWidth: '300px',
+                      maxWidth: '340px',
                       width: 'calc(100vw - 32px)',
-                      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)'
+                      boxShadow: '0 12px 40px rgba(0, 0, 0, 0.4)',
+                      overflow: 'hidden'
                   }}
               >
-                  {/* User Name Section */}
-                  {userName && (
-                      <div style={{ marginBottom: '12px' }}>
-                          <button
-                              className="user-name-link"
-                              onClick={() => {
-                                  navigate('/me');
-                                  setShowPopup(false);
-                              }}
-                          >
-                              {userName}
-                          </button>
-                      </div>
-                  )}
-                  
-                  {/* Principal ID Section */}
-                  <div style={{ marginBottom: '12px' }}>
-                      <div style={{ 
-                          color: theme.colors.mutedText, 
-                          fontSize: '10px', 
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.5px',
-                          marginBottom: '4px'
-                      }}>
-                          Principal ID
-                      </div>
-                      <div className="principal-id-container" onClick={() => handleCopy(principalText, 'principal')}>
-                          <span className="principal-id-text">
-                              {truncateString(principalText, 20, "...", 6, 6)}
-                          </span>
-                          <button
-                              className={`copy-button ${copied && copiedType === 'principal' ? 'copied' : ''}`}
-                              onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleCopy(principalText, 'principal');
-                              }}
-                          >
-                              {copied && copiedType === 'principal' ? <FaCheck size={12} /> : <FaCopy size={12} />}
-                          </button>
-                      </div>
-                  </div>
-                  
-                  {/* Account ID Section */}
-                  {accountId && (
-                      <div style={{ marginBottom: '12px' }}>
-                          <div style={{ 
-                              color: theme.colors.mutedText, 
-                              fontSize: '10px', 
-                              textTransform: 'uppercase',
-                              letterSpacing: '0.5px',
-                              marginBottom: '4px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '6px'
-                          }}>
-                              Account ID 
-                              <span style={{ 
-                                  color: theme.colors.accent, 
-                                  fontSize: '9px',
-                                  fontWeight: 'normal',
-                                  textTransform: 'none'
-                              }}>
-                                  (for CEX)
-                              </span>
-                          </div>
-                          <div 
-                              className="principal-id-container" 
-                              onClick={() => handleCopy(accountId, 'accountId')}
-                              style={{ cursor: 'pointer' }}
-                          >
-                              <span className="principal-id-text" style={{ fontSize: '11px' }}>
-                                  {truncateString(accountId, 20, "...", 8, 8)}
-                              </span>
+                  {/* Header Banner with Gradient */}
+                  <div style={{
+                      background: 'linear-gradient(135deg, #10b981 0%, #059669 50%, #047857 100%)',
+                      padding: '16px 20px',
+                      position: 'relative',
+                      overflow: 'hidden'
+                  }}>
+                      {/* Decorative pattern */}
+                      <div style={{
+                          position: 'absolute',
+                          inset: 0,
+                          opacity: 0.1,
+                          backgroundImage: 'radial-gradient(circle at 20% 50%, white 1px, transparent 1px), radial-gradient(circle at 80% 50%, white 1px, transparent 1px)',
+                          backgroundSize: '30px 30px',
+                          pointerEvents: 'none'
+                      }} />
+                      
+                      {/* User Info */}
+                      <div style={{ position: 'relative', zIndex: 1 }}>
+                          {userName ? (
                               <button
-                                  className={`copy-button ${copied && copiedType === 'accountId' ? 'copied' : ''}`}
-                                  onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleCopy(accountId, 'accountId');
+                                  onClick={() => {
+                                      navigate('/me');
+                                      setShowPopup(false);
+                                  }}
+                                  style={{
+                                      background: 'none',
+                                      border: 'none',
+                                      padding: 0,
+                                      color: 'white',
+                                      fontSize: '1.1rem',
+                                      fontWeight: '600',
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '8px',
+                                      textShadow: '0 2px 8px rgba(0,0,0,0.2)'
                                   }}
                               >
-                                  {copied && copiedType === 'accountId' ? <FaCheck size={12} /> : <FaCopy size={12} />}
+                                  {userName}
+                                  <FaExternalLinkAlt size={10} style={{ opacity: 0.7 }} />
                               </button>
+                          ) : (
+                              <button
+                                  onClick={() => {
+                                      navigate('/me');
+                                      setShowPopup(false);
+                                  }}
+                                  style={{
+                                      background: 'rgba(255,255,255,0.2)',
+                                      border: 'none',
+                                      padding: '6px 12px',
+                                      borderRadius: '6px',
+                                      color: 'white',
+                                      fontSize: '0.85rem',
+                                      fontWeight: '500',
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '6px'
+                                  }}
+                              >
+                                  Set up profile
+                                  <FaExternalLinkAlt size={9} />
+                              </button>
+                          )}
+                      </div>
+                  </div>
+
+                  {/* Identity Cards Section */}
+                  <div style={{ padding: '12px 16px' }}>
+                      {/* Principal ID Card */}
+                      <div 
+                          onClick={() => handleCopy(principalText, 'principal')}
+                          style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '12px',
+                              padding: '12px',
+                              background: theme.colors.primaryBg,
+                              borderRadius: '10px',
+                              cursor: 'pointer',
+                              marginBottom: '8px',
+                              transition: 'all 0.2s ease',
+                              border: `1px solid ${copied && copiedType === 'principal' ? '#10b981' : 'transparent'}`
+                          }}
+                          onMouseOver={(e) => {
+                              if (!(copied && copiedType === 'principal')) {
+                                  e.currentTarget.style.borderColor = theme.colors.border;
+                              }
+                          }}
+                          onMouseOut={(e) => {
+                              if (!(copied && copiedType === 'principal')) {
+                                  e.currentTarget.style.borderColor = 'transparent';
+                              }
+                          }}
+                      >
+                          <div style={{
+                              width: '36px',
+                              height: '36px',
+                              borderRadius: '8px',
+                              background: 'linear-gradient(135deg, #10b98130, #05966920)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0
+                          }}>
+                              <FaKey size={14} color="#10b981" />
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ 
+                                  color: theme.colors.mutedText, 
+                                  fontSize: '10px', 
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.5px',
+                                  marginBottom: '2px'
+                              }}>
+                                  Principal ID
+                              </div>
+                              <div style={{
+                                  color: theme.colors.primaryText,
+                                  fontSize: '12px',
+                                  fontFamily: 'monospace',
+                                  fontWeight: '500'
+                              }}>
+                                  {truncateString(principalText, 22, "...", 8, 8)}
+                              </div>
+                          </div>
+                          <div style={{
+                              color: copied && copiedType === 'principal' ? '#10b981' : theme.colors.mutedText,
+                              transition: 'color 0.2s ease'
+                          }}>
+                              {copied && copiedType === 'principal' ? <FaCheck size={14} /> : <FaCopy size={14} />}
                           </div>
                       </div>
-                  )}
                       
-                  {/* Copy feedback */}
-                  {copyFeedback && (
-                      <div className="copy-feedback">
-                          {copyFeedback}
-                      </div>
-                  )}
+                      {/* Account ID Card */}
+                      {accountId && (
+                          <div 
+                              onClick={() => handleCopy(accountId, 'accountId')}
+                              style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '12px',
+                                  padding: '12px',
+                                  background: theme.colors.primaryBg,
+                                  borderRadius: '10px',
+                                  cursor: 'pointer',
+                                  marginBottom: '12px',
+                                  transition: 'all 0.2s ease',
+                                  border: `1px solid ${copied && copiedType === 'accountId' ? '#10b981' : 'transparent'}`
+                              }}
+                              onMouseOver={(e) => {
+                                  if (!(copied && copiedType === 'accountId')) {
+                                      e.currentTarget.style.borderColor = theme.colors.border;
+                                  }
+                              }}
+                              onMouseOut={(e) => {
+                                  if (!(copied && copiedType === 'accountId')) {
+                                      e.currentTarget.style.borderColor = 'transparent';
+                                  }
+                              }}
+                          >
+                              <div style={{
+                                  width: '36px',
+                                  height: '36px',
+                                  borderRadius: '8px',
+                                  background: 'linear-gradient(135deg, #3b82f630, #1d4ed820)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  flexShrink: 0
+                              }}>
+                                  <FaIdCard size={14} color="#3b82f6" />
+                              </div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ 
+                                      color: theme.colors.mutedText, 
+                                      fontSize: '10px', 
+                                      textTransform: 'uppercase',
+                                      letterSpacing: '0.5px',
+                                      marginBottom: '2px',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '6px'
+                                  }}>
+                                      Account ID
+                                      <span style={{
+                                          background: '#3b82f620',
+                                          color: '#3b82f6',
+                                          fontSize: '8px',
+                                          padding: '2px 5px',
+                                          borderRadius: '4px',
+                                          fontWeight: '600',
+                                          textTransform: 'none'
+                                      }}>
+                                          CEX
+                                      </span>
+                                  </div>
+                                  <div style={{
+                                      color: theme.colors.primaryText,
+                                      fontSize: '11px',
+                                      fontFamily: 'monospace',
+                                      fontWeight: '500'
+                                  }}>
+                                      {truncateString(accountId, 22, "...", 8, 8)}
+                                  </div>
+                              </div>
+                              <div style={{
+                                  color: copied && copiedType === 'accountId' ? '#10b981' : theme.colors.mutedText,
+                                  transition: 'color 0.2s ease'
+                              }}>
+                                  {copied && copiedType === 'accountId' ? <FaCheck size={14} /> : <FaCopy size={14} />}
+                              </div>
+                          </div>
+                      )}
+                      
+                      {/* Copy feedback toast */}
+                      {copyFeedback && (
+                          <div style={{
+                              background: '#10b981',
+                              color: 'white',
+                              fontSize: '12px',
+                              fontWeight: '500',
+                              padding: '8px 12px',
+                              borderRadius: '6px',
+                              textAlign: 'center',
+                              marginBottom: '12px',
+                              animation: 'fadeIn 0.2s ease'
+                          }}>
+                              {copyFeedback}
+                          </div>
+                      )}
+                  </div>
+                  
+                  {/* Divider */}
+                  <div style={{ 
+                      height: '1px', 
+                      background: theme.colors.border,
+                      margin: '0 16px'
+                  }} />
+                  
+                  {/* Wallet Section - now in the padding area */}
+                  <div style={{ padding: '12px 16px' }}>
 
                   {/* Compact Wallet Section */}
-                  <div style={{ marginBottom: '12px' }}>
                       <div 
                           style={{ 
                               color: theme.colors.mutedText, 
                               fontSize: '10px', 
                               textTransform: 'uppercase',
                               letterSpacing: '0.5px',
-                              marginBottom: '4px',
+                              marginBottom: '8px',
                               display: 'flex',
                               alignItems: 'center',
                               gap: '6px'
@@ -453,40 +605,60 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                               style={{
                                   width: '100%',
                                   marginTop: '8px',
-                                  padding: '8px',
+                                  padding: '10px',
                                   backgroundColor: 'transparent',
                                   border: `1px solid ${theme.colors.border}`,
-                                  borderRadius: '6px',
+                                  borderRadius: '8px',
                                   color: theme.colors.accent,
                                   fontSize: '12px',
+                                  fontWeight: '500',
                                   cursor: 'pointer',
-                                  transition: 'background-color 0.2s ease'
+                                  transition: 'all 0.2s ease',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '6px'
                               }}
-                              onMouseOver={(e) => e.target.style.backgroundColor = theme.colors.primaryBg}
-                              onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+                              onMouseOver={(e) => {
+                                  e.target.style.backgroundColor = theme.colors.primaryBg;
+                                  e.target.style.borderColor = theme.colors.accent;
+                              }}
+                              onMouseOut={(e) => {
+                                  e.target.style.backgroundColor = 'transparent';
+                                  e.target.style.borderColor = theme.colors.border;
+                              }}
                           >
+                              <FaWallet size={11} />
                               View Full Wallet
                           </button>
                       )}
                   </div>
 
-                  {/* Action Buttons */}
-                  <div className="action-buttons">
-                      {!userName && (
-                          <button
-                              className="me-button"
-                              onClick={() => {
-                                  navigate('/me');
-                                  setShowPopup(false);
-                              }}
-                          >
-                              Me
-                          </button>
-                      )}
-                      
+                  {/* Log Out Button */}
+                  <div style={{ padding: '0 16px 16px' }}>
                       <button 
-                          className="logout-button"
                           onClick={onLogout}
+                          style={{
+                              width: '100%',
+                              padding: '12px',
+                              background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '10px',
+                              fontSize: '14px',
+                              fontWeight: '600',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s ease',
+                              boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)'
+                          }}
+                          onMouseOver={(e) => {
+                              e.target.style.transform = 'translateY(-1px)';
+                              e.target.style.boxShadow = '0 6px 16px rgba(239, 68, 68, 0.4)';
+                          }}
+                          onMouseOut={(e) => {
+                              e.target.style.transform = 'translateY(0)';
+                              e.target.style.boxShadow = '0 4px 12px rgba(239, 68, 68, 0.3)';
+                          }}
                       >
                           Log Out
                       </button>
