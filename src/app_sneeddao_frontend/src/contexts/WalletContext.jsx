@@ -3,6 +3,7 @@ import { Principal } from '@dfinity/principal';
 import { useAuth } from '../AuthContext';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
+import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'declarations/rll';
 import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
@@ -30,6 +31,8 @@ export const WalletProvider = ({ children }) => {
     // Liquidity positions from the wallet
     const [liquidityPositions, setLiquidityPositions] = useState([]);
     const [positionsLoading, setPositionsLoading] = useState(false);
+    const [hasFetchedPositions, setHasFetchedPositions] = useState(false);
+    const positionsFetchSessionRef = useRef(0);
 
     // Load SNS data to know which tokens are SNS tokens
     useEffect(() => {
@@ -182,6 +185,185 @@ export const WalletProvider = ({ children }) => {
         }
     }, [identity, snsTokenLedgers]);
 
+    // Fetch compact positions for the quick wallet
+    const fetchCompactPositions = useCallback(async () => {
+        if (!identity || !isAuthenticated) {
+            setLiquidityPositions([]);
+            setPositionsLoading(false);
+            return;
+        }
+
+        const sessionId = ++positionsFetchSessionRef.current;
+        setPositionsLoading(true);
+
+        try {
+            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
+            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
+            
+            // Get swap canister IDs
+            const swap_canisters = await backendActor.get_swap_canister_ids();
+            
+            if (swap_canisters.length === 0) {
+                if (positionsFetchSessionRef.current === sessionId) {
+                    setPositionsLoading(false);
+                    setHasFetchedPositions(true);
+                }
+                return;
+            }
+
+            // Clear expired position locks
+            try {
+                if (await sneedLockActor.has_expired_position_locks()) {
+                    await sneedLockActor.clear_expired_position_locks();
+                }
+            } catch (e) {
+                console.warn('Could not clear expired position locks:', e);
+            }
+
+            // Get claimed positions
+            const claimed_positions = await sneedLockActor.get_claimed_positions_for_principal(identity.getPrincipal());
+            const claimed_positions_by_swap = {};
+            for (const claimed_position of claimed_positions) {
+                if (!claimed_positions_by_swap[claimed_position.swap_canister_id]) {
+                    claimed_positions_by_swap[claimed_position.swap_canister_id] = [];
+                }
+                claimed_positions_by_swap[claimed_position.swap_canister_id].push(claimed_position);
+            }
+
+            // Fetch positions from each swap canister in parallel
+            const positionResults = await Promise.all(swap_canisters.map(async (swap_canister) => {
+                try {
+                    const claimed_positions_for_swap = claimed_positions_by_swap[swap_canister] || [];
+                    const claimed_position_ids_for_swap = claimed_positions_for_swap.map(cp => cp.position_id);
+                    const claimed_positions_for_swap_by_id = {};
+                    for (const cp of claimed_positions_for_swap) {
+                        claimed_positions_for_swap_by_id[cp.position_id] = cp;
+                    }
+
+                    const swapActor = createIcpSwapActor(swap_canister);
+                    
+                    // Get swap metadata
+                    const swap_meta = await swapActor.metadata();
+                    if (!swap_meta.ok) return null;
+
+                    const icrc1_ledger0 = swap_meta.ok.token0.address;
+                    const icrc1_ledger1 = swap_meta.ok.token1.address;
+
+                    // Get token metadata in parallel
+                    const [ledgerActor0, ledgerActor1] = [
+                        createLedgerActor(icrc1_ledger0),
+                        createLedgerActor(icrc1_ledger1)
+                    ];
+
+                    const [metadata0, metadata1, decimals0, decimals1, symbol0, symbol1, fee0, fee1] = await Promise.all([
+                        ledgerActor0.icrc1_metadata(),
+                        ledgerActor1.icrc1_metadata(),
+                        ledgerActor0.icrc1_decimals(),
+                        ledgerActor1.icrc1_decimals(),
+                        ledgerActor0.icrc1_symbol(),
+                        ledgerActor1.icrc1_symbol(),
+                        ledgerActor0.icrc1_fee(),
+                        ledgerActor1.icrc1_fee()
+                    ]);
+
+                    let token0Logo = getTokenLogo(metadata0);
+                    let token1Logo = getTokenLogo(metadata1);
+                    if (symbol0?.toLowerCase() === "icp" && token0Logo === "") token0Logo = "icp_symbol.svg";
+                    if (symbol1?.toLowerCase() === "icp" && token1Logo === "") token1Logo = "icp_symbol.svg";
+
+                    // Get user's positions
+                    const userPositionIds = (await swapActor.getUserPositionIdsByPrincipal(identity.getPrincipal())).ok || [];
+                    
+                    // Fetch positions with amounts
+                    let userPositions = [];
+                    let offset = 0;
+                    const limit = 50;
+                    let hasMore = true;
+                    
+                    while (hasMore) {
+                        const result = await swapActor.getUserPositionWithTokenAmount(offset, limit);
+                        const allPositions = result.ok?.content || [];
+                        
+                        for (const position of allPositions) {
+                            if (userPositionIds.includes(position.id) || claimed_position_ids_for_swap.includes(position.id)) {
+                                userPositions.push({
+                                    position: position,
+                                    claimInfo: claimed_positions_for_swap_by_id[position.id],
+                                    frontendOwnership: userPositionIds.includes(position.id)
+                                });
+                            }
+                        }
+                        
+                        offset += limit;
+                        hasMore = allPositions.length === limit;
+                    }
+
+                    if (userPositions.length === 0) return null;
+
+                    // Get conversion rates in background (don't block)
+                    const [token0_conversion_rate, token1_conversion_rate] = await Promise.all([
+                        get_token_conversion_rate(icrc1_ledger0, decimals0).catch(() => 0),
+                        get_token_conversion_rate(icrc1_ledger1, decimals1).catch(() => 0)
+                    ]);
+
+                    // Build position details
+                    const positionDetails = userPositions.map(compoundPosition => {
+                        const position = compoundPosition.position;
+                        return {
+                            positionId: position.id,
+                            tokensOwed0: position.tokensOwed0,
+                            tokensOwed1: position.tokensOwed1,
+                            amount0: position.token0Amount,
+                            amount1: position.token1Amount,
+                            frontendOwnership: compoundPosition.frontendOwnership,
+                            lockInfo: (!compoundPosition.frontendOwnership && compoundPosition.claimInfo?.position_lock?.[0]) 
+                                ? compoundPosition.claimInfo.position_lock[0] 
+                                : null
+                        };
+                    });
+
+                    return {
+                        swapCanisterId: swap_canister,
+                        token0: Principal.fromText(icrc1_ledger0),
+                        token1: Principal.fromText(icrc1_ledger1),
+                        token0Symbol: symbol0,
+                        token1Symbol: symbol1,
+                        token0Logo: token0Logo,
+                        token1Logo: token1Logo,
+                        token0Decimals: Number(decimals0),
+                        token1Decimals: Number(decimals1),
+                        token0Fee: fee0,
+                        token1Fee: fee1,
+                        token0_conversion_rate: token0_conversion_rate,
+                        token1_conversion_rate: token1_conversion_rate,
+                        swapCanisterBalance0: 0n,
+                        swapCanisterBalance1: 0n,
+                        positions: positionDetails,
+                        loading: false
+                    };
+                } catch (err) {
+                    console.warn(`Could not fetch positions for swap ${swap_canister}:`, err);
+                    return null;
+                }
+            }));
+
+            // Filter out null results and update state
+            const validPositions = positionResults.filter(p => p !== null);
+            
+            if (positionsFetchSessionRef.current === sessionId) {
+                setLiquidityPositions(validPositions);
+                setPositionsLoading(false);
+                setHasFetchedPositions(true);
+            }
+        } catch (error) {
+            console.error('Error fetching compact positions:', error);
+            if (positionsFetchSessionRef.current === sessionId) {
+                setPositionsLoading(false);
+                setHasFetchedPositions(true);
+            }
+        }
+    }, [identity, isAuthenticated]);
+
     // Progressive token fetcher - adds tokens as they load
     const addTokenProgressively = useCallback((token, sessionId) => {
         if (fetchSessionRef.current !== sessionId) return;
@@ -314,18 +496,24 @@ export const WalletProvider = ({ children }) => {
         }
     }, [identity, isAuthenticated, fetchTokenDetailsFast, addTokenProgressively, fetchAndUpdateConversionRate, fetchAndUpdateNeuronTotals]);
 
-    // Fetch tokens when user authenticates
+    // Fetch tokens and positions when user authenticates
     useEffect(() => {
         if (isAuthenticated && identity && !hasFetchedInitial) {
             fetchCompactWalletTokens();
-        } else if (!isAuthenticated) {
+        }
+        if (isAuthenticated && identity && !hasFetchedPositions) {
+            fetchCompactPositions();
+        }
+        if (!isAuthenticated) {
             // Clear wallet on logout
             setWalletTokens([]);
+            setLiquidityPositions([]);
             setHasFetchedInitial(false);
+            setHasFetchedPositions(false);
             setHasDetailedData(false);
             setLastUpdated(null);
         }
-    }, [isAuthenticated, identity, hasFetchedInitial, fetchCompactWalletTokens]);
+    }, [isAuthenticated, identity, hasFetchedInitial, hasFetchedPositions, fetchCompactWalletTokens, fetchCompactPositions]);
 
     // Update tokens from Wallet.jsx (more detailed data including locks, staked, etc.)
     const updateWalletTokens = useCallback((tokens) => {
@@ -353,14 +541,17 @@ export const WalletProvider = ({ children }) => {
         setLiquidityPositions([]);
         setLastUpdated(null);
         setHasFetchedInitial(false);
+        setHasFetchedPositions(false);
         setHasDetailedData(false);
     }, []);
 
     // Refresh tokens manually
     const refreshWallet = useCallback(() => {
         setHasFetchedInitial(false);
+        setHasFetchedPositions(false);
         fetchCompactWalletTokens();
-    }, [fetchCompactWalletTokens]);
+        fetchCompactPositions();
+    }, [fetchCompactWalletTokens, fetchCompactPositions]);
 
     // Helper to calculate send amounts (frontend vs backend balance)
     const calcSendAmounts = useCallback((token, bigintAmount) => {

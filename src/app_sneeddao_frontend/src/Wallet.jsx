@@ -740,9 +740,11 @@ function Wallet() {
         updateWalletTokens(tokens);
     }, [tokens, updateWalletTokens]);
 
-    // Sync liquidity positions to WalletContext
+    // Sync liquidity positions to WalletContext (detailed data)
     useEffect(() => {
-        updateLiquidityPositions(liquidityPositions, showPositionsSpinner);
+        if (updateLiquidityPositions) {
+            updateLiquidityPositions(liquidityPositions, showPositionsSpinner);
+        }
     }, [liquidityPositions, showPositionsSpinner, updateLiquidityPositions]);
 
     // Sync loading state to WalletContext

@@ -134,31 +134,35 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         let hasAnyValue = false;
         
         for (const { position, positionDetails } of flattenedPositions) {
+            // Ensure decimals are numbers
+            const decimals0 = Number(position.token0Decimals || 8);
+            const decimals1 = Number(position.token1Decimals || 8);
+            
             // Calculate liquidity value
             if (positionDetails.amount0 !== undefined && positionDetails.amount1 !== undefined) {
-                const amount0 = Number(positionDetails.amount0) / (10 ** (position.token0Decimals || 8));
-                const amount1 = Number(positionDetails.amount1) / (10 ** (position.token1Decimals || 8));
+                const amount0 = Number(positionDetails.amount0) / Math.pow(10, decimals0);
+                const amount1 = Number(positionDetails.amount1) / Math.pow(10, decimals1);
                 
                 if (position.token0_conversion_rate) {
-                    total += amount0 * position.token0_conversion_rate;
+                    total += amount0 * Number(position.token0_conversion_rate);
                     hasAnyValue = true;
                 }
                 if (position.token1_conversion_rate) {
-                    total += amount1 * position.token1_conversion_rate;
+                    total += amount1 * Number(position.token1_conversion_rate);
                     hasAnyValue = true;
                 }
             }
             
             // Add unclaimed fees
             if (positionDetails.tokensOwed0 !== undefined && positionDetails.tokensOwed1 !== undefined) {
-                const fees0 = Number(positionDetails.tokensOwed0) / (10 ** (position.token0Decimals || 8));
-                const fees1 = Number(positionDetails.tokensOwed1) / (10 ** (position.token1Decimals || 8));
+                const fees0 = Number(positionDetails.tokensOwed0) / Math.pow(10, decimals0);
+                const fees1 = Number(positionDetails.tokensOwed1) / Math.pow(10, decimals1);
                 
                 if (position.token0_conversion_rate) {
-                    total += fees0 * position.token0_conversion_rate;
+                    total += fees0 * Number(position.token0_conversion_rate);
                 }
                 if (position.token1_conversion_rate) {
-                    total += fees1 * position.token1_conversion_rate;
+                    total += fees1 * Number(position.token1_conversion_rate);
                 }
             }
         }
@@ -1292,18 +1296,20 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                               </div>
                           ) : (
                               flattenedPositions.map(({ position, positionDetails }, index) => {
-                                  // Calculate position value
+                                  // Calculate position value - ensure all values are Numbers
+                                  const decimals0 = Number(position.token0Decimals || 8);
+                                  const decimals1 = Number(position.token1Decimals || 8);
                                   const amount0 = positionDetails.amount0 !== undefined 
-                                      ? Number(positionDetails.amount0) / (10 ** (position.token0Decimals || 8)) 
+                                      ? Number(positionDetails.amount0) / Math.pow(10, decimals0) 
                                       : 0;
                                   const amount1 = positionDetails.amount1 !== undefined 
-                                      ? Number(positionDetails.amount1) / (10 ** (position.token1Decimals || 8)) 
+                                      ? Number(positionDetails.amount1) / Math.pow(10, decimals1) 
                                       : 0;
                                   const fees0 = positionDetails.tokensOwed0 !== undefined 
-                                      ? Number(positionDetails.tokensOwed0) / (10 ** (position.token0Decimals || 8)) 
+                                      ? Number(positionDetails.tokensOwed0) / Math.pow(10, decimals0) 
                                       : 0;
                                   const fees1 = positionDetails.tokensOwed1 !== undefined 
-                                      ? Number(positionDetails.tokensOwed1) / (10 ** (position.token1Decimals || 8)) 
+                                      ? Number(positionDetails.tokensOwed1) / Math.pow(10, decimals1) 
                                       : 0;
                                   
                                   let liquidityUSD = 0;
@@ -1311,13 +1317,13 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                   let hasValue = false;
                                   
                                   if (position.token0_conversion_rate) {
-                                      liquidityUSD += amount0 * position.token0_conversion_rate;
-                                      feesUSD += fees0 * position.token0_conversion_rate;
+                                      liquidityUSD += amount0 * Number(position.token0_conversion_rate);
+                                      feesUSD += fees0 * Number(position.token0_conversion_rate);
                                       hasValue = true;
                                   }
                                   if (position.token1_conversion_rate) {
-                                      liquidityUSD += amount1 * position.token1_conversion_rate;
-                                      feesUSD += fees1 * position.token1_conversion_rate;
+                                      liquidityUSD += amount1 * Number(position.token1_conversion_rate);
+                                      feesUSD += fees1 * Number(position.token1_conversion_rate);
                                       hasValue = true;
                                   }
                                   

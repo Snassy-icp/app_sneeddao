@@ -1333,7 +1333,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     <div className="header-row-3" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         {/* Locks icon with count */}
                         {(() => {
-                            const tokenLocks = locks[token.ledger_canister_id] || [];
+                            const tokenLocks = locks && locks[token.ledger_canister_id] ? locks[token.ledger_canister_id] : [];
                             const lockCount = tokenLocks.length;
                             return lockCount > 0 && (
                                 <span 
