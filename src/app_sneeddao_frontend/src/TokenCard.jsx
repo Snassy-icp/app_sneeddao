@@ -12,9 +12,9 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { NeuronDisplay } from './components/NeuronDisplay';
 import { useNaming } from './NamingContext';
 import { VotingPowerCalculator } from './utils/VotingPowerUtils';
-import { getUserPermissionIcons, getStateIcon, PERM } from './utils/NeuronPermissionUtils';
+import { getUserPermissionIcons, getStateIcon, PERM } from './utils/NeuronPermissionUtils.jsx';
 import { Link } from 'react-router-dom';
-import { FaDollarSign, FaLock, FaBrain, FaInfoCircle, FaTint, FaSeedling, FaHourglassHalf, FaGift, FaExpandAlt, FaSync, FaQuestionCircle, FaPlus, FaBan, FaPlay, FaStop, FaWallet, FaExchangeAlt } from 'react-icons/fa';
+import { FaDollarSign, FaLock, FaBrain, FaInfoCircle, FaTint, FaSeedling, FaHourglassHalf, FaGift, FaExpandAlt, FaSync, FaQuestionCircle, FaPlus, FaBan, FaPlay, FaStop, FaWallet, FaExchangeAlt, FaArrowDown, FaArrowUp, FaChevronDown, FaChevronRight, FaExclamationTriangle, FaCog, FaClock, FaCut } from 'react-icons/fa';
 
 // Constants for GLDT and sGLDT canister IDs
 const GLDT_CANISTER_ID = '6c7su-kiaaa-aaaar-qaira-cai';
@@ -1532,7 +1532,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     }}
                 >
                     <FaDollarSign size={12} />
-                    Bal
+                    Balance
                 </button>
 
                 {/* Locks Tab */}
@@ -1629,10 +1629,12 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                             fontSize: '0.9rem',
                                             color: theme.colors.secondaryText,
                                             transition: 'transform 0.2s ease',
-                                            userSelect: 'none'
+                                            userSelect: 'none',
+                                            display: 'flex',
+                                            alignItems: 'center'
                                         }}
                                     >
-                                        {balanceSectionExpanded ? '▼' : '▶'}
+                                        {balanceSectionExpanded ? <FaChevronDown size={10} /> : <FaChevronRight size={10} />}
                                     </span>
                                 </div>
                                 <div className="balance-value">{formatAmount(availableOrZero(token.available) + token.locked + getTotalNeuronStake() + getTotalNeuronMaturity() + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)}{getUSD(availableOrZero(token.available) + token.locked + getTotalNeuronStake() + getTotalNeuronMaturity() + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate)}</div>
@@ -1644,124 +1646,144 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                             <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                 <FaTint size={14} style={{ color: theme.colors.mutedText }} />
                                                 Liquid
+                                                {showBalanceBreakdown ? (
+                                                    <FaChevronDown size={10} style={{ color: theme.colors.mutedText }} />
+                                                ) : (
+                                                    <FaChevronRight size={10} style={{ color: theme.colors.mutedText }} />
+                                                )}
                                             </div>
-                                            <span style={{ 
-                                                fontSize: '0.9rem',
-                                                color: theme.colors.secondaryText,
-                                                userSelect: 'none'
-                                            }}>
-                                                {showBalanceBreakdown ? '▼' : '▶'}
-                                            </span>
                                         </div>
                                         <div className="balance-value">{formatAmount(token.available || 0n, token.decimals)}{getUSD(token.available || 0n, token.decimals, token.conversion_rate)}</div>
                                     </div>
                                     
                                     {showBalanceBreakdown && (
                                         <div className="balance-breakdown" style={{ 
-                                            padding: '10px', 
-                                            background: theme.colors.tertiaryBg, 
-                                            borderRadius: '4px',
-                                            border: `1px solid ${theme.colors.border}`
+                                            padding: '12px', 
+                                            background: theme.colors.secondaryBg, 
+                                            borderRadius: '8px',
+                                            border: `1px solid ${theme.colors.border}`,
+                                            marginTop: '8px',
+                                            marginBottom: '8px'
                                         }}>
-                                            <div className="balance-breakdown-item" style={{ 
+                                            <div style={{ 
                                                 display: 'flex', 
                                                 justifyContent: 'space-between', 
-                                                alignItems: 'center',
-                                                marginBottom: '8px'
+                                                alignItems: 'flex-start',
+                                                paddingBottom: '12px',
+                                                borderBottom: `1px solid ${theme.colors.border}`
                                             }}>
                                                 <div>
-                                                    <div style={{ fontSize: '12px', color: theme.colors.secondaryText }}>Wallet</div>
-                                                    <div style={{ fontSize: '14px', fontWeight: 'bold', color: theme.colors.primaryText }}>
+                                                    <div style={{ 
+                                                        fontSize: '0.75rem', 
+                                                        color: theme.colors.mutedText,
+                                                        marginBottom: '4px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '6px'
+                                                    }}>
+                                                        <FaWallet size={10} />
+                                                        Wallet
+                                                    </div>
+                                                    <div style={{ 
+                                                        fontSize: '0.9rem', 
+                                                        fontWeight: '600', 
+                                                        color: theme.colors.primaryText 
+                                                    }}>
                                                         {formatAmount(token.balance || 0n, token.decimals)} {token.symbol}
                                                     </div>
-                                                    {(() => {
-                                                        const shouldShowButton = token.balance > BigInt(token.fee) && !hideButtons;
-                                                        
-                                                        return shouldShowButton ? (
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    handleDepositToBackend(token);
-                                                                }}
-                                                                style={{
-                                                                    padding: '0.4rem 0.75rem',
-                                                                    fontSize: '0.75rem',
-                                                                    fontWeight: '600',
-                                                                    background: 'linear-gradient(135deg, #10b981, #059669)',
-                                                                    color: 'white',
-                                                                    border: 'none',
-                                                                    borderRadius: '6px',
-                                                                    cursor: 'pointer',
-                                                                    marginTop: '0.5rem',
-                                                                    display: 'inline-flex',
-                                                                    alignItems: 'center',
-                                                                    gap: '0.35rem',
-                                                                    textAlign: 'center',
-                                                                    userSelect: 'none',
-                                                                    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
-                                                                    transition: 'all 0.2s ease'
-                                                                }}
-                                                                onMouseEnter={(e) => {
-                                                                    e.target.style.transform = 'translateY(-1px)';
-                                                                    e.target.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.4)';
-                                                                }}
-                                                                onMouseLeave={(e) => {
-                                                                    e.target.style.transform = 'translateY(0)';
-                                                                    e.target.style.boxShadow = '0 2px 8px rgba(16, 185, 129, 0.3)';
-                                                                }}
-                                                            >
-                                                                ↓ Deposit
-                                                            </button>
-                                                        ) : null;
-                                                    })()}
                                                 </div>
+                                                {token.balance > BigInt(token.fee) && !hideButtons && (
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleDepositToBackend(token);
+                                                        }}
+                                                        style={{
+                                                            padding: '6px 12px',
+                                                            fontSize: '0.75rem',
+                                                            fontWeight: '500',
+                                                            background: 'transparent',
+                                                            color: theme.colors.primaryText,
+                                                            border: `1px solid ${theme.colors.border}`,
+                                                            borderRadius: '6px',
+                                                            cursor: 'pointer',
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '6px',
+                                                            transition: 'all 0.2s ease'
+                                                        }}
+                                                        onMouseEnter={(e) => {
+                                                            e.currentTarget.style.background = theme.colors.tertiaryBg;
+                                                            e.currentTarget.style.borderColor = theme.colors.accent;
+                                                        }}
+                                                        onMouseLeave={(e) => {
+                                                            e.currentTarget.style.background = 'transparent';
+                                                            e.currentTarget.style.borderColor = theme.colors.border;
+                                                        }}
+                                                    >
+                                                        <FaArrowDown size={10} /> Deposit
+                                                    </button>
+                                                )}
                                             </div>
                                             
-                                            <div className="balance-breakdown-item">
-                                                <div style={{ fontSize: '12px', color: theme.colors.secondaryText }}>Deposited</div>
-                                                <div style={{ fontSize: '14px', fontWeight: 'bold', color: theme.colors.primaryText }}>
-                                                    {formatAmount(token.available_backend || 0n, token.decimals)} {token.symbol}
+                                            <div style={{ 
+                                                display: 'flex', 
+                                                justifyContent: 'space-between', 
+                                                alignItems: 'flex-start',
+                                                paddingTop: '12px'
+                                            }}>
+                                                <div>
+                                                    <div style={{ 
+                                                        fontSize: '0.75rem', 
+                                                        color: theme.colors.mutedText,
+                                                        marginBottom: '4px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '6px'
+                                                    }}>
+                                                        <FaLock size={10} />
+                                                        Deposited
+                                                    </div>
+                                                    <div style={{ 
+                                                        fontSize: '0.9rem', 
+                                                        fontWeight: '600', 
+                                                        color: theme.colors.primaryText 
+                                                    }}>
+                                                        {formatAmount(token.available_backend || 0n, token.decimals)} {token.symbol}
+                                                    </div>
                                                 </div>
-                                                {(() => {
-                                                    const shouldShowButton = token.available_backend > 0n && !hideButtons;
-                                                    
-                                                    return shouldShowButton ? (
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleWithdrawFromBackend(token);
-                                                            }}
-                                                            style={{
-                                                                padding: '0.4rem 0.75rem',
-                                                                fontSize: '0.75rem',
-                                                                fontWeight: '600',
-                                                                background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-                                                                color: 'white',
-                                                                border: 'none',
-                                                                borderRadius: '6px',
-                                                                cursor: 'pointer',
-                                                                marginTop: '0.5rem',
-                                                                display: 'inline-flex',
-                                                                alignItems: 'center',
-                                                                gap: '0.35rem',
-                                                                textAlign: 'center',
-                                                                userSelect: 'none',
-                                                                boxShadow: '0 2px 8px rgba(245, 158, 11, 0.3)',
-                                                                transition: 'all 0.2s ease'
-                                                            }}
-                                                            onMouseEnter={(e) => {
-                                                                e.target.style.transform = 'translateY(-1px)';
-                                                                e.target.style.boxShadow = '0 4px 12px rgba(245, 158, 11, 0.4)';
-                                                            }}
-                                                            onMouseLeave={(e) => {
-                                                                e.target.style.transform = 'translateY(0)';
-                                                                e.target.style.boxShadow = '0 2px 8px rgba(245, 158, 11, 0.3)';
-                                                            }}
-                                                        >
-                                                            ↑ Withdraw
-                                                        </button>
-                                                    ) : null;
-                                                })()}
+                                                {token.available_backend > 0n && !hideButtons && (
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleWithdrawFromBackend(token);
+                                                        }}
+                                                        style={{
+                                                            padding: '6px 12px',
+                                                            fontSize: '0.75rem',
+                                                            fontWeight: '500',
+                                                            background: 'transparent',
+                                                            color: theme.colors.primaryText,
+                                                            border: `1px solid ${theme.colors.border}`,
+                                                            borderRadius: '6px',
+                                                            cursor: 'pointer',
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '6px',
+                                                            transition: 'all 0.2s ease'
+                                                        }}
+                                                        onMouseEnter={(e) => {
+                                                            e.currentTarget.style.background = theme.colors.tertiaryBg;
+                                                            e.currentTarget.style.borderColor = theme.colors.accent;
+                                                        }}
+                                                        onMouseLeave={(e) => {
+                                                            e.currentTarget.style.background = 'transparent';
+                                                            e.currentTarget.style.borderColor = theme.colors.border;
+                                                        }}
+                                                    >
+                                                        <FaArrowUp size={10} /> Withdraw
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                     )}
@@ -2202,7 +2224,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                             alignItems: 'flex-start',
                                             gap: '8px'
                                         }}>
-                                            <span style={{ fontSize: '1rem' }}>⚠️</span>
+                                            <FaExclamationTriangle size={14} style={{ color: '#f59e0b' }} />
                                             <span>
                                                 This SNS doesn't allow managing neuron permissions. 
                                                 Neurons created here cannot be transferred to other wallets.
@@ -2314,12 +2336,13 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                             <span 
                                                                 style={{ 
                                                                     color: theme.colors.mutedText, 
-                                                                    fontSize: '1.2rem',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
                                                                     transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
                                                                     transition: 'transform 0.2s ease'
                                                                 }}
                                                             >
-                                                                ▼
+                                                                <FaChevronDown size={12} />
                                                             </span>
                                                         </div>
                                                     </div>
@@ -2361,7 +2384,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                                     onMouseEnter={(e) => e.target.style.background = theme.colors.border}
                                                                     onMouseLeave={(e) => e.target.style.background = theme.colors.secondaryBg}
                                                                 >
-                                                                    ⚙️ Manage
+                                                                    <FaCog size={10} style={{ marginRight: '4px' }} /> Manage
                                                                 </a>
                                                                 
                                                                 {/* Send button - transfer neuron to another principal */}
@@ -2627,7 +2650,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                                                                         opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1
                                                                                                     }}
                                                                                                 >
-                                                                                                    ⏱️ {dissolveDelay > 0 ? 'Increase' : 'Set'} Dissolve Delay
+                                                                                                    <FaClock size={10} style={{ marginRight: '4px' }} /> {dissolveDelay > 0 ? 'Increase' : 'Set'} Dissolve Delay
                                                                                                 </button>
                                                                                             )}
                                                                                         </>
@@ -2727,7 +2750,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                                                                 opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1
                                                                                             }}
                                                                                         >
-                                                                                            ✂️ Split Neuron
+                                                                                            <FaCut size={10} style={{ marginRight: '4px' }} /> Split Neuron
                                                                                         </button>
                                                                                     )}
                                                                                 </div>
@@ -3053,8 +3076,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                         }}
                         onClick={(e) => e.stopPropagation()}
                         >
-                            <h3 style={{ color: theme.colors.primaryText, marginTop: 0 }}>
-                                ⏱️ {isIncreasing ? 'Increase' : 'Set'} Dissolve Delay
+                            <h3 style={{ color: theme.colors.primaryText, marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <FaClock size={14} /> {isIncreasing ? 'Increase' : 'Set'} Dissolve Delay
                             </h3>
                             
                             {isIncreasing && (
@@ -3404,8 +3427,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                         }}
                         onClick={(e) => e.stopPropagation()}
                         >
-                            <h3 style={{ color: theme.colors.primaryText, marginTop: 0 }}>
-                                ✂️ Split Neuron
+                            <h3 style={{ color: theme.colors.primaryText, marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <FaCut size={14} /> Split Neuron
                             </h3>
                             
                             <p style={{ color: theme.colors.secondaryText, marginBottom: '8px' }}>
@@ -3512,7 +3535,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     background: theme.colors.errorBg || theme.colors.secondaryBg,
                                     borderRadius: '6px'
                                 }}>
-                                    ⚠️ This neuron doesn't have enough stake to split. You need at least {formatAmount(minStakeE8s + minSplitAmount, token.decimals)} {token.symbol} total (minimum stake for original + minimum split amount for new neuron).
+                                    <FaExclamationTriangle size={12} style={{ marginRight: '6px', color: '#f59e0b' }} /> This neuron doesn't have enough stake to split. You need at least {formatAmount(minStakeE8s + minSplitAmount, token.decimals)} {token.symbol} total (minimum stake for original + minimum split amount for new neuron).
                                 </p>
                             )}
                             
@@ -3665,7 +3688,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                         margin: 0,
                                         fontWeight: '500'
                                     }}>
-                                        ⚠️ Do not close this window until the process completes!
+                                        <FaExclamationTriangle size={12} style={{ marginRight: '6px' }} /> Do not close this window until the process completes!
                                     </p>
                                 </div>
                             )}
@@ -3856,11 +3879,13 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     }}
                                 >
                                     <span style={{
-                                        fontSize: '14px',
+                                        display: 'flex',
+                                        alignItems: 'center',
                                         transform: createNeuronAdvancedExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-                                        transition: 'transform 0.2s ease'
+                                        transition: 'transform 0.2s ease',
+                                        color: theme.colors.mutedText
                                     }}>
-                                        ▶
+                                        <FaChevronRight size={12} />
                                     </span>
                                     <h4 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '0.95rem' }}>
                                         Advanced
@@ -4211,7 +4236,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     margin: 0,
                                     fontWeight: '500'
                                 }}>
-                                    ⚠️ Do not close this window until the process completes!
+                                    <FaExclamationTriangle size={12} style={{ marginRight: '6px' }} /> Do not close this window until the process completes!
                                 </p>
                             </div>
                         )}
@@ -4225,7 +4250,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             marginBottom: '20px'
                         }}>
                             <h4 style={{ color: theme.colors.primaryText, marginTop: 0, marginBottom: '12px' }}>
-                                ⚠️ Important Information
+                                <FaExclamationTriangle size={14} style={{ marginRight: '6px', color: '#f59e0b' }} /> Important Information
                             </h4>
                             <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', lineHeight: '1.5' }}>
                                 <p style={{ marginTop: 0 }}>
@@ -4237,7 +4262,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     <li>Remove all other principals (including you)</li>
                                 </ol>
                                 <p>
-                                    <strong>⚠️ After sending, you will lose all access to this neuron.</strong>
+                                    <strong><FaExclamationTriangle size={12} style={{ marginRight: '6px', color: '#f59e0b' }} /> After sending, you will lose all access to this neuron.</strong>
                                 </p>
                                 <p>
                                     Only send to a principal that belongs to a recipient who can accept it, such as:

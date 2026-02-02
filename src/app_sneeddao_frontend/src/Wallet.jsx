@@ -52,7 +52,7 @@ import { useNaming } from './NamingContext';
 import { useWallet } from './contexts/WalletContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, computeAccountId } from './utils/PrincipalUtils';
 import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings, getCanisterManagerSettings } from './utils/NeuronManagerSettings';
-import { PERM } from './utils/NeuronPermissionUtils';
+import { PERM } from './utils/NeuronPermissionUtils.jsx';
 import { Actor } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
 import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle } from 'react-icons/fa';

@@ -9,7 +9,7 @@ import { createActor as createSnsGovernanceActor } from 'external/sns_governance
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { fetchUserNeuronsForSns } from '../utils/NeuronUtils';
 import { getAllSnses, getSnsByLedgerId } from '../utils/SnsUtils';
-import { PERM } from '../utils/NeuronPermissionUtils';
+import { PERM } from '../utils/NeuronPermissionUtils.jsx';
 import { formatAmount } from '../utils/StringUtils';
 import { get_token_conversion_rate } from '../utils/TokenUtils';
 
