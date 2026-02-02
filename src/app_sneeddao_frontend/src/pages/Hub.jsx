@@ -1177,13 +1177,92 @@ function Hub() {
                         }} />
                     </div>
                     
+                    {/* Price indicators - positioned in corners */}
+                    {/* SNEED Price - Top Left */}
+                    <div style={{
+                        position: 'absolute',
+                        top: '16px',
+                        left: '16px',
+                        zIndex: 2,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '8px 12px',
+                        background: `${theme.colors.primaryBg}90`,
+                        backdropFilter: 'blur(8px)',
+                        borderRadius: '10px',
+                    }}>
+                        <img 
+                            src="sneed_logo.png" 
+                            alt="SNEED" 
+                            style={{ width: '22px', height: '22px', borderRadius: '6px' }}
+                        />
+                        <div>
+                            <div style={{ 
+                                fontSize: '1rem', 
+                                fontWeight: '700', 
+                                color: hubPrimary,
+                                lineHeight: 1,
+                                fontFamily: 'monospace',
+                            }}>
+                                {prices.loading ? '—' : `${formatPrice(prices.sneedIcp, 8)} ICP`}
+                            </div>
+                            <div style={{ 
+                                fontSize: '0.7rem', 
+                                color: theme.colors.success,
+                                marginTop: '1px',
+                            }}>
+                                {prices.loading ? '' : `≈ $${formatPrice(prices.sneedUsd, 6)}`}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    {/* ICP Price - Top Right */}
+                    <div style={{
+                        position: 'absolute',
+                        top: '16px',
+                        right: '16px',
+                        zIndex: 2,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '8px 12px',
+                        background: `${theme.colors.primaryBg}90`,
+                        backdropFilter: 'blur(8px)',
+                        borderRadius: '10px',
+                    }}>
+                        <img 
+                            src="https://swaprunner.com/icp_symbol.svg" 
+                            alt="ICP" 
+                            style={{ width: '22px', height: '22px', borderRadius: '50%' }}
+                        />
+                        <div>
+                            <div style={{ 
+                                fontSize: '1rem', 
+                                fontWeight: '700', 
+                                color: theme.colors.success,
+                                lineHeight: 1,
+                                fontFamily: 'monospace',
+                            }}>
+                                ${prices.loading ? '—' : formatPrice(prices.icpUsd, 2)}
+                            </div>
+                            <div style={{ 
+                                fontSize: '0.7rem', 
+                                color: theme.colors.mutedText,
+                                marginTop: '1px',
+                            }}>
+                                ICP/USD
+                            </div>
+                        </div>
+                    </div>
+                    
                     {/* Hero Content */}
                     <div style={{ 
                         position: 'relative', 
                         zIndex: 1,
                         padding: '4rem 2.5rem 3.5rem',
                     }}>
-                        {/* Logo with title and prices */}
+                        {/* Logo with title */}
                         <div style={{
                             display: 'flex',
                             flexDirection: 'column',
@@ -1250,84 +1329,6 @@ function Hub() {
                                 }}>
                                     Sneed Hub
                                 </h2>
-                            </div>
-                            
-                            {/* Price badges row */}
-                            <div style={{
-                                display: 'flex',
-                                justifyContent: 'center',
-                                gap: '0.75rem',
-                                flexWrap: 'wrap',
-                            }}>
-                                {/* SNEED Price Badge - Primary */}
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '10px',
-                                    padding: '10px 18px',
-                                    background: `linear-gradient(135deg, ${hubPrimary}20, ${hubPrimary}08)`,
-                                    borderRadius: '14px',
-                                    border: `1px solid ${hubPrimary}40`,
-                                }}>
-                                    <img 
-                                        src="sneed_logo.png" 
-                                        alt="SNEED" 
-                                        style={{ width: '28px', height: '28px', borderRadius: '8px' }}
-                                    />
-                                    <div>
-                                        <div style={{ 
-                                            fontSize: '1.4rem', 
-                                            fontWeight: '800', 
-                                            color: hubPrimary,
-                                            lineHeight: 1,
-                                            fontFamily: 'monospace',
-                                        }}>
-                                            {prices.loading ? '—' : `${formatPrice(prices.sneedIcp, 8)} ICP`}
-                                        </div>
-                                        <div style={{ 
-                                            fontSize: '0.8rem', 
-                                            color: theme.colors.success,
-                                            marginTop: '2px',
-                                        }}>
-                                            {prices.loading ? '' : `≈ $${formatPrice(prices.sneedUsd, 6)}`}
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                {/* ICP Price Badge */}
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '10px',
-                                    padding: '10px 18px',
-                                    background: `linear-gradient(135deg, ${theme.colors.success}20, ${theme.colors.success}08)`,
-                                    borderRadius: '14px',
-                                    border: `1px solid ${theme.colors.success}40`,
-                                }}>
-                                    <img 
-                                        src="https://swaprunner.com/icp_symbol.svg" 
-                                        alt="ICP" 
-                                        style={{ width: '28px', height: '28px', borderRadius: '50%' }}
-                                    />
-                                    <div>
-                                        <div style={{ 
-                                            fontSize: '1.4rem', 
-                                            fontWeight: '800', 
-                                            color: theme.colors.success,
-                                            lineHeight: 1,
-                                            fontFamily: 'monospace',
-                                        }}>
-                                            ${prices.loading ? '—' : formatPrice(prices.icpUsd, 2)}
-                                        </div>
-                                        <div style={{ 
-                                            fontSize: '0.8rem', 
-                                            color: theme.colors.mutedText,
-                                            marginTop: '2px',
-                                        }}>
-                                            ICP/USD
-                                        </div>
-                                    </div>
-                                </div>
                             </div>
                         </div>
                         
