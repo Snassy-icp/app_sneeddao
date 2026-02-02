@@ -947,10 +947,28 @@ export default function RewardsAdmin() {
         // First, filter by principal if filter is set
         let filtered = claimEvents;
         if (claimFilter.trim()) {
-            const filterLower = claimFilter.trim().toLowerCase();
-            filtered = claimEvents.filter(event => 
-                event.hotkey?.toString().toLowerCase().includes(filterLower)
-            );
+            const filterTrimmed = claimFilter.trim();
+            const filterLower = filterTrimmed.toLowerCase();
+            
+            // Check if filter is a valid principal (exact match mode)
+            let filterPrincipal = null;
+            try {
+                filterPrincipal = Principal.fromText(filterTrimmed);
+            } catch (e) {
+                // Not a valid principal, use partial matching
+            }
+            
+            filtered = claimEvents.filter(event => {
+                const hotkeyStr = event.hotkey?.toString() || '';
+                
+                // If filter is a valid principal, do exact match
+                if (filterPrincipal) {
+                    return hotkeyStr === filterPrincipal.toString();
+                }
+                
+                // Otherwise do partial/contains match for searching
+                return hotkeyStr.toLowerCase().includes(filterLower);
+            });
         }
         
         // Sort by sequence number descending (newest first)
@@ -996,10 +1014,28 @@ export default function RewardsAdmin() {
     // Filter all user balances (must be before any conditional returns)
     const filteredUserBalances = useMemo(() => {
         if (!userBalancesFilter.trim()) return allUserBalances;
-        const filterLower = userBalancesFilter.trim().toLowerCase();
-        return allUserBalances.filter(([principal, _]) => 
-            principal.toString().toLowerCase().includes(filterLower)
-        );
+        const filterTrimmed = userBalancesFilter.trim();
+        const filterLower = filterTrimmed.toLowerCase();
+        
+        // Check if filter is a valid principal (exact match mode)
+        let filterPrincipal = null;
+        try {
+            filterPrincipal = Principal.fromText(filterTrimmed);
+        } catch (e) {
+            // Not a valid principal, use partial matching
+        }
+        
+        return allUserBalances.filter(([principal, _]) => {
+            const principalStr = principal.toString();
+            
+            // If filter is a valid principal, do exact match
+            if (filterPrincipal) {
+                return principalStr === filterPrincipal.toString();
+            }
+            
+            // Otherwise do partial/contains match
+            return principalStr.toLowerCase().includes(filterLower);
+        });
     }, [allUserBalances, userBalancesFilter]);
     
     const styles = {
