@@ -28,6 +28,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const [detailToken, setDetailToken] = useState(null);
     const [showLockModal, setShowLockModal] = useState(false);
     const [lockToken, setLockToken] = useState(null);
+    const [isRefreshingToken, setIsRefreshingToken] = useState(false);
     const popupRef = useRef(null);
     const { login, identity } = useAuth();
     const { theme } = useTheme();
@@ -193,6 +194,35 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
             throw error;
         }
     }, [identity, walletContext]);
+
+    // Handle refresh token in detail modal
+    const handleRefreshToken = useCallback(async (token) => {
+        if (!walletContext?.refreshWallet) return;
+        
+        setIsRefreshingToken(true);
+        try {
+            await walletContext.refreshWallet();
+            // Update detailToken with fresh data from walletTokens after refresh
+            // The token will be updated via the walletTokens state change
+        } catch (error) {
+            console.error('Error refreshing token:', error);
+        } finally {
+            setIsRefreshingToken(false);
+        }
+    }, [walletContext]);
+
+    // Keep detailToken in sync with walletTokens
+    useEffect(() => {
+        if (detailToken && walletTokens.length > 0) {
+            const updatedToken = walletTokens.find(t => 
+                t.principal === detailToken.principal || 
+                t.principal === detailToken.ledger_canister_id?.toString?.()
+            );
+            if (updatedToken && updatedToken !== detailToken) {
+                setDetailToken(updatedToken);
+            }
+        }
+    }, [walletTokens, detailToken]);
 
     // Add click outside handler
     useEffect(() => {
@@ -853,6 +883,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
           openLockModal={handleOpenLockFromDetail}
           hideButtons={false}
           isSnsToken={detailToken && isTokenSns ? isTokenSns(detailToken.ledger_canister_id) : false}
+          handleRefreshToken={handleRefreshToken}
+          isRefreshing={isRefreshingToken}
       />
       
       {/* Lock Modal */}

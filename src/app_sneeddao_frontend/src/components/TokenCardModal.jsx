@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo } from 'react';
-import { FaTimes } from 'react-icons/fa';
+import { FaTimes, FaSync } from 'react-icons/fa';
 import { useTheme } from '../contexts/ThemeContext';
 import TokenCard from '../TokenCard';
 
@@ -141,37 +141,84 @@ const TokenCardModal = ({
                     animation: 'slideUp 0.3s ease'
                 }}
             >
-                {/* Close button */}
-                <button
-                    onClick={onClose}
-                    style={{
-                        position: 'absolute',
-                        top: '12px',
-                        right: '12px',
-                        background: 'rgba(255, 255, 255, 0.1)',
-                        border: 'none',
-                        borderRadius: '50%',
-                        width: '32px',
-                        height: '32px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        cursor: 'pointer',
-                        color: theme.colors.mutedText,
-                        zIndex: 10,
-                        transition: 'all 0.2s ease'
-                    }}
-                    onMouseOver={(e) => {
-                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
-                        e.currentTarget.style.color = theme.colors.primaryText;
-                    }}
-                    onMouseOut={(e) => {
-                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                        e.currentTarget.style.color = theme.colors.mutedText;
-                    }}
-                >
-                    <FaTimes size={14} />
-                </button>
+                {/* Header buttons */}
+                <div style={{
+                    position: 'absolute',
+                    top: '12px',
+                    right: '12px',
+                    display: 'flex',
+                    gap: '8px',
+                    zIndex: 10
+                }}>
+                    {/* Refresh button */}
+                    {handleRefreshToken && (
+                        <button
+                            onClick={() => handleRefreshToken(normalizedToken)}
+                            disabled={isRefreshing}
+                            style={{
+                                background: 'rgba(255, 255, 255, 0.1)',
+                                border: 'none',
+                                borderRadius: '50%',
+                                width: '32px',
+                                height: '32px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: isRefreshing ? 'not-allowed' : 'pointer',
+                                color: theme.colors.mutedText,
+                                transition: 'all 0.2s ease',
+                                opacity: isRefreshing ? 0.5 : 1
+                            }}
+                            onMouseOver={(e) => {
+                                if (!isRefreshing) {
+                                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                                    e.currentTarget.style.color = theme.colors.primaryText;
+                                }
+                            }}
+                            onMouseOut={(e) => {
+                                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                                e.currentTarget.style.color = theme.colors.mutedText;
+                            }}
+                            title="Refresh token data"
+                        >
+                            <FaSync 
+                                size={12} 
+                                style={{ 
+                                    animation: isRefreshing ? 'spin 1s linear infinite' : 'none' 
+                                }} 
+                            />
+                        </button>
+                    )}
+                    
+                    {/* Close button */}
+                    <button
+                        onClick={onClose}
+                        style={{
+                            background: 'rgba(255, 255, 255, 0.1)',
+                            border: 'none',
+                            borderRadius: '50%',
+                            width: '32px',
+                            height: '32px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            color: theme.colors.mutedText,
+                            transition: 'all 0.2s ease'
+                        }}
+                        onMouseOver={(e) => {
+                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                            e.currentTarget.style.color = theme.colors.primaryText;
+                        }}
+                        onMouseOut={(e) => {
+                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                            e.currentTarget.style.color = theme.colors.mutedText;
+                        }}
+                        title="Close"
+                    >
+                        <FaTimes size={14} />
+                    </button>
+                </div>
 
                 {/* TokenCard wrapper - add padding and styling */}
                 <div style={{ padding: '8px' }}>
@@ -212,6 +259,10 @@ const TokenCardModal = ({
                         opacity: 1;
                         transform: translateY(0);
                     }
+                }
+                @keyframes spin {
+                    from { transform: rotate(0deg); }
+                    to { transform: rotate(360deg); }
                 }
             `}</style>
         </div>
