@@ -1412,54 +1412,16 @@ function Hub() {
                         {/* Tokenomics Stats Grid */}
                         <div style={{
                             display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-                            gap: '0.75rem',
+                            gridTemplateColumns: 'repeat(3, 1fr)',
+                            gap: '0.5rem',
                             maxWidth: '900px',
                             margin: '0 auto',
                         }}>
-                            {/* Total Supply */}
-                            <Link 
-                                to="/rll_info"
-                                style={{
-                                    padding: '12px 16px',
-                                    background: `${theme.colors.secondaryBg}80`,
-                                    borderRadius: '12px',
-                                    border: `1px solid ${theme.colors.border}`,
-                                    textAlign: 'center',
-                                    textDecoration: 'none',
-                                    transition: 'all 0.2s ease',
-                                }}
-                            >
-                                <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Total Supply</div>
-                                <div style={{ fontSize: '1.1rem', fontWeight: '700', color: theme.colors.primaryText, fontFamily: 'monospace' }}>
-                                    {financialStats.loading ? '—' : Math.round(financialStats.totalSupply).toLocaleString()}
-                                </div>
-                            </Link>
-                            
-                            {/* Circulating Supply */}
-                            <Link 
-                                to="/rll_info"
-                                style={{
-                                    padding: '12px 16px',
-                                    background: `${theme.colors.secondaryBg}80`,
-                                    borderRadius: '12px',
-                                    border: `1px solid ${theme.colors.border}`,
-                                    textAlign: 'center',
-                                    textDecoration: 'none',
-                                    transition: 'all 0.2s ease',
-                                }}
-                            >
-                                <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Circulating</div>
-                                <div style={{ fontSize: '1.1rem', fontWeight: '700', color: theme.colors.primaryText, fontFamily: 'monospace' }}>
-                                    {financialStats.circulatingSupply ? Math.round(financialStats.circulatingSupply).toLocaleString() : '—'}
-                                </div>
-                            </Link>
-                            
                             {/* FDV */}
                             <Link 
                                 to="/rll_info"
                                 style={{
-                                    padding: '12px 16px',
+                                    padding: '10px 8px',
                                     background: `${hubPrimary}15`,
                                     borderRadius: '12px',
                                     border: `1px solid ${hubPrimary}30`,
@@ -1468,8 +1430,8 @@ function Hub() {
                                     transition: 'all 0.2s ease',
                                 }}
                             >
-                                <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>FDV</div>
-                                <div style={{ fontSize: '1.1rem', fontWeight: '700', color: hubPrimary, fontFamily: 'monospace' }}>
+                                <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>FDV</div>
+                                <div style={{ fontSize: '1rem', fontWeight: '700', color: hubPrimary, fontFamily: 'monospace' }}>
                                     {financialStats.fdv > 0 ? `$${financialStats.fdv >= 1e6 ? (financialStats.fdv / 1e6).toFixed(2) + 'M' : financialStats.fdv >= 1e3 ? (financialStats.fdv / 1e3).toFixed(1) + 'K' : financialStats.fdv.toFixed(0)}` : '—'}
                                 </div>
                             </Link>
@@ -1478,7 +1440,7 @@ function Hub() {
                             <Link 
                                 to="/rll_info"
                                 style={{
-                                    padding: '12px 16px',
+                                    padding: '10px 8px',
                                     background: `${theme.colors.success}15`,
                                     borderRadius: '12px',
                                     border: `1px solid ${theme.colors.success}30`,
@@ -1487,17 +1449,17 @@ function Hub() {
                                     transition: 'all 0.2s ease',
                                 }}
                             >
-                                <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Circ. MCap</div>
-                                <div style={{ fontSize: '1.1rem', fontWeight: '700', color: theme.colors.success, fontFamily: 'monospace' }}>
+                                <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Circ. MCap</div>
+                                <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.success, fontFamily: 'monospace' }}>
                                     {financialStats.marketCap > 0 ? `$${financialStats.marketCap >= 1e6 ? (financialStats.marketCap / 1e6).toFixed(2) + 'M' : financialStats.marketCap >= 1e3 ? (financialStats.marketCap / 1e3).toFixed(1) + 'K' : financialStats.marketCap.toFixed(0)}` : '—'}
                                 </div>
                             </Link>
                             
                             {/* Total Staked */}
                             <Link 
-                                to="/dao_info"
+                                to={`/neurons?sns=${SNEED_SNS_ROOT}`}
                                 style={{
-                                    padding: '12px 16px',
+                                    padding: '10px 8px',
                                     background: `${hubAccent}15`,
                                     borderRadius: '12px',
                                     border: `1px solid ${hubAccent}30`,
@@ -1506,18 +1468,17 @@ function Hub() {
                                     transition: 'all 0.2s ease',
                                 }}
                             >
-                                <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Staked</div>
-                                <div style={{ fontSize: '1.1rem', fontWeight: '700', color: hubAccent, fontFamily: 'monospace' }}>
+                                <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Staked</div>
+                                <div style={{ fontSize: '1rem', fontWeight: '700', color: hubAccent, fontFamily: 'monospace' }}>
                                     {financialStats.totalStaked > 0 ? Math.round(financialStats.totalStaked).toLocaleString() : daoStats.loading ? '...' : '—'}
                                 </div>
-                                <div style={{ fontSize: '0.65rem', color: hubAccent, marginTop: '2px' }}>View Neurons →</div>
                             </Link>
                             
-                            {/* Active Members */}
+                            {/* Total Supply */}
                             <Link 
-                                to="/dao_info"
+                                to="/rll_info"
                                 style={{
-                                    padding: '12px 16px',
+                                    padding: '10px 8px',
                                     background: `${theme.colors.secondaryBg}80`,
                                     borderRadius: '12px',
                                     border: `1px solid ${theme.colors.border}`,
@@ -1526,11 +1487,48 @@ function Hub() {
                                     transition: 'all 0.2s ease',
                                 }}
                             >
-                                <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Members</div>
-                                <div style={{ fontSize: '1.1rem', fontWeight: '700', color: theme.colors.primaryText, fontFamily: 'monospace' }}>
+                                <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Total Supply</div>
+                                <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.primaryText, fontFamily: 'monospace' }}>
+                                    {financialStats.loading ? '—' : Math.round(financialStats.totalSupply).toLocaleString()}
+                                </div>
+                            </Link>
+                            
+                            {/* Circulating Supply */}
+                            <Link 
+                                to="/rll_info"
+                                style={{
+                                    padding: '10px 8px',
+                                    background: `${theme.colors.secondaryBg}80`,
+                                    borderRadius: '12px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    textAlign: 'center',
+                                    textDecoration: 'none',
+                                    transition: 'all 0.2s ease',
+                                }}
+                            >
+                                <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Circulating</div>
+                                <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.primaryText, fontFamily: 'monospace' }}>
+                                    {financialStats.circulatingSupply ? Math.round(financialStats.circulatingSupply).toLocaleString() : '—'}
+                                </div>
+                            </Link>
+                            
+                            {/* Active Members */}
+                            <Link 
+                                to="/dao_info"
+                                style={{
+                                    padding: '10px 8px',
+                                    background: `${theme.colors.secondaryBg}80`,
+                                    borderRadius: '12px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    textAlign: 'center',
+                                    textDecoration: 'none',
+                                    transition: 'all 0.2s ease',
+                                }}
+                            >
+                                <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Members</div>
+                                <div style={{ fontSize: '1rem', fontWeight: '700', color: theme.colors.primaryText, fontFamily: 'monospace' }}>
                                     {daoStats.activeMembers !== null ? daoStats.activeMembers.toLocaleString() : daoStats.loading ? '...' : '—'}
                                 </div>
-                                <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, marginTop: '2px' }}>DAO Info →</div>
                             </Link>
                         </div>
                         
