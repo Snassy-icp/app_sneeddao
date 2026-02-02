@@ -132,6 +132,53 @@ export const WalletProvider = ({ children }) => {
         }
     }, []);
 
+    // Fetch neuron totals for an SNS token and update it in place
+    const fetchAndUpdateNeuronTotals = useCallback(async (ledgerCanisterId, sessionId) => {
+        const ledgerId = ledgerCanisterId.toString();
+        
+        // Check if this is an SNS token
+        if (!snsTokenLedgers.has(ledgerId)) return;
+        
+        try {
+            // Find the governance canister for this SNS
+            const allSnses = getAllSnses();
+            const snsData = allSnses.find(sns => sns.canisters?.ledger === ledgerId);
+            
+            if (!snsData || !snsData.canisters?.governance) return;
+            
+            const governanceCanisterId = snsData.canisters.governance;
+            
+            // Fetch neurons
+            const neurons = await fetchUserNeuronsForSns(identity, governanceCanisterId);
+            
+            if (fetchSessionRef.current !== sessionId) return;
+            
+            // Calculate totals
+            const neuronStake = neurons.reduce((total, neuron) => {
+                return total + BigInt(neuron.cached_neuron_stake_e8s || 0n);
+            }, 0n);
+            
+            const neuronMaturity = neurons.reduce((total, neuron) => {
+                return total + BigInt(neuron.maturity_e8s_equivalent || 0n);
+            }, 0n);
+            
+            // Update token with neuron data
+            setWalletTokens(prev => prev.map(token => {
+                if (token.principal === ledgerId) {
+                    return { 
+                        ...token, 
+                        neuronStake,
+                        neuronMaturity,
+                        neuronsLoaded: true
+                    };
+                }
+                return token;
+            }));
+        } catch (error) {
+            console.warn(`Could not fetch neuron totals for ${ledgerId}:`, error);
+        }
+    }, [identity, snsTokenLedgers]);
+
     // Progressive token fetcher - adds tokens as they load
     const addTokenProgressively = useCallback((token, sessionId) => {
         if (fetchSessionRef.current !== sessionId) return;
@@ -180,8 +227,10 @@ export const WalletProvider = ({ children }) => {
                     fetchTokenDetailsFast(ledger).then(token => {
                         if (token && fetchSessionRef.current === sessionId) {
                             addTokenProgressively(token, sessionId);
-                            // Then fetch USD value in background
+                            // Then fetch USD value and neuron totals in background
                             fetchAndUpdateConversionRate(ledger, token.decimals, sessionId);
+                            // Fetch neuron data for SNS tokens (progressive)
+                            fetchAndUpdateNeuronTotals(ledger, sessionId);
                         }
                     });
                 }
@@ -204,6 +253,7 @@ export const WalletProvider = ({ children }) => {
                                 if (token && fetchSessionRef.current === sessionId) {
                                     addTokenProgressively(token, sessionId);
                                     fetchAndUpdateConversionRate(ledger, token.decimals, sessionId);
+                                    fetchAndUpdateNeuronTotals(ledger, sessionId);
                                 }
                             });
                         }
@@ -233,6 +283,7 @@ export const WalletProvider = ({ children }) => {
                                 if (token && fetchSessionRef.current === sessionId) {
                                     addTokenProgressively(token, sessionId);
                                     fetchAndUpdateConversionRate(ledger, token.decimals, sessionId);
+                                    fetchAndUpdateNeuronTotals(ledger, sessionId);
                                 }
                             });
                         }
@@ -258,7 +309,7 @@ export const WalletProvider = ({ children }) => {
                 setWalletLoading(false);
             }
         }
-    }, [identity, isAuthenticated, fetchTokenDetailsFast, addTokenProgressively, fetchAndUpdateConversionRate]);
+    }, [identity, isAuthenticated, fetchTokenDetailsFast, addTokenProgressively, fetchAndUpdateConversionRate, fetchAndUpdateNeuronTotals]);
 
     // Fetch tokens when user authenticates
     useEffect(() => {

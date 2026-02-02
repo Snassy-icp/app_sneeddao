@@ -54,7 +54,10 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
             const staked = BigInt(token.staked || 0n);
             const maturity = BigInt(token.maturity || 0n);
             const rewards = BigInt(token.rewards || 0n);
-            const totalBalance = available + locked + staked + maturity + rewards;
+            // Include neuron stake and maturity for SNS tokens (progressively loaded)
+            const neuronStake = BigInt(token.neuronStake || 0n);
+            const neuronMaturity = BigInt(token.neuronMaturity || 0n);
+            const totalBalance = available + locked + staked + maturity + rewards + neuronStake + neuronMaturity;
             return totalBalance > 0n;
         });
     }, [walletTokens]);
@@ -696,13 +699,16 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                           ) : (
                               tokensWithBalance.map((token, index) => {
                                   const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
-                                  // Calculate total balance (available + locked + staked + maturity + rewards)
+                                  // Calculate total balance (available + locked + staked + maturity + rewards + neurons)
                                   const available = BigInt(token.available || token.balance || 0n);
                                   const locked = BigInt(token.locked || 0n);
                                   const staked = BigInt(token.staked || 0n);
                                   const maturity = BigInt(token.maturity || 0n);
                                   const rewards = BigInt(token.rewards || 0n);
-                                  const totalBalance = available + locked + staked + maturity + rewards;
+                                  // Include neuron stake and maturity for SNS tokens (progressively loaded)
+                                  const neuronStake = BigInt(token.neuronStake || 0n);
+                                  const neuronMaturity = BigInt(token.neuronMaturity || 0n);
+                                  const totalBalance = available + locked + staked + maturity + rewards + neuronStake + neuronMaturity;
                                   
                                   // Calculate USD value
                                   const balanceNum = Number(totalBalance) / (10 ** (token.decimals || 8));
