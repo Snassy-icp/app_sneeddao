@@ -30,6 +30,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const walletTokens = walletContext?.walletTokens || [];
     const walletLoading = walletContext?.walletLoading || false;
     const sendToken = walletContext?.sendToken;
+    const isTokenSns = walletContext?.isTokenSns;
     
     // Filter tokens to only show those with balance > 0
     const tokensWithBalance = useMemo(() => {
@@ -729,6 +730,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
           token={detailToken}
           openSendModal={handleOpenSendFromDetail}
           hideButtons={false}
+          isSnsToken={detailToken && isTokenSns ? isTokenSns(detailToken.ledger_canister_id) : false}
       />
   </>
   );

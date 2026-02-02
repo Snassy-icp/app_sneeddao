@@ -23,7 +23,8 @@ const TokenCardModal = ({
     isRefreshing = false,
     locks = [],
     lockDetailsLoading = false,
-    rewardDetailsLoading = false
+    rewardDetailsLoading = false,
+    isSnsToken = false
 }) => {
     const { theme } = useTheme();
 
@@ -165,7 +166,7 @@ const TokenCardModal = ({
                         handleDepositToBackend={handleDepositToBackend}
                         handleRefreshToken={handleRefreshToken}
                         isRefreshing={isRefreshing}
-                        isSnsToken={false}
+                        isSnsToken={isSnsToken}
                     />
                 </div>
             </div>

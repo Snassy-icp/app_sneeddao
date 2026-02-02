@@ -9,6 +9,7 @@ import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId 
 import { getTokenLogo, get_token_conversion_rate } from '../utils/TokenUtils';
 import { fetchUserNeuronsForSns } from '../utils/NeuronUtils';
 import { getTipTokensReceivedByUser } from '../utils/BackendUtils';
+import { fetchAndCacheSnsData, getAllSnses } from '../utils/SnsUtils';
 
 const WalletContext = createContext(null);
 
@@ -24,6 +25,47 @@ export const WalletProvider = ({ children }) => {
     const [hasDetailedData, setHasDetailedData] = useState(false);
     // Track fetch session to prevent stale updates
     const fetchSessionRef = useRef(0);
+    // Track SNS token ledger IDs
+    const [snsTokenLedgers, setSnsTokenLedgers] = useState(new Set());
+
+    // Load SNS data to know which tokens are SNS tokens
+    useEffect(() => {
+        async function loadSnsData() {
+            try {
+                // First try cached data for instant display
+                const cached = getAllSnses();
+                if (cached && cached.length > 0) {
+                    const snsLedgers = new Set(
+                        cached.map(sns => sns.canisters?.ledger).filter(Boolean)
+                    );
+                    setSnsTokenLedgers(snsLedgers);
+                }
+                
+                // Then fetch fresh data in background
+                if (identity) {
+                    const freshData = await fetchAndCacheSnsData(identity);
+                    if (freshData && freshData.length > 0) {
+                        const snsLedgers = new Set(
+                            freshData.map(sns => sns.canisters?.ledger).filter(Boolean)
+                        );
+                        setSnsTokenLedgers(snsLedgers);
+                    }
+                }
+            } catch (error) {
+                console.warn('[WalletContext] Failed to load SNS data:', error);
+            }
+        }
+        
+        loadSnsData();
+    }, [identity]);
+
+    // Helper to check if a token is an SNS token
+    const isTokenSns = useCallback((ledgerCanisterId) => {
+        const ledgerId = typeof ledgerCanisterId === 'string' 
+            ? ledgerCanisterId 
+            : ledgerCanisterId?.toString?.() || ledgerCanisterId;
+        return snsTokenLedgers.has(ledgerId);
+    }, [snsTokenLedgers]);
 
     // Fetch token details for a single ledger - FAST version (no conversion rate)
     const fetchTokenDetailsFast = useCallback(async (ledgerCanisterId) => {
@@ -345,7 +387,8 @@ export const WalletProvider = ({ children }) => {
             setLoading,
             clearWallet,
             refreshWallet,
-            sendToken
+            sendToken,
+            isTokenSns
         }}>
             {children}
         </WalletContext.Provider>
