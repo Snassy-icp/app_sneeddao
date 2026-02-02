@@ -8,6 +8,7 @@ import { Principal } from '@dfinity/principal';
 import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { createSneedexActor } from '../utils/SneedexUtils';
+import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { getSnsById, getAllSnses, fetchAndCacheSnsData } from '../utils/SnsUtils';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
 import OfferCard from '../components/OfferCard';
@@ -244,6 +245,14 @@ function Hub() {
     const [feedExpanded, setFeedExpanded] = useState(false);
     const [offersExpanded, setOffersExpanded] = useState(false);
     
+    // SNEED tokenomics stats
+    const [tokenStats, setTokenStats] = useState({
+        totalSupply: null,
+        circulatingSupply: null,
+        totalStaked: null,
+        loading: true
+    });
+    
     // Fetch Sneed neurons directly using hardcoded governance canister (no SNS list needed)
     useEffect(() => {
         const fetchSneedNeurons = async () => {
@@ -393,6 +402,34 @@ function Hub() {
         };
     }, [sneedNeurons, neuronsLoading, neuronsProgress, neuronsError]);
     
+    // Computed financial stats
+    const financialStats = useMemo(() => {
+        const sneedPrice = prices.sneedUsd || 0;
+        const totalSupply = tokenStats.totalSupply || 0;
+        const circulatingSupply = tokenStats.circulatingSupply || 0;
+        const totalStaked = tokenStats.totalStaked || 0;
+        
+        // FDV = Total Supply * Price
+        const fdv = totalSupply * sneedPrice;
+        
+        // Market Cap = Circulating Supply * Price
+        const marketCap = circulatingSupply * sneedPrice;
+        
+        // NAV (Net Asset Value) - this would need treasury data
+        // For now, we'll leave it as null until we have treasury data
+        const nav = null;
+        
+        return {
+            fdv,
+            marketCap,
+            nav,
+            totalSupply,
+            circulatingSupply,
+            totalStaked,
+            loading: prices.loading || tokenStats.loading
+        };
+    }, [prices, tokenStats]);
+    
     // Helper to get token info
     const getTokenInfo = useCallback((ledgerId) => {
         // Read directly from the metadata state Map to ensure we get fresh data
@@ -492,6 +529,45 @@ function Hub() {
         const interval = setInterval(fetchPrices, 60000); // Refresh every minute
         return () => clearInterval(interval);
     }, []);
+
+    // Fetch SNEED token supply stats
+    useEffect(() => {
+        const fetchTokenStats = async () => {
+            try {
+                const ledgerActor = createLedgerActor(SNEED_LEDGER_ID);
+                const totalSupplyRaw = await ledgerActor.icrc1_total_supply();
+                const totalSupply = Number(totalSupplyRaw) / Math.pow(10, SNEED_DECIMALS);
+                
+                setTokenStats(prev => ({
+                    ...prev,
+                    totalSupply,
+                    loading: false
+                }));
+            } catch (error) {
+                console.error('Error fetching token stats:', error);
+                setTokenStats(prev => ({ ...prev, loading: false }));
+            }
+        };
+        
+        fetchTokenStats();
+    }, []);
+
+    // Calculate total staked from neurons when they load
+    useEffect(() => {
+        if (sneedNeurons.length > 0 && !neuronsLoading) {
+            const totalStaked = sneedNeurons.reduce((sum, neuron) => {
+                const stake = neuron.cached_neuron_stake_e8s?.[0] || neuron.stake_e8s || BigInt(0);
+                return sum + Number(stake);
+            }, 0) / Math.pow(10, SNEED_DECIMALS);
+            
+            setTokenStats(prev => ({
+                ...prev,
+                totalStaked,
+                // Circulating = total - staked (simplified)
+                circulatingSupply: prev.totalSupply ? prev.totalSupply - totalStaked : null
+            }));
+        }
+    }, [sneedNeurons, neuronsLoading]);
 
     // Fetch feed items and offers
     useEffect(() => {
@@ -1096,66 +1172,152 @@ function Hub() {
                         zIndex: 1,
                         padding: '4rem 2.5rem 3.5rem',
                     }}>
-                        {/* Logo with title */}
+                        {/* Logo with title and prices */}
                         <div style={{
                             display: 'flex',
-                            justifyContent: 'center',
+                            flexDirection: 'column',
                             alignItems: 'center',
-                            gap: '1.5rem',
+                            gap: '1rem',
                             marginBottom: '2rem',
                         }}>
-                            <div 
-                                className="hub-float hub-hero-glow"
-                                style={{
-                                    width: '100px',
-                                    height: '100px',
-                                    borderRadius: '28px',
-                                    background: `linear-gradient(145deg, ${hubPrimary}, ${hubSecondary})`,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    padding: '4px',
-                                    boxSizing: 'border-box',
-                                    flexShrink: 0,
-                                }}
-                            >
+                            {/* Title row with logo */}
+                            <div style={{
+                                display: 'flex',
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                gap: '1.5rem',
+                            }}>
+                                <div 
+                                    className="hub-float hub-hero-glow"
+                                    style={{
+                                        width: '80px',
+                                        height: '80px',
+                                        borderRadius: '22px',
+                                        background: `linear-gradient(145deg, ${hubPrimary}, ${hubSecondary})`,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        padding: '3px',
+                                        boxSizing: 'border-box',
+                                        flexShrink: 0,
+                                    }}
+                                >
+                                    <div style={{
+                                        width: '100%',
+                                        height: '100%',
+                                        borderRadius: '19px',
+                                        background: theme.colors.secondaryBg,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        padding: '10px',
+                                        boxSizing: 'border-box',
+                                    }}>
+                                        <img 
+                                            src="sneed_logo.png" 
+                                            alt="Sneed Logo" 
+                                            style={{
+                                                width: '100%',
+                                                height: '100%',
+                                                borderRadius: '12px',
+                                                objectFit: 'cover',
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                                <h2 style={{
+                                    fontSize: 'clamp(2.2rem, 6vw, 3.5rem)',
+                                    fontWeight: '900',
+                                    margin: 0,
+                                    background: `linear-gradient(135deg, ${hubPrimary} 0%, ${hubSecondary} 50%, ${hubAccent} 100%)`,
+                                    backgroundSize: '200% 200%',
+                                    WebkitBackgroundClip: 'text',
+                                    WebkitTextFillColor: 'transparent',
+                                    backgroundClip: 'text',
+                                    animation: 'gradientShift 5s ease infinite',
+                                    letterSpacing: '-0.02em',
+                                }}>
+                                    Sneed Hub
+                                </h2>
+                            </div>
+                            
+                            {/* Price badges row */}
+                            <div style={{
+                                display: 'flex',
+                                justifyContent: 'center',
+                                gap: '0.75rem',
+                                flexWrap: 'wrap',
+                            }}>
+                                {/* SNEED Price Badge - Primary */}
                                 <div style={{
-                                    width: '100%',
-                                    height: '100%',
-                                    borderRadius: '24px',
-                                    background: theme.colors.secondaryBg,
                                     display: 'flex',
                                     alignItems: 'center',
-                                    justifyContent: 'center',
-                                    padding: '12px',
-                                    boxSizing: 'border-box',
+                                    gap: '10px',
+                                    padding: '10px 18px',
+                                    background: `linear-gradient(135deg, ${hubPrimary}20, ${hubPrimary}08)`,
+                                    borderRadius: '14px',
+                                    border: `1px solid ${hubPrimary}40`,
                                 }}>
                                     <img 
                                         src="sneed_logo.png" 
-                                        alt="Sneed Logo" 
-                                        style={{
-                                            width: '100%',
-                                            height: '100%',
-                                            borderRadius: '16px',
-                                            objectFit: 'cover',
-                                        }}
+                                        alt="SNEED" 
+                                        style={{ width: '28px', height: '28px', borderRadius: '8px' }}
                                     />
+                                    <div>
+                                        <div style={{ 
+                                            fontSize: '1.4rem', 
+                                            fontWeight: '800', 
+                                            color: hubPrimary,
+                                            lineHeight: 1,
+                                            fontFamily: 'monospace',
+                                        }}>
+                                            {prices.loading ? '—' : `${formatPrice(prices.sneedIcp, 8)} ICP`}
+                                        </div>
+                                        <div style={{ 
+                                            fontSize: '0.8rem', 
+                                            color: theme.colors.mutedText,
+                                            marginTop: '2px',
+                                        }}>
+                                            {prices.loading ? '' : `≈ $${formatPrice(prices.sneedUsd, 6)}`}
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                {/* ICP Price Badge */}
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '10px',
+                                    padding: '10px 18px',
+                                    background: `linear-gradient(135deg, ${theme.colors.success}20, ${theme.colors.success}08)`,
+                                    borderRadius: '14px',
+                                    border: `1px solid ${theme.colors.success}40`,
+                                }}>
+                                    <img 
+                                        src="https://swaprunner.com/icp_symbol.svg" 
+                                        alt="ICP" 
+                                        style={{ width: '28px', height: '28px', borderRadius: '50%' }}
+                                    />
+                                    <div>
+                                        <div style={{ 
+                                            fontSize: '1.4rem', 
+                                            fontWeight: '800', 
+                                            color: theme.colors.success,
+                                            lineHeight: 1,
+                                            fontFamily: 'monospace',
+                                        }}>
+                                            ${prices.loading ? '—' : formatPrice(prices.icpUsd, 2)}
+                                        </div>
+                                        <div style={{ 
+                                            fontSize: '0.8rem', 
+                                            color: theme.colors.mutedText,
+                                            marginTop: '2px',
+                                        }}>
+                                            ICP/USD
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                            <h2 style={{
-                                fontSize: 'clamp(2.5rem, 7vw, 4rem)',
-                                fontWeight: '900',
-                                margin: 0,
-                                background: `linear-gradient(135deg, ${hubPrimary} 0%, ${hubSecondary} 50%, ${hubAccent} 100%)`,
-                                backgroundSize: '200% 200%',
-                                WebkitBackgroundClip: 'text',
-                                WebkitTextFillColor: 'transparent',
-                                backgroundClip: 'text',
-                                animation: 'gradientShift 5s ease infinite',
-                                letterSpacing: '-0.02em',
-                            }}>
-                                Sneed Hub
-                            </h2>
                         </div>
                         
                         {/* Main headline */}
@@ -1270,162 +1432,161 @@ function Hub() {
                             </Link>
                         </div>
                         
-                        {/* Quick Stats Row */}
+                        {/* Tokenomics Stats Grid */}
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                            gap: '0.75rem',
+                            maxWidth: '900px',
+                            margin: '0 auto',
+                        }}>
+                            {/* Total Supply */}
+                            <div style={{
+                                padding: '12px 16px',
+                                background: `${theme.colors.secondaryBg}80`,
+                                borderRadius: '12px',
+                                border: `1px solid ${theme.colors.border}`,
+                                textAlign: 'center',
+                            }}>
+                                <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Total Supply</div>
+                                <div style={{ fontSize: '1.1rem', fontWeight: '700', color: theme.colors.primaryText, fontFamily: 'monospace' }}>
+                                    {financialStats.loading ? '—' : `${(financialStats.totalSupply / 1e6).toFixed(2)}M`}
+                                </div>
+                            </div>
+                            
+                            {/* Circulating Supply */}
+                            <div style={{
+                                padding: '12px 16px',
+                                background: `${theme.colors.secondaryBg}80`,
+                                borderRadius: '12px',
+                                border: `1px solid ${theme.colors.border}`,
+                                textAlign: 'center',
+                            }}>
+                                <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Circulating</div>
+                                <div style={{ fontSize: '1.1rem', fontWeight: '700', color: theme.colors.primaryText, fontFamily: 'monospace' }}>
+                                    {financialStats.circulatingSupply ? `${(financialStats.circulatingSupply / 1e6).toFixed(2)}M` : '—'}
+                                </div>
+                            </div>
+                            
+                            {/* FDV */}
+                            <div style={{
+                                padding: '12px 16px',
+                                background: `${hubPrimary}15`,
+                                borderRadius: '12px',
+                                border: `1px solid ${hubPrimary}30`,
+                                textAlign: 'center',
+                            }}>
+                                <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>FDV</div>
+                                <div style={{ fontSize: '1.1rem', fontWeight: '700', color: hubPrimary, fontFamily: 'monospace' }}>
+                                    {financialStats.fdv > 0 ? `$${financialStats.fdv >= 1e6 ? (financialStats.fdv / 1e6).toFixed(2) + 'M' : financialStats.fdv >= 1e3 ? (financialStats.fdv / 1e3).toFixed(1) + 'K' : financialStats.fdv.toFixed(0)}` : '—'}
+                                </div>
+                            </div>
+                            
+                            {/* Market Cap */}
+                            <div style={{
+                                padding: '12px 16px',
+                                background: `${theme.colors.success}15`,
+                                borderRadius: '12px',
+                                border: `1px solid ${theme.colors.success}30`,
+                                textAlign: 'center',
+                            }}>
+                                <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Circ. MCap</div>
+                                <div style={{ fontSize: '1.1rem', fontWeight: '700', color: theme.colors.success, fontFamily: 'monospace' }}>
+                                    {financialStats.marketCap > 0 ? `$${financialStats.marketCap >= 1e6 ? (financialStats.marketCap / 1e6).toFixed(2) + 'M' : financialStats.marketCap >= 1e3 ? (financialStats.marketCap / 1e3).toFixed(1) + 'K' : financialStats.marketCap.toFixed(0)}` : '—'}
+                                </div>
+                            </div>
+                            
+                            {/* Total Staked */}
+                            <Link 
+                                to="/dao_info"
+                                style={{
+                                    padding: '12px 16px',
+                                    background: `${hubAccent}15`,
+                                    borderRadius: '12px',
+                                    border: `1px solid ${hubAccent}30`,
+                                    textAlign: 'center',
+                                    textDecoration: 'none',
+                                    transition: 'all 0.2s ease',
+                                }}
+                            >
+                                <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Staked</div>
+                                <div style={{ fontSize: '1.1rem', fontWeight: '700', color: hubAccent, fontFamily: 'monospace' }}>
+                                    {financialStats.totalStaked > 0 ? `${(financialStats.totalStaked / 1e6).toFixed(2)}M` : daoStats.loading ? '...' : '—'}
+                                </div>
+                                <div style={{ fontSize: '0.65rem', color: hubAccent, marginTop: '2px' }}>View Neurons →</div>
+                            </Link>
+                            
+                            {/* Active Members */}
+                            <Link 
+                                to="/dao_info"
+                                style={{
+                                    padding: '12px 16px',
+                                    background: `${theme.colors.secondaryBg}80`,
+                                    borderRadius: '12px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    textAlign: 'center',
+                                    textDecoration: 'none',
+                                    transition: 'all 0.2s ease',
+                                }}
+                            >
+                                <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Members</div>
+                                <div style={{ fontSize: '1.1rem', fontWeight: '700', color: theme.colors.primaryText, fontFamily: 'monospace' }}>
+                                    {daoStats.activeMembers !== null ? daoStats.activeMembers.toLocaleString() : daoStats.loading ? '...' : '—'}
+                                </div>
+                                <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, marginTop: '2px' }}>DAO Info →</div>
+                            </Link>
+                        </div>
+                        
+                        {/* Links row */}
                         <div style={{
                             display: 'flex',
                             justifyContent: 'center',
-                            gap: '2rem',
+                            gap: '1rem',
+                            marginTop: '1.5rem',
                             flexWrap: 'wrap',
                         }}>
-                            {/* ICP Price */}
-                            <div 
-                                className="hub-stat-card"
-                                style={{ 
-                                    display: 'flex', 
-                                    alignItems: 'center', 
-                                    gap: '14px',
-                                    padding: '14px 24px',
-                                    background: `linear-gradient(135deg, ${theme.colors.secondaryBg}, ${theme.colors.primaryBg})`,
-                                    borderRadius: '16px',
-                                    border: `1px solid ${theme.colors.success}30`,
-                                    boxShadow: `0 4px 20px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.05)`,
-                                    transition: 'all 0.3s ease',
+                            <Link 
+                                to="/rll_info"
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '8px 16px',
+                                    background: 'transparent',
+                                    color: theme.colors.mutedText,
+                                    borderRadius: '8px',
+                                    textDecoration: 'none',
+                                    fontSize: '0.85rem',
+                                    fontWeight: '500',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    transition: 'all 0.2s ease',
                                 }}
                             >
-                                <div style={{
-                                    width: '48px',
-                                    height: '48px',
-                                    borderRadius: '14px',
-                                    background: `linear-gradient(135deg, ${theme.colors.success}20, ${theme.colors.success}08)`,
-                                    display: 'flex',
+                                <FaCoins size={14} />
+                                Tokenomics
+                                <FaArrowRight size={10} />
+                            </Link>
+                            <Link 
+                                to="/dao_info"
+                                style={{
+                                    display: 'inline-flex',
                                     alignItems: 'center',
-                                    justifyContent: 'center',
-                                    border: `1px solid ${theme.colors.success}30`,
-                                }}>
-                                    <img 
-                                        src="https://swaprunner.com/icp_symbol.svg" 
-                                        alt="ICP" 
-                                        style={{ width: '28px', height: '28px', borderRadius: '50%' }}
-                                    />
-                                </div>
-                                <div>
-                                    <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.8px' }}>ICP</div>
-                                    <div style={{ 
-                                        fontSize: '1.75rem', 
-                                        fontWeight: '800', 
-                                        color: theme.colors.success,
-                                        lineHeight: 1,
-                                        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace',
-                                    }}>
-                                        ${prices.loading ? '—' : formatPrice(prices.icpUsd, 2)}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* SNEED Price */}
-                            <div 
-                                className="hub-stat-card"
-                                style={{ 
-                                    display: 'flex', 
-                                    alignItems: 'center', 
-                                    gap: '14px',
-                                    padding: '14px 24px',
-                                    background: `linear-gradient(135deg, ${theme.colors.secondaryBg}, ${theme.colors.primaryBg})`,
-                                    borderRadius: '16px',
-                                    border: `1px solid ${hubPrimary}30`,
-                                    boxShadow: `0 4px 20px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.05)`,
-                                    transition: 'all 0.3s ease',
+                                    gap: '6px',
+                                    padding: '8px 16px',
+                                    background: 'transparent',
+                                    color: theme.colors.mutedText,
+                                    borderRadius: '8px',
+                                    textDecoration: 'none',
+                                    fontSize: '0.85rem',
+                                    fontWeight: '500',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    transition: 'all 0.2s ease',
                                 }}
                             >
-                                <div style={{
-                                    width: '48px',
-                                    height: '48px',
-                                    borderRadius: '14px',
-                                    background: `linear-gradient(135deg, ${hubPrimary}20, ${hubPrimary}08)`,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    border: `1px solid ${hubPrimary}30`,
-                                    overflow: 'hidden',
-                                }}>
-                                    <img 
-                                        src="sneed_logo.png" 
-                                        alt="SNEED" 
-                                        style={{ width: '32px', height: '32px', borderRadius: '8px' }}
-                                    />
-                                </div>
-                                <div>
-                                    <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.8px' }}>SNEED</div>
-                                    <div style={{ 
-                                        fontSize: '1.75rem', 
-                                        fontWeight: '800', 
-                                        color: hubPrimary,
-                                        lineHeight: 1,
-                                        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace',
-                                    }}>
-                                        ${prices.loading ? '—' : formatPrice(prices.sneedUsd, 6)}
-                                    </div>
-                                    <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '2px' }}>
-                                        {prices.loading ? '' : `≈ ${formatPrice(prices.sneedIcp, 8)} ICP`}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* DAO Neurons */}
-                            <div 
-                                className="hub-stat-card"
-                                style={{ 
-                                    display: 'flex', 
-                                    alignItems: 'center', 
-                                    gap: '14px',
-                                    padding: '14px 24px',
-                                    background: `linear-gradient(135deg, ${theme.colors.secondaryBg}, ${theme.colors.primaryBg})`,
-                                    borderRadius: '16px',
-                                    border: `1px solid ${hubAccent}30`,
-                                    boxShadow: `0 4px 20px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.05)`,
-                                    transition: 'all 0.3s ease',
-                                }}
-                            >
-                                <div style={{
-                                    width: '48px',
-                                    height: '48px',
-                                    borderRadius: '14px',
-                                    background: `linear-gradient(135deg, ${hubAccent}25, ${hubAccent}10)`,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    border: `1px solid ${hubAccent}30`,
-                                }}>
-                                    <FaUsers size={22} style={{ color: hubAccent }} />
-                                </div>
-                                <div>
-                                    <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Active Members</div>
-                                    <div style={{ 
-                                        fontSize: '1.75rem', 
-                                        fontWeight: '800', 
-                                        color: daoStats.error ? '#ef4444' : hubAccent,
-                                        lineHeight: 1,
-                                        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace',
-                                    }}>
-                                        {daoStats.activeMembers !== null 
-                                            ? daoStats.activeMembers.toLocaleString()
-                                            : daoStats.error 
-                                                ? '—' 
-                                                : '...'
-                                        }
-                                    </div>
-                                    <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '2px' }}>
-                                        {daoStats.error 
-                                            ? 'Error loading'
-                                            : daoStats.loading && daoStats.progress?.count > 0
-                                                ? `Loading (${daoStats.progress.count} neurons)`
-                                                : daoStats.loading
-                                                    ? 'Loading...'
-                                                    : 'Sneed DAO'
-                                        }
-                                    </div>
-                                </div>
-                            </div>
+                                <FaBrain size={14} />
+                                Staking & Neurons
+                                <FaArrowRight size={10} />
+                            </Link>
                         </div>
                     </div>
                 </div>
