@@ -274,6 +274,24 @@ const customStyles = `
 
 /* Mobile responsive styles */
 @media (max-width: 600px) {
+    .hub-price-badge {
+        padding: 6px 10px !important;
+        top: 12px !important;
+    }
+    
+    .hub-price-badge img {
+        width: 18px !important;
+        height: 18px !important;
+    }
+    
+    .hub-price-badge .price-main {
+        font-size: 0.85rem !important;
+    }
+    
+    .hub-price-badge .price-sub {
+        font-size: 0.6rem !important;
+    }
+    
     .hub-hero-logo {
         width: 56px !important;
         height: 56px !important;
@@ -291,27 +309,29 @@ const customStyles = `
     
     .hub-title-row {
         gap: 0.75rem !important;
+        margin-top: 1rem !important;
     }
     
     .hub-cta-btn {
         padding: 12px 20px !important;
         font-size: 0.9rem !important;
-        width: 100%;
         justify-content: center;
     }
     
     .hub-cta-container {
         flex-direction: column !important;
         gap: 0.75rem !important;
+        padding: 0 1rem;
     }
     
     .hub-hero-content {
-        padding: 3rem 1.5rem 2.5rem !important;
+        padding: 3.5rem 1rem 2rem !important;
     }
     
     .hub-subtitle {
         font-size: 1rem !important;
         margin-bottom: 1.5rem !important;
+        padding: 0 0.5rem;
     }
 }
 `;
@@ -1331,78 +1351,96 @@ function Hub() {
                     
                     {/* Price indicators - positioned in corners */}
                     {/* SNEED Price - Top Left */}
-                    <div style={{
-                        position: 'absolute',
-                        top: '16px',
-                        left: '16px',
-                        zIndex: 2,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '8px 12px',
-                        background: `${theme.colors.primaryBg}90`,
-                        backdropFilter: 'blur(8px)',
-                        borderRadius: '10px',
-                    }}>
+                    <div 
+                        className="hub-price-badge"
+                        style={{
+                            position: 'absolute',
+                            top: '16px',
+                            left: '16px',
+                            zIndex: 2,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '8px 12px',
+                            background: `${theme.colors.primaryBg}90`,
+                            backdropFilter: 'blur(8px)',
+                            borderRadius: '10px',
+                        }}
+                    >
                         <img 
                             src="sneed_logo.png" 
                             alt="SNEED" 
                             style={{ width: '22px', height: '22px', borderRadius: '6px' }}
                         />
                         <div>
-                            <div style={{ 
-                                fontSize: '1rem', 
-                                fontWeight: '700', 
-                                color: hubPrimary,
-                                lineHeight: 1,
-                                fontFamily: 'monospace',
-                            }}>
+                            <div 
+                                className="price-main"
+                                style={{ 
+                                    fontSize: '1rem', 
+                                    fontWeight: '700', 
+                                    color: hubPrimary,
+                                    lineHeight: 1,
+                                    fontFamily: 'monospace',
+                                }}
+                            >
                                 {prices.loading ? '—' : `${formatPrice(prices.sneedIcp, 8)} ICP`}
                             </div>
-                            <div style={{ 
-                                fontSize: '0.7rem', 
-                                color: theme.colors.success,
-                                marginTop: '1px',
-                            }}>
+                            <div 
+                                className="price-sub"
+                                style={{ 
+                                    fontSize: '0.7rem', 
+                                    color: theme.colors.success,
+                                    marginTop: '1px',
+                                }}
+                            >
                                 {prices.loading ? '' : `≈ $${formatPrice(prices.sneedUsd, 6)}`}
                             </div>
                         </div>
                     </div>
                     
                     {/* ICP Price - Top Right */}
-                    <div style={{
-                        position: 'absolute',
-                        top: '16px',
-                        right: '16px',
-                        zIndex: 2,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '8px 12px',
-                        background: `${theme.colors.primaryBg}90`,
-                        backdropFilter: 'blur(8px)',
-                        borderRadius: '10px',
-                    }}>
+                    <div 
+                        className="hub-price-badge"
+                        style={{
+                            position: 'absolute',
+                            top: '16px',
+                            right: '16px',
+                            zIndex: 2,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '8px 12px',
+                            background: `${theme.colors.primaryBg}90`,
+                            backdropFilter: 'blur(8px)',
+                            borderRadius: '10px',
+                        }}
+                    >
                         <img 
                             src="https://swaprunner.com/icp_symbol.svg" 
                             alt="ICP" 
                             style={{ width: '22px', height: '22px', borderRadius: '50%' }}
                         />
                         <div>
-                            <div style={{ 
-                                fontSize: '1rem', 
-                                fontWeight: '700', 
-                                color: theme.colors.success,
-                                lineHeight: 1,
-                                fontFamily: 'monospace',
-                            }}>
+                            <div 
+                                className="price-main"
+                                style={{ 
+                                    fontSize: '1rem', 
+                                    fontWeight: '700', 
+                                    color: theme.colors.success,
+                                    lineHeight: 1,
+                                    fontFamily: 'monospace',
+                                }}
+                            >
                                 ${prices.loading ? '—' : formatPrice(prices.icpUsd, 2)}
                             </div>
-                            <div style={{ 
-                                fontSize: '0.7rem', 
-                                color: theme.colors.mutedText,
-                                marginTop: '1px',
-                            }}>
+                            <div 
+                                className="price-sub"
+                                style={{ 
+                                    fontSize: '0.7rem', 
+                                    color: theme.colors.mutedText,
+                                    marginTop: '1px',
+                                }}
+                            >
                                 ICP/USD
                             </div>
                         </div>
