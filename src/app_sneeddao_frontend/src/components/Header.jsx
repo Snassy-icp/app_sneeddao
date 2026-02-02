@@ -368,6 +368,21 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Premium', path: '/premium' }
             ]
         },
+        'Sneed DAO': {
+            icon: <FaBuilding size={18} />,
+            displayName: 'Sneed DAO',
+            defaultPath: '/dao',
+            subMenu: [
+                { name: 'DAO', path: '/dao' },
+                { name: 'Dashboard', path: '/dao_info' },
+                { name: 'Tokenomics', path: '/rll_info' },
+                { name: 'Rewards', path: '/rll' },
+                { name: 'Products', path: '/products' },
+                { name: 'Partners', path: '/partners' },
+                { name: 'Projects', path: '/projects' },
+                { name: 'Disclaimer', path: '/disclaimer' }
+            ]
+        },
         'Sneedex': {
             icon: <FaExchangeAlt size={18} />,
             displayName: 'Sneedex',
@@ -397,21 +412,6 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Create Lock', path: '/lock_wizard' },
                 { name: 'All Locks', path: '/sneedlock_info' },
                 { name: 'Overview', path: '/sneedlock' }
-            ]
-        },
-        'Sneed DAO': {
-            icon: <FaBuilding size={18} />,
-            displayName: 'Sneed DAO',
-            defaultPath: '/dao',
-            subMenu: [
-                { name: 'DAO', path: '/dao' },
-                { name: 'Dashboard', path: '/dao_info' },
-                { name: 'Tokenomics', path: '/rll_info' },
-                { name: 'Rewards', path: '/rll' },
-                { name: 'Products', path: '/products' },
-                { name: 'Partners', path: '/partners' },
-                { name: 'Projects', path: '/projects' },
-                { name: 'Disclaimer', path: '/disclaimer' }
             ]
         },
         'Help': {
