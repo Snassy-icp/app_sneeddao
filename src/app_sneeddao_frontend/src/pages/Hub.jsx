@@ -395,7 +395,8 @@ function Hub() {
     
     // Helper to get token info
     const getTokenInfo = useCallback((ledgerId) => {
-        const globalMeta = getTokenMetadata(ledgerId);
+        // Read directly from the metadata state Map to ensure we get fresh data
+        const globalMeta = tokenMetadataState.get(ledgerId) || getTokenMetadata(ledgerId);
         const cachedLogo = globalMeta?.logo || null;
         
         // Check SNS list for tokens (SNS data uses canisters.ledger)
@@ -1658,7 +1659,7 @@ function Hub() {
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                     {offers.map((offer) => (
                                         <OfferCard
-                                            key={`offer-${offer.id}`}
+                                            key={`offer-${offer.id}-${tokenMetadataState.size}`}
                                             offer={offer}
                                             getTokenInfo={getTokenInfo}
                                             getSnsInfo={getSnsInfo}
