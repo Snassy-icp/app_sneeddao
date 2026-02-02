@@ -595,7 +595,7 @@ function ThreadViewer({
     
     // Settings panel state
     const [showSettings, setShowSettings] = useState(false);
-    const [isThreadHeaderExpanded, setIsThreadHeaderExpanded] = useState(false);
+    const [isThreadHeaderExpanded, setIsThreadHeaderExpanded] = useState(true);
     const [selectedNeuronIds, setSelectedNeuronIds] = useState(new Set());
     const [sortBy, setSortBy] = useState(() => {
         try {
