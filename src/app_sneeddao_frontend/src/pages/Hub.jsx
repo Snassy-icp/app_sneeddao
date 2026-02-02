@@ -270,31 +270,40 @@ function Hub() {
                     filter: []
                 });
                 
-                // Fetch SNS logos for feed items
+                // Fetch SNS logos for feed items (silently handle errors)
                 const snsRoots = [...new Set(feedResponse.items
                     .filter(item => item.sns_root_canister_id?.[0])
                     .map(item => item.sns_root_canister_id[0].toString()))];
                 
+                // Fetch logos in parallel, silently ignoring failures
                 const logoPromises = snsRoots.map(async (root) => {
                     try {
                         const logo = await fetchSnsLogo(root);
                         return [root, logo];
                     } catch {
+                        // Silently ignore - some canisters may not be valid SNS roots
                         return [root, null];
                     }
                 });
-                const logoResults = await Promise.all(logoPromises);
-                const logos = Object.fromEntries(logoResults.filter(([_, logo]) => logo));
-                setSnsLogos(prev => ({ ...prev, ...logos }));
+                const logoResults = await Promise.allSettled(logoPromises);
+                const logos = {};
+                logoResults.forEach(result => {
+                    if (result.status === 'fulfilled' && result.value && result.value[1]) {
+                        logos[result.value[0]] = result.value[1];
+                    }
+                });
+                if (Object.keys(logos).length > 0) {
+                    setSnsLogos(prev => ({ ...prev, ...logos }));
+                }
                 
                 setFeedItems(feedResponse.items.slice(0, 5));
                 
                 // Fetch Sneedex offers
                 try {
-                    const sneedexActor = await createSneedexActor();
+                    const sneedexActor = createSneedexActor(null);
                     const offerResponse = await sneedexActor.getOfferFeed({
                         start_id: [],
-                        length: [5],
+                        length: 5,
                         filter: [{
                             states: [[{ Active: null }]],
                             asset_types: [],
@@ -304,9 +313,12 @@ function Hub() {
                             viewer: []
                         }]
                     });
-                    setOffers(offerResponse.offers.slice(0, 5));
+                    if (offerResponse?.offers) {
+                        setOffers(offerResponse.offers.slice(0, 5));
+                    }
                 } catch (e) {
-                    console.error('Error fetching offers:', e);
+                    // Silently fail - offers section will just be empty
+                    console.warn('Could not fetch Sneedex offers:', e.message || e);
                 }
             } catch (error) {
                 console.error('Error fetching activity:', error);
