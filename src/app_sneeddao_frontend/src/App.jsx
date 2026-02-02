@@ -21,6 +21,7 @@ import { SnsProvider } from './contexts/SnsContext';
 import { ForumProvider } from './contexts/ForumContext';
 import { NeuronsProvider } from './contexts/NeuronsContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { WalletProvider } from './contexts/WalletContext';
 import Layout from './components/Layout';
 
 // Import new pages
@@ -127,6 +128,7 @@ function App() {
             <ForumProvider>
               <Router>
                 <PremiumProvider>
+                <WalletProvider>
                 <NamingProvider>
                   <GlobalNamingSetup />
                   <Layout>
@@ -234,6 +236,7 @@ function App() {
                   </Routes>
                   </Layout>
                 </NamingProvider>
+                </WalletProvider>
                 </PremiumProvider>
               </Router>
             </ForumProvider>

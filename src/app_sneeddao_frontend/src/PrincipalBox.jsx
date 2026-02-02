@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaCopy, FaCheck } from 'react-icons/fa';
+import { FaCopy, FaCheck, FaWallet } from 'react-icons/fa';
 import { useAuth } from './AuthContext';
 import { useTheme } from './contexts/ThemeContext';
 import { useNaming } from './NamingContext';
+import { useWalletOptional } from './contexts/WalletContext';
 import { computeAccountId } from './utils/PrincipalUtils';
+import { formatAmount } from './utils/StringUtils';
 import './PrincipalBox.css';
 
 function PrincipalBox({ principalText, onLogout, compact = false }) {
@@ -15,7 +17,12 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const { login, identity } = useAuth();
     const { theme } = useTheme();
     const { getPrincipalDisplayName } = useNaming();
+    const walletContext = useWalletOptional();
     const navigate = useNavigate();
+    
+    // Get wallet tokens from context
+    const walletTokens = walletContext?.walletTokens || [];
+    const walletLoading = walletContext?.walletLoading || false;
 
     // Add click outside handler
     useEffect(() => {
@@ -235,6 +242,180 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                           {copyFeedback}
                       </div>
                   )}
+
+                  {/* Compact Wallet Section */}
+                  <div style={{ marginBottom: '12px' }}>
+                      <div 
+                          style={{ 
+                              color: theme.colors.mutedText, 
+                              fontSize: '10px', 
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.5px',
+                              marginBottom: '4px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px'
+                          }}
+                      >
+                          <FaWallet size={10} />
+                          Wallet
+                      </div>
+                      <div 
+                          className="compact-wallet-container"
+                          style={{
+                              backgroundColor: theme.colors.primaryBg,
+                              borderRadius: '8px',
+                              maxHeight: '200px',
+                              overflowY: 'auto'
+                          }}
+                      >
+                          {walletLoading ? (
+                              <div style={{ 
+                                  padding: '12px', 
+                                  textAlign: 'center',
+                                  color: theme.colors.mutedText,
+                                  fontSize: '12px'
+                              }}>
+                                  Loading...
+                              </div>
+                          ) : walletTokens.length === 0 ? (
+                              <div 
+                                  style={{ 
+                                      padding: '12px', 
+                                      textAlign: 'center',
+                                      color: theme.colors.mutedText,
+                                      fontSize: '12px'
+                                  }}
+                                  onClick={() => {
+                                      navigate('/wallet');
+                                      setShowPopup(false);
+                                  }}
+                              >
+                                  No tokens yet. Visit wallet to add tokens.
+                              </div>
+                          ) : (
+                              walletTokens.map((token, index) => {
+                                  const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
+                                  // Calculate total balance (available + locked + staked + maturity + rewards)
+                                  const available = BigInt(token.available || token.balance || 0n);
+                                  const locked = BigInt(token.locked || 0n);
+                                  const staked = BigInt(token.staked || 0n);
+                                  const maturity = BigInt(token.maturity || 0n);
+                                  const rewards = BigInt(token.rewards || 0n);
+                                  const totalBalance = available + locked + staked + maturity + rewards;
+                                  
+                                  return (
+                                      <div 
+                                          key={ledgerId || index}
+                                          className="compact-wallet-token"
+                                          style={{
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              padding: '8px 12px',
+                                              borderBottom: index < walletTokens.length - 1 ? `1px solid ${theme.colors.border}` : 'none',
+                                              gap: '10px'
+                                          }}
+                                      >
+                                          {/* Token Logo */}
+                                          <div style={{ 
+                                              width: '24px', 
+                                              height: '24px', 
+                                              flexShrink: 0,
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              justifyContent: 'center'
+                                          }}>
+                                              {token.logo ? (
+                                                  <img 
+                                                      src={token.logo}
+                                                      alt={token.symbol}
+                                                      style={{
+                                                          width: '24px',
+                                                          height: '24px',
+                                                          borderRadius: '50%',
+                                                          objectFit: 'cover'
+                                                      }}
+                                                      onError={(e) => {
+                                                          e.target.style.display = 'none';
+                                                          e.target.nextSibling.style.display = 'flex';
+                                                      }}
+                                                  />
+                                              ) : null}
+                                              <div 
+                                                  style={{
+                                                      width: '24px',
+                                                      height: '24px',
+                                                      borderRadius: '50%',
+                                                      backgroundColor: theme.colors.accent,
+                                                      display: token.logo ? 'none' : 'flex',
+                                                      alignItems: 'center',
+                                                      justifyContent: 'center',
+                                                      fontSize: '10px',
+                                                      fontWeight: 'bold',
+                                                      color: theme.colors.primaryText
+                                                  }}
+                                              >
+                                                  {token.symbol?.charAt(0) || '?'}
+                                              </div>
+                                          </div>
+                                          
+                                          {/* Balance and Symbol */}
+                                          <div style={{ 
+                                              flex: 1, 
+                                              minWidth: 0,
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              justifyContent: 'space-between',
+                                              gap: '8px'
+                                          }}>
+                                              <span style={{ 
+                                                  color: theme.colors.primaryText,
+                                                  fontSize: '13px',
+                                                  fontWeight: '500',
+                                                  overflow: 'hidden',
+                                                  textOverflow: 'ellipsis',
+                                                  whiteSpace: 'nowrap'
+                                              }}>
+                                                  {formatAmount(totalBalance, token.decimals || 8)}
+                                              </span>
+                                              <span style={{ 
+                                                  color: theme.colors.mutedText,
+                                                  fontSize: '12px',
+                                                  flexShrink: 0
+                                              }}>
+                                                  {token.symbol}
+                                              </span>
+                                          </div>
+                                      </div>
+                                  );
+                              })
+                          )}
+                      </div>
+                      {walletTokens.length > 0 && (
+                          <button
+                              onClick={() => {
+                                  navigate('/wallet');
+                                  setShowPopup(false);
+                              }}
+                              style={{
+                                  width: '100%',
+                                  marginTop: '8px',
+                                  padding: '8px',
+                                  backgroundColor: 'transparent',
+                                  border: `1px solid ${theme.colors.border}`,
+                                  borderRadius: '6px',
+                                  color: theme.colors.accent,
+                                  fontSize: '12px',
+                                  cursor: 'pointer',
+                                  transition: 'background-color 0.2s ease'
+                              }}
+                              onMouseOver={(e) => e.target.style.backgroundColor = theme.colors.primaryBg}
+                              onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+                          >
+                              View Full Wallet
+                          </button>
+                      )}
+                  </div>
 
                   {/* Action Buttons */}
                   <div className="action-buttons">

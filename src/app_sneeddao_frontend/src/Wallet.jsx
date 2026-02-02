@@ -48,6 +48,7 @@ import { createActor as createFactoryActor, canisterId as factoryCanisterId } fr
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
 import { useNaming } from './NamingContext';
+import { useWallet } from './contexts/WalletContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, computeAccountId } from './utils/PrincipalUtils';
 import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings, getCanisterManagerSettings } from './utils/NeuronManagerSettings';
 import { PERM } from './utils/NeuronPermissionUtils';
@@ -418,6 +419,7 @@ function Wallet() {
     const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
     const { isPremium } = usePremiumStatus(identity);
+    const { updateWalletTokens, setLoading: setWalletLoading } = useWallet();
     const navigate = useNavigate();
     
     // Compute account ID for the logged-in user
@@ -701,6 +703,16 @@ function Wallet() {
         fetchIcpToCyclesRate();
         fetchTrackedCanisters();
     }, [isAuthenticated, location.search, refreshTrigger]);
+
+    // Sync tokens to the global WalletContext so other components (like PrincipalBox) can access them
+    useEffect(() => {
+        updateWalletTokens(tokens);
+    }, [tokens, updateWalletTokens]);
+
+    // Sync loading state to WalletContext
+    useEffect(() => {
+        setWalletLoading(showTokensSpinner);
+    }, [showTokensSpinner, setWalletLoading]);
 
     // Fetch ICP price
     const fetchIcpPrice = async () => {

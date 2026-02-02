@@ -204,3 +204,41 @@
 .principal-copy-button-group button:last-child {
   margin-right: 0;
 }
+
+/* Compact Wallet Styles */
+.compact-wallet-container {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.compact-wallet-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.compact-wallet-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.compact-wallet-container::-webkit-scrollbar-thumb {
+  background-color: var(--color-border);
+  border-radius: 3px;
+}
+
+.compact-wallet-token {
+  transition: background-color 0.15s ease;
+}
+
+.compact-wallet-token:hover {
+  background-color: var(--color-accent-hover);
+}
+
+/* Mobile optimizations for compact wallet */
+@media (max-width: 480px) {
+  .compact-wallet-container {
+    max-height: 150px;
+  }
+  
+  .compact-wallet-token {
+    padding: 6px 10px;
+  }
+}
