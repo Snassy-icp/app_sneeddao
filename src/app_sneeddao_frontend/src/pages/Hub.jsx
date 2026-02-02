@@ -275,7 +275,7 @@ function Hub() {
         loading: true
     });
     const [daoStats, setDaoStats] = useState({
-        activeNeurons: null,
+        activeMembers: null,
         totalNeurons: null,
         loading: true
     });
@@ -370,7 +370,7 @@ function Hub() {
         return () => clearInterval(interval);
     }, []);
 
-    // Fetch DAO stats
+    // Fetch DAO stats - count unique owners (active members)
     useEffect(() => {
         const fetchDaoStats = async () => {
             try {
@@ -386,13 +386,37 @@ function Hub() {
                     of_principal: []
                 });
                 
-                const activeNeurons = response.neurons.filter(neuron => {
-                    if (!neuron.dissolve_state?.[0]) return false;
-                    return 'DissolveDelaySeconds' in neuron.dissolve_state[0];
-                }).length;
+                // Count unique owners with stake > 0 (active members)
+                // Group neurons by owner principal and sum their stake
+                const ownerStakes = new Map();
+                
+                for (const neuron of response.neurons) {
+                    // Get the owner principal
+                    const permissions = neuron.permissions || [];
+                    for (const perm of permissions) {
+                        // Check if this permission includes MANAGE_VOTING_PERMISSION (owner-level)
+                        // Permission types: 1=Unspecified, 2=ManageVotingPermission, 3=ConfigureDissolveState, etc.
+                        const MANAGE_VOTING_PERMISSION = 2;
+                        const hasOwnerPerm = perm.permission_type?.some(pt => pt === MANAGE_VOTING_PERMISSION);
+                        
+                        if (hasOwnerPerm && perm.principal?.[0]) {
+                            const principalStr = perm.principal[0].toString();
+                            
+                            // Get neuron stake
+                            const stake = neuron.cached_neuron_stake_e8s?.[0] || BigInt(0);
+                            
+                            // Add to owner's total stake
+                            const currentStake = ownerStakes.get(principalStr) || BigInt(0);
+                            ownerStakes.set(principalStr, currentStake + stake);
+                        }
+                    }
+                }
+                
+                // Count owners with stake > 0
+                const activeMembers = Array.from(ownerStakes.values()).filter(stake => stake > BigInt(0)).length;
                 
                 setDaoStats({
-                    activeNeurons,
+                    activeMembers,
                     totalNeurons: response.neurons.length,
                     loading: false
                 });
@@ -1121,10 +1145,10 @@ function Hub() {
                                     justifyContent: 'center',
                                     border: `1px solid ${hubAccent}30`,
                                 }}>
-                                    <FaBrain size={22} style={{ color: hubAccent }} />
+                                    <FaUsers size={22} style={{ color: hubAccent }} />
                                 </div>
                                 <div>
-                                    <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Active Neurons</div>
+                                    <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Active Members</div>
                                     <div style={{ 
                                         fontSize: '1.75rem', 
                                         fontWeight: '800', 
@@ -1132,7 +1156,7 @@ function Hub() {
                                         lineHeight: 1,
                                         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace',
                                     }}>
-                                        {daoStats.loading ? '—' : (daoStats.activeNeurons?.toLocaleString() || '0')}
+                                        {daoStats.loading ? '—' : (daoStats.activeMembers?.toLocaleString() || '0')}
                                     </div>
                                     <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '2px' }}>
                                         Sneed DAO
