@@ -7,7 +7,7 @@ import { HttpAgent } from '@dfinity/agent';
 import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
 import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
 import { createSneedexActor } from '../utils/SneedexUtils';
-import { fetchSnsLogo } from '../utils/SnsUtils';
+import { getSnsById } from '../utils/SnsUtils';
 import priceService from '../services/PriceService';
 
 // Constants
@@ -270,26 +270,17 @@ function Hub() {
                     filter: []
                 });
                 
-                // Fetch SNS logos for feed items (silently handle errors)
+                // Get SNS logos from cached SNS data (no network calls needed)
                 const snsRoots = [...new Set(feedResponse.items
                     .filter(item => item.sns_root_canister_id?.[0])
                     .map(item => item.sns_root_canister_id[0].toString()))];
                 
-                // Fetch logos in parallel, silently ignoring failures
-                const logoPromises = snsRoots.map(async (root) => {
-                    try {
-                        const logo = await fetchSnsLogo(root);
-                        return [root, logo];
-                    } catch {
-                        // Silently ignore - some canisters may not be valid SNS roots
-                        return [root, null];
-                    }
-                });
-                const logoResults = await Promise.allSettled(logoPromises);
+                // Look up logos from cached SNS data - this is synchronous and won't error
                 const logos = {};
-                logoResults.forEach(result => {
-                    if (result.status === 'fulfilled' && result.value && result.value[1]) {
-                        logos[result.value[0]] = result.value[1];
+                snsRoots.forEach(rootId => {
+                    const snsData = getSnsById(rootId);
+                    if (snsData?.logo) {
+                        logos[rootId] = snsData.logo;
                     }
                 });
                 if (Object.keys(logos).length > 0) {
@@ -801,7 +792,7 @@ function Hub() {
                     {/* ICP Price */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <img 
-                            src="https://nns.ic0.app/img/sns/icp-logo.png" 
+                            src="https://swaprunner.com/icp_symbol.svg" 
                             alt="ICP" 
                             style={{ width: '32px', height: '32px', borderRadius: '50%' }}
                         />
