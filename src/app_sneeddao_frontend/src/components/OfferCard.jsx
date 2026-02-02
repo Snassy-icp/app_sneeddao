@@ -535,7 +535,7 @@ function OfferCard({
                 </div>
                 
                 {/* Estimated Value and Good Deal badge */}
-                {estimatedValue > 0 && !compact && (
+                {estimatedValue > 0 && (
                     <div style={{
                         display: 'flex',
                         alignItems: 'center',

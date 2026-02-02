@@ -283,14 +283,15 @@ function Hub() {
     const [offers, setOffers] = useState([]);
     const [activityLoading, setActivityLoading] = useState(true);
     const [snsLogos, setSnsLogos] = useState({});
+    const [tokenPrices, setTokenPrices] = useState({}); // ledger_id -> USD price
     
     // Helper to get token info
     const getTokenInfo = useCallback((ledgerId) => {
         const globalMeta = getTokenMetadata(ledgerId);
         const cachedLogo = globalMeta?.logo || null;
         
-        // Check SNS list for tokens
-        const snsMatch = snsList.find(s => s.ledger_canister_id === ledgerId);
+        // Check SNS list for tokens (SNS data uses canisters.ledger)
+        const snsMatch = snsList.find(s => s.canisters?.ledger === ledgerId);
         if (snsMatch) {
             return {
                 symbol: snsMatch.token_symbol || snsMatch.symbol || 'TOKEN',
@@ -312,13 +313,14 @@ function Hub() {
     
     // Helper to get SNS info by governance ID
     const getSnsInfo = useCallback((governanceId) => {
-        const sns = snsList.find(s => s.governance_canister_id === governanceId);
+        const sns = snsList.find(s => s.canisters?.governance === governanceId);
         if (sns) {
             return {
                 name: sns.name,
                 symbol: sns.token_symbol || sns.symbol,
                 logo: sns.logo,
-                ledgerId: sns.ledger_canister_id,
+                ledgerId: sns.canisters?.ledger,
+                decimals: sns.decimals || 8,
             };
         }
         return null;
@@ -326,8 +328,14 @@ function Hub() {
     
     // Helper to get SNS logo by governance ID
     const getSnsLogo = useCallback((governanceId) => {
-        return snsLogosMap.get(governanceId) || null;
-    }, [snsLogosMap]);
+        // First check the logos map
+        const mapLogo = snsLogosMap.get(governanceId);
+        if (mapLogo) return mapLogo;
+        
+        // Fallback to logo from SNS list
+        const sns = snsList.find(s => s.canisters?.governance === governanceId);
+        return sns?.logo || null;
+    }, [snsLogosMap, snsList]);
     
     // Fetch SNS list on mount
     useEffect(() => {
@@ -497,6 +505,124 @@ function Hub() {
         
         fetchActivity();
     }, []);
+
+    // Fetch token prices for USD display on offer cards
+    useEffect(() => {
+        const fetchOfferTokenPrices = async () => {
+            if (offers.length === 0) return;
+            
+            try {
+                const prices = {};
+                
+                // Collect unique ledger IDs from offers (payment tokens and asset tokens)
+                const ledgerIds = new Set();
+                
+                for (const offer of offers) {
+                    // Payment token
+                    if (offer.price_token_ledger) {
+                        ledgerIds.add(offer.price_token_ledger.toString());
+                    }
+                    
+                    // Asset tokens (for ICRC1Token and SNS neuron assets)
+                    for (const assetEntry of (offer.assets || [])) {
+                        const asset = assetEntry?.asset;
+                        if (asset) {
+                            if ('ICRC1Token' in asset && asset.ICRC1Token.ledger_canister_id) {
+                                ledgerIds.add(asset.ICRC1Token.ledger_canister_id.toString());
+                            } else if ('SNSNeuron' in asset && asset.SNSNeuron.governance_canister_id) {
+                                // Get SNS ledger from governance
+                                const govId = asset.SNSNeuron.governance_canister_id.toString();
+                                const snsMatch = snsList.find(s => s.canisters?.governance === govId);
+                                if (snsMatch?.canisters?.ledger) {
+                                    ledgerIds.add(snsMatch.canisters.ledger);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Always include ICP
+                ledgerIds.add('ryjl3-tyaaa-aaaaa-aaaba-cai');
+                
+                // Fetch prices for each token
+                for (const ledgerId of ledgerIds) {
+                    try {
+                        const tokenInfo = getTokenInfo(ledgerId);
+                        const price = await priceService.getTokenUSDPrice(ledgerId, tokenInfo.decimals);
+                        if (price > 0) {
+                            prices[ledgerId] = price;
+                        }
+                    } catch (e) {
+                        // Skip tokens we can't get prices for
+                    }
+                }
+                
+                setTokenPrices(prices);
+            } catch (error) {
+                console.warn('Error fetching token prices:', error);
+            }
+        };
+        
+        if (offers.length > 0 && snsList.length > 0) {
+            fetchOfferTokenPrices();
+        }
+    }, [offers, snsList, getTokenInfo]);
+
+    // Helper to get SNS ledger from governance ID
+    const getSnsLedgerFromGovernance = useCallback((governanceId) => {
+        const sns = snsList.find(s => s.canisters?.governance === governanceId);
+        return sns?.canisters?.ledger || null;
+    }, [snsList]);
+
+    // Calculate estimated value for an offer
+    const getOfferEstimatedValue = useCallback((offer) => {
+        let totalUsd = 0;
+        
+        for (const assetEntry of (offer.assets || [])) {
+            const asset = assetEntry?.asset;
+            if (!asset) continue;
+            
+            if ('ICRC1Token' in asset) {
+                // Token asset - use token price
+                const ledgerId = asset.ICRC1Token.ledger_canister_id?.toString();
+                if (!ledgerId) continue;
+                const price = tokenPrices[ledgerId];
+                if (price && asset.ICRC1Token.amount) {
+                    const tokenInfo = getTokenInfo(ledgerId);
+                    const amount = Number(asset.ICRC1Token.amount) / Math.pow(10, tokenInfo.decimals || 8);
+                    totalUsd += amount * price;
+                }
+            } else if ('SNSNeuron' in asset) {
+                // SNS Neuron - use cached stake
+                const cachedStake = assetEntry.cached_stake_e8s?.[0];
+                if (cachedStake) {
+                    const stakeE8s = Number(cachedStake);
+                    const govId = asset.SNSNeuron.governance_canister_id?.toString();
+                    if (!govId) continue;
+                    const snsLedger = getSnsLedgerFromGovernance(govId);
+                    if (snsLedger && tokenPrices[snsLedger]) {
+                        const snsInfo = getSnsInfo(govId);
+                        const decimals = snsInfo?.decimals || 8;
+                        const amount = stakeE8s / Math.pow(10, decimals);
+                        totalUsd += amount * tokenPrices[snsLedger];
+                    }
+                }
+            } else if ('Canister' in asset) {
+                // Check if it's an ICP Neuron Manager
+                const canisterKind = asset.Canister.kind?.[0];
+                if (canisterKind === 1 || canisterKind === 1n) {
+                    // ICP Neuron Manager - use cached total stake
+                    const cachedStake = assetEntry.cached_total_stake_e8s?.[0];
+                    if (cachedStake && prices.icpUsd) {
+                        const stakeIcp = Number(cachedStake) / 1e8;
+                        totalUsd += stakeIcp * prices.icpUsd;
+                    }
+                }
+            }
+        }
+        
+        return totalUsd;
+    }, [tokenPrices, prices.icpUsd, snsList, getTokenInfo, getSnsInfo, getSnsLedgerFromGovernance]);
 
     // Format price display
     const formatPrice = (price, decimals = 4) => {
@@ -1471,6 +1597,9 @@ function Hub() {
                                             getTokenInfo={getTokenInfo}
                                             getSnsInfo={getSnsInfo}
                                             getSnsLogo={getSnsLogo}
+                                            tokenPrices={tokenPrices}
+                                            icpPrice={prices.icpUsd}
+                                            getOfferEstimatedValue={getOfferEstimatedValue}
                                             compact={true}
                                         />
                                     ))}
