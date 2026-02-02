@@ -87,8 +87,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         return (token.available_backend || 0n) > 0n;
     });
     const [isExpanded, setIsExpanded] = useState(defaultExpanded);
-    const [locksExpanded, setLocksExpanded] = useState(defaultLocksExpanded);
-    const [infoExpanded, setInfoExpanded] = useState(false);
+    const [activeTab, setActiveTab] = useState(defaultLocksExpanded ? 'locks' : null); // null = no tab selected, 'locks', 'neurons', 'info'
     const [balanceSectionExpanded, setBalanceSectionExpanded] = useState(true);
     
     // Image loading state
@@ -120,7 +119,6 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     // Neuron state
     const [neurons, setNeurons] = useState([]);
     const [neuronsLoading, setNeuronsLoading] = useState(false);
-    const [neuronsExpanded, setNeuronsExpanded] = useState(false);
     const [expandedNeurons, setExpandedNeurons] = useState(new Set());
     const [hideEmptyNeurons, setHideEmptyNeurons] = useState(() => {
         try {
@@ -1723,38 +1721,109 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     <p>Backend: {formatAmount(token.balance_backend || 0n, token.decimals)}</p>
                 </div>
             )}
-            <div className="locks-section">
-                {/* Collapsible Locks Header */}
-                <div 
-                    className="locks-header" 
-                    onClick={() => setLocksExpanded(!locksExpanded)}
+            {/* Tab Bar for Locks, Neurons, and Info */}
+            <div style={{
+                display: 'flex',
+                gap: '4px',
+                padding: '8px 0',
+                borderBottom: `1px solid ${theme.colors.border}`,
+                marginBottom: activeTab ? '15px' : '0',
+                flexWrap: 'wrap'
+            }}>
+                {/* Locks Tab */}
+                <button
+                    onClick={() => setActiveTab(activeTab === 'locks' ? null : 'locks')}
                     style={{
-                        cursor: 'pointer',
                         display: 'flex',
-                        justifyContent: 'space-between',
                         alignItems: 'center',
-                        padding: '12px 0',
-                        borderBottom: `1px solid ${theme.colors.border}`,
-                        marginBottom: locksExpanded ? '15px' : '0'
+                        gap: '6px',
+                        padding: '8px 12px',
+                        background: activeTab === 'locks' ? `${theme.colors.accent}20` : 'transparent',
+                        border: `1px solid ${activeTab === 'locks' ? theme.colors.accent : theme.colors.border}`,
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        color: activeTab === 'locks' ? theme.colors.accent : theme.colors.primaryText,
+                        fontSize: '0.85rem',
+                        fontWeight: activeTab === 'locks' ? '600' : '500',
+                        transition: 'all 0.2s ease'
                     }}
                 >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '1rem' }}>🔐</span>
-                        {lockDetailsLoading[token.ledger_canister_id] ? (
-                            <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
-                                (Loading...)
-                            </span>
+                    <span style={{ fontSize: '0.9rem' }}>🔐</span>
+                    {lockDetailsLoading[token.ledger_canister_id] ? (
+                        <span style={{ color: theme.colors.mutedText }}>Loading...</span>
+                    ) : (
+                        <>
+                            {locks[token.ledger_canister_id]?.length || 0} {locks[token.ledger_canister_id]?.length === 1 ? 'Lock' : 'Locks'}
+                        </>
+                    )}
+                </button>
+
+                {/* Neurons Tab - Only for SNS tokens */}
+                {isSnsToken && (
+                    <button
+                        onClick={() => setActiveTab(activeTab === 'neurons' ? null : 'neurons')}
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '8px 12px',
+                            background: activeTab === 'neurons' ? `${theme.colors.accent}20` : 'transparent',
+                            border: `1px solid ${activeTab === 'neurons' ? theme.colors.accent : theme.colors.border}`,
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            color: activeTab === 'neurons' ? theme.colors.accent : theme.colors.primaryText,
+                            fontSize: '0.85rem',
+                            fontWeight: activeTab === 'neurons' ? '600' : '500',
+                            transition: 'all 0.2s ease'
+                        }}
+                    >
+                        <span style={{ fontSize: '0.9rem' }}>🧠</span>
+                        {neuronsLoading ? (
+                            <span style={{ color: theme.colors.mutedText }}>Loading...</span>
                         ) : (
+                            <>
+                                {neurons.length} {neurons.length === 1 ? 'Neuron' : 'Neurons'}
+                            </>
+                        )}
+                    </button>
+                )}
+
+                {/* Info Tab */}
+                <button
+                    onClick={() => setActiveTab(activeTab === 'info' ? null : 'info')}
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '8px 12px',
+                        background: activeTab === 'info' ? `${theme.colors.accent}20` : 'transparent',
+                        border: `1px solid ${activeTab === 'info' ? theme.colors.accent : theme.colors.border}`,
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        color: activeTab === 'info' ? theme.colors.accent : theme.colors.primaryText,
+                        fontSize: '0.85rem',
+                        fontWeight: activeTab === 'info' ? '600' : '500',
+                        transition: 'all 0.2s ease'
+                    }}
+                >
+                    <span style={{ fontSize: '0.9rem' }}>ℹ️</span>
+                    Info
+                </button>
+            </div>
+
+            {/* Locks Tab Content */}
+            {activeTab === 'locks' && (
+                <div className="locks-section" style={{ marginBottom: '15px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
-                                {locks[token.ledger_canister_id]?.length || 0} {locks[token.ledger_canister_id]?.length === 1 ? 'Lock' : 'Locks'} {getTotalLockedAmount() > 0n && (
-                                    <span style={{ fontSize: '0.9rem', fontWeight: '600', whiteSpace: 'nowrap' }}>
-                                        ({formatAmount(getTotalLockedAmount(), token.decimals)} {token.symbol})
+                                {getTotalLockedAmount() > 0n && (
+                                    <span style={{ fontSize: '0.9rem', fontWeight: '600' }}>
+                                        Total: {formatAmount(getTotalLockedAmount(), token.decimals)} {token.symbol}
                                     </span>
                                 )}
                             </span>
-                        )}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        </div>
                         <Link 
                             to="/help/sneedlock"
                             onClick={(e) => e.stopPropagation()}
@@ -1764,38 +1833,24 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 fontSize: '0.85rem',
                                 display: 'flex',
                                 alignItems: 'center',
-                                padding: '2px 4px',
+                                padding: '2px 8px',
                                 borderRadius: '4px',
-                                transition: 'all 0.2s ease'
+                                transition: 'all 0.2s ease',
+                                gap: '4px'
                             }}
                             onMouseEnter={(e) => {
-                                e.target.style.color = theme.colors.accent;
-                                e.target.style.background = `${theme.colors.accent}15`;
+                                e.currentTarget.style.color = theme.colors.accent;
+                                e.currentTarget.style.background = `${theme.colors.accent}15`;
                             }}
                             onMouseLeave={(e) => {
-                                e.target.style.color = theme.colors.mutedText;
-                                e.target.style.background = 'transparent';
+                                e.currentTarget.style.color = theme.colors.mutedText;
+                                e.currentTarget.style.background = 'transparent';
                             }}
                             title="Learn about Sneed Lock"
                         >
-                            ❓
+                            ❓ Help
                         </Link>
-                        {/* Expand/Collapse Indicator */}
-                        <span 
-                            style={{ 
-                                color: theme.colors.mutedText, 
-                                fontSize: '1.2rem',
-                                transform: locksExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                                transition: 'transform 0.2s ease'
-                            }}
-                        >
-                            ▼
-                        </span>
                     </div>
-                </div>
-
-                {/* Collapsible Locks Content */}
-                {locksExpanded && (
                     <div>
                         {/* Lock Actions Row */}
                         {!hideButtons && (
@@ -1986,86 +2041,49 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             </>
                         )}
                     </div>
-                )}
-            </div>
+                </div>
+            )}
 
-            {/* Neurons Section - Only for SNS tokens */}
-            {isSnsToken && (
-                <div className="neurons-section">
-                    {/* Collapsible Neurons Header */}
-                    <div 
-                        className="neurons-header" 
-                        onClick={() => setNeuronsExpanded(!neuronsExpanded)}
-                        style={{
-                            cursor: 'pointer',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            padding: '12px 0',
-                            borderBottom: `1px solid ${theme.colors.border}`,
-                            marginBottom: neuronsExpanded ? '15px' : '0'
-                        }}
-                    >
+            {/* Neurons Tab Content - Only for SNS tokens */}
+            {activeTab === 'neurons' && isSnsToken && (
+                <div className="neurons-section" style={{ marginBottom: '15px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '1rem' }}>🧠</span>
-                            {neuronsLoading ? (
-                                <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
-                                    (Loading...)
-                                </span>
-                            ) : (
-                                <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
-                                    {neurons.length} {neurons.length === 1 ? 'Neuron' : 'Neurons'} {getTotalNeuronStake() > 0n && (
-                                        <span style={{ fontSize: '0.9rem', fontWeight: '600', whiteSpace: 'nowrap' }}>
-                                            ({formatAmount(getTotalNeuronStake(), token.decimals)} {token.symbol})
-                                        </span>
-                                    )}
+                            {getTotalNeuronStake() > 0n && (
+                                <span style={{ color: theme.colors.primaryText, fontSize: '0.9rem', fontWeight: '600' }}>
+                                    Total: {formatAmount(getTotalNeuronStake(), token.decimals)} {token.symbol}
                                 </span>
                             )}
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <Link 
-                                to="/help/neurons"
-                                onClick={(e) => e.stopPropagation()}
-                                style={{
-                                    color: theme.colors.mutedText,
-                                    textDecoration: 'none',
-                                    fontSize: '0.85rem',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    padding: '2px 4px',
-                                    borderRadius: '4px',
-                                    transition: 'all 0.2s ease'
-                                }}
-                                onMouseEnter={(e) => {
-                                    e.target.style.color = theme.colors.accent;
-                                    e.target.style.background = `${theme.colors.accent}15`;
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.target.style.color = theme.colors.mutedText;
-                                    e.target.style.background = 'transparent';
-                                }}
-                                title="Learn about SNS Neurons"
-                            >
-                                ❓
-                            </Link>
-                            {/* Expand/Collapse Indicator */}
-                            <span 
-                                style={{ 
-                                    color: theme.colors.mutedText, 
-                                    fontSize: '1.2rem',
-                                    transform: neuronsExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                                    transition: 'transform 0.2s ease'
-                                }}
-                            >
-                                ▼
-                            </span>
-                        </div>
+                        <Link 
+                            to="/help/neurons"
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                                color: theme.colors.mutedText,
+                                textDecoration: 'none',
+                                fontSize: '0.85rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                transition: 'all 0.2s ease',
+                                gap: '4px'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.color = theme.colors.accent;
+                                e.currentTarget.style.background = `${theme.colors.accent}15`;
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.color = theme.colors.mutedText;
+                                e.currentTarget.style.background = 'transparent';
+                            }}
+                            title="Learn about SNS Neurons"
+                        >
+                            ❓ Help
+                        </Link>
                     </div>
-
-                    {/* Collapsible Neurons Content */}
-                    {neuronsExpanded && (
-                        <div>
-                            {neuronsLoading ? (
+                    <div>
+                        {neuronsLoading ? (
                                 <div className="spinner-container">
                                     <div className="spinner"></div>
                                 </div>
@@ -2681,48 +2699,12 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 </>
                             )}
                         </div>
-                    )}
                 </div>
             )}
 
-            {/* Token Info Section */}
-            <div className="info-section">
-                {/* Collapsible Info Header */}
-                <div 
-                    className="info-header" 
-                    onClick={() => setInfoExpanded(!infoExpanded)}
-                    style={{
-                        cursor: 'pointer',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        padding: '12px 0',
-                        borderBottom: `1px solid ${theme.colors.border}`,
-                        marginBottom: infoExpanded ? '15px' : '0'
-                    }}
-                >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
-                            ℹ️ Token Info
-                        </span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        {/* Expand/Collapse Indicator */}
-                        <span 
-                            style={{ 
-                                color: theme.colors.mutedText, 
-                                fontSize: '1.2rem',
-                                transform: infoExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                                transition: 'transform 0.2s ease'
-                            }}
-                        >
-                            ▼
-                        </span>
-                    </div>
-                </div>
-
-                {/* Collapsible Info Content */}
-                {infoExpanded && (
+            {/* Info Tab Content */}
+            {activeTab === 'info' && (
+                <div className="info-section" style={{ marginBottom: '15px' }}>
                     <div style={{ paddingBottom: '15px' }}>
                         {/* Ledger Canister ID */}
                         <div style={{
@@ -2887,8 +2869,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             </div>
                         )}
                     </div>
-                )}
-            </div>
+                </div>
+            )}
             
             {/* Wrap/Unwrap buttons at bottom of card */}
             {(() => {
