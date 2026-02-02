@@ -9,6 +9,8 @@ import { computeAccountId } from './utils/PrincipalUtils';
 import { formatAmount } from './utils/StringUtils';
 import SendTokenModal from './SendTokenModal';
 import TokenCardModal from './components/TokenCardModal';
+import LockModal from './LockModal';
+import { usePremiumStatus } from './hooks/usePremiumStatus';
 import './PrincipalBox.css';
 
 function PrincipalBox({ principalText, onLogout, compact = false }) {
@@ -19,12 +21,15 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const [selectedToken, setSelectedToken] = useState(null);
     const [showTokenDetailModal, setShowTokenDetailModal] = useState(false);
     const [detailToken, setDetailToken] = useState(null);
+    const [showLockModal, setShowLockModal] = useState(false);
+    const [lockToken, setLockToken] = useState(null);
     const popupRef = useRef(null);
     const { login, identity } = useAuth();
     const { theme } = useTheme();
     const { getPrincipalDisplayName } = useNaming();
     const walletContext = useWalletOptional();
     const navigate = useNavigate();
+    const { isPremium } = usePremiumStatus(identity);
     
     // Get wallet tokens from context
     const walletTokens = walletContext?.walletTokens || [];
@@ -73,11 +78,18 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         setShowSendModal(true);
     };
     
-    // Handle lock from token detail modal - redirect to wallet page
+    // Handle lock from token detail modal - open lock modal
     const handleOpenLockFromDetail = (token) => {
         setShowTokenDetailModal(false);
-        // Navigate to wallet page - the user can lock from there
-        navigate('/wallet');
+        setLockToken(token);
+        setShowLockModal(true);
+    };
+    
+    // Handle when a lock is added - refresh wallet data
+    const handleAddLock = () => {
+        if (walletContext?.refreshWallet) {
+            walletContext.refreshWallet();
+        }
     };
 
     // Add click outside handler
@@ -739,6 +751,20 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
           openLockModal={handleOpenLockFromDetail}
           hideButtons={false}
           isSnsToken={detailToken && isTokenSns ? isTokenSns(detailToken.ledger_canister_id) : false}
+      />
+      
+      {/* Lock Modal */}
+      <LockModal
+          show={showLockModal}
+          onClose={() => {
+              setShowLockModal(false);
+              setLockToken(null);
+          }}
+          token={lockToken}
+          locks={{}}
+          onAddLock={handleAddLock}
+          identity={identity}
+          isPremium={isPremium}
       />
   </>
   );
