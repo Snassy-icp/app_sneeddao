@@ -9,6 +9,7 @@ import { createActor as createForumActor, canisterId as forumCanisterId } from '
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { createSneedexActor } from '../utils/SneedexUtils';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
+import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { getSnsById, getAllSnses, fetchAndCacheSnsData } from '../utils/SnsUtils';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
 import OfferCard from '../components/OfferCard';
@@ -21,6 +22,17 @@ const SNEED_DECIMALS = 8;
 const ICP_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
 const SNEED_GOVERNANCE_ID = 'fi3zi-fyaaa-aaaaq-aachq-cai';
+const SNEED_ICP_SWAP_CANISTER = 'osyzs-xiaaa-aaaag-qc76q-cai';
+const TREASURY_SNEED_SUBACCOUNT = '8b0805942c48b3420d6edffecbb685e8c39ef574612a5d8a911fb068bf6648de';
+
+// Helper to convert hex string to Uint8Array
+const hexToUint8Array = (hex) => {
+    const bytes = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < hex.length; i += 2) {
+        bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+    }
+    return bytes;
+};
 
 // Custom CSS for animations
 const customStyles = `
@@ -303,6 +315,8 @@ function Hub() {
         totalSupply: null,
         circulatingSupply: null,
         totalStaked: null,
+        treasurySneed: null,
+        lpSneed: null,
         loading: true
     });
     
@@ -594,17 +608,60 @@ function Hub() {
         return () => clearInterval(interval);
     }, []);
 
-    // Fetch SNEED token supply stats
+    // Fetch SNEED token supply stats (total supply, treasury, LP)
     useEffect(() => {
         const fetchTokenStats = async () => {
             try {
-                const ledgerActor = createLedgerActor(SNEED_LEDGER_ID);
+                const isLocal = process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging';
+                const host = isLocal ? 'http://localhost:4943' : 'https://ic0.app';
+                const agent = new HttpAgent({ host });
+                if (isLocal) await agent.fetchRootKey().catch(() => {});
+                
+                const ledgerActor = createLedgerActor(SNEED_LEDGER_ID, { agentOptions: { agent } });
+                
+                // Fetch total supply
                 const totalSupplyRaw = await ledgerActor.icrc1_total_supply();
                 const totalSupply = Number(totalSupplyRaw) / Math.pow(10, SNEED_DECIMALS);
+                
+                // Fetch treasury SNEED balance
+                let treasurySneed = 0;
+                try {
+                    const treasuryBalance = await ledgerActor.icrc1_balance_of({
+                        owner: Principal.fromText(SNEED_GOVERNANCE_ID),
+                        subaccount: [hexToUint8Array(TREASURY_SNEED_SUBACCOUNT)]
+                    });
+                    treasurySneed = Number(treasuryBalance) / Math.pow(10, SNEED_DECIMALS);
+                } catch (e) {
+                    console.error('Error fetching treasury balance:', e);
+                }
+                
+                // Fetch LP SNEED amount (positions 24, 25, 26)
+                let lpSneed = 0;
+                try {
+                    const swapActor = createIcpSwapActor(SNEED_ICP_SWAP_CANISTER, { agentOptions: { agent } });
+                    const allPositions = await swapActor.getUserPositionWithTokenAmount(0, 50);
+                    if (allPositions.ok) {
+                        const targetPositionIds = [24, 25, 26];
+                        for (const id of targetPositionIds) {
+                            const position = allPositions.ok.content.find(p => Number(p.id) === id);
+                            if (position) {
+                                lpSneed += Number(position.token0Amount || 0) / Math.pow(10, SNEED_DECIMALS);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error fetching LP positions:', e);
+                }
+                
+                // Calculate circulating: Total - Treasury - LP
+                const circulatingSupply = totalSupply - treasurySneed - lpSneed;
                 
                 setTokenStats(prev => ({
                     ...prev,
                     totalSupply,
+                    treasurySneed,
+                    lpSneed,
+                    circulatingSupply,
                     loading: false
                 }));
             } catch (error) {
@@ -626,9 +683,8 @@ function Hub() {
             
             setTokenStats(prev => ({
                 ...prev,
-                totalStaked,
-                // Circulating = total - staked (simplified)
-                circulatingSupply: prev.totalSupply ? prev.totalSupply - totalStaked : null
+                totalStaked
+                // Note: circulatingSupply is calculated in fetchTokenStats as Total - Treasury - LP
             }));
         }
     }, [sneedNeurons, neuronsLoading]);
@@ -1609,7 +1665,7 @@ function Hub() {
                                 </Link>
                                 <div className="tooltip-content" style={{ background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText }}>
                                     <span className="tooltip-title">Circulating Supply</span>
-                                    <span className="tooltip-text">Tokens available in the market, excluding those locked in the treasury. Includes staked tokens since they can be dissolved.</span>
+                                    <span className="tooltip-text">Total Supply minus Treasury and LP positions. Includes staked tokens since they can be dissolved.</span>
                                 </div>
                             </div>
                             
