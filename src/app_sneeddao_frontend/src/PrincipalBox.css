@@ -241,4 +241,20 @@
   .compact-wallet-token {
     padding: 6px 10px;
   }
+  
+  .principal-popup {
+    min-width: 280px !important;
+  }
+}
+
+/* Animation for copy feedback */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
