@@ -62,6 +62,33 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         });
     }, [walletTokens]);
     
+    // Calculate total portfolio USD value
+    const totalPortfolioUSD = useMemo(() => {
+        let total = 0;
+        let hasAnyValue = false;
+        
+        for (const token of tokensWithBalance) {
+            const available = BigInt(token.available || token.balance || 0n);
+            const locked = BigInt(token.locked || 0n);
+            const staked = BigInt(token.staked || 0n);
+            const maturity = BigInt(token.maturity || 0n);
+            const rewards = BigInt(token.rewards || 0n);
+            const neuronStake = BigInt(token.neuronStake || 0n);
+            const neuronMaturity = BigInt(token.neuronMaturity || 0n);
+            const totalBalance = available + locked + staked + maturity + rewards + neuronStake + neuronMaturity;
+            
+            const balanceNum = Number(totalBalance) / (10 ** (token.decimals || 8));
+            const usdValue = token.conversion_rate ? balanceNum * token.conversion_rate : null;
+            
+            if (usdValue !== null) {
+                total += usdValue;
+                hasAnyValue = true;
+            }
+        }
+        
+        return hasAnyValue ? total : null;
+    }, [tokensWithBalance]);
+    
     // Open send modal for a token
     const openSendModal = (token, e) => {
         if (e) e.stopPropagation();
@@ -656,11 +683,24 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                               marginBottom: '8px',
                               display: 'flex',
                               alignItems: 'center',
-                              gap: '6px'
+                              justifyContent: 'space-between'
                           }}
                       >
-                          <FaWallet size={10} />
-                          Wallet
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <FaWallet size={10} />
+                              Wallet
+                          </div>
+                          {totalPortfolioUSD !== null && (
+                              <span style={{ 
+                                  color: '#10b981',
+                                  fontSize: '12px',
+                                  fontWeight: '600',
+                                  textTransform: 'none',
+                                  letterSpacing: 'normal'
+                              }}>
+                                  ${totalPortfolioUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                          )}
                       </div>
                       <div 
                           className="compact-wallet-container"

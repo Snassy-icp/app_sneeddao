@@ -586,34 +586,48 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         </>
                     )}
                     
-                    {/* Divot toggle button */}
-                    <button
+                    {/* Subtle collapse toggle */}
+                    <span
                         onClick={(e) => {
-                            e.stopPropagation(); // Prevent triggering the menu open
+                            e.stopPropagation();
                             toggleHeaderCollapse();
                         }}
                         style={{
-                            background: 'none',
-                            border: 'none',
-                            color: theme.colors.mutedText,
-                            cursor: 'pointer',
-                            padding: '4px',
-                            borderRadius: '4px',
-                            display: 'flex',
+                            display: 'inline-flex',
                             alignItems: 'center',
-                            fontSize: '16px',
-                            transition: 'color 0.2s ease'
+                            justifyContent: 'center',
+                            width: '16px',
+                            height: '16px',
+                            cursor: 'pointer',
+                            opacity: 0.4,
+                            transition: 'opacity 0.2s ease, transform 0.2s ease',
+                            transform: isHeaderCollapsed ? 'rotate(180deg)' : 'rotate(0deg)',
+                            marginLeft: '-2px'
                         }}
                         onMouseEnter={(e) => {
-                            e.currentTarget.style.color = theme.colors.primaryText;
+                            e.currentTarget.style.opacity = '0.8';
                         }}
                         onMouseLeave={(e) => {
-                            e.currentTarget.style.color = theme.colors.mutedText;
+                            e.currentTarget.style.opacity = '0.4';
                         }}
-                        title={isHeaderCollapsed ? "Expand header sections" : "Collapse header sections"}
+                        title={isHeaderCollapsed ? "Expand header" : "Collapse header"}
                     >
-                        {isHeaderCollapsed ? <FaChevronDown size={14} /> : <FaChevronUp size={14} />}
-                    </button>
+                        <svg 
+                            width="10" 
+                            height="6" 
+                            viewBox="0 0 10 6" 
+                            fill="none"
+                            style={{ display: 'block' }}
+                        >
+                            <path 
+                                d="M1 1L5 5L9 1" 
+                                stroke="currentColor" 
+                                strokeWidth="1.5" 
+                                strokeLinecap="round" 
+                                strokeLinejoin="round"
+                            />
+                        </svg>
+                    </span>
                 </div>
                 </div>
 
