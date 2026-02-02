@@ -505,10 +505,10 @@ function Hub() {
                 const forumActor = createForumActor(forumCanisterId, { agent });
                 const feedResponse = await forumActor.get_feed({
                     start_id: [],
-                    length: 5,
+                    length: 10,  // Fetch more to ensure we have enough
                     filter: []
                 });
-                console.log('Hub: Forum response:', feedResponse);
+                console.log('Hub: Forum response items count:', feedResponse?.items?.length);
                 
                 // Get SNS logos from cached SNS data (no network calls needed)
                 const snsRoots = [...new Set(feedResponse.items
@@ -1359,19 +1359,16 @@ function Hub() {
                                             ? daoStats.activeMembers.toLocaleString()
                                             : daoStats.error 
                                                 ? '—' 
-                                                : (daoStats.progress?.count > 0 
-                                                    ? `${daoStats.progress.count}...` 
-                                                    : '...'
-                                                )
+                                                : '...'
                                         }
                                     </div>
                                     <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginTop: '2px' }}>
                                         {daoStats.error 
                                             ? 'Error loading'
-                                            : daoStats.waitingForSns
-                                                ? 'Loading SNS data...'
-                                                : daoStats.loading && daoStats.progress?.message
-                                                    ? daoStats.progress.message
+                                            : daoStats.loading && daoStats.progress?.count > 0
+                                                ? `Loading (${daoStats.progress.count} neurons)`
+                                                : daoStats.loading
+                                                    ? 'Loading...'
                                                     : 'Sneed DAO'
                                         }
                                     </div>
@@ -1459,7 +1456,7 @@ function Hub() {
                                 </div>
                             ) : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                    {feedItems.map((item, index) => (
+                                    {feedItems.slice(0, 5).map((item, index) => (
                                         <FeedItemCard
                                             key={`feed-${item.id}-${index}`}
                                             item={item}
@@ -1467,6 +1464,8 @@ function Hub() {
                                             compact={false}
                                             getSnsInfo={getSnsById}
                                             snsLogos={snsLogos}
+                                            Principal={Principal}
+                                            allSnses={snsList}
                                         />
                                     ))}
                                 </div>
