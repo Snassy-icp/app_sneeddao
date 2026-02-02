@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import Header from '../components/Header';
 import { Link } from 'react-router-dom';
-import { FaExchangeAlt, FaCoins, FaLock, FaComments, FaWallet, FaServer, FaNewspaper, FaUsers, FaVoteYea, FaRss, FaArrowRight, FaHistory, FaStar, FaUnlock, FaShieldAlt, FaGlobe, FaBrain, FaGavel, FaNetworkWired } from 'react-icons/fa';
+import { FaExchangeAlt, FaCoins, FaLock, FaComments, FaWallet, FaServer, FaNewspaper, FaUsers, FaVoteYea, FaRss, FaArrowRight, FaHistory, FaStar, FaUnlock, FaShieldAlt, FaGlobe, FaBrain, FaGavel, FaNetworkWired, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 import { HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
@@ -241,6 +241,8 @@ function Hub() {
     const [activityLoading, setActivityLoading] = useState(true);
     const [snsLogos, setSnsLogos] = useState({});
     const [tokenPrices, setTokenPrices] = useState({}); // ledger_id -> USD price
+    const [feedExpanded, setFeedExpanded] = useState(false);
+    const [offersExpanded, setOffersExpanded] = useState(false);
     
     // Fetch Sneed neurons directly using hardcoded governance canister (no SNS list needed)
     useEffect(() => {
@@ -1492,7 +1494,12 @@ function Hub() {
                         </div>
 
                         {/* Feed Items */}
-                        <div style={{ padding: '16px' }}>
+                        <div style={{ 
+                            padding: '16px',
+                            maxHeight: feedExpanded ? 'none' : '320px',
+                            overflow: 'hidden',
+                            transition: 'max-height 0.3s ease-out',
+                        }}>
                             {activityLoading ? (
                                 <div style={{ textAlign: 'center', padding: '3rem', color: theme.colors.mutedText }}>
                                     <div className="hub-pulse" style={{ fontSize: '2rem', marginBottom: '12px' }}>💬</div>
@@ -1520,6 +1527,41 @@ function Hub() {
                                 </div>
                             )}
                         </div>
+                        
+                        {/* Expand/Collapse Button */}
+                        {!activityLoading && feedItems.length > 0 && (
+                            <div 
+                                onClick={() => setFeedExpanded(!feedExpanded)}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '6px',
+                                    padding: '10px',
+                                    borderTop: `1px solid ${theme.colors.border}`,
+                                    cursor: 'pointer',
+                                    color: theme.colors.mutedText,
+                                    fontSize: '0.85rem',
+                                    fontWeight: '500',
+                                    transition: 'all 0.2s ease',
+                                    background: feedExpanded ? 'transparent' : `linear-gradient(to top, ${theme.colors.secondaryBg} 0%, transparent 100%)`,
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.color = theme.colors.text;
+                                    e.currentTarget.style.background = theme.colors.tertiaryBg;
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.color = theme.colors.mutedText;
+                                    e.currentTarget.style.background = feedExpanded ? 'transparent' : `linear-gradient(to top, ${theme.colors.secondaryBg} 0%, transparent 100%)`;
+                                }}
+                            >
+                                {feedExpanded ? (
+                                    <>Show Less <FaChevronUp size={12} /></>
+                                ) : (
+                                    <>Show More <FaChevronDown size={12} /></>
+                                )}
+                            </div>
+                        )}
                     </div>
 
                     {/* Sneedex Marketplace - Enhanced Offer Cards */}
@@ -1578,7 +1620,12 @@ function Hub() {
                         </div>
 
                         {/* Enhanced Offer Cards */}
-                        <div style={{ padding: '16px' }}>
+                        <div style={{ 
+                            padding: '16px',
+                            maxHeight: offersExpanded ? 'none' : '320px',
+                            overflow: 'hidden',
+                            transition: 'max-height 0.3s ease-out',
+                        }}>
                             {activityLoading ? (
                                 <div style={{ textAlign: 'center', padding: '3rem', color: theme.colors.mutedText }}>
                                     <div className="hub-pulse" style={{ fontSize: '2rem', marginBottom: '12px' }}>🔨</div>
@@ -1625,6 +1672,41 @@ function Hub() {
                                 </div>
                             )}
                         </div>
+                        
+                        {/* Expand/Collapse Button */}
+                        {!activityLoading && offers.length > 0 && (
+                            <div 
+                                onClick={() => setOffersExpanded(!offersExpanded)}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '6px',
+                                    padding: '10px',
+                                    borderTop: `1px solid ${theme.colors.border}`,
+                                    cursor: 'pointer',
+                                    color: theme.colors.mutedText,
+                                    fontSize: '0.85rem',
+                                    fontWeight: '500',
+                                    transition: 'all 0.2s ease',
+                                    background: offersExpanded ? 'transparent' : `linear-gradient(to top, ${theme.colors.secondaryBg} 0%, transparent 100%)`,
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.color = theme.colors.text;
+                                    e.currentTarget.style.background = theme.colors.tertiaryBg;
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.color = theme.colors.mutedText;
+                                    e.currentTarget.style.background = offersExpanded ? 'transparent' : `linear-gradient(to top, ${theme.colors.secondaryBg} 0%, transparent 100%)`;
+                                }}
+                            >
+                                {offersExpanded ? (
+                                    <>Show Less <FaChevronUp size={12} /></>
+                                ) : (
+                                    <>Show More <FaChevronDown size={12} /></>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
 
