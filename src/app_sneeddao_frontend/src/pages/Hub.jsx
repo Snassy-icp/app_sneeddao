@@ -271,6 +271,49 @@ const customStyles = `
     color: inherit;
     opacity: 0.9;
 }
+
+/* Mobile responsive styles */
+@media (max-width: 600px) {
+    .hub-hero-logo {
+        width: 56px !important;
+        height: 56px !important;
+        border-radius: 16px !important;
+    }
+    
+    .hub-hero-logo-inner {
+        border-radius: 13px !important;
+        padding: 6px !important;
+    }
+    
+    .hub-hero-title {
+        font-size: 1.8rem !important;
+    }
+    
+    .hub-title-row {
+        gap: 0.75rem !important;
+    }
+    
+    .hub-cta-btn {
+        padding: 12px 20px !important;
+        font-size: 0.9rem !important;
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .hub-cta-container {
+        flex-direction: column !important;
+        gap: 0.75rem !important;
+    }
+    
+    .hub-hero-content {
+        padding: 3rem 1.5rem 2.5rem !important;
+    }
+    
+    .hub-subtitle {
+        font-size: 1rem !important;
+        margin-bottom: 1.5rem !important;
+    }
+}
 `;
 
 // Accent colors for the hub
@@ -1366,11 +1409,14 @@ function Hub() {
                     </div>
                     
                     {/* Hero Content */}
-                    <div style={{ 
-                        position: 'relative', 
-                        zIndex: 1,
-                        padding: '4rem 2.5rem 3.5rem',
-                    }}>
+                    <div 
+                        className="hub-hero-content"
+                        style={{ 
+                            position: 'relative', 
+                            zIndex: 1,
+                            padding: '4rem 2.5rem 3.5rem',
+                        }}
+                    >
                         {/* Logo with title */}
                         <div style={{
                             display: 'flex',
@@ -1380,14 +1426,17 @@ function Hub() {
                             marginBottom: '2rem',
                         }}>
                             {/* Title row with logo */}
-                            <div style={{
-                                display: 'flex',
-                                justifyContent: 'center',
-                                alignItems: 'center',
-                                gap: '1.5rem',
-                            }}>
+                            <div 
+                                className="hub-title-row"
+                                style={{
+                                    display: 'flex',
+                                    justifyContent: 'center',
+                                    alignItems: 'center',
+                                    gap: '1.5rem',
+                                }}
+                            >
                                 <div 
-                                    className="hub-float hub-hero-glow"
+                                    className="hub-float hub-hero-glow hub-hero-logo"
                                     style={{
                                         width: '80px',
                                         height: '80px',
@@ -1401,17 +1450,20 @@ function Hub() {
                                         flexShrink: 0,
                                     }}
                                 >
-                                    <div style={{
-                                        width: '100%',
-                                        height: '100%',
-                                        borderRadius: '19px',
-                                        background: theme.colors.secondaryBg,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        padding: '10px',
-                                        boxSizing: 'border-box',
-                                    }}>
+                                    <div 
+                                        className="hub-hero-logo-inner"
+                                        style={{
+                                            width: '100%',
+                                            height: '100%',
+                                            borderRadius: '19px',
+                                            background: theme.colors.secondaryBg,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            padding: '10px',
+                                            boxSizing: 'border-box',
+                                        }}
+                                    >
                                         <img 
                                             src="sneed_logo.png" 
                                             alt="Sneed Logo" 
@@ -1424,33 +1476,39 @@ function Hub() {
                                         />
                                     </div>
                                 </div>
-                                <h2 style={{
-                                    fontSize: 'clamp(2.2rem, 6vw, 3.5rem)',
-                                    fontWeight: '900',
-                                    margin: 0,
-                                    background: `linear-gradient(135deg, ${hubPrimary} 0%, ${hubSecondary} 50%, ${hubAccent} 100%)`,
-                                    backgroundSize: '200% 200%',
-                                    WebkitBackgroundClip: 'text',
-                                    WebkitTextFillColor: 'transparent',
-                                    backgroundClip: 'text',
-                                    animation: 'gradientShift 5s ease infinite',
-                                    letterSpacing: '-0.02em',
-                                }}>
+                                <h2 
+                                    className="hub-hero-title"
+                                    style={{
+                                        fontSize: 'clamp(2.2rem, 6vw, 3.5rem)',
+                                        fontWeight: '900',
+                                        margin: 0,
+                                        background: `linear-gradient(135deg, ${hubPrimary} 0%, ${hubSecondary} 50%, ${hubAccent} 100%)`,
+                                        backgroundSize: '200% 200%',
+                                        WebkitBackgroundClip: 'text',
+                                        WebkitTextFillColor: 'transparent',
+                                        backgroundClip: 'text',
+                                        animation: 'gradientShift 5s ease infinite',
+                                        letterSpacing: '-0.02em',
+                                    }}
+                                >
                                     Sneed Hub
                                 </h2>
                             </div>
                         </div>
                         
                         {/* Subtitle */}
-                        <p style={{
-                            color: theme.colors.secondaryText,
-                            fontSize: '1.25rem',
-                            lineHeight: '1.8',
-                            maxWidth: '700px',
-                            margin: '0 auto 2.5rem auto',
-                            textAlign: 'center',
-                            fontWeight: '400',
-                        }}>
+                        <p 
+                            className="hub-subtitle"
+                            style={{
+                                color: theme.colors.secondaryText,
+                                fontSize: '1.25rem',
+                                lineHeight: '1.8',
+                                maxWidth: '700px',
+                                margin: '0 auto 2.5rem auto',
+                                textAlign: 'center',
+                                fontWeight: '400',
+                            }}
+                        >
                             The all-in-one platform for <strong style={{ color: hubPrimary }}>trading</strong>,{' '}
                             <strong style={{ color: theme.colors.success }}>staking</strong>,{' '}
                             <strong style={{ color: '#9b59b6' }}>locking</strong>, and{' '}
@@ -1458,16 +1516,19 @@ function Hub() {
                         </p>
                         
                         {/* CTA Buttons */}
-                        <div style={{
-                            display: 'flex',
-                            justifyContent: 'center',
-                            gap: '1rem',
-                            flexWrap: 'wrap',
-                            marginBottom: '3rem',
-                        }}>
+                        <div 
+                            className="hub-cta-container"
+                            style={{
+                                display: 'flex',
+                                justifyContent: 'center',
+                                gap: '1rem',
+                                flexWrap: 'wrap',
+                                marginBottom: '3rem',
+                            }}
+                        >
                             <Link 
                                 to="/sneedex_offers" 
-                                className="hub-cta-primary"
+                                className="hub-cta-btn"
                                 style={{
                                     display: 'inline-flex',
                                     alignItems: 'center',
@@ -1489,7 +1550,7 @@ function Hub() {
                             </Link>
                             <Link 
                                 to="/liquid_staking" 
-                                className="hub-cta-secondary"
+                                className="hub-cta-btn"
                                 style={{
                                     display: 'inline-flex',
                                     alignItems: 'center',
@@ -1510,6 +1571,7 @@ function Hub() {
                             </Link>
                             <Link 
                                 to="/sneedlock_info" 
+                                className="hub-cta-btn"
                                 style={{
                                     display: 'inline-flex',
                                     alignItems: 'center',
