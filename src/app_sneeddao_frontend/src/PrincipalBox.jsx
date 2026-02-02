@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaCopy, FaCheck, FaWallet, FaPaperPlane, FaKey, FaIdCard, FaExternalLinkAlt, FaSync } from 'react-icons/fa';
+import { FaCopy, FaCheck, FaWallet, FaPaperPlane, FaKey, FaIdCard, FaExternalLinkAlt, FaSync, FaCoins, FaWater } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import { principalToSubAccount } from '@dfinity/utils';
 import { useAuth } from './AuthContext';
@@ -39,6 +39,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
             return false;
         }
     });
+    const [walletTab, setWalletTab] = useState('tokens'); // 'tokens' or 'positions'
     const popupRef = useRef(null);
     const { login, identity } = useAuth();
     const { theme } = useTheme();
@@ -713,7 +714,56 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                   {/* Wallet Section - now in the padding area */}
                   <div style={{ padding: '12px 16px' }}>
 
-                  {/* Compact Wallet Section */}
+                  {/* Wallet Tabs */}
+                      <div style={{ 
+                          display: 'flex', 
+                          gap: '4px', 
+                          marginBottom: '8px'
+                      }}>
+                          <button
+                              onClick={() => setWalletTab('tokens')}
+                              style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '5px 10px',
+                                  background: walletTab === 'tokens' ? `${theme.colors.accent}20` : 'transparent',
+                                  border: `1px solid ${walletTab === 'tokens' ? theme.colors.accent : theme.colors.border}`,
+                                  borderRadius: '6px',
+                                  cursor: 'pointer',
+                                  color: walletTab === 'tokens' ? theme.colors.accent : theme.colors.mutedText,
+                                  fontSize: '11px',
+                                  fontWeight: walletTab === 'tokens' ? '600' : '500',
+                                  transition: 'all 0.2s ease'
+                              }}
+                          >
+                              <FaCoins size={10} />
+                              Tokens
+                          </button>
+                          <button
+                              onClick={() => setWalletTab('positions')}
+                              style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '5px 10px',
+                                  background: walletTab === 'positions' ? `${theme.colors.accent}20` : 'transparent',
+                                  border: `1px solid ${walletTab === 'positions' ? theme.colors.accent : theme.colors.border}`,
+                                  borderRadius: '6px',
+                                  cursor: 'pointer',
+                                  color: walletTab === 'positions' ? theme.colors.accent : theme.colors.mutedText,
+                                  fontSize: '11px',
+                                  fontWeight: walletTab === 'positions' ? '600' : '500',
+                                  transition: 'all 0.2s ease'
+                              }}
+                          >
+                              <FaWater size={10} />
+                              Positions
+                          </button>
+                      </div>
+
+                      {/* Tokens Tab Header */}
+                      {walletTab === 'tokens' && (
                       <div 
                           style={{ 
                               color: theme.colors.mutedText, 
@@ -800,6 +850,11 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                               )}
                           </div>
                       </div>
+                      )}
+
+                      {/* Tokens Tab Content */}
+                      {walletTab === 'tokens' && (
+                      <>
                       <div 
                           className="compact-wallet-container"
                           style={{
@@ -1021,6 +1076,57 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                               <FaWallet size={11} />
                               View Full Wallet
                           </button>
+                      )}
+                      </>
+                      )}
+
+                      {/* Positions Tab Content */}
+                      {walletTab === 'positions' && (
+                          <div style={{
+                              backgroundColor: theme.colors.primaryBg,
+                              borderRadius: '8px',
+                              padding: '16px',
+                              textAlign: 'center'
+                          }}>
+                              <FaWater size={24} style={{ color: theme.colors.mutedText, marginBottom: '8px' }} />
+                              <div style={{
+                                  color: theme.colors.secondaryText,
+                                  fontSize: '12px',
+                                  marginBottom: '12px'
+                              }}>
+                                  View and manage your liquidity positions
+                              </div>
+                              <button
+                                  onClick={() => {
+                                      navigate('/wallet');
+                                      setShowPopup(false);
+                                  }}
+                                  style={{
+                                      padding: '8px 16px',
+                                      backgroundColor: theme.colors.accent,
+                                      color: theme.colors.primaryBg,
+                                      border: 'none',
+                                      borderRadius: '6px',
+                                      fontSize: '12px',
+                                      fontWeight: '500',
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '6px',
+                                      margin: '0 auto',
+                                      transition: 'all 0.2s ease'
+                                  }}
+                                  onMouseOver={(e) => {
+                                      e.currentTarget.style.backgroundColor = theme.colors.accentHover || `${theme.colors.accent}dd`;
+                                  }}
+                                  onMouseOut={(e) => {
+                                      e.currentTarget.style.backgroundColor = theme.colors.accent;
+                                  }}
+                              >
+                                  <FaWater size={11} />
+                                  View Positions
+                              </button>
+                          </div>
                       )}
                   </div>
 

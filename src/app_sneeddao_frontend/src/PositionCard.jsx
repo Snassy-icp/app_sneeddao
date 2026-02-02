@@ -8,7 +8,7 @@ import { useNaming } from './NamingContext';
 import { useAuth } from './AuthContext';
 import { Principal } from '@dfinity/principal';
 import { Link } from 'react-router-dom';
-import { FaBriefcase, FaLock, FaSync, FaCoins, FaArrowDown, FaQuestionCircle, FaExternalLinkAlt, FaCheck, FaCopy, FaInfoCircle, FaUnlock, FaTimes, FaWater } from 'react-icons/fa';
+import { FaBriefcase, FaLock, FaSync, FaCoins, FaArrowDown, FaQuestionCircle, FaExternalLinkAlt, FaCheck, FaCopy, FaInfoCircle, FaUnlock, FaTimes, FaWater, FaDollarSign, FaChevronDown, FaChevronRight, FaExpandAlt } from 'react-icons/fa';
 
 // Countdown timer component for position locks expiring within 1 hour
 const PositionLockCountdown = ({ expiryNanos }) => {
@@ -69,15 +69,13 @@ const PositionLockCountdown = ({ expiryNanos }) => {
     );
 };
 
-const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModal, openLockPositionModal, handleWithdrawPositionRewards, handleClaimLockedPositionFees, handleClaimUnlockedDepositedPositionFees, handleWithdrawPosition, handleWithdrawSwapBalance, handleTransferPositionOwnership, handleRefreshPosition, isRefreshing = false, swapCanisterBalance0, swapCanisterBalance1, token0Fee, token1Fee, hideButtons, hideUnclaimedFees, defaultExpanded = false, defaultLocksExpanded = false }) => {
+const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModal, openLockPositionModal, handleWithdrawPositionRewards, handleClaimLockedPositionFees, handleClaimUnlockedDepositedPositionFees, handleWithdrawPosition, handleWithdrawSwapBalance, handleTransferPositionOwnership, handleRefreshPosition, isRefreshing = false, swapCanisterBalance0, swapCanisterBalance1, token0Fee, token1Fee, hideButtons, hideUnclaimedFees, defaultExpanded = false, defaultLocksExpanded = false, onOpenDetailModal }) => {
 
     const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
     const { isAuthenticated } = useAuth();
     const [isExpanded, setIsExpanded] = useState(defaultExpanded);
-    const [balanceSectionExpanded, setBalanceSectionExpanded] = useState(true);
-    const [locksExpanded, setLocksExpanded] = useState(defaultLocksExpanded);
-    const [infoExpanded, setInfoExpanded] = useState(false);
+    const [activeTab, setActiveTab] = useState(defaultLocksExpanded ? 'locks' : 'balance'); // 'balance', 'locks', 'info'
     const [isClaiming, setIsClaiming] = useState(false);
     const [isClaimingLocked, setIsClaimingLocked] = useState(false);
     const [claimRequestId, setClaimRequestId] = useState(null);
@@ -211,11 +209,34 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                     transition: 'color 0.2s ease',
                                     opacity: isRefreshing ? 0.6 : 1
                                 }}
-                                onMouseEnter={(e) => !isRefreshing && (e.target.style.color = theme.colors.primaryText)}
-                                onMouseLeave={(e) => !isRefreshing && (e.target.style.color = theme.colors.mutedText)}
+                                onMouseEnter={(e) => !isRefreshing && (e.currentTarget.style.color = theme.colors.primaryText)}
+                                onMouseLeave={(e) => !isRefreshing && (e.currentTarget.style.color = theme.colors.mutedText)}
                                 title="Refresh position data"
                             >
                                 <FaSync size={12} style={{ animation: isRefreshing ? 'spin 1s linear infinite' : 'none' }} />
+                            </button>
+                        )}
+                        {onOpenDetailModal && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onOpenDetailModal(position, positionDetails);
+                                }}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    padding: '4px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    color: theme.colors.mutedText,
+                                    transition: 'color 0.2s ease'
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.color = theme.colors.accent}
+                                onMouseLeave={(e) => e.currentTarget.style.color = theme.colors.mutedText}
+                                title="Open in dialog"
+                            >
+                                <FaExpandAlt size={14} />
                             </button>
                         )}
                     </div>
@@ -412,40 +433,110 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                         </span>
                     </div>
 
+                    {/* Tab Bar for Balance, Locks, and Info */}
+                    <div style={{
+                        display: 'flex',
+                        gap: '4px',
+                        padding: '8px 0',
+                        borderBottom: `1px solid ${theme.colors.border}`,
+                        marginBottom: activeTab ? '15px' : '0',
+                        flexWrap: 'wrap'
+                    }}>
+                        {/* Balance Tab */}
+                        <button
+                            onClick={() => setActiveTab(activeTab === 'balance' ? null : 'balance')}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                padding: '6px 10px',
+                                background: activeTab === 'balance' ? `${theme.colors.accent}20` : 'transparent',
+                                border: `1px solid ${activeTab === 'balance' ? theme.colors.accent : theme.colors.border}`,
+                                borderRadius: '8px',
+                                cursor: 'pointer',
+                                color: activeTab === 'balance' ? theme.colors.accent : theme.colors.primaryText,
+                                fontSize: '0.8rem',
+                                fontWeight: activeTab === 'balance' ? '600' : '500',
+                                transition: 'all 0.2s ease'
+                            }}
+                        >
+                            <FaDollarSign size={12} />
+                            Balance
+                        </button>
+
+                        {/* Locks Tab */}
+                        <button
+                            onClick={() => setActiveTab(activeTab === 'locks' ? null : 'locks')}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                padding: '6px 10px',
+                                background: activeTab === 'locks' ? `${theme.colors.accent}20` : 'transparent',
+                                border: `1px solid ${activeTab === 'locks' ? theme.colors.accent : theme.colors.border}`,
+                                borderRadius: '8px',
+                                cursor: 'pointer',
+                                color: activeTab === 'locks' ? theme.colors.accent : theme.colors.primaryText,
+                                fontSize: '0.8rem',
+                                fontWeight: activeTab === 'locks' ? '600' : '500',
+                                transition: 'all 0.2s ease'
+                            }}
+                        >
+                            <FaLock size={12} />
+                            {isLockedPosition(positionDetails) ? 1 : 0}
+                        </button>
+
+                        {/* Info Tab */}
+                        <button
+                            onClick={() => setActiveTab(activeTab === 'info' ? null : 'info')}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                padding: '6px 10px',
+                                background: activeTab === 'info' ? `${theme.colors.accent}20` : 'transparent',
+                                border: `1px solid ${activeTab === 'info' ? theme.colors.accent : theme.colors.border}`,
+                                borderRadius: '8px',
+                                cursor: 'pointer',
+                                color: activeTab === 'info' ? theme.colors.accent : theme.colors.primaryText,
+                                fontSize: '0.8rem',
+                                fontWeight: activeTab === 'info' ? '600' : '500',
+                                transition: 'all 0.2s ease'
+                            }}
+                        >
+                            <FaInfoCircle size={12} />
+                            Info
+                        </button>
+                    </div>
+
+                    {/* Balance Tab Content */}
+                    {activeTab === 'balance' && (
                     <div className="balance-section">
-                <div className="balance-item" style={{ cursor: 'pointer' }} onClick={() => setBalanceSectionExpanded(!balanceSectionExpanded)}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span className="token-symbol">Total</span>
-                        <span style={{ 
-                            fontSize: '0.9rem',
-                            color: theme.colors.secondaryText,
-                            userSelect: 'none'
-                        }}>
-                            {balanceSectionExpanded ? '▼' : '▶'}
-                        </span>
-                    </div>
-                    <div className="amount-value" style={{ marginTop: '4px' }}>
-                        ${getPositionTVL(position, positionDetails, hideUnclaimedFees).toFixed(2)}
-                    </div>
-                    <div className="token-amounts" style={{ marginTop: '8px' }}>
-                        <div className="token-amount">
-                            <span className="token-symbol">{position.token0Symbol}:</span>
-                            <span className="amount-value">
-                                {formatAmount(positionDetails.token0Amount + (hideUnclaimedFees ? 0n : positionDetails.tokensOwed0), position.token0Decimals)}
-                                {getUSD(positionDetails.token0Amount + (hideUnclaimedFees ? 0n : positionDetails.tokensOwed0), position.token0Decimals, position.token0_conversion_rate)}
-                            </span>
+                        {/* Total Summary */}
+                        <div className="balance-item">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span className="token-symbol">Total</span>
+                            </div>
+                            <div className="amount-value" style={{ marginTop: '4px' }}>
+                                ${getPositionTVL(position, positionDetails, hideUnclaimedFees).toFixed(2)}
+                            </div>
+                            <div className="token-amounts" style={{ marginTop: '8px' }}>
+                                <div className="token-amount">
+                                    <span className="token-symbol">{position.token0Symbol}:</span>
+                                    <span className="amount-value">
+                                        {formatAmount(positionDetails.token0Amount + (hideUnclaimedFees ? 0n : positionDetails.tokensOwed0), position.token0Decimals)}
+                                        {getUSD(positionDetails.token0Amount + (hideUnclaimedFees ? 0n : positionDetails.tokensOwed0), position.token0Decimals, position.token0_conversion_rate)}
+                                    </span>
+                                </div>
+                                <div className="token-amount">
+                                    <span className="token-symbol">{position.token1Symbol}:</span>
+                                    <span className="amount-value">
+                                        {formatAmount(positionDetails.token1Amount + (hideUnclaimedFees ? 0n : positionDetails.tokensOwed1), position.token1Decimals)}
+                                        {getUSD(positionDetails.token1Amount + (hideUnclaimedFees ? 0n : positionDetails.tokensOwed1), position.token1Decimals, position.token1_conversion_rate)}
+                                    </span>
+                                </div>
+                            </div>
                         </div>
-                        <div className="token-amount">
-                            <span className="token-symbol">{position.token1Symbol}:</span>
-                            <span className="amount-value">
-                                {formatAmount(positionDetails.token1Amount + (hideUnclaimedFees ? 0n : positionDetails.tokensOwed1), position.token1Decimals)}
-                                {getUSD(positionDetails.token1Amount + (hideUnclaimedFees ? 0n : positionDetails.tokensOwed1), position.token1Decimals, position.token1_conversion_rate)}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-                {balanceSectionExpanded && (
-                <>
                 <div className="balance-item">
                     <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-start' }}>
                         <FaWater size={14} style={{ color: theme.colors.mutedText }} />
@@ -676,71 +767,13 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                         </div>
                     </div>
                 )}
-            </div>
-            <div className="locks-section">
-                {/* Collapsible Locks Header */}
-                <div 
-                    className="locks-header" 
-                    onClick={() => setLocksExpanded(!locksExpanded)}
-                    style={{
-                        cursor: 'pointer',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        padding: '12px 0',
-                        borderBottom: `1px solid ${theme.colors.border}`,
-                        marginBottom: locksExpanded ? '15px' : '0'
-                    }}
-                >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <FaLock size={14} style={{ color: theme.colors.mutedText }} />
-                        <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
-                            {isLockedPosition(positionDetails) ? '1 Lock' : '0 Locks'}
-                        </span>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <Link 
-                            to="/help/sneedlock"
-                            onClick={(e) => e.stopPropagation()}
-                            style={{
-                                color: theme.colors.mutedText,
-                                textDecoration: 'none',
-                                fontSize: '0.85rem',
-                                display: 'flex',
-                                alignItems: 'center',
-                                padding: '2px 4px',
-                                borderRadius: '4px',
-                                transition: 'all 0.2s ease'
-                            }}
-                            onMouseEnter={(e) => {
-                                e.target.style.color = theme.colors.accent;
-                                e.target.style.background = `${theme.colors.accent}15`;
-                            }}
-                            onMouseLeave={(e) => {
-                                e.target.style.color = theme.colors.mutedText;
-                                e.target.style.background = 'transparent';
-                            }}
-                            title="Learn about Sneed Lock"
-                        >
-                            <FaQuestionCircle size={14} />
-                        </Link>
-                        {/* Expand/Collapse Indicator */}
-                        <span 
-                            style={{ 
-                                color: theme.colors.mutedText, 
-                                fontSize: '1.2rem',
-                                transform: locksExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                                transition: 'transform 0.2s ease'
-                            }}
-                        >
-                            ▼
-                        </span>
-                    </div>
-                </div>
+                    )}
 
-                {/* Collapsible Locks Content */}
-                {locksExpanded && (
-                    <div>
+                    {/* Locks Tab Content */}
+                    {activeTab === 'locks' && (
+                    <div className="locks-section">
+                        {/* Lock Actions Row */}
                         {/* Lock Actions Row */}
                         {!hideButtons && (
                             <div style={{ 
@@ -961,49 +994,12 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                             </div>
                         )}
                         </div>
-                )}
-            </div>
-
-            {/* Position Info Section */}
-            <div className="info-section">
-                {/* Collapsible Info Header */}
-                <div 
-                    className="info-header" 
-                    onClick={() => setInfoExpanded(!infoExpanded)}
-                    style={{
-                        cursor: 'pointer',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        padding: '12px 0',
-                        borderBottom: `1px solid ${theme.colors.border}`,
-                        marginBottom: infoExpanded ? '15px' : '0'
-                    }}
-                >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <FaInfoCircle size={14} style={{ color: theme.colors.mutedText }} />
-                        <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
-                            Position Info
-                        </span>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        {/* Expand/Collapse Indicator */}
-                        <span 
-                            style={{ 
-                                color: theme.colors.mutedText, 
-                                fontSize: '1.2rem',
-                                transform: infoExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                                transition: 'transform 0.2s ease'
-                            }}
-                        >
-                            ▼
-                        </span>
-                    </div>
-                </div>
+                    )}
 
-                {/* Collapsible Info Content */}
-                {infoExpanded && (
-                    <div style={{ paddingBottom: '15px' }}>
+                    {/* Info Tab Content */}
+                    {activeTab === 'info' && (
+                    <div className="info-section" style={{ paddingBottom: '15px' }}>
                         {/* Swap Canister ID */}
                         <div style={{
                             padding: '10px 0',
@@ -1186,8 +1182,7 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                             </div>
                         </div>
                     </div>
-                )}
-            </div>
+                    )}
                 </>
             )}
         </div>
