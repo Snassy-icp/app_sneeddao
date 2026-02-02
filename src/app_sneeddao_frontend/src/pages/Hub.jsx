@@ -1628,7 +1628,7 @@ function Hub() {
                                 Start Staking
                             </Link>
                             <Link 
-                                to="/sneedlock_info" 
+                                to="/tools/sns_jailbreak" 
                                 className="hub-cta-btn"
                                 style={{
                                     display: 'inline-flex',
@@ -1645,8 +1645,8 @@ function Hub() {
                                     transition: 'all 0.3s ease',
                                 }}
                             >
-                                <FaLock size={16} style={{ color: '#9b59b6' }} />
-                                Lock Tokens
+                                <FaUnlock size={16} style={{ color: hubAccent }} />
+                                Unlock Neurons
                             </Link>
                         </div>
                         
