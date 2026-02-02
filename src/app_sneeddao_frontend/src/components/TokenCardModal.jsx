@@ -54,6 +54,33 @@ const TokenCardModal = ({
         };
     }, [token]);
 
+    // Create proper loading state objects that indicate "not loading"
+    // rewardDetailsLoading expects { [ledger_id]: number } where >= 0 means not loading
+    // lockDetailsLoading expects { [ledger_id]: boolean } where false means not loading
+    const normalizedRewardDetailsLoading = useMemo(() => {
+        if (rewardDetailsLoading && typeof rewardDetailsLoading === 'object' && Object.keys(rewardDetailsLoading).length > 0) {
+            return rewardDetailsLoading;
+        }
+        // Return object indicating "loaded" (value >= 0) for this token
+        const ledgerId = token?.ledger_canister_id?.toString?.() || token?.ledger_canister_id || token?.principal;
+        if (ledgerId) {
+            return { [ledgerId]: 0 }; // 0 means loaded/not loading
+        }
+        return {};
+    }, [rewardDetailsLoading, token]);
+
+    const normalizedLockDetailsLoading = useMemo(() => {
+        if (lockDetailsLoading && typeof lockDetailsLoading === 'object') {
+            return lockDetailsLoading;
+        }
+        // Return object indicating "not loading" for this token
+        const ledgerId = token?.ledger_canister_id?.toString?.() || token?.ledger_canister_id || token?.principal;
+        if (ledgerId) {
+            return { [ledgerId]: false };
+        }
+        return {};
+    }, [lockDetailsLoading, token]);
+
     // Handle escape key to close
     useEffect(() => {
         const handleEscape = (e) => {
@@ -151,7 +178,7 @@ const TokenCardModal = ({
                     <TokenCard
                         token={normalizedToken}
                         locks={locks}
-                        lockDetailsLoading={lockDetailsLoading}
+                        lockDetailsLoading={normalizedLockDetailsLoading}
                         showDebug={false}
                         hideButtons={hideButtons}
                         defaultExpanded={true}
@@ -160,7 +187,7 @@ const TokenCardModal = ({
                         openLockModal={openLockModal}
                         openWrapModal={openWrapModal}
                         openUnwrapModal={openUnwrapModal}
-                        rewardDetailsLoading={rewardDetailsLoading}
+                        rewardDetailsLoading={normalizedRewardDetailsLoading}
                         handleClaimRewards={handleClaimRewards}
                         handleWithdrawFromBackend={handleWithdrawFromBackend}
                         handleDepositToBackend={handleDepositToBackend}
