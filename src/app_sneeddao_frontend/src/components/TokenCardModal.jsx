@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo } from 'react';
-import { FaTimes } from 'react-icons/fa';
+import React, { useEffect, useMemo, useState } from 'react';
+import { FaTimes, FaSync } from 'react-icons/fa';
 import { useTheme } from '../contexts/ThemeContext';
 import TokenCard from '../TokenCard';
 
@@ -27,6 +27,19 @@ const TokenCardModal = ({
     isSnsToken = false
 }) => {
     const { theme } = useTheme();
+    const [refreshClicked, setRefreshClicked] = useState(false);
+
+    // Handle refresh click with visual feedback
+    const handleRefreshClick = async () => {
+        if (isRefreshing || !handleRefreshToken) return;
+        
+        // Visual feedback
+        setRefreshClicked(true);
+        setTimeout(() => setRefreshClicked(false), 300);
+        
+        // Trigger refresh
+        await handleRefreshToken(token);
+    };
 
     // Normalize token data to ensure all required fields exist
     const normalizedToken = useMemo(() => {
@@ -159,12 +172,60 @@ const TokenCardModal = ({
                     animation: 'slideUp 0.3s ease'
                 }}
             >
-                {/* Header bar with close button - positioned above the card content */}
+                {/* Header bar with refresh and close buttons */}
                 <div style={{
                     display: 'flex',
                     justifyContent: 'flex-end',
+                    gap: '8px',
                     padding: '8px 8px 0 8px'
                 }}>
+                    {/* Refresh button */}
+                    {handleRefreshToken && (
+                        <button
+                            onClick={handleRefreshClick}
+                            disabled={isRefreshing}
+                            style={{
+                                background: refreshClicked 
+                                    ? 'rgba(59, 130, 246, 0.5)' 
+                                    : 'rgba(255, 255, 255, 0.1)',
+                                border: 'none',
+                                borderRadius: '50%',
+                                width: '32px',
+                                height: '32px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: isRefreshing ? 'not-allowed' : 'pointer',
+                                color: refreshClicked ? '#fff' : theme.colors.mutedText,
+                                transition: 'all 0.15s ease',
+                                opacity: isRefreshing ? 0.5 : 1,
+                                transform: refreshClicked ? 'scale(0.9)' : 'scale(1)',
+                                flexShrink: 0
+                            }}
+                            onMouseOver={(e) => {
+                                if (!isRefreshing && !refreshClicked) {
+                                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                                    e.currentTarget.style.color = theme.colors.primaryText;
+                                }
+                            }}
+                            onMouseOut={(e) => {
+                                if (!refreshClicked) {
+                                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                                    e.currentTarget.style.color = theme.colors.mutedText;
+                                }
+                            }}
+                            title="Refresh token data"
+                        >
+                            <FaSync 
+                                size={12} 
+                                style={{ 
+                                    animation: isRefreshing ? 'spin 1s linear infinite' : 'none' 
+                                }} 
+                            />
+                        </button>
+                    )}
+                    
+                    {/* Close button */}
                     <button
                         onClick={onClose}
                         style={{
@@ -213,7 +274,7 @@ const TokenCardModal = ({
                         handleClaimRewards={handleClaimRewards}
                         handleWithdrawFromBackend={handleWithdrawFromBackend}
                         handleDepositToBackend={handleDepositToBackend}
-                        handleRefreshToken={handleRefreshToken}
+                        /* Don't pass handleRefreshToken to TokenCard - we handle refresh in modal header */
                         isRefreshing={isRefreshing}
                         isSnsToken={isSnsToken}
                     />
@@ -234,6 +295,10 @@ const TokenCardModal = ({
                         opacity: 1;
                         transform: translateY(0);
                     }
+                }
+                @keyframes spin {
+                    from { transform: rotate(0deg); }
+                    to { transform: rotate(360deg); }
                 }
             `}</style>
         </div>

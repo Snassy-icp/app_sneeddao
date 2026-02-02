@@ -42,6 +42,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     // Get wallet tokens from context
     const walletTokens = walletContext?.walletTokens || [];
     const walletLoading = walletContext?.walletLoading || false;
+    const hasFetchedInitial = walletContext?.hasFetchedInitial || false;
     const sendToken = walletContext?.sendToken;
     const isTokenSns = walletContext?.isTokenSns;
     
@@ -667,7 +668,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                               overflowY: 'auto'
                           }}
                       >
-                          {walletLoading ? (
+                          {(walletLoading || !hasFetchedInitial) ? (
                               <div style={{ 
                                   padding: '12px', 
                                   textAlign: 'center',

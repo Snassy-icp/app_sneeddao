@@ -383,6 +383,7 @@ export const WalletProvider = ({ children }) => {
             walletLoading,
             lastUpdated,
             hasDetailedData,
+            hasFetchedInitial,
             updateWalletTokens,
             setLoading,
             clearWallet,
