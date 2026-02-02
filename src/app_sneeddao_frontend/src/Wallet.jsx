@@ -28,6 +28,7 @@ import DepositTokenModal from './DepositTokenModal';
 import { get_short_timezone, format_duration, bigDateToReadable, dateToReadable } from './utils/DateUtils';
 import { formatAmount, toJsonString, formatAmountWithConversion } from './utils/StringUtils';
 import TokenCard from './TokenCard';
+import TokenCardModal from './components/TokenCardModal';
 import PositionCard from './PositionCard';
 import { get_available, get_available_backend, getTokenLogo, get_token_conversion_rate, get_token_icp_rate, getTokenTVL, getTokenMetaForSwap, rewardAmountOrZero, availableOrZero } from './utils/TokenUtils';
 import { getTrackedCanisters, registerTrackedCanister, unregisterTrackedCanister } from './utils/BackendUtils';
@@ -487,6 +488,8 @@ function Wallet() {
     const [tokensTotal, setTokensTotal] = useState(0.0);
     const [lpPositionsTotal, setLpPositionsTotal] = useState(0.0);
     const [icpPrice, setIcpPrice] = useState(null);
+    const [showTokenDetailModal, setShowTokenDetailModal] = useState(false);
+    const [detailToken, setDetailToken] = useState(null);
     const [showConsolidateModal, setShowConsolidateModal] = useState(false);
     const [consolidateType, setConsolidateType] = useState(null); // 'fees', 'rewards', 'maturity', 'all'
     const [consolidateItems, setConsolidateItems] = useState([]);
@@ -2784,6 +2787,11 @@ function Wallet() {
         setShowSendModal(true);
     };
 
+    const openTokenDetailModal = (token) => {
+        setDetailToken(token);
+        setShowTokenDetailModal(true);
+    };
+
     const openWrapModal = (token) => {
         setSelectedToken(token);
         setShowWrapUnwrapModal(true);
@@ -5046,6 +5054,7 @@ function Wallet() {
                                     }));
                                 }}
                                 openTransferTokenLockModal={openTransferTokenLockModal}
+                                onOpenDetailModal={openTokenDetailModal}
                             />
                         );
                     })}
@@ -7308,6 +7317,24 @@ function Wallet() {
                     type={consolidateType}
                     items={consolidateItems}
                     onConsolidate={handleConsolidateItem}
+                />
+                <TokenCardModal
+                    show={showTokenDetailModal}
+                    onClose={() => setShowTokenDetailModal(false)}
+                    token={detailToken}
+                    locks={locks}
+                    lockDetailsLoading={lockDetailsLoading}
+                    rewardDetailsLoading={rewardDetailsLoading}
+                    openSendModal={openSendModal}
+                    openLockModal={openLockModal}
+                    openWrapModal={openWrapModal}
+                    openUnwrapModal={openUnwrapModal}
+                    handleClaimRewards={handleClaimRewards}
+                    handleWithdrawFromBackend={handleWithdrawFromBackend}
+                    handleDepositToBackend={handleDepositToBackend}
+                    handleRefreshToken={handleRefreshToken}
+                    isRefreshing={detailToken ? refreshingTokens.has(detailToken.ledger_canister_id) : false}
+                    isSnsToken={detailToken ? snsTokens.has(detailToken.ledger_canister_id?.toString?.() || detailToken.ledger_canister_id) : false}
                 />
                     </>
                 )}

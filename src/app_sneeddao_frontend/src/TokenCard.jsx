@@ -14,6 +14,7 @@ import { useNaming } from './NamingContext';
 import { VotingPowerCalculator } from './utils/VotingPowerUtils';
 import { getUserPermissionIcons, getStateIcon, PERM } from './utils/NeuronPermissionUtils';
 import { Link } from 'react-router-dom';
+import { FaDollarSign, FaLock, FaBrain, FaInfoCircle, FaTint, FaSeedling, FaHourglassHalf, FaGift, FaExpandAlt, FaSync, FaQuestionCircle, FaPlus, FaBan, FaPlay, FaStop, FaWallet, FaExchangeAlt } from 'react-icons/fa';
 
 // Constants for GLDT and sGLDT canister IDs
 const GLDT_CANISTER_ID = '6c7su-kiaaa-aaaar-qaira-cai';
@@ -77,7 +78,7 @@ const LockCountdown = ({ expiry }) => {
     );
 };
 
-const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, defaultExpanded = false, defaultLocksExpanded = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, rewardDetailsLoading, handleClaimRewards, handleWithdrawFromBackend, handleDepositToBackend, handleRefreshToken, isRefreshing = false, isSnsToken = false, onNeuronTotalsChange, onNeuronsLoaded, openTransferTokenLockModal }) => {
+const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, defaultExpanded = false, defaultLocksExpanded = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, rewardDetailsLoading, handleClaimRewards, handleWithdrawFromBackend, handleDepositToBackend, handleRefreshToken, isRefreshing = false, isSnsToken = false, onNeuronTotalsChange, onNeuronsLoaded, openTransferTokenLockModal, onOpenDetailModal }) => {
 
     const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
@@ -1206,43 +1207,68 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             }
                         </span>
                     </div>
-                    {/* Row 2: Amount and symbol (left) and Refresh button (right) */}
+                    {/* Row 2: Amount and symbol (left) and buttons (right) */}
                     <div className="header-row-2">
                         <div className="amount-symbol">
                             {!hideAvailable && (
                                 <span className="token-amount">{formatAmount((token.available || 0n) + (token.locked || 0n) + (isSnsToken ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)} {token.symbol}</span>
                             )}
                         </div>
-                        {handleRefreshToken && (
-                            <button
-                                onClick={async (e) => {
-                                    e.stopPropagation();
-                                    await handleRefreshToken(token);
-                                    // Also refresh neurons if it's an SNS token
-                                    if (isSnsToken && refetchNeurons) {
-                                        await refetchNeurons();
-                                    }
-                                }}
-                                disabled={isRefreshing}
-                                style={{
-                                    background: 'none',
-                                    border: 'none',
-                                    cursor: isRefreshing ? 'default' : 'pointer',
-                                    padding: '4px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    color: theme.colors.mutedText,
-                                    fontSize: '1.2rem',
-                                    transition: 'color 0.2s ease',
-                                    opacity: isRefreshing ? 0.6 : 1
-                                }}
-                                onMouseEnter={(e) => !isRefreshing && (e.target.style.color = theme.colors.primaryText)}
-                                onMouseLeave={(e) => !isRefreshing && (e.target.style.color = theme.colors.mutedText)}
-                                title="Refresh token data"
-                            >
-                                {isRefreshing ? '⏳' : '🔄'}
-                            </button>
-                        )}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            {/* Expand to dialog button - only show if handler provided */}
+                            {onOpenDetailModal && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onOpenDetailModal(token);
+                                    }}
+                                    style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        padding: '4px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        color: theme.colors.mutedText,
+                                        transition: 'color 0.2s ease'
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.color = theme.colors.accent}
+                                    onMouseLeave={(e) => e.currentTarget.style.color = theme.colors.mutedText}
+                                    title="Open in dialog"
+                                >
+                                    <FaExpandAlt size={14} />
+                                </button>
+                            )}
+                            {handleRefreshToken && (
+                                <button
+                                    onClick={async (e) => {
+                                        e.stopPropagation();
+                                        await handleRefreshToken(token);
+                                        // Also refresh neurons if it's an SNS token
+                                        if (isSnsToken && refetchNeurons) {
+                                            await refetchNeurons();
+                                        }
+                                    }}
+                                    disabled={isRefreshing}
+                                    style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        cursor: isRefreshing ? 'default' : 'pointer',
+                                        padding: '4px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        color: theme.colors.mutedText,
+                                        transition: 'color 0.2s ease',
+                                        opacity: isRefreshing ? 0.6 : 1
+                                    }}
+                                    onMouseEnter={(e) => !isRefreshing && (e.currentTarget.style.color = theme.colors.primaryText)}
+                                    onMouseLeave={(e) => !isRefreshing && (e.currentTarget.style.color = theme.colors.mutedText)}
+                                    title="Refresh token data"
+                                >
+                                    <FaSync size={12} style={{ animation: isRefreshing ? 'spin 1s linear infinite' : 'none' }} />
+                                </button>
+                            )}
+                        </div>
                     </div>
                     {/* Price per token row */}
                     <div style={{ 
@@ -1308,19 +1334,19 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                         {/* Locks icon */}
                         {token.locked > 0n && (
                             <span 
-                                style={{ fontSize: '14px', cursor: 'help' }} 
+                                style={{ display: 'inline-flex', alignItems: 'center', cursor: 'help', color: theme.colors.mutedText }} 
                                 title={`${formatAmount(token.locked, token.decimals)} ${token.symbol} locked`}
                             >
-                                🔒
+                                <FaLock size={12} />
                             </span>
                         )}
                         {/* Neurons icon */}
                         {neurons.length > 0 && (
                             <span 
-                                style={{ fontSize: '14px', cursor: 'help' }} 
+                                style={{ display: 'inline-flex', alignItems: 'center', cursor: 'help', color: theme.colors.mutedText }} 
                                 title={`${neurons.length} neuron${neurons.length > 1 ? 's' : ''}`}
                             >
-                                🧠
+                                <FaBrain size={12} />
                             </span>
                         )}
                         {/* Maturity icon */}
@@ -1332,15 +1358,15 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             return (
                                 <span 
                                     style={{ 
-                                        fontSize: '14px', 
                                         cursor: 'help',
                                         display: 'inline-flex',
                                         alignItems: 'center',
-                                        gap: '4px'
+                                        gap: '4px',
+                                        color: theme.colors.mutedText
                                     }} 
                                     title={`${formatAmount(getTotalNeuronMaturity(), token.decimals)} ${token.symbol} maturity`}
                                 >
-                                    🌱
+                                    <FaSeedling size={12} />
                                     <span style={{ fontSize: '12px', color: theme.colors.secondaryText }}>
                                         ${maturityUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </span>
@@ -1356,16 +1382,16 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             return (
                                 <span 
                                     style={{ 
-                                        fontSize: '14px', 
                                         cursor: 'help',
                                         display: 'inline-flex',
                                         alignItems: 'center',
-                                        gap: '4px'
+                                        gap: '4px',
+                                        color: theme.colors.accent
                                     }} 
                                     title={`${formatAmount(getTotalDisbursingMaturity(), token.decimals)} ${token.symbol} disbursing (7-day vesting)`}
                                 >
-                                    ⏳
-                                    <span style={{ fontSize: '12px', color: theme.colors.accent }}>
+                                    <FaHourglassHalf size={12} />
+                                    <span style={{ fontSize: '12px' }}>
                                         ${disbursingUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </span>
                                 </span>
@@ -1380,15 +1406,15 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             return (
                                 <span 
                                     style={{ 
-                                        fontSize: '14px', 
                                         cursor: 'help',
                                         display: 'inline-flex',
                                         alignItems: 'center',
-                                        gap: '4px'
+                                        gap: '4px',
+                                        color: theme.colors.mutedText
                                     }} 
                                     title={`${formatAmount(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)} ${token.symbol} rewards`}
                                 >
-                                    🎁
+                                    <FaGift size={12} />
                                     <span style={{ fontSize: '12px', color: theme.colors.secondaryText }}>
                                         ${rewardsUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </span>
@@ -1493,20 +1519,20 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '6px',
-                        padding: '8px 12px',
+                        gap: '5px',
+                        padding: '6px 10px',
                         background: activeTab === 'balance' ? `${theme.colors.accent}20` : 'transparent',
                         border: `1px solid ${activeTab === 'balance' ? theme.colors.accent : theme.colors.border}`,
                         borderRadius: '8px',
                         cursor: 'pointer',
                         color: activeTab === 'balance' ? theme.colors.accent : theme.colors.primaryText,
-                        fontSize: '0.85rem',
+                        fontSize: '0.8rem',
                         fontWeight: activeTab === 'balance' ? '600' : '500',
                         transition: 'all 0.2s ease'
                     }}
                 >
-                    <span style={{ fontSize: '0.9rem' }}>💰</span>
-                    Balance
+                    <FaDollarSign size={12} />
+                    Bal
                 </button>
 
                 {/* Locks Tab */}
@@ -1515,25 +1541,23 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '6px',
-                        padding: '8px 12px',
+                        gap: '5px',
+                        padding: '6px 10px',
                         background: activeTab === 'locks' ? `${theme.colors.accent}20` : 'transparent',
                         border: `1px solid ${activeTab === 'locks' ? theme.colors.accent : theme.colors.border}`,
                         borderRadius: '8px',
                         cursor: 'pointer',
                         color: activeTab === 'locks' ? theme.colors.accent : theme.colors.primaryText,
-                        fontSize: '0.85rem',
+                        fontSize: '0.8rem',
                         fontWeight: activeTab === 'locks' ? '600' : '500',
                         transition: 'all 0.2s ease'
                     }}
                 >
-                    <span style={{ fontSize: '0.9rem' }}>🔐</span>
+                    <FaLock size={12} />
                     {lockDetailsLoading[token.ledger_canister_id] ? (
-                        <span style={{ color: theme.colors.mutedText }}>Loading...</span>
+                        <span style={{ color: theme.colors.mutedText }}>...</span>
                     ) : (
-                        <>
-                            {locks[token.ledger_canister_id]?.length || 0} {locks[token.ledger_canister_id]?.length === 1 ? 'Lock' : 'Locks'}
-                        </>
+                        <>{locks[token.ledger_canister_id]?.length || 0}</>
                     )}
                 </button>
 
@@ -1544,25 +1568,23 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                         style={{
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '6px',
-                            padding: '8px 12px',
+                            gap: '5px',
+                            padding: '6px 10px',
                             background: activeTab === 'neurons' ? `${theme.colors.accent}20` : 'transparent',
                             border: `1px solid ${activeTab === 'neurons' ? theme.colors.accent : theme.colors.border}`,
                             borderRadius: '8px',
                             cursor: 'pointer',
                             color: activeTab === 'neurons' ? theme.colors.accent : theme.colors.primaryText,
-                            fontSize: '0.85rem',
+                            fontSize: '0.8rem',
                             fontWeight: activeTab === 'neurons' ? '600' : '500',
                             transition: 'all 0.2s ease'
                         }}
                     >
-                        <span style={{ fontSize: '0.9rem' }}>🧠</span>
+                        <FaBrain size={12} />
                         {neuronsLoading ? (
-                            <span style={{ color: theme.colors.mutedText }}>Loading...</span>
+                            <span style={{ color: theme.colors.mutedText }}>...</span>
                         ) : (
-                            <>
-                                {neurons.length} {neurons.length === 1 ? 'Neuron' : 'Neurons'}
-                            </>
+                            <>{neurons.length}</>
                         )}
                     </button>
                 )}
@@ -1573,19 +1595,19 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '6px',
-                        padding: '8px 12px',
+                        gap: '5px',
+                        padding: '6px 10px',
                         background: activeTab === 'info' ? `${theme.colors.accent}20` : 'transparent',
                         border: `1px solid ${activeTab === 'info' ? theme.colors.accent : theme.colors.border}`,
                         borderRadius: '8px',
                         cursor: 'pointer',
                         color: activeTab === 'info' ? theme.colors.accent : theme.colors.primaryText,
-                        fontSize: '0.85rem',
+                        fontSize: '0.8rem',
                         fontWeight: activeTab === 'info' ? '600' : '500',
                         transition: 'all 0.2s ease'
                     }}
                 >
-                    <span style={{ fontSize: '0.9rem' }}>ℹ️</span>
+                    <FaInfoCircle size={12} />
                     Info
                 </button>
             </div>
@@ -1620,7 +1642,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     <div className="balance-item" style={{ cursor: 'pointer' }} onClick={() => setShowBalanceBreakdown(!showBalanceBreakdown)}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                             <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                <span style={{ fontSize: '14px' }}>💧</span>
+                                                <FaTint size={14} style={{ color: theme.colors.mutedText }} />
                                                 Liquid
                                             </div>
                                             <span style={{ 
@@ -1746,7 +1768,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     {(token.locked || 0n) > 0n && (
                                         <div className="balance-item">
                                             <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-start' }}>
-                                                <span style={{ fontSize: '14px' }}>🔐</span>
+                                                <FaLock size={14} style={{ color: theme.colors.mutedText }} />
                                                 Locked
                                             </div>
                                             <div className="balance-value">{formatAmount(token.locked || 0n, token.decimals)}{getUSD(token.locked || 0n, token.decimals, token.conversion_rate)}</div>
@@ -1756,7 +1778,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                         <>
                                             <div className="balance-item">
                                                 <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-start' }}>
-                                                    <span style={{ fontSize: '14px' }}>🧠</span>
+                                                    <FaBrain size={14} style={{ color: theme.colors.mutedText }} />
                                                     Staked
                                                 </div>
                                                 <div className="balance-value">{formatAmount(getTotalNeuronStake(), token.decimals)}{getUSD(getTotalNeuronStake(), token.decimals, token.conversion_rate)}</div>
@@ -1764,7 +1786,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                             {getTotalNeuronMaturity() > 0n && (
                                                 <div className="balance-item">
                                                     <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-start' }}>
-                                                        <span style={{ fontSize: '14px' }}>🌱</span>
+                                                        <FaSeedling size={14} style={{ color: theme.colors.mutedText }} />
                                                         Maturity
                                                     </div>
                                                     <div className="balance-value">{formatAmount(getTotalNeuronMaturity(), token.decimals)}{getUSD(getTotalNeuronMaturity(), token.decimals, token.conversion_rate)}</div>
@@ -1773,7 +1795,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                             {getTotalDisbursingMaturity() > 0n && (
                                                 <div className="balance-item">
                                                     <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-start' }}>
-                                                        <span style={{ fontSize: '14px' }}>⏳</span>
+                                                        <FaHourglassHalf size={14} style={{ color: theme.colors.accent }} />
                                                         Disbursing
                                                     </div>
                                                     <div className="balance-value" style={{ color: theme.colors.accent }}>{formatAmount(getTotalDisbursingMaturity(), token.decimals)}{getUSD(getTotalDisbursingMaturity(), token.decimals, token.conversion_rate)}</div>
@@ -1785,7 +1807,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                         <div className="balance-item">
                                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                                                 <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                    <span style={{ fontSize: '14px' }}>🎁</span>
+                                                    <FaGift size={14} style={{ color: theme.colors.mutedText }} />
                                                     Rewards
                                                 </div>
                                                 <button 
@@ -1872,7 +1894,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             }}
                             title="Learn about Sneed Lock"
                         >
-                            ❓ Help
+                            <FaQuestionCircle size={12} style={{ marginRight: '4px' }} /> Help
                         </Link>
                     </div>
                     <div>
@@ -2103,7 +2125,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             }}
                             title="Learn about SNS Neurons"
                         >
-                            ❓ Help
+                            <FaQuestionCircle size={12} style={{ marginRight: '4px' }} /> Help
                         </Link>
                     </div>
                     <div>
@@ -2162,7 +2184,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                 onMouseEnter={(e) => { if (!isDisabled) e.target.style.opacity = '0.9' }}
                                                 onMouseLeave={(e) => { if (!isDisabled) e.target.style.opacity = '1' }}
                                             >
-                                                {!canManage ? '🚫' : '➕'} Create New Neuron
+                                                {!canManage ? <FaBan size={12} style={{ marginRight: '4px' }} /> : <FaPlus size={12} style={{ marginRight: '4px' }} />} Create New Neuron
                                             </button>
                                         );
                                     })()}
@@ -2450,7 +2472,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                                             fontWeight: '600',
                                                                             fontSize: '0.9rem'
                                                                         }}>
-                                                                            <span>⏳</span>
+                                                                            <FaHourglassHalf size={12} />
                                                                             <span>Disbursing Maturity</span>
                                                                         </div>
                                                                         {neuron.disburse_maturity_in_progress.map((disbursement, idx) => {
@@ -2564,7 +2586,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                                                                         opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1
                                                                                                     }}
                                                                                                 >
-                                                                                                    ⏳ Start Dissolving
+                                                                                                    <FaPlay size={10} style={{ marginRight: '4px' }} /> Start Dissolving
                                                                                                 </button>
                                                                                             )}
                                                                                             {state === 'Dissolving' && (
@@ -2583,7 +2605,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                                                                         opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1
                                                                                                     }}
                                                                                                 >
-                                                                                                    🔒 Stop Dissolving
+                                                                                                    <FaStop size={10} style={{ marginRight: '4px' }} /> Stop Dissolving
                                                                                                 </button>
                                                                                             )}
                                                                                             {state !== 'Dissolved' && (
@@ -2632,7 +2654,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                                                                 opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1
                                                                                             }}
                                                                                         >
-                                                                                            💰 Disburse to Wallet
+                                                                                            <FaWallet size={10} style={{ marginRight: '4px' }} /> Disburse to Wallet
                                                                                         </button>
                                                                                     )}
 
@@ -2681,7 +2703,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                                                                 opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1
                                                                                             }}
                                                                                         >
-                                                                                            ➕ Increase Stake
+                                                                                            <FaPlus size={10} style={{ marginRight: '4px' }} /> Increase Stake
                                                                                         </button>
                                                                                     )}
                                                                                     
@@ -2947,7 +2969,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                         gap: '8px'
                                     }}
                                 >
-                                    🔄 Wrap to sGLDT
+                                    <FaExchangeAlt size={10} style={{ marginRight: '4px' }} /> Wrap to sGLDT
                                 </button>
                             )}
                             {isSGLDT && (
@@ -2970,7 +2992,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                         gap: '8px'
                                     }}
                                 >
-                                    🔄 Unwrap to GLDT
+                                    <FaExchangeAlt size={10} style={{ marginRight: '4px' }} /> Unwrap to GLDT
                                 </button>
                             )}
                         </div>
@@ -3169,8 +3191,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                         }}
                         onClick={(e) => e.stopPropagation()}
                         >
-                            <h3 style={{ color: theme.colors.primaryText, marginTop: 0 }}>
-                                ➕ Increase Neuron Stake
+                            <h3 style={{ color: theme.colors.primaryText, marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <FaPlus size={14} /> Increase Neuron Stake
                             </h3>
                             
                             <p style={{ color: theme.colors.secondaryText, marginBottom: '8px' }}>
@@ -3618,8 +3640,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                         }}
                         onClick={(e) => e.stopPropagation()}
                         >
-                            <h3 style={{ color: theme.colors.primaryText, marginTop: 0 }}>
-                                ➕ Create New Neuron
+                            <h3 style={{ color: theme.colors.primaryText, marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <FaPlus size={14} /> Create New Neuron
                             </h3>
                             
                             {/* Progress Indicator */}
