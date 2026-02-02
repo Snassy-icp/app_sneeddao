@@ -72,6 +72,13 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         setSelectedToken(token);
         setShowSendModal(true);
     };
+    
+    // Handle lock from token detail modal - redirect to wallet page
+    const handleOpenLockFromDetail = (token) => {
+        setShowTokenDetailModal(false);
+        // Navigate to wallet page - the user can lock from there
+        navigate('/wallet');
+    };
 
     // Add click outside handler
     useEffect(() => {
@@ -729,6 +736,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
           }}
           token={detailToken}
           openSendModal={handleOpenSendFromDetail}
+          openLockModal={handleOpenLockFromDetail}
           hideButtons={false}
           isSnsToken={detailToken && isTokenSns ? isTokenSns(detailToken.ledger_canister_id) : false}
       />
