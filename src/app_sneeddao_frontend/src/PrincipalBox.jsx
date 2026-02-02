@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaCopy, FaCheck, FaWallet, FaPaperPlane, FaKey, FaIdCard, FaExternalLinkAlt, FaSync, FaCoins, FaWater } from 'react-icons/fa';
+import { FaCopy, FaCheck, FaWallet, FaPaperPlane, FaKey, FaIdCard, FaExternalLinkAlt, FaSync, FaCoins, FaWater, FaLock } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import { principalToSubAccount } from '@dfinity/utils';
 import { useAuth } from './AuthContext';
@@ -14,6 +14,7 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
 import SendTokenModal from './SendTokenModal';
 import TokenCardModal from './components/TokenCardModal';
+import PositionCardModal from './components/PositionCardModal';
 import LockModal from './LockModal';
 import { usePremiumStatus } from './hooks/usePremiumStatus';
 import './PrincipalBox.css';
@@ -40,6 +41,10 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         }
     });
     const [walletTab, setWalletTab] = useState('tokens'); // 'tokens' or 'positions'
+    const [showPositionDetailModal, setShowPositionDetailModal] = useState(false);
+    const [detailPosition, setDetailPosition] = useState(null);
+    const [detailPositionDetails, setDetailPositionDetails] = useState(null);
+    const [isRefreshingPosition, setIsRefreshingPosition] = useState(false);
     const popupRef = useRef(null);
     const { login, identity } = useAuth();
     const { theme } = useTheme();
@@ -56,6 +61,10 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const isTokenSns = walletContext?.isTokenSns;
     const refreshWallet = walletContext?.refreshWallet;
     const [isRefreshingWallet, setIsRefreshingWallet] = useState(false);
+    
+    // Get liquidity positions from context
+    const liquidityPositions = walletContext?.liquidityPositions || [];
+    const positionsLoading = walletContext?.positionsLoading || false;
     
     // Sync hideDust with localStorage and listen for changes from other components
     useEffect(() => {
@@ -103,6 +112,60 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         });
     }, [walletTokens, hideDust]);
     
+    // Flatten positions for display in compact wallet
+    const flattenedPositions = useMemo(() => {
+        const positions = [];
+        for (const lp of liquidityPositions) {
+            if (lp.positions && lp.positions.length > 0) {
+                for (const positionDetails of lp.positions) {
+                    positions.push({
+                        position: lp,
+                        positionDetails
+                    });
+                }
+            }
+        }
+        return positions;
+    }, [liquidityPositions]);
+
+    // Calculate total positions USD value
+    const totalPositionsUSD = useMemo(() => {
+        let total = 0;
+        let hasAnyValue = false;
+        
+        for (const { position, positionDetails } of flattenedPositions) {
+            // Calculate liquidity value
+            if (positionDetails.amount0 !== undefined && positionDetails.amount1 !== undefined) {
+                const amount0 = Number(positionDetails.amount0) / (10 ** (position.token0Decimals || 8));
+                const amount1 = Number(positionDetails.amount1) / (10 ** (position.token1Decimals || 8));
+                
+                if (position.token0_conversion_rate) {
+                    total += amount0 * position.token0_conversion_rate;
+                    hasAnyValue = true;
+                }
+                if (position.token1_conversion_rate) {
+                    total += amount1 * position.token1_conversion_rate;
+                    hasAnyValue = true;
+                }
+            }
+            
+            // Add unclaimed fees
+            if (positionDetails.tokensOwed0 !== undefined && positionDetails.tokensOwed1 !== undefined) {
+                const fees0 = Number(positionDetails.tokensOwed0) / (10 ** (position.token0Decimals || 8));
+                const fees1 = Number(positionDetails.tokensOwed1) / (10 ** (position.token1Decimals || 8));
+                
+                if (position.token0_conversion_rate) {
+                    total += fees0 * position.token0_conversion_rate;
+                }
+                if (position.token1_conversion_rate) {
+                    total += fees1 * position.token1_conversion_rate;
+                }
+            }
+        }
+        
+        return hasAnyValue ? total : null;
+    }, [flattenedPositions]);
+
     // Calculate total portfolio USD value
     const totalPortfolioUSD = useMemo(() => {
         let total = 0;
@@ -313,6 +376,28 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         fetchLocksForToken(token);
     }, [fetchLocksForToken]);
 
+    // Open position detail modal
+    const openPositionDetailModal = useCallback((position, positionDetails) => {
+        setDetailPosition(position);
+        setDetailPositionDetails(positionDetails);
+        setShowPositionDetailModal(true);
+        setShowPopup(false); // Close the popup when opening the modal
+    }, []);
+
+    // Handle refresh position in detail modal
+    const handleRefreshPosition = useCallback(async () => {
+        if (!walletContext?.refreshWallet) return;
+        
+        setIsRefreshingPosition(true);
+        try {
+            await walletContext.refreshWallet();
+        } catch (error) {
+            console.error('Error refreshing position:', error);
+        } finally {
+            setIsRefreshingPosition(false);
+        }
+    }, [walletContext]);
+
     // Handle refresh token in detail modal
     const handleRefreshToken = useCallback(async (token) => {
         if (!walletContext?.refreshWallet) return;
@@ -343,6 +428,30 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
             }
         }
     }, [walletTokens, detailToken]);
+
+    // Keep detailPosition and detailPositionDetails in sync with liquidityPositions
+    useEffect(() => {
+        if (detailPosition && detailPositionDetails && liquidityPositions.length > 0) {
+            const swapId = detailPosition.swapCanisterId?.toString?.() || detailPosition.swapCanisterId;
+            const posId = detailPositionDetails.positionId;
+            
+            for (const lp of liquidityPositions) {
+                const lpSwapId = lp.swapCanisterId?.toString?.() || lp.swapCanisterId;
+                if (lpSwapId === swapId && lp.positions) {
+                    const updatedDetails = lp.positions.find(p => p.positionId === posId);
+                    if (updatedDetails) {
+                        if (lp !== detailPosition) {
+                            setDetailPosition(lp);
+                        }
+                        if (updatedDetails !== detailPositionDetails) {
+                            setDetailPositionDetails(updatedDetails);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    }, [liquidityPositions, detailPosition, detailPositionDetails]);
 
     // Add click outside handler
     useEffect(() => {
@@ -1080,53 +1189,344 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                       </>
                       )}
 
+                      {/* Positions Tab Header */}
+                      {walletTab === 'positions' && (
+                      <div 
+                          style={{ 
+                              color: theme.colors.mutedText, 
+                              fontSize: '10px', 
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.5px',
+                              marginBottom: '8px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between'
+                          }}
+                      >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <FaWater size={10} />
+                              Positions
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              {totalPositionsUSD !== null && (
+                                  <span style={{ 
+                                      color: '#10b981',
+                                      fontSize: '12px',
+                                      fontWeight: '600',
+                                      textTransform: 'none',
+                                      letterSpacing: 'normal'
+                                  }}>
+                                      ${totalPositionsUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </span>
+                              )}
+                              {refreshWallet && (
+                                  <button
+                                      onClick={async (e) => {
+                                          e.stopPropagation();
+                                          setIsRefreshingWallet(true);
+                                          try {
+                                              await refreshWallet();
+                                          } finally {
+                                              setIsRefreshingWallet(false);
+                                          }
+                                      }}
+                                      disabled={isRefreshingWallet || positionsLoading}
+                                      style={{
+                                          background: 'none',
+                                          border: 'none',
+                                          cursor: (isRefreshingWallet || positionsLoading) ? 'default' : 'pointer',
+                                          padding: '2px',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          color: theme.colors.mutedText,
+                                          opacity: (isRefreshingWallet || positionsLoading) ? 0.5 : 1,
+                                          transition: 'color 0.2s ease'
+                                      }}
+                                      onMouseEnter={(e) => !(isRefreshingWallet || positionsLoading) && (e.currentTarget.style.color = theme.colors.primaryText)}
+                                      onMouseLeave={(e) => !(isRefreshingWallet || positionsLoading) && (e.currentTarget.style.color = theme.colors.mutedText)}
+                                      title="Refresh positions"
+                                  >
+                                      <FaSync size={10} style={{ animation: (isRefreshingWallet || positionsLoading) ? 'spin 1s linear infinite' : 'none' }} />
+                                  </button>
+                              )}
+                          </div>
+                      </div>
+                      )}
+
                       {/* Positions Tab Content */}
                       {walletTab === 'positions' && (
-                          <div style={{
+                      <>
+                      <div 
+                          className="compact-wallet-container"
+                          style={{
                               backgroundColor: theme.colors.primaryBg,
                               borderRadius: '8px',
-                              padding: '16px',
-                              textAlign: 'center'
-                          }}>
-                              <FaWater size={24} style={{ color: theme.colors.mutedText, marginBottom: '8px' }} />
-                              <div style={{
-                                  color: theme.colors.secondaryText,
-                                  fontSize: '12px',
-                                  marginBottom: '12px'
+                              maxHeight: '200px',
+                              overflowY: 'auto',
+                              overflowX: 'hidden'
+                          }}
+                      >
+                          {positionsLoading && flattenedPositions.length === 0 ? (
+                              <div style={{ 
+                                  padding: '12px', 
+                                  textAlign: 'center',
+                                  color: theme.colors.mutedText,
+                                  fontSize: '12px'
                               }}>
-                                  View and manage your liquidity positions
+                                  Loading...
                               </div>
-                              <button
-                                  onClick={() => {
-                                      navigate('/wallet');
-                                      setShowPopup(false);
-                                  }}
-                                  style={{
-                                      padding: '8px 16px',
-                                      backgroundColor: theme.colors.accent,
-                                      color: theme.colors.primaryBg,
-                                      border: 'none',
-                                      borderRadius: '6px',
-                                      fontSize: '12px',
-                                      fontWeight: '500',
-                                      cursor: 'pointer',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '6px',
-                                      margin: '0 auto',
-                                      transition: 'all 0.2s ease'
-                                  }}
-                                  onMouseOver={(e) => {
-                                      e.currentTarget.style.backgroundColor = theme.colors.accentHover || `${theme.colors.accent}dd`;
-                                  }}
-                                  onMouseOut={(e) => {
-                                      e.currentTarget.style.backgroundColor = theme.colors.accent;
+                          ) : flattenedPositions.length === 0 ? (
+                              <div 
+                                  style={{ 
+                                      padding: '16px', 
+                                      textAlign: 'center',
+                                      color: theme.colors.mutedText,
+                                      fontSize: '12px'
                                   }}
                               >
-                                  <FaWater size={11} />
-                                  View Positions
-                              </button>
-                          </div>
+                                  <FaWater size={20} style={{ marginBottom: '8px', opacity: 0.5 }} />
+                                  <div>No liquidity positions yet</div>
+                                  <div style={{ fontSize: '11px', marginTop: '4px', opacity: 0.7 }}>
+                                      Visit wallet to add positions
+                                  </div>
+                              </div>
+                          ) : (
+                              flattenedPositions.map(({ position, positionDetails }, index) => {
+                                  // Calculate position value
+                                  const amount0 = positionDetails.amount0 !== undefined 
+                                      ? Number(positionDetails.amount0) / (10 ** (position.token0Decimals || 8)) 
+                                      : 0;
+                                  const amount1 = positionDetails.amount1 !== undefined 
+                                      ? Number(positionDetails.amount1) / (10 ** (position.token1Decimals || 8)) 
+                                      : 0;
+                                  const fees0 = positionDetails.tokensOwed0 !== undefined 
+                                      ? Number(positionDetails.tokensOwed0) / (10 ** (position.token0Decimals || 8)) 
+                                      : 0;
+                                  const fees1 = positionDetails.tokensOwed1 !== undefined 
+                                      ? Number(positionDetails.tokensOwed1) / (10 ** (position.token1Decimals || 8)) 
+                                      : 0;
+                                  
+                                  let liquidityUSD = 0;
+                                  let feesUSD = 0;
+                                  let hasValue = false;
+                                  
+                                  if (position.token0_conversion_rate) {
+                                      liquidityUSD += amount0 * position.token0_conversion_rate;
+                                      feesUSD += fees0 * position.token0_conversion_rate;
+                                      hasValue = true;
+                                  }
+                                  if (position.token1_conversion_rate) {
+                                      liquidityUSD += amount1 * position.token1_conversion_rate;
+                                      feesUSD += fees1 * position.token1_conversion_rate;
+                                      hasValue = true;
+                                  }
+                                  
+                                  const totalUSD = liquidityUSD + feesUSD;
+                                  const isLocked = positionDetails.lockInfo && positionDetails.lockInfo.expiry;
+                                  
+                                  return (
+                                      <div 
+                                          key={`${position.swapCanisterId}-${positionDetails.positionId || index}`}
+                                          className="compact-wallet-token"
+                                          onClick={() => openPositionDetailModal(position, positionDetails)}
+                                          style={{
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              padding: '8px 12px',
+                                              borderBottom: index < flattenedPositions.length - 1 ? `1px solid ${theme.colors.border}` : 'none',
+                                              gap: '10px',
+                                              cursor: 'pointer',
+                                              minWidth: 0,
+                                              maxWidth: '100%',
+                                              boxSizing: 'border-box'
+                                          }}
+                                      >
+                                          {/* Token Pair Logos */}
+                                          <div style={{ 
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              flexShrink: 0,
+                                              position: 'relative',
+                                              width: '38px',
+                                              height: '28px'
+                                          }}>
+                                              {position.token0Logo ? (
+                                                  <img 
+                                                      src={position.token0Logo}
+                                                      alt={position.token0Symbol}
+                                                      style={{
+                                                          width: '24px',
+                                                          height: '24px',
+                                                          borderRadius: '50%',
+                                                          objectFit: 'cover',
+                                                          position: 'absolute',
+                                                          left: 0,
+                                                          zIndex: 2,
+                                                          border: `2px solid ${theme.colors.primaryBg}`
+                                                      }}
+                                                      onError={(e) => {
+                                                          e.target.style.display = 'none';
+                                                      }}
+                                                  />
+                                              ) : (
+                                                  <div 
+                                                      style={{
+                                                          width: '24px',
+                                                          height: '24px',
+                                                          borderRadius: '50%',
+                                                          backgroundColor: theme.colors.accent,
+                                                          display: 'flex',
+                                                          alignItems: 'center',
+                                                          justifyContent: 'center',
+                                                          fontSize: '10px',
+                                                          fontWeight: 'bold',
+                                                          color: theme.colors.primaryText,
+                                                          position: 'absolute',
+                                                          left: 0,
+                                                          zIndex: 2,
+                                                          border: `2px solid ${theme.colors.primaryBg}`
+                                                      }}
+                                                  >
+                                                      {position.token0Symbol?.charAt(0) || '?'}
+                                                  </div>
+                                              )}
+                                              {position.token1Logo ? (
+                                                  <img 
+                                                      src={position.token1Logo}
+                                                      alt={position.token1Symbol}
+                                                      style={{
+                                                          width: '24px',
+                                                          height: '24px',
+                                                          borderRadius: '50%',
+                                                          objectFit: 'cover',
+                                                          position: 'absolute',
+                                                          left: '14px',
+                                                          zIndex: 1,
+                                                          border: `2px solid ${theme.colors.primaryBg}`
+                                                      }}
+                                                      onError={(e) => {
+                                                          e.target.style.display = 'none';
+                                                      }}
+                                                  />
+                                              ) : (
+                                                  <div 
+                                                      style={{
+                                                          width: '24px',
+                                                          height: '24px',
+                                                          borderRadius: '50%',
+                                                          backgroundColor: theme.colors.border,
+                                                          display: 'flex',
+                                                          alignItems: 'center',
+                                                          justifyContent: 'center',
+                                                          fontSize: '10px',
+                                                          fontWeight: 'bold',
+                                                          color: theme.colors.primaryText,
+                                                          position: 'absolute',
+                                                          left: '14px',
+                                                          zIndex: 1,
+                                                          border: `2px solid ${theme.colors.primaryBg}`
+                                                      }}
+                                                  >
+                                                      {position.token1Symbol?.charAt(0) || '?'}
+                                                  </div>
+                                              )}
+                                          </div>
+                                          
+                                          {/* Position Info */}
+                                          <div style={{ 
+                                              flex: 1, 
+                                              minWidth: 0,
+                                              display: 'flex',
+                                              flexDirection: 'column',
+                                              gap: '2px'
+                                          }}>
+                                              <div style={{
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  gap: '6px'
+                                              }}>
+                                                  <span style={{ 
+                                                      color: theme.colors.primaryText,
+                                                      fontSize: '13px',
+                                                      fontWeight: '500',
+                                                      overflow: 'hidden',
+                                                      textOverflow: 'ellipsis',
+                                                      whiteSpace: 'nowrap'
+                                                  }}>
+                                                      {position.token0Symbol}/{position.token1Symbol}
+                                                  </span>
+                                                  {isLocked && (
+                                                      <FaLock size={10} style={{ color: theme.colors.accent }} />
+                                                  )}
+                                              </div>
+                                              <span style={{ 
+                                                  color: theme.colors.mutedText,
+                                                  fontSize: '11px',
+                                                  opacity: 0.8
+                                              }}>
+                                                  {hasValue 
+                                                      ? `$${totalUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                                      : position.loading ? '...' : 'N/A'
+                                                  }
+                                                  {feesUSD > 0.01 && (
+                                                      <span style={{ color: theme.colors.success, marginLeft: '4px' }}>
+                                                          +${feesUSD.toFixed(2)}
+                                                      </span>
+                                                  )}
+                                              </span>
+                                          </div>
+                                          
+                                          {/* Position ID */}
+                                          <div style={{
+                                              color: theme.colors.mutedText,
+                                              fontSize: '10px',
+                                              opacity: 0.7,
+                                              flexShrink: 0
+                                          }}>
+                                              #{positionDetails.positionId?.toString() || '?'}
+                                          </div>
+                                      </div>
+                                  );
+                              })
+                          )}
+                      </div>
+                      {flattenedPositions.length > 0 && (
+                          <button
+                              onClick={() => {
+                                  navigate('/wallet');
+                                  setShowPopup(false);
+                              }}
+                              style={{
+                                  width: '100%',
+                                  marginTop: '8px',
+                                  padding: '10px',
+                                  backgroundColor: 'transparent',
+                                  border: `1px solid ${theme.colors.border}`,
+                                  borderRadius: '8px',
+                                  color: theme.colors.accent,
+                                  fontSize: '12px',
+                                  fontWeight: '500',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s ease',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '6px'
+                              }}
+                              onMouseOver={(e) => {
+                                  e.target.style.backgroundColor = theme.colors.primaryBg;
+                                  e.target.style.borderColor = theme.colors.accent;
+                              }}
+                              onMouseOut={(e) => {
+                                  e.target.style.backgroundColor = 'transparent';
+                                  e.target.style.borderColor = theme.colors.border;
+                              }}
+                          >
+                              <FaWater size={11} />
+                              View All Positions
+                          </button>
+                      )}
+                      </>
                       )}
                   </div>
 
@@ -1206,6 +1606,24 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
           onAddLock={handleAddLock}
           identity={identity}
           isPremium={isPremium}
+      />
+      
+      {/* Position Detail Modal */}
+      <PositionCardModal
+          show={showPositionDetailModal}
+          onClose={() => {
+              setShowPositionDetailModal(false);
+              setDetailPosition(null);
+              setDetailPositionDetails(null);
+          }}
+          position={detailPosition}
+          positionDetails={detailPositionDetails}
+          handleRefreshPosition={handleRefreshPosition}
+          isRefreshing={isRefreshingPosition}
+          swapCanisterBalance0={detailPosition?.swapCanisterBalance0}
+          swapCanisterBalance1={detailPosition?.swapCanisterBalance1}
+          token0Fee={detailPosition?.token0Fee}
+          token1Fee={detailPosition?.token1Fee}
       />
   </>
   );

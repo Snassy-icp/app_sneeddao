@@ -420,7 +420,7 @@ function Wallet() {
     const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
     const { isPremium } = usePremiumStatus(identity);
-    const { updateWalletTokens, setLoading: setWalletLoading } = useWallet();
+    const { updateWalletTokens, setLoading: setWalletLoading, updateLiquidityPositions } = useWallet();
     const navigate = useNavigate();
     
     // Compute account ID for the logged-in user
@@ -739,6 +739,11 @@ function Wallet() {
     useEffect(() => {
         updateWalletTokens(tokens);
     }, [tokens, updateWalletTokens]);
+
+    // Sync liquidity positions to WalletContext
+    useEffect(() => {
+        updateLiquidityPositions(liquidityPositions, showPositionsSpinner);
+    }, [liquidityPositions, showPositionsSpinner, updateLiquidityPositions]);
 
     // Sync loading state to WalletContext
     useEffect(() => {

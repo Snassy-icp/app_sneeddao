@@ -681,8 +681,6 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                         )}
                     </div>
                 }
-                </>
-                )}
                 
                 {/* Swap Canister Balance */}
                 {!hideUnclaimedFees && positionDetails.frontendOwnership && ((swapCanisterBalance0 || 0n) > 0n || (swapCanisterBalance1 || 0n) > 0n) && (
@@ -773,7 +771,6 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                     {/* Locks Tab Content */}
                     {activeTab === 'locks' && (
                     <div className="locks-section">
-                        {/* Lock Actions Row */}
                         {/* Lock Actions Row */}
                         {!hideButtons && (
                             <div style={{ 
@@ -980,7 +977,7 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                 style={{
                                     background: 'none',
                                     border: 'none',
-                                                color: theme.colors.mutedText,
+                                    color: theme.colors.mutedText,
                                     cursor: 'pointer',
                                     padding: '4px',
                                     fontSize: '12px'
@@ -993,7 +990,6 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                 </div>
                             </div>
                         )}
-                        </div>
                     </div>
                     )}
 

@@ -27,6 +27,9 @@ export const WalletProvider = ({ children }) => {
     const fetchSessionRef = useRef(0);
     // Track SNS token ledger IDs
     const [snsTokenLedgers, setSnsTokenLedgers] = useState(new Set());
+    // Liquidity positions from the wallet
+    const [liquidityPositions, setLiquidityPositions] = useState([]);
+    const [positionsLoading, setPositionsLoading] = useState(false);
 
     // Load SNS data to know which tokens are SNS tokens
     useEffect(() => {
@@ -333,6 +336,12 @@ export const WalletProvider = ({ children }) => {
         }
     }, []);
 
+    // Update liquidity positions from Wallet.jsx
+    const updateLiquidityPositions = useCallback((positions, loading = false) => {
+        setLiquidityPositions(positions || []);
+        setPositionsLoading(loading);
+    }, []);
+
     // Set loading state
     const setLoading = useCallback((loading) => {
         setWalletLoading(loading);
@@ -341,6 +350,7 @@ export const WalletProvider = ({ children }) => {
     // Clear wallet data (e.g., on logout)
     const clearWallet = useCallback(() => {
         setWalletTokens([]);
+        setLiquidityPositions([]);
         setLastUpdated(null);
         setHasFetchedInitial(false);
         setHasDetailedData(false);
@@ -440,7 +450,11 @@ export const WalletProvider = ({ children }) => {
             clearWallet,
             refreshWallet,
             sendToken,
-            isTokenSns
+            isTokenSns,
+            // Liquidity positions
+            liquidityPositions,
+            positionsLoading,
+            updateLiquidityPositions
         }}>
             {children}
         </WalletContext.Provider>

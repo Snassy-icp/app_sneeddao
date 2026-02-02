@@ -1331,22 +1331,28 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     </div>
                     {/* Row 3: Status icons (left) */}
                     <div className="header-row-3" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        {/* Locks icon */}
-                        {token.locked > 0n && (
-                            <span 
-                                style={{ display: 'inline-flex', alignItems: 'center', cursor: 'help', color: theme.colors.mutedText }} 
-                                title={`${formatAmount(token.locked, token.decimals)} ${token.symbol} locked`}
-                            >
-                                <FaLock size={12} />
-                            </span>
-                        )}
-                        {/* Neurons icon */}
+                        {/* Locks icon with count */}
+                        {(() => {
+                            const tokenLocks = locks[token.ledger_canister_id] || [];
+                            const lockCount = tokenLocks.length;
+                            return lockCount > 0 && (
+                                <span 
+                                    style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', cursor: 'help', color: theme.colors.mutedText }} 
+                                    title={`${lockCount} lock${lockCount > 1 ? 's' : ''} (${formatAmount(token.locked, token.decimals)} ${token.symbol} locked)`}
+                                >
+                                    <FaLock size={12} />
+                                    <span style={{ fontSize: '10px', fontWeight: '600' }}>{lockCount}</span>
+                                </span>
+                            );
+                        })()}
+                        {/* Neurons icon with count */}
                         {neurons.length > 0 && (
                             <span 
-                                style={{ display: 'inline-flex', alignItems: 'center', cursor: 'help', color: theme.colors.mutedText }} 
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', cursor: 'help', color: theme.colors.mutedText }} 
                                 title={`${neurons.length} neuron${neurons.length > 1 ? 's' : ''}`}
                             >
                                 <FaBrain size={12} />
+                                <span style={{ fontSize: '10px', fontWeight: '600' }}>{neurons.length}</span>
                             </span>
                         )}
                         {/* Maturity icon */}
