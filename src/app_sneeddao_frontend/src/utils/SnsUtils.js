@@ -185,11 +185,15 @@ export async function fetchAndCacheSnsData(identity) {
 
                     // Extract only essential metadata
                     const name = metadataResponse?.name?.[0] || `SNS ${rootCanisterId.slice(0, 8)}...`;
+                    const logo = metadataResponse?.logo?.[0] || '';
+                    const symbol = metadataResponse?.symbol?.[0] || '';
                     
                     // Store only essential data
                     const snsData = {
                         rootCanisterId,
                         name,
+                        logo,
+                        token_symbol: symbol,
                         canisters: {
                             governance: governanceId,
                             ledger: ledgerId,
@@ -247,6 +251,14 @@ function getCachedSnsData() {
         const { data, timestamp } = JSON.parse(cachedString);
         // Check if cache is still valid and not empty
         if (Date.now() - timestamp < CACHE_DURATION && data && data.length > 0) {
+            // Check if cached data has the new structure with logo field
+            // If not, invalidate cache to fetch fresh data with logos
+            const hasLogoField = data.some(sns => 'logo' in sns);
+            if (!hasLogoField) {
+                console.log('Invalidating SNS cache - missing logo field');
+                safeStorage.removeItem(SNS_CACHE_KEY);
+                return null;
+            }
             return data;
         }
         // Clear invalid or empty cache
@@ -342,10 +354,14 @@ export async function fetchSingleSnsData(rootCanisterId, identity) {
         
         // Extract essential metadata
         const name = metadataResponse?.name?.[0] || `SNS ${rootCanisterId.slice(0, 8)}...`;
+        const logo = metadataResponse?.logo?.[0] || '';
+        const symbol = metadataResponse?.symbol?.[0] || '';
         
         const snsData = {
             rootCanisterId,
             name,
+            logo,
+            token_symbol: symbol,
             canisters: {
                 governance: governanceId,
                 ledger: ledgerId,
@@ -429,10 +445,14 @@ export async function fetchAndCacheSnsDataOptimized(identity, options = {}) {
                 const governanceActor = createSnsGovernanceActor(governanceId, { agent });
                 const metadataResponse = await governanceActor.get_metadata({});
                 const name = metadataResponse?.name?.[0] || `SNS ${rootCanisterId.slice(0, 8)}...`;
+                const logo = metadataResponse?.logo?.[0] || '';
+                const symbol = metadataResponse?.symbol?.[0] || '';
                 
                 const snsData = {
                     rootCanisterId,
                     name,
+                    logo,
+                    token_symbol: symbol,
                     canisters: {
                         governance: governanceId,
                         ledger: ledgerId,

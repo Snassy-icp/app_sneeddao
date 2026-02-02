@@ -217,7 +217,7 @@ function Hub() {
     const [hoveredCard, setHoveredCard] = useState(null);
     
     // Use global token metadata cache
-    const { getTokenMetadata, metadata: tokenMetadataState } = useTokenMetadata();
+    const { getTokenMetadata, fetchTokenMetadata, metadata: tokenMetadataState } = useTokenMetadata();
     
     // SNS data for other features (not needed for Sneed neuron count)
     const [snsList, setSnsList] = useState([]);
@@ -623,6 +623,55 @@ function Hub() {
             fetchOfferTokenPrices();
         }
     }, [offers, snsList, getTokenInfo]);
+
+    // Fetch token metadata for unknown tokens in offers
+    useEffect(() => {
+        const fetchUnknownTokenMetadata = async () => {
+            if (offers.length === 0) return;
+            
+            // Known tokens that don't need fetching
+            const knownTokens = new Set([
+                'ryjl3-tyaaa-aaaaa-aaaba-cai',  // ICP
+                'hvgxa-wqaaa-aaaaq-aacia-cai',  // SNEED
+                'mxzaz-hqaaa-aaaar-qaada-cai',  // ckBTC
+                'ss2fx-dyaaa-aaaar-qacoq-cai',  // ckETH
+            ]);
+            
+            // SNS ledger IDs
+            const snsLedgers = new Set(snsList.map(s => s.canisters?.ledger).filter(Boolean));
+            
+            // Collect token ledger IDs from ICRC1Token assets
+            const unknownLedgers = new Set();
+            
+            for (const offer of offers) {
+                for (const assetEntry of (offer.assets || [])) {
+                    const asset = assetEntry?.asset;
+                    if (asset && 'ICRC1Token' in asset && asset.ICRC1Token.ledger_canister_id) {
+                        const ledgerId = asset.ICRC1Token.ledger_canister_id.toString();
+                        // Skip known tokens and SNS tokens
+                        if (!knownTokens.has(ledgerId) && !snsLedgers.has(ledgerId)) {
+                            // Check if we already have metadata
+                            const existing = getTokenMetadata(ledgerId);
+                            if (!existing) {
+                                unknownLedgers.add(ledgerId);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Fetch metadata for unknown tokens
+            for (const ledgerId of unknownLedgers) {
+                try {
+                    await fetchTokenMetadata(ledgerId);
+                } catch (e) {
+                    console.warn('Could not fetch metadata for token:', ledgerId, e);
+                }
+            }
+        };
+        
+        fetchUnknownTokenMetadata();
+    }, [offers, snsList, getTokenMetadata, fetchTokenMetadata]);
 
     // Helper to get SNS ledger from governance ID
     const getSnsLedgerFromGovernance = useCallback((governanceId) => {
