@@ -1275,7 +1275,7 @@ function Hub() {
                                         </div>
                                         <div style={{ 
                                             fontSize: '0.8rem', 
-                                            color: theme.colors.mutedText,
+                                            color: theme.colors.success,
                                             marginTop: '2px',
                                         }}>
                                             {prices.loading ? '' : `≈ $${formatPrice(prices.sneedUsd, 6)}`}
@@ -1590,8 +1590,8 @@ function Hub() {
                 {/* LIVE ACTIVITY SECTION */}
                 {/* ============================================ */}
                 <div style={{
-                    display: 'flex',
-                    flexDirection: 'column',
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 500px), 1fr))',
                     gap: '1.5rem',
                     marginBottom: '2.5rem',
                 }}>
@@ -1633,7 +1633,6 @@ function Hub() {
                                     <div style={{ color: 'white', fontWeight: '800', fontSize: '1.2rem', letterSpacing: '-0.01em' }}>Sneed Forum</div>
                                     <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.8rem', fontWeight: '500' }}>Latest discussions</div>
                                 </div>
-                                {feedExpanded ? <FaChevronUp size={14} style={{ color: 'rgba(255,255,255,0.7)', marginLeft: '8px' }} /> : <FaChevronDown size={14} style={{ color: 'rgba(255,255,255,0.7)', marginLeft: '8px' }} />}
                             </div>
                             <Link 
                                 to="/feed" 
@@ -1766,7 +1765,6 @@ function Hub() {
                                     <div style={{ color: 'white', fontWeight: '800', fontSize: '1.2rem', letterSpacing: '-0.01em' }}>Sneedex</div>
                                     <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.8rem', fontWeight: '500' }}>Active marketplace offers</div>
                                 </div>
-                                {offersExpanded ? <FaChevronUp size={14} style={{ color: 'rgba(255,255,255,0.7)', marginLeft: '8px' }} /> : <FaChevronDown size={14} style={{ color: 'rgba(255,255,255,0.7)', marginLeft: '8px' }} />}
                             </div>
                             <Link 
                                 to="/sneedex_offers" 

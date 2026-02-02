@@ -210,7 +210,7 @@ function FeedItemCard({
             case 'thread':
                 return `/thread?threadid=${Array.isArray(item.thread_id) ? item.thread_id[0] : item.thread_id || item.id}`;
             case 'post':
-                return `/post/${item.id}`;
+                return `/post?postid=${item.id}`;
             default:
                 return '/feed';
         }
@@ -925,6 +925,7 @@ function FeedItemCard({
                             <Link 
                                 to={`/topic/${Array.isArray(item.topic_id) ? item.topic_id[0] : item.topic_id}`} 
                                 className="feed-context-tag"
+                                onClick={(e) => e.stopPropagation()}
                                 style={{
                                     display: 'inline-flex',
                                     alignItems: 'center',
@@ -948,6 +949,7 @@ function FeedItemCard({
                             <Link 
                                 to={`/thread?threadid=${Array.isArray(item.thread_id) ? item.thread_id[0] : item.thread_id}`} 
                                 className="feed-context-tag"
+                                onClick={(e) => e.stopPropagation()}
                                 style={{
                                     display: 'inline-flex',
                                     alignItems: 'center',
