@@ -221,9 +221,10 @@ function FeedItemCard({
         const actualTitle = Array.isArray(item.title) ? item.title[0] : item.title;
         if (actualTitle && actualTitle.trim().length > 0) return actualTitle;
         
-        // Fallback
+        // Fallback - but posts without titles should have no title
         const typeStr = extractVariant(item.item_type);
         if (item._isAuction) return `Auction #${item._offerId}`;
+        if (typeStr === 'post') return null; // Posts without titles don't need a fallback
         return `New ${typeStr}`;
     })();
 
@@ -386,9 +387,11 @@ function FeedItemCard({
                     </div>
                     
                     {/* Title */}
-                    <div style={styles.title}>
-                        {displayTitle}
-                    </div>
+                    {displayTitle && (
+                        <div style={styles.title}>
+                            {displayTitle}
+                        </div>
+                    )}
                     
                     {/* Body preview */}
                     {bodyText && (
@@ -564,14 +567,16 @@ function FeedItemCard({
                 </div>
                 
                 {/* Title */}
-                <h3 
-                    className="feed-title-link"
-                    style={styles.title}
-                    onClick={handleItemClick}
-                    title={`Go to ${typeDisplayText.toLowerCase()}`}
-                >
-                    {displayTitle}
-                </h3>
+                {displayTitle && (
+                    <h3 
+                        className="feed-title-link"
+                        style={styles.title}
+                        onClick={handleItemClick}
+                        title={`Go to ${typeDisplayText.toLowerCase()}`}
+                    >
+                        {displayTitle}
+                    </h3>
+                )}
                 
                 {/* Auction info - what's being sold and pricing */}
                 {item._isAuction && (
