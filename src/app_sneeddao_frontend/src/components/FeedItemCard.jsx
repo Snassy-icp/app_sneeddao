@@ -819,7 +819,10 @@ function FeedItemCard({
                         fontSize: '0.85rem',
                         color: theme.colors.secondaryText,
                         lineHeight: '1.5',
-                        marginBottom: '8px'
+                        marginBottom: '8px',
+                        maxHeight: '60px',
+                        overflow: 'hidden',
+                        position: 'relative',
                     }}>
                         {item.body.length > 200 ? `${item.body.substring(0, 200)}...` : item.body}
                     </div>
@@ -859,7 +862,10 @@ function FeedItemCard({
                         <div style={{
                             fontSize: '12px',
                             color: theme.colors.secondaryText,
-                            lineHeight: '1.4'
+                            lineHeight: '1.4',
+                            maxHeight: '48px',
+                            overflow: 'hidden',
+                            position: 'relative',
                         }}>
                             <MarkdownBody 
                                 text={(() => {
