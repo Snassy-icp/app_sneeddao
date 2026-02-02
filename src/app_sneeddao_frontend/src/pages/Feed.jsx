@@ -15,6 +15,7 @@ import PrincipalInput from '../components/PrincipalInput';
 import Poll from '../components/Poll';
 import MarkdownBody from '../components/MarkdownBody';
 import TokenIcon from '../components/TokenIcon';
+import FeedItemCard from '../components/FeedItemCard';
 import { FaRss, FaFilter, FaTimes, FaChevronDown, FaChevronUp, FaComments, FaLayerGroup, FaStream, FaReply, FaSearch, FaUser, FaList, FaGavel, FaBrain, FaRobot, FaCube, FaCoins, FaClock } from 'react-icons/fa';
 import { createSneedexActor, getAssetDetails, formatAmount, formatTimeRemaining, getOfferStateString } from '../utils/SneedexUtils';
 
@@ -3022,7 +3023,25 @@ function Feed() {
                                     </div>
                                 )}
 
-                                {feedItems && feedItems.map((item, index) => renderFeedItem(item, index))}
+                                {feedItems && feedItems.map((item, index) => (
+                                    <FeedItemCard
+                                        key={item.id}
+                                        item={item}
+                                        index={index}
+                                        compact={false}
+                                        getSnsInfo={getSnsInfo}
+                                        snsLogos={snsLogos}
+                                        loadingLogos={loadingLogos}
+                                        getPrincipalDisplayName={getPrincipalDisplayName}
+                                        principalToText={principalToText}
+                                        Principal={Principal}
+                                        isAuthenticated={isAuthenticated}
+                                        auctionTokenMetadata={auctionTokenMetadata}
+                                        loadingAuctionTokens={loadingAuctionTokens}
+                                        allSnses={allSnses}
+                                        pollsData={pollsData}
+                                    />
+                                ))}
                                 
                                 {/* Load More Older Items - Loading indicator or manual button */}
                                 {(loadingMore || (hasMore && !canAutoLoadOlder)) && (

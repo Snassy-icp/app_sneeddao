@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import Header from '../components/Header';
 import { Link } from 'react-router-dom';
-import { FaExchangeAlt, FaCoins, FaLock, FaComments, FaWallet, FaServer, FaNewspaper, FaUsers, FaVoteYea, FaRss, FaArrowRight, FaHistory, FaStar, FaUnlock, FaShieldAlt, FaGlobe, FaBrain, FaGavel, FaLayerGroup, FaStream, FaReply, FaNetworkWired } from 'react-icons/fa';
+import { FaExchangeAlt, FaCoins, FaLock, FaComments, FaWallet, FaServer, FaNewspaper, FaUsers, FaVoteYea, FaRss, FaArrowRight, FaHistory, FaStar, FaUnlock, FaShieldAlt, FaGlobe, FaBrain, FaGavel, FaNetworkWired } from 'react-icons/fa';
 import { HttpAgent } from '@dfinity/agent';
 import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
 import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
@@ -10,6 +10,7 @@ import { createSneedexActor } from '../utils/SneedexUtils';
 import { getSnsById, getAllSnses } from '../utils/SnsUtils';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
 import OfferCard from '../components/OfferCard';
+import FeedItemCard from '../components/FeedItemCard';
 import priceService from '../services/PriceService';
 
 // Constants
@@ -202,54 +203,6 @@ const customStyles = `
     animation: borderGlow 3s ease-in-out infinite;
 }
 `;
-
-// Format relative time
-const formatRelativeTime = (timestamp) => {
-    const date = new Date(Number(timestamp) / 1000000);
-    const now = new Date();
-    const diffMs = now - date;
-    const diffSeconds = Math.floor(diffMs / 1000);
-    const diffMinutes = Math.floor(diffSeconds / 60);
-    const diffHours = Math.floor(diffMinutes / 60);
-    const diffDays = Math.floor(diffHours / 24);
-
-    if (diffSeconds < 60) return 'just now';
-    if (diffMinutes < 60) return `${diffMinutes}m`;
-    if (diffHours < 24) return `${diffHours}h`;
-    if (diffDays < 7) return `${diffDays}d`;
-    return `${Math.floor(diffDays / 7)}w`;
-};
-
-// Extract variant key from Motoko variant type
-const extractVariant = (variant) => {
-    if (!variant) return 'unknown';
-    const keys = Object.keys(variant);
-    return keys.length > 0 ? keys[0].toLowerCase() : 'unknown';
-};
-
-// Get icon for feed item type
-const getFeedTypeIcon = (type) => {
-    switch (type) {
-        case 'forum': return <FaComments size={12} />;
-        case 'topic': return <FaLayerGroup size={12} />;
-        case 'thread': return <FaStream size={12} />;
-        case 'post': return <FaReply size={12} />;
-        case 'auction': return <FaGavel size={12} />;
-        default: return <FaRss size={12} />;
-    }
-};
-
-// Get color for feed item type
-const getFeedTypeColor = (type) => {
-    switch (type) {
-        case 'forum': return '#e74c3c';
-        case 'topic': return '#3b82f6';
-        case 'thread': return '#f97316';
-        case 'post': return '#22c55e';
-        case 'auction': return '#8b5cf6';
-        default: return '#6b7280';
-    }
-};
 
 // Accent colors for the hub
 const hubPrimary = '#6366f1'; // Indigo
@@ -1371,133 +1324,16 @@ function Hub() {
                                 </div>
                             ) : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                    {feedItems.map((item, index) => {
-                                        const itemType = extractVariant(item.item_type);
-                                        const typeColor = getFeedTypeColor(itemType);
-                                        const snsRoot = item.sns_root_canister_id?.[0]?.toString();
-                                        const snsLogo = snsRoot ? snsLogos[snsRoot] : null;
-                                        const snsData = snsRoot ? getSnsById(snsRoot) : null;
-                                        
-                                        let itemLink = '/feed';
-                                        if (itemType === 'thread') {
-                                            itemLink = `/thread?threadid=${item.thread_id?.[0] || item.id}`;
-                                        } else if (itemType === 'post') {
-                                            itemLink = `/thread?threadid=${item.thread_id?.[0]}&postid=${item.id}`;
-                                        } else if (itemType === 'topic') {
-                                            itemLink = `/topic?topicid=${item.topic_id?.[0] || item.id}`;
-                                        }
-                                        
-                                        return (
-                                            <Link
-                                                key={`feed-${item.id}-${index}`}
-                                                to={itemLink}
-                                                style={{
-                                                    display: 'flex',
-                                                    alignItems: 'flex-start',
-                                                    gap: '12px',
-                                                    padding: '14px 16px',
-                                                    background: theme.colors.primaryBg,
-                                                    borderRadius: '14px',
-                                                    textDecoration: 'none',
-                                                    border: `1px solid ${theme.colors.border}`,
-                                                    transition: 'all 0.2s ease',
-                                                }}
-                                                onMouseEnter={(e) => {
-                                                    e.currentTarget.style.transform = 'translateX(4px)';
-                                                    e.currentTarget.style.borderColor = typeColor;
-                                                    e.currentTarget.style.boxShadow = `0 4px 16px ${typeColor}20`;
-                                                }}
-                                                onMouseLeave={(e) => {
-                                                    e.currentTarget.style.transform = 'translateX(0)';
-                                                    e.currentTarget.style.borderColor = theme.colors.border;
-                                                    e.currentTarget.style.boxShadow = 'none';
-                                                }}
-                                            >
-                                                {/* SNS Logo */}
-                                                <div style={{
-                                                    width: '44px',
-                                                    height: '44px',
-                                                    borderRadius: '12px',
-                                                    background: `linear-gradient(135deg, ${typeColor}30, ${typeColor}15)`,
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    flexShrink: 0,
-                                                    overflow: 'hidden',
-                                                    border: `1px solid ${typeColor}30`,
-                                                }}>
-                                                    {snsLogo ? (
-                                                        <img src={snsLogo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                                    ) : (
-                                                        <span style={{ color: typeColor }}>{getFeedTypeIcon(itemType)}</span>
-                                                    )}
-                                                </div>
-                                                
-                                                <div style={{ flex: 1, minWidth: 0 }}>
-                                                    {/* Header row */}
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
-                                                        <span style={{
-                                                            display: 'inline-flex',
-                                                            alignItems: 'center',
-                                                            gap: '4px',
-                                                            padding: '4px 10px',
-                                                            borderRadius: '8px',
-                                                            background: typeColor,
-                                                            color: 'white',
-                                                            fontSize: '0.7rem',
-                                                            fontWeight: '700',
-                                                            textTransform: 'uppercase',
-                                                            letterSpacing: '0.3px',
-                                                        }}>
-                                                            {getFeedTypeIcon(itemType)}
-                                                            {itemType}
-                                                        </span>
-                                                        {snsData && (
-                                                            <span style={{
-                                                                fontSize: '0.75rem',
-                                                                color: theme.colors.secondaryText,
-                                                                background: theme.colors.secondaryBg,
-                                                                padding: '4px 10px',
-                                                                borderRadius: '8px',
-                                                                fontWeight: '500',
-                                                            }}>
-                                                                {snsData.name}
-                                                            </span>
-                                                        )}
-                                                        <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginLeft: 'auto', fontWeight: '500' }}>
-                                                            {formatRelativeTime(item.created_at)}
-                                                        </span>
-                                                    </div>
-                                                    
-                                                    {/* Title */}
-                                                    <div style={{
-                                                        color: theme.colors.primaryText,
-                                                        fontSize: '0.95rem',
-                                                        fontWeight: '600',
-                                                        overflow: 'hidden',
-                                                        textOverflow: 'ellipsis',
-                                                        whiteSpace: 'nowrap',
-                                                        marginBottom: '4px',
-                                                    }}>
-                                                        {item.title || 'Untitled'}
-                                                    </div>
-                                                    
-                                                    {/* Body preview */}
-                                                    {item.body && (
-                                                        <div style={{
-                                                            color: theme.colors.secondaryText,
-                                                            fontSize: '0.8rem',
-                                                            overflow: 'hidden',
-                                                            textOverflow: 'ellipsis',
-                                                            whiteSpace: 'nowrap',
-                                                        }}>
-                                                            {item.body.slice(0, 80)}{item.body.length > 80 ? '...' : ''}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </Link>
-                                        );
-                                    })}
+                                    {feedItems.map((item, index) => (
+                                        <FeedItemCard
+                                            key={`feed-${item.id}-${index}`}
+                                            item={item}
+                                            index={index}
+                                            compact={true}
+                                            getSnsInfo={getSnsById}
+                                            snsLogos={snsLogos}
+                                        />
+                                    ))}
                                 </div>
                             )}
                         </div>
