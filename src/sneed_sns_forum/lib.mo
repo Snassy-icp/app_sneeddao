@@ -3210,13 +3210,16 @@ module {
         body: Text,
         body_max_length_override: ?Nat
     ) : Result<(), ForumError> {
-        // Check admin access
-        if (not is_admin(state, caller)) {
-            return #err(#Unauthorized("Admin access required"));
-        };
-
         switch (Map.get(state.threads, Map.nhash, thread_id)) {
             case (?thread) {
+                // Check if caller is admin or thread owner
+                let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
+                let is_thread_owner = (thread.created_by == caller_index);
+                
+                if (not (is_admin(state, caller) or is_thread_owner)) {
+                    return #err(#Unauthorized("Only admins or thread owners can edit threads"));
+                };
+
                 // Validate input
                 switch (title) {
                     case (?t) {
@@ -3237,7 +3240,6 @@ module {
                     case (#ok()) {};
                 };
 
-                let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
                 let updated_thread = {
                     thread with
                     title = title;

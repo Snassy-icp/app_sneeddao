@@ -168,6 +168,139 @@ const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdi
     );
 };
 
+// ThreadEditForm component for editing threads
+const ThreadEditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdit, textLimits, regularLimits, isPremium }) => {
+    const { theme } = useTheme();
+    const [title, setTitle] = useState(initialTitle || '');
+    const [body, setBody] = useState(initialBody || '');
+    const bodyRef = useRef(null);
+    
+    // Character limit validation using thread-specific limits
+    const maxTitleLength = textLimits?.thread_title_max_length || 200;
+    const maxBodyLength = textLimits?.thread_body_max_length || 10000;
+    const regularMaxBodyLength = regularLimits?.thread_body_max_length || maxBodyLength;
+    const hasPremiumBodyLimit = isPremium && maxBodyLength > regularMaxBodyLength;
+    const isTitleOverLimit = title.length > maxTitleLength;
+    const isBodyOverLimit = body.length > maxBodyLength;
+    const isOverLimit = isTitleOverLimit || isBodyOverLimit;
+    
+    return (
+        <div style={{ marginTop: '15px', padding: '15px', backgroundColor: theme.colors.primaryBg, borderRadius: '4px', border: `1px solid ${theme.colors.border}` }}>
+            <h4 style={{ color: theme.colors.accent, marginBottom: '10px' }}>Edit Thread</h4>
+            <input
+                type="text"
+                placeholder="Thread Title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                style={{
+                    width: '100%',
+                    backgroundColor: theme.colors.secondaryBg,
+                    border: `1px solid ${isTitleOverLimit ? theme.colors.error : theme.colors.border}`,
+                    borderRadius: '4px',
+                    color: theme.colors.primaryText,
+                    padding: '10px',
+                    fontSize: '14px',
+                    marginBottom: '5px'
+                }}
+            />
+            <div style={{ 
+                fontSize: '12px', 
+                color: isTitleOverLimit ? theme.colors.error : (maxTitleLength - title.length) < 20 ? theme.colors.warning : theme.colors.mutedText,
+                marginBottom: '10px',
+                textAlign: 'right'
+            }}>
+                Title: {title.length}/{maxTitleLength} characters
+                {isTitleOverLimit && <span style={{ marginLeft: '10px' }}>({title.length - maxTitleLength} over limit)</span>}
+            </div>
+            <EmojiPicker
+                targetRef={bodyRef}
+                getValue={() => body}
+                setValue={setBody}
+                ariaLabel="Insert emoji into thread body"
+                rightSlot={
+                    <MarkdownButtons
+                        targetRef={bodyRef}
+                        getValue={() => body}
+                        setValue={setBody}
+                    />
+                }
+            />
+            <textarea
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                placeholder="Thread body"
+                ref={bodyRef}
+                style={{
+                    width: '100%',
+                    minHeight: '150px',
+                    backgroundColor: theme.colors.secondaryBg,
+                    border: `1px solid ${isBodyOverLimit ? theme.colors.error : theme.colors.border}`,
+                    borderRadius: '4px',
+                    color: theme.colors.primaryText,
+                    padding: '10px',
+                    fontSize: '14px',
+                    resize: 'vertical',
+                    marginBottom: '5px'
+                }}
+            />
+            <div style={{ 
+                fontSize: '12px', 
+                color: isBodyOverLimit ? theme.colors.error : (maxBodyLength - body.length) < 100 ? theme.colors.warning : theme.colors.mutedText,
+                marginBottom: '10px',
+                textAlign: 'right',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                alignItems: 'center',
+                gap: '8px'
+            }}>
+                <span>Body: {body.length}/{maxBodyLength} characters</span>
+                {isBodyOverLimit && <span>({body.length - maxBodyLength} over limit)</span>}
+                {hasPremiumBodyLimit && (
+                    <span style={{
+                        backgroundColor: 'rgba(255, 215, 0, 0.2)',
+                        color: '#ffd700',
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        fontSize: '10px',
+                        fontWeight: 'bold'
+                    }}>
+                        ⭐ PREMIUM
+                    </span>
+                )}
+            </div>
+            <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                    onClick={() => onSubmit(title, body)}
+                    disabled={!body.trim() || submittingEdit || isOverLimit}
+                    style={{
+                        padding: '8px 16px',
+                        backgroundColor: (body.trim() && !submittingEdit && !isOverLimit) ? theme.colors.accent : theme.colors.mutedText,
+                        color: theme.colors.primaryText,
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: (body.trim() && !submittingEdit && !isOverLimit) ? 'pointer' : 'not-allowed'
+                    }}
+                >
+                    {submittingEdit ? 'Updating...' : 'Update Thread'}
+                </button>
+                <button
+                    onClick={onCancel}
+                    style={{
+                        padding: '8px 16px',
+                        backgroundColor: theme.colors.mutedText,
+                        color: theme.colors.primaryText,
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                    }}
+                >
+                    Cancel
+                </button>
+            </div>
+        </div>
+    );
+};
+
 // ReplyForm component
 const ReplyForm = ({ postId, onSubmit, onCancel, submittingComment, createdBy, principalDisplayInfo, textLimits, regularLimits, isPremium }) => {
     const { theme } = useTheme();
@@ -716,6 +849,10 @@ function ThreadViewer({
     const [updatingPost, setUpdatingPost] = useState(false);
     const [deletingPost, setDeletingPost] = useState(null); // postId being deleted
     const [postTips, setPostTips] = useState({});
+    
+    // Thread Edit states
+    const [editingThread, setEditingThread] = useState(false);
+    const [updatingThread, setUpdatingThread] = useState(false);
 
     // SNS context state
     const [threadContext, setThreadContext] = useState(null);
@@ -1944,6 +2081,58 @@ function ThreadViewer({
         }
     }, [forumActor, editingPost, fetchThreadData, cancelEditPost]);
 
+    // Thread Edit handlers
+    const startEditThread = useCallback(() => {
+        const scrollY = window.scrollY;
+        setEditingThread(true);
+        requestAnimationFrame(() => {
+            window.scrollTo(0, scrollY);
+        });
+    }, []);
+
+    const cancelEditThread = useCallback(() => {
+        const scrollY = window.scrollY;
+        setEditingThread(false);
+        requestAnimationFrame(() => {
+            window.scrollTo(0, scrollY);
+        });
+    }, []);
+
+    const submitEditThread = useCallback(async (title, body) => {
+        if (!forumActor || !threadId) return;
+
+        // Handle the title - convert empty strings to [] (None), keep non-empty as [string] (Some)
+        let processedTitle = title;
+        if (Array.isArray(title)) {
+            processedTitle = title.length > 0 ? title[0] : '';
+        }
+        const finalTitle = (processedTitle && processedTitle.trim()) ? [processedTitle.trim()] : [];
+
+        setUpdatingThread(true);
+        try {
+            const result = await forumActor.update_thread(
+                Number(threadId),
+                finalTitle,
+                body
+            );
+
+            if ('ok' in result) {
+                console.log('Thread updated successfully');
+                cancelEditThread();
+                // Refresh thread data to get the updated content
+                await fetchThreadData();
+            } else {
+                console.error('Failed to update thread:', result.err);
+                alert('Failed to update thread: ' + (result.err?.InvalidInput || result.err?.Unauthorized || JSON.stringify(result.err) || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error updating thread:', error);
+            alert('Error updating thread: ' + error.message);
+        } finally {
+            setUpdatingThread(false);
+        }
+    }, [forumActor, threadId, fetchThreadData, cancelEditThread]);
+
     // Delete handlers
     const handleDeletePost = useCallback(async (postId) => {
         if (!forumActor) return;
@@ -2641,10 +2830,51 @@ function ThreadViewer({
                 {/* Expanded Content */}
                 {isThreadHeaderExpanded && (
                     <div style={{ padding: '16px' }}>
-                        {threadDetails && threadDetails.body && (
+                        {/* Thread body - hide when editing */}
+                        {!editingThread && threadDetails && threadDetails.body && (
                             <div className="thread-description" style={{ marginBottom: '12px' }}>
                                 <MarkdownBody text={threadDetails.body} style={{ color: theme.colors.secondaryText }} />
                             </div>
+                        )}
+                        
+                        {/* Edit Thread Button - show for thread owner or admin when not editing */}
+                        {!editingThread && identity && threadDetails && threadDetails.created_by && 
+                         (threadDetails.created_by.toString() === identity.getPrincipal().toString() || isAdmin) && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    startEditThread();
+                                }}
+                                style={{
+                                    backgroundColor: 'transparent',
+                                    color: theme.colors.mutedText,
+                                    border: `1px solid ${theme.colors.border}`,
+                                    borderRadius: '4px',
+                                    padding: '6px 12px',
+                                    cursor: 'pointer',
+                                    fontSize: '12px',
+                                    marginBottom: '12px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px'
+                                }}
+                            >
+                                <FaEdit size={12} /> Edit Thread
+                            </button>
+                        )}
+                        
+                        {/* Thread Edit Form */}
+                        {editingThread && threadDetails && (
+                            <ThreadEditForm
+                                initialTitle={threadDetails.title || ''}
+                                initialBody={threadDetails.body || ''}
+                                onSubmit={submitEditThread}
+                                onCancel={cancelEditThread}
+                                submittingEdit={updatingThread}
+                                textLimits={textLimits}
+                                regularLimits={regularLimits}
+                                isPremium={isPremium}
+                            />
                         )}
                         
                         {/* Thread Polls */}
