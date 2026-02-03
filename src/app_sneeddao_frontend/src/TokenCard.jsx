@@ -219,10 +219,11 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
 
     // Get total neuron stake - prefer cached token value for instant display
     const getTotalNeuronStake = () => {
+        // DEBUG: Disabled reading cached totals to test if neuron caching works correctly
         // If we have cached value on token (from WalletContext), use it for instant display
-        if (token.neuronStake !== undefined && token.neuronStake !== null && token.neuronStake !== 0n) {
-            return BigInt(token.neuronStake);
-        }
+        // if (token.neuronStake !== undefined && token.neuronStake !== null && token.neuronStake !== 0n) {
+        //     return BigInt(token.neuronStake);
+        // }
         // Fall back to computing from loaded neurons
         return neurons.reduce((total, neuron) => {
             return total + BigInt(getNeuronStake(neuron));
@@ -231,10 +232,11 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
 
     // Get total neuron maturity - prefer cached token value for instant display
     const getTotalNeuronMaturity = () => {
+        // DEBUG: Disabled reading cached totals to test if neuron caching works correctly
         // If we have cached value on token (from WalletContext), use it for instant display
-        if (token.neuronMaturity !== undefined && token.neuronMaturity !== null && token.neuronMaturity !== 0n) {
-            return BigInt(token.neuronMaturity);
-        }
+        // if (token.neuronMaturity !== undefined && token.neuronMaturity !== null && token.neuronMaturity !== 0n) {
+        //     return BigInt(token.neuronMaturity);
+        // }
         // Fall back to computing from loaded neurons
         return neurons.reduce((total, neuron) => {
             return total + BigInt(neuron.maturity_e8s_equivalent || 0n);

@@ -11,222 +11,208 @@ Error with Permissions-Policy header: Unrecognized feature: 'sync-script'.
 Error with Permissions-Policy header: Unrecognized feature: 'trust-token-redemption'.
 Error with Permissions-Policy header: Unrecognized feature: 'window-placement'.
 Error with Permissions-Policy header: Unrecognized feature: 'vertical-scroll'.
-index-c2c321d2.js:45662 TokenCard constants: {GLDT_CANISTER_ID: '6c7su-kiaaa-aaaar-qaira-cai', SGLDT_CANISTER_ID: 'i2s4q-syaaa-aaaan-qz4sq-cai'}
-index-c2c321d2.js:62190 Wallet constants: {GLDT_CANISTER_ID: '6c7su-kiaaa-aaaar-qaira-cai', SGLDT_CANISTER_ID: 'i2s4q-syaaa-aaaan-qz4sq-cai'}
-index-c2c321d2.js:54434 SnsDropdown: Initial mount, loading SNS data...
-index-c2c321d2.js:54385 SnsDropdown: Starting to load SNS data...
-index-c2c321d2.js:54390 SnsDropdown: Using cached SNS data: (37) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
-index-c2c321d2.js:54808 Not authenticated, setting timeout...
-index-c2c321d2.js:37125 Starting fetchAndCacheSnsData...
-index-c2c321d2.js:37128 Returning cached SNS data: (37) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
-index-c2c321d2.js:32506 NamingContext: Fetching names from backend... 
-index-c2c321d2.js:29914 Getting all neuron names
-index-c2c321d2.js:30022 Getting all principal names with identity: anonymous
-index-c2c321d2.js:43503 PremiumContext: Fetching active premium members...
-index-c2c321d2.js:92062 NeuronsContext useEffect triggered: {isAuthenticated: false, hasIdentity: false, selectedSnsRoot: 'uly3p-iqaaa-aaaaq-aabma-cai', identityPrincipal: undefined}
-index-c2c321d2.js:92072 NeuronsContext: Clearing neurons data on logout
-index-c2c321d2.js:36965 [LogoCache] Loaded 0 logos from IndexedDB
-index-c2c321d2.js:38054 [TokenCache] Loaded 0 token metadata entries from IndexedDB
-index-c2c321d2.js:54824 Authenticated, checking admin status...
-index-c2c321d2.js:54755 Checking admin status...
-index-c2c321d2.js:54756 Is authenticated: true
-index-c2c321d2.js:54757 Identity: DelegationIdentity {_inner: Ed25519KeyIdentity, _delegation: DelegationChain, _principal: Principal}
-index-c2c321d2.js:54759 Creating backend actor...
-index-c2c321d2.js:54766 Calling caller_is_admin...
-index-c2c321d2.js:37125 Starting fetchAndCacheSnsData...
-index-c2c321d2.js:37128 Returning cached SNS data: (37) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for umz53-fi...
-index-c2c321d2.js:29983 Getting principal name for: {principal: 'lcyf6-t6uno-og7on-w4fyq-tegjt-ejrcg-kyaio-wcvvm-yu3vo-h2nbl-jqe'}
-index-c2c321d2.js:32594 NamingContext: Identity changed, refreshing nicknames...
-index-c2c321d2.js:32506 NamingContext: Fetching names from backend... (background refresh)
-index-c2c321d2.js:29914 Getting all neuron names
-index-c2c321d2.js:29927 Getting all neuron nicknames
-index-c2c321d2.js:30022 Getting all principal names with identity: authenticated
-index-c2c321d2.js:30035 Getting all principal nicknames
-index-c2c321d2.js:37125 Starting fetchAndCacheSnsData...
-index-c2c321d2.js:37128 Returning cached SNS data: (37) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for zqfso-sy...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for 2jvtu-yq...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for 74ncn-fq...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for 6wcax-ha...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for 4l7o7-ui...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for xvj4b-pa...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for xomae-vy...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for rqch6-oa...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for qgj7v-3q...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for tr3th-ki...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for elxqo-ra...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for eqsml-ly...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for fi3zi-fy...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for hodlf-mi...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for gdnpl-da...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for detjl-sq...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for dwv6s-6a...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for cvzxu-ky...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for auadn-oq...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for bmjwo-aq...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for k34pm-nq...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for lyqgk-zi...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for lnxxh-ya...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for jfnic-ka...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for ni4my-za...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for ntzq5-dy...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for oypg6-fa...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for o3y74-5y...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for oa5dz-ha...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for mpg2i-yy...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for icx6s-ly...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for iqrjl-hi...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for jt5an-tq...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for lseuu-xy...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for lhdfz-wq...
-index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for kri5s-da...
-index-c2c321d2.js:39401 ⏳ [WALLET] Waiting for cache check to complete...
-index-c2c321d2.js:92062 NeuronsContext useEffect triggered: {isAuthenticated: true, hasIdentity: true, selectedSnsRoot: 'uly3p-iqaaa-aaaaq-aabma-cai', identityPrincipal: 'lcyf6-t6uno-og7on-w4fyq-tegjt-ejrcg-kyaio-wcvvm-yu3vo-h2nbl-jqe'}
-index-c2c321d2.js:92069 NeuronsContext: Proactively fetching neurons for SNS: uly3p-iqaaa-aaaaq-aabma-cai
-index-c2c321d2.js:91939 fetchHotkeyNeuronsData called with: {snsRoot: 'uly3p-iqaaa-aaaaq-aabma-cai', hasIdentity: true, forceRefresh: false}
-index-c2c321d2.js:91950 fetchHotkeyNeuronsData: Checking cache for key: lcyf6-t6uno-og7on-w4fyq-tegjt-ejrcg-kyaio-wcvvm-yu3vo-h2nbl-jqe-uly3p-iqaaa-aaaaq-aabma-cai
-index-c2c321d2.js:91967 fetchHotkeyNeuronsData: No in-memory cached data or forcing refresh, fetching from network
-index-c2c321d2.js:91972 fetchHotkeyNeuronsData: Fetching neurons from SNS...
-index-c2c321d2.js:32576 NamingContext: Names updated. Principal names: 6 Neuron names: 3
-index-c2c321d2.js:38540 💾 [WALLET CACHE] No cache found
-index-c2c321d2.js:39417 🔄 [WALLET] No cache, fetching from scratch
-index-c2c321d2.js:38964 🔄 [POSITIONS FETCH] Called with clearFirst=true showLoading=true hasPositionsRef=false
-index-c2c321d2.js:38972 🔄 [POSITIONS FETCH] Clearing positions (clearFirst=true)
-index-c2c321d2.js:38977 🔄 [POSITIONS FETCH] shouldShowLoading=true
-index-c2c321d2.js:55099 SMS notifications debug: {userPrincipal: 'lcyf6-t6uno-og7on-w4fyq-tegjt-ejrcg-kyaio-wcvvm-yu3vo-h2nbl-jqe', newMessagesCount: 0n}
-index-c2c321d2.js:55105 SMS notifications: Found 0 new messages
-index-c2c321d2.js:55010 Reply notifications debug: {userPrincipal: 'lcyf6-t6uno-og7on-w4fyq-tegjt-ejrcg-kyaio-wcvvm-yu3vo-h2nbl-jqe', newRepliesCount: 0n}
-index-c2c321d2.js:55016 Reply notifications: Found 0 new replies
-index-c2c321d2.js:54934 Tip notifications debug: {userPrincipal: 'lcyf6-t6uno-og7on-w4fyq-tegjt-ejrcg-kyaio-wcvvm-yu3vo-h2nbl-jqe', newTipsCount: 0n}
-index-c2c321d2.js:54941 Tip notifications: Found 0 new tips
-index-c2c321d2.js:54768 isAdminResult: true
-index-c2c321d2.js:43509 PremiumContext: Loaded 0 active premium members
-index-c2c321d2.js:32576 NamingContext: Names updated. Principal names: 6 Neuron names: 3
-index-c2c321d2.js:39171 [WALLET FETCH] Starting fetch for 11 registered tokens
-index-c2c321d2.js:36148 PriceService initialized successfully
-index-c2c321d2.js:39180 [WALLET FETCH] Token DOLR loaded, fetching neuron totals...
-index-c2c321d2.js:38825 [NeuronTotals] Called for 6rdgd-ky..., SNS count: 37
-index-c2c321d2.js:38846 [NeuronTotals] Found SNS: DOLR AI, governance: 6wcax-ha...
-index-c2c321d2.js:38850 [NeuronTotals] Fetching neurons for DOLR AI, session=1...
-index-c2c321d2.js:38729 [fetchAndCacheNeurons] Sharing in-flight request for 6wcax-ha...
-index-c2c321d2.js:39180 [WALLET FETCH] Token sGLDT loaded, fetching neuron totals...
-index-c2c321d2.js:38825 [NeuronTotals] Called for i2s4q-sy..., SNS count: 37
-index-c2c321d2.js:39180 [WALLET FETCH] Token GLDT loaded, fetching neuron totals...
-index-c2c321d2.js:38825 [NeuronTotals] Called for 6c7su-ki..., SNS count: 37
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for umz53-fi, got 0 neurons
-index-c2c321d2.js:38566 💾 [POSITIONS CACHE] Saving 0 positions to cache
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for zqfso-sy, got 0 neurons
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for 74ncn-fq, got 0 neurons
-index-c2c321d2.js:39180 [WALLET FETCH] Token cICP loaded, fetching neuron totals...
-index-c2c321d2.js:38825 [NeuronTotals] Called for n6tkf-tq..., SNS count: 37
-index-c2c321d2.js:39180 [WALLET FETCH] Token EXE loaded, fetching neuron totals...
-index-c2c321d2.js:38825 [NeuronTotals] Called for rh2pm-ry..., SNS count: 37
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for 2jvtu-yq, got 0 neurons
-index-c2c321d2.js:39180 [WALLET FETCH] Token MOTOKO loaded, fetching neuron totals...
-index-c2c321d2.js:38825 [NeuronTotals] Called for k45jy-ai..., SNS count: 37
-index-c2c321d2.js:38846 [NeuronTotals] Found SNS: Motoko, governance: k34pm-nq...
-index-c2c321d2.js:38850 [NeuronTotals] Fetching neurons for Motoko, session=1...
-index-c2c321d2.js:38729 [fetchAndCacheNeurons] Sharing in-flight request for k34pm-nq...
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for 4l7o7-ui, got 0 neurons
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for xvj4b-pa, got 0 neurons
-index-c2c321d2.js:39180 [WALLET FETCH] Token NTN loaded, fetching neuron totals...
-index-c2c321d2.js:38825 [NeuronTotals] Called for f54if-eq..., SNS count: 37
-index-c2c321d2.js:38846 [NeuronTotals] Found SNS: Neutrinite, governance: eqsml-ly...
-index-c2c321d2.js:38850 [NeuronTotals] Fetching neurons for Neutrinite, session=1...
-index-c2c321d2.js:38729 [fetchAndCacheNeurons] Sharing in-flight request for eqsml-ly...
-index-c2c321d2.js:38936 💵 [CONVERSION RATES] Fetching for dftym-6aaa... sessionId=1
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for xomae-vy, got 0 neurons
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for rqch6-oa, got 0 neurons
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for qgj7v-3q, got 0 neurons
-index-c2c321d2.js:39180 [WALLET FETCH] Token DKP loaded, fetching neuron totals...
-index-c2c321d2.js:38825 [NeuronTotals] Called for zfcdd-tq..., SNS count: 37
-index-c2c321d2.js:38846 [NeuronTotals] Found SNS: Dragginz, governance: zqfso-sy...
-index-c2c321d2.js:38850 [NeuronTotals] Fetching neurons for Dragginz, session=1...
-index-c2c321d2.js:38724 [fetchAndCacheNeurons] Memory cache hit for zqfso-sy, returning 0 neurons
-index-c2c321d2.js:38852 [NeuronTotals] Got 0 neurons for Dragginz, checking session...
-index-c2c321d2.js:38825 [NeuronTotals] Called for 4c4fd-ca..., SNS count: 37
-index-c2c321d2.js:38846 [NeuronTotals] Found SNS: Mimic, governance: 4l7o7-ui...
-index-c2c321d2.js:38850 [NeuronTotals] Fetching neurons for Mimic, session=1...
-index-c2c321d2.js:38724 [fetchAndCacheNeurons] Memory cache hit for 4l7o7-ui, returning 0 neurons
-index-c2c321d2.js:38852 [NeuronTotals] Got 0 neurons for Mimic, checking session...
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for 6wcax-ha, got 5 neurons
-index-c2c321d2.js:38852 [NeuronTotals] Got 5 neurons for DOLR AI, checking session...
-index-c2c321d2.js:38864 🧠 [NEURON TOTALS] DOLR AI: 5 neurons, stake=1229018163348, maturity=1010645825
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for tr3th-ki, got 0 neurons
-index-c2c321d2.js:38936 💵 [CONVERSION RATES] Fetching for fv7s6-6iaa... sessionId=1
-index-c2c321d2.js:38941 💵 [CONVERSION RATES] Got rates for fv7s6-6iaa...: rate0=48.303730386160105, rate1=0.18919921023030745, currentSession=1, mySession=1
-index-c2c321d2.js:38936 💵 [CONVERSION RATES] Fetching for lqt4r-dqaa... sessionId=1
-index-c2c321d2.js:38941 💵 [CONVERSION RATES] Got rates for lqt4r-dqaa...: rate0=48.303730386160105, rate1=0.0002451889995736306, currentSession=1, mySession=1
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for hodlf-mi, got 0 neurons
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for dwv6s-6a, got 0 neurons
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for bmjwo-aq, got 0 neurons
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for o3y74-5y, got 0 neurons
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for icx6s-ly, got 0 neurons
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for ntzq5-dy, got 0 neurons
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for jfnic-ka, got 0 neurons
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for k34pm-nq, got 1 neurons
-index-c2c321d2.js:38852 [NeuronTotals] Got 1 neurons for Motoko, checking session...
-index-c2c321d2.js:38864 🧠 [NEURON TOTALS] Motoko: 1 neurons, stake=1000000000, maturity=0
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for gdnpl-da, got 0 neurons
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for eqsml-ly, got 1 neurons
-index-c2c321d2.js:38852 [NeuronTotals] Got 1 neurons for Neutrinite, checking session...
-index-c2c321d2.js:38864 🧠 [NEURON TOTALS] Neutrinite: 1 neurons, stake=10000000, maturity=0
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for ni4my-za, got 0 neurons
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for lyqgk-zi, got 0 neurons
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for lnxxh-ya, got 0 neurons
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for cvzxu-ky, got 0 neurons
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for lseuu-xy, got 0 neurons
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for detjl-sq, got 0 neurons
-index-c2c321d2.js:38941 💵 [CONVERSION RATES] Got rates for dftym-6aaa...: rate0=2.2477286255950166, rate1=48.303730386160105, currentSession=1, mySession=1
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for mpg2i-yy, got 0 neurons
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for oa5dz-ha, got 0 neurons
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for kri5s-da, got 0 neurons
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for auadn-oq, got 0 neurons
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for iqrjl-hi, got 0 neurons
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for elxqo-ra, got 0 neurons
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for jt5an-tq, got 0 neurons
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for oypg6-fa, got 0 neurons
-index-c2c321d2.js:91974 fetchHotkeyNeuronsData: Got neurons from SNS: 0
-index-c2c321d2.js:91994 fetchHotkeyNeuronsData: Created result structure: {neurons_by_owner: Array(1), total_voting_power: 0, distribution_voting_power: 0}
-index-c2c321d2.js:92002 fetchHotkeyNeuronsData: Successfully cached and set data
-index-c2c321d2.js:38946 💵 [CONVERSION RATES] Updating fv7s6-6iaa...: old rates=(0, 0) → new=(48.303730386160105, 0.18919921023030745)
-index-c2c321d2.js:38946 💵 [CONVERSION RATES] Updating lqt4r-dqaa...: old rates=(0, 0) → new=(48.303730386160105, 0.0002451889995736306)
-index-c2c321d2.js:38946 💵 [CONVERSION RATES] Updating dftym-6aaa...: old rates=(0, 0) → new=(2.2477286255950166, 48.303730386160105)
-index-c2c321d2.js:39180 [WALLET FETCH] Token TACO loaded, fetching neuron totals...
-index-c2c321d2.js:38825 [NeuronTotals] Called for kknbx-zy..., SNS count: 37
-index-c2c321d2.js:38846 [NeuronTotals] Found SNS: TACO DAO, governance: lhdfz-wq...
-index-c2c321d2.js:38850 [NeuronTotals] Fetching neurons for TACO DAO, session=1...
-index-c2c321d2.js:38729 [fetchAndCacheNeurons] Sharing in-flight request for lhdfz-wq...
-index-c2c321d2.js:39180 [WALLET FETCH] Token SNEED loaded, fetching neuron totals...
-index-c2c321d2.js:38825 [NeuronTotals] Called for hvgxa-wq..., SNS count: 37
-index-c2c321d2.js:38846 [NeuronTotals] Found SNS: Sneed, governance: fi3zi-fy...
-index-c2c321d2.js:38850 [NeuronTotals] Fetching neurons for Sneed, session=1...
-index-c2c321d2.js:38729 [fetchAndCacheNeurons] Sharing in-flight request for fi3zi-fy...
-index-c2c321d2.js:39180 [WALLET FETCH] Token WTN loaded, fetching neuron totals...
-index-c2c321d2.js:38825 [NeuronTotals] Called for jcmow-hy..., SNS count: 37
-index-c2c321d2.js:38846 [NeuronTotals] Found SNS: WaterNeuron, governance: jfnic-ka...
-index-c2c321d2.js:38850 [NeuronTotals] Fetching neurons for WaterNeuron, session=1...
-index-c2c321d2.js:38724 [fetchAndCacheNeurons] Memory cache hit for jfnic-ka, returning 0 neurons
-index-c2c321d2.js:38852 [NeuronTotals] Got 0 neurons for WaterNeuron, checking session...
-index-c2c321d2.js:37710 🧠 [NEURON CACHE] Saved 5 neurons to shared cache for 67bll-ri...
-index-c2c321d2.js:37710 🧠 [NEURON CACHE] Saved 1 neurons to shared cache for ko36b-my...
-index-c2c321d2.js:37710 🧠 [NEURON CACHE] Saved 1 neurons to shared cache for extk7-ga...
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for lhdfz-wq, got 17 neurons
-index-c2c321d2.js:38852 [NeuronTotals] Got 17 neurons for TACO DAO, checking session...
-index-c2c321d2.js:38864 🧠 [NEURON TOTALS] TACO DAO: 17 neurons, stake=4938651194839, maturity=0
-index-c2c321d2.js:37710 🧠 [NEURON CACHE] Saved 17 neurons to shared cache for lacdn-3i...
-index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for fi3zi-fy, got 13 neurons
-index-c2c321d2.js:38852 [NeuronTotals] Got 13 neurons for Sneed, checking session...
-index-c2c321d2.js:38864 🧠 [NEURON TOTALS] Sneed: 13 neurons, stake=55021999000, maturity=0
-index-c2c321d2.js:37710 🧠 [NEURON CACHE] Saved 13 neurons to shared cache for fp274-ia...
-index-c2c321d2.js:55485 Collectibles notifications: 0 rewards, 2 LP fees, 0 maturity. 0 items >= $1 threshold (2 total)
-index-c2c321d2.js:38825 [NeuronTotals] Called for ryjl3-ty..., SNS count: 37
-index-c2c321d2.js:38566 💾 [POSITIONS CACHE] Saving 3 positions to cache
-index-c2c321d2.js:38571 💾 [POSITIONS SAVE] Position 0: swapId=dftym-6aaaa-aaa... type=object, innerPositions=1
-index-c2c321d2.js:38571 💾 [POSITIONS SAVE] Position 1: swapId=fv7s6-6iaaa-aaa... type=object, innerPositions=2
-index-c2c321d2.js:38571 💾 [POSITIONS SAVE] Position 2: swapId=lqt4r-dqaaa-aaa... type=object, innerPositions=1
-index-c2c321d2.js:38566 💾 [POSITIONS CACHE] Saving 3 positions to cache
-index-c2c321d2.js:38571 💾 [POSITIONS SAVE] Position 0: swapId=dftym-6aaaa-aaa... type=object, innerPositions=1
-index-c2c321d2.js:38571 💾 [POSITIONS SAVE] Position 1: swapId=fv7s6-6iaaa-aaa... type=object, innerPositions=2
-index-c2c321d2.js:38571 💾 [POSITIONS SAVE] Position 2: swapId=lqt4r-dqaaa-aaa... type=object, innerPositions=1
+index-f7da18b2.js:45521 TokenCard constants: {GLDT_CANISTER_ID: '6c7su-kiaaa-aaaar-qaira-cai', SGLDT_CANISTER_ID: 'i2s4q-syaaa-aaaan-qz4sq-cai'}
+index-f7da18b2.js:62069 Wallet constants: {GLDT_CANISTER_ID: '6c7su-kiaaa-aaaar-qaira-cai', SGLDT_CANISTER_ID: 'i2s4q-syaaa-aaaan-qz4sq-cai'}
+ Not authenticated, setting timeout...
+ [Wallet] Loading SNS data...
+ [Wallet] Cached SNS data: (37) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+ [Wallet] SNS: Dragginz Ledger: zfcdd-tqaaa-aaaaq-aaaga-cai
+ [Wallet] SNS: OpenChat Ledger: 2ouva-viaaa-aaaaq-aaamq-cai
+ [Wallet] SNS: Kinic Ledger: 73mez-iiaaa-aaaaq-aaasq-cai
+ [Wallet] SNS: DOLR AI Ledger: 6rdgd-kyaaa-aaaaq-aaavq-cai
+ [Wallet] SNS: Mimic Ledger: 4c4fd-caaaa-aaaaq-aaa3a-cai
+ [Wallet] SNS: DecideAI DAO Ledger: xsi2v-cyaaa-aaaaq-aabfq-cai
+ [Wallet] SNS: BOOM DAO Ledger: vtrom-gqaaa-aaaaq-aabia-cai
+ [Wallet] SNS: Catalyze Ledger: uf2wh-taaaa-aaaaq-aabna-cai
+ [Wallet] SNS: Nuance Ledger: rxdbk-dyaaa-aaaaq-aabtq-cai
+ [Wallet] SNS: SONIC Ledger: qbizb-wiaaa-aaaaq-aabwq-cai
+ [Wallet] SNS: Gold DAO Ledger: tyyy3-4aaaa-aaaaq-aab7a-cai
+ [Wallet] SNS: TRAX Ledger: emww2-4yaaa-aaaaq-aacbq-cai
+ [Wallet] SNS: Neutrinite Ledger: f54if-eqaaa-aaaaq-aacea-cai
+ [Wallet] SNS: Sneed Ledger: hvgxa-wqaaa-aaaaq-aacia-cai
+ [Wallet] SNS: ICLighthouse DAO Ledger: hhaaz-2aaaa-aaaaq-aacla-cai
+ [Wallet] SNS: ELNA AI Ledger: gemj7-oyaaa-aaaaq-aacnq-cai
+ [Wallet] SNS: ICFC Ledger: ddsp7-7iaaa-aaaaq-aacqq-cai
+ [Wallet] SNS: ICPanda Ledger: druyg-tyaaa-aaaaq-aactq-cai
+ [Wallet] SNS: ICPSwap Ledger: ca6gz-lqaaa-aaaaq-aacwa-cai
+ [Wallet] SNS: Yuku AI Ledger: atbfz-diaaa-aaaaq-aacyq-cai
+ [Wallet] SNS: EstateDAO Ledger: bliq2-niaaa-aaaaq-aac4q-cai
+ [Wallet] SNS: Motoko Ledger: k45jy-aiaaa-aaaaq-aadcq-cai
+ [Wallet] SNS: Swampies Ledger: lrtnw-paaaa-aaaaq-aadfa-cai
+ [Wallet] SNS: ORIGYN Ledger: lkwrt-vyaaa-aaaaq-aadhq-cai
+ [Wallet] SNS: WaterNeuron Ledger: jcmow-hyaaa-aaaaq-aadlq-cai
+ [Wallet] SNS: PHASMA Ledger: np5km-uyaaa-aaaaq-aadrq-cai
+ [Wallet] SNS: ICVC Ledger: m6xut-mqaaa-aaaaq-aadua-cai
+ [Wallet] SNS: KongSwap Ledger: o7oak-iyaaa-aaaaq-aadzq-cai
+ [Wallet] SNS: FomoWell Ledger: o4zzi-qaaaa-aaaaq-aaeeq-cai
+ [Wallet] SNS: Alice Strategy Ledger: oj6if-riaaa-aaaaq-aaeha-cai
+ [Wallet] SNS: NFID Wallet Ledger: mih44-vaaaa-aaaaq-aaekq-cai
+ [Wallet] SNS: IC Explorer Ledger: ifwyg-gaaaa-aaaaq-aaeqq-cai
+ [Wallet] SNS: Personal DAO Ledger: ixqp7-kqaaa-aaaaq-aaetq-cai
+ [Wallet] SNS: Cecil The Lion DAO Ledger: jg2ra-syaaa-aaaaq-aaewa-cai
+ [Wallet] SNS: ICPEx Ledger: lvfsa-2aaaa-aaaaq-aaeyq-cai
+ [Wallet] SNS: TACO DAO Ledger: kknbx-zyaaa-aaaaq-aae4a-cai
+ [Wallet] SNS: Tendies Ledger: kylwo-viaaa-aaaaq-aae7a-cai
+ [Wallet] SNS Ledger IDs from cache: (37) ['zfcdd-tqaaa-aaaaq-aaaga-cai', '2ouva-viaaa-aaaaq-aaamq-cai', '73mez-iiaaa-aaaaq-aaasq-cai', '6rdgd-kyaaa-aaaaq-aaavq-cai', '4c4fd-caaaa-aaaaq-aaa3a-cai', 'xsi2v-cyaaa-aaaaq-aabfq-cai', 'vtrom-gqaaa-aaaaq-aabia-cai', 'uf2wh-taaaa-aaaaq-aabna-cai', 'rxdbk-dyaaa-aaaaq-aabtq-cai', 'qbizb-wiaaa-aaaaq-aabwq-cai', 'tyyy3-4aaaa-aaaaq-aab7a-cai', 'emww2-4yaaa-aaaaq-aacbq-cai', 'f54if-eqaaa-aaaaq-aacea-cai', 'hvgxa-wqaaa-aaaaq-aacia-cai', 'hhaaz-2aaaa-aaaaq-aacla-cai', 'gemj7-oyaaa-aaaaq-aacnq-cai', 'ddsp7-7iaaa-aaaaq-aacqq-cai', 'druyg-tyaaa-aaaaq-aactq-cai', 'ca6gz-lqaaa-aaaaq-aacwa-cai', 'atbfz-diaaa-aaaaq-aacyq-cai', 'bliq2-niaaa-aaaaq-aac4q-cai', 'k45jy-aiaaa-aaaaq-aadcq-cai', 'lrtnw-paaaa-aaaaq-aadfa-cai', 'lkwrt-vyaaa-aaaaq-aadhq-cai', 'jcmow-hyaaa-aaaaq-aadlq-cai', 'np5km-uyaaa-aaaaq-aadrq-cai', 'm6xut-mqaaa-aaaaq-aadua-cai', 'o7oak-iyaaa-aaaaq-aadzq-cai', 'o4zzi-qaaaa-aaaaq-aaeeq-cai', 'oj6if-riaaa-aaaaq-aaeha-cai', 'mih44-vaaaa-aaaaq-aaekq-cai', 'ifwyg-gaaaa-aaaaq-aaeqq-cai', 'ixqp7-kqaaa-aaaaq-aaetq-cai', 'jg2ra-syaaa-aaaaq-aaewa-cai', 'lvfsa-2aaaa-aaaaq-aaeyq-cai', 'kknbx-zyaaa-aaaaq-aae4a-cai', 'kylwo-viaaa-aaaaq-aae7a-cai']
+ Starting fetchAndCacheSnsData...
+ Returning cached SNS data: (37) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+index-f7da18b2.js:32586 NamingContext: Loaded from cache, starting background refresh...
+index-f7da18b2.js:32506 NamingContext: Fetching names from backend... (background refresh)
+index-f7da18b2.js:29914 Getting all neuron names
+index-f7da18b2.js:30022 Getting all principal names with identity: anonymous
+index-f7da18b2.js:43362 PremiumContext: Fetching active premium members...
+index-f7da18b2.js:91936 NeuronsContext useEffect triggered: {isAuthenticated: false, hasIdentity: false, selectedSnsRoot: 'uly3p-iqaaa-aaaaq-aabma-cai', identityPrincipal: undefined}
+index-f7da18b2.js:91946 NeuronsContext: Clearing neurons data on logout
+index-f7da18b2.js:62400 [Wallet] Fresh SNS data: (37) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Dragginz Ledger: zfcdd-tqaaa-aaaaq-aaaga-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: OpenChat Ledger: 2ouva-viaaa-aaaaq-aaamq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Kinic Ledger: 73mez-iiaaa-aaaaq-aaasq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: DOLR AI Ledger: 6rdgd-kyaaa-aaaaq-aaavq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Mimic Ledger: 4c4fd-caaaa-aaaaq-aaa3a-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: DecideAI DAO Ledger: xsi2v-cyaaa-aaaaq-aabfq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: BOOM DAO Ledger: vtrom-gqaaa-aaaaq-aabia-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Catalyze Ledger: uf2wh-taaaa-aaaaq-aabna-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Nuance Ledger: rxdbk-dyaaa-aaaaq-aabtq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: SONIC Ledger: qbizb-wiaaa-aaaaq-aabwq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Gold DAO Ledger: tyyy3-4aaaa-aaaaq-aab7a-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: TRAX Ledger: emww2-4yaaa-aaaaq-aacbq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Neutrinite Ledger: f54if-eqaaa-aaaaq-aacea-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Sneed Ledger: hvgxa-wqaaa-aaaaq-aacia-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: ICLighthouse DAO Ledger: hhaaz-2aaaa-aaaaq-aacla-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: ELNA AI Ledger: gemj7-oyaaa-aaaaq-aacnq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: ICFC Ledger: ddsp7-7iaaa-aaaaq-aacqq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: ICPanda Ledger: druyg-tyaaa-aaaaq-aactq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: ICPSwap Ledger: ca6gz-lqaaa-aaaaq-aacwa-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Yuku AI Ledger: atbfz-diaaa-aaaaq-aacyq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: EstateDAO Ledger: bliq2-niaaa-aaaaq-aac4q-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Motoko Ledger: k45jy-aiaaa-aaaaq-aadcq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Swampies Ledger: lrtnw-paaaa-aaaaq-aadfa-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: ORIGYN Ledger: lkwrt-vyaaa-aaaaq-aadhq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: WaterNeuron Ledger: jcmow-hyaaa-aaaaq-aadlq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: PHASMA Ledger: np5km-uyaaa-aaaaq-aadrq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: ICVC Ledger: m6xut-mqaaa-aaaaq-aadua-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: KongSwap Ledger: o7oak-iyaaa-aaaaq-aadzq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: FomoWell Ledger: o4zzi-qaaaa-aaaaq-aaeeq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Alice Strategy Ledger: oj6if-riaaa-aaaaq-aaeha-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: NFID Wallet Ledger: mih44-vaaaa-aaaaq-aaekq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: IC Explorer Ledger: ifwyg-gaaaa-aaaaq-aaeqq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Personal DAO Ledger: ixqp7-kqaaa-aaaaq-aaetq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Cecil The Lion DAO Ledger: jg2ra-syaaa-aaaaq-aaewa-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: ICPEx Ledger: lvfsa-2aaaa-aaaaq-aaeyq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: TACO DAO Ledger: kknbx-zyaaa-aaaaq-aae4a-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Tendies Ledger: kylwo-viaaa-aaaaq-aae7a-cai
+index-f7da18b2.js:62409 [Wallet] SNS Ledger IDs from fresh data: (37) ['zfcdd-tqaaa-aaaaq-aaaga-cai', '2ouva-viaaa-aaaaq-aaamq-cai', '73mez-iiaaa-aaaaq-aaasq-cai', '6rdgd-kyaaa-aaaaq-aaavq-cai', '4c4fd-caaaa-aaaaq-aaa3a-cai', 'xsi2v-cyaaa-aaaaq-aabfq-cai', 'vtrom-gqaaa-aaaaq-aabia-cai', 'uf2wh-taaaa-aaaaq-aabna-cai', 'rxdbk-dyaaa-aaaaq-aabtq-cai', 'qbizb-wiaaa-aaaaq-aabwq-cai', 'tyyy3-4aaaa-aaaaq-aab7a-cai', 'emww2-4yaaa-aaaaq-aacbq-cai', 'f54if-eqaaa-aaaaq-aacea-cai', 'hvgxa-wqaaa-aaaaq-aacia-cai', 'hhaaz-2aaaa-aaaaq-aacla-cai', 'gemj7-oyaaa-aaaaq-aacnq-cai', 'ddsp7-7iaaa-aaaaq-aacqq-cai', 'druyg-tyaaa-aaaaq-aactq-cai', 'ca6gz-lqaaa-aaaaq-aacwa-cai', 'atbfz-diaaa-aaaaq-aacyq-cai', 'bliq2-niaaa-aaaaq-aac4q-cai', 'k45jy-aiaaa-aaaaq-aadcq-cai', 'lrtnw-paaaa-aaaaq-aadfa-cai', 'lkwrt-vyaaa-aaaaq-aadhq-cai', 'jcmow-hyaaa-aaaaq-aadlq-cai', 'np5km-uyaaa-aaaaq-aadrq-cai', 'm6xut-mqaaa-aaaaq-aadua-cai', 'o7oak-iyaaa-aaaaq-aadzq-cai', 'o4zzi-qaaaa-aaaaq-aaeeq-cai', 'oj6if-riaaa-aaaaq-aaeha-cai', 'mih44-vaaaa-aaaaq-aaekq-cai', 'ifwyg-gaaaa-aaaaq-aaeqq-cai', 'ixqp7-kqaaa-aaaaq-aaetq-cai', 'jg2ra-syaaa-aaaaq-aaewa-cai', 'lvfsa-2aaaa-aaaaq-aaeyq-cai', 'kknbx-zyaaa-aaaaq-aae4a-cai', 'kylwo-viaaa-aaaaq-aae7a-cai']
+ [TokenCache] Loaded 0 token metadata entries from IndexedDB
+ Authenticated, checking admin status...
+ Checking admin status...
+ Is authenticated: true
+ Identity: DelegationIdentity {_inner: Ed25519KeyIdentity, _delegation: DelegationChain, _principal: Principal}
+ Creating backend actor...
+ Calling caller_is_admin...
+ [Wallet] Loading SNS data...
+ [Wallet] Cached SNS data: (37) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+index-f7da18b2.js:62392 [Wallet] SNS: Dragginz Ledger: zfcdd-tqaaa-aaaaq-aaaga-cai
+index-f7da18b2.js:62392 [Wallet] SNS: OpenChat Ledger: 2ouva-viaaa-aaaaq-aaamq-cai
+index-f7da18b2.js:62392 [Wallet] SNS: Kinic Ledger: 73mez-iiaaa-aaaaq-aaasq-cai
+index-f7da18b2.js:62392 [Wallet] SNS: DOLR AI Ledger: 6rdgd-kyaaa-aaaaq-aaavq-cai
+index-f7da18b2.js:62392 [Wallet] SNS: Mimic Ledger: 4c4fd-caaaa-aaaaq-aaa3a-cai
+index-f7da18b2.js:62392 [Wallet] SNS: DecideAI DAO Ledger: xsi2v-cyaaa-aaaaq-aabfq-cai
+index-f7da18b2.js:62392 [Wallet] SNS: BOOM DAO Ledger: vtrom-gqaaa-aaaaq-aabia-cai
+index-f7da18b2.js:62392 [Wallet] SNS: Catalyze Ledger: uf2wh-taaaa-aaaaq-aabna-cai
+index-f7da18b2.js:62392 [Wallet] SNS: Nuance Ledger: rxdbk-dyaaa-aaaaq-aabtq-cai
+index-f7da18b2.js:62392 [Wallet] SNS: SONIC Ledger: qbizb-wiaaa-aaaaq-aabwq-cai
+index-f7da18b2.js:62392 [Wallet] SNS: Gold DAO Ledger: tyyy3-4aaaa-aaaaq-aab7a-cai
+index-f7da18b2.js:62392 [Wallet] SNS: TRAX Ledger: emww2-4yaaa-aaaaq-aacbq-cai
+index-f7da18b2.js:62392 [Wallet] SNS: Neutrinite Ledger: f54if-eqaaa-aaaaq-aacea-cai
+index-f7da18b2.js:62392 [Wallet] SNS: Sneed Ledger: hvgxa-wqaaa-aaaaq-aacia-cai
+index-f7da18b2.js:62392 [Wallet] SNS: ICLighthouse DAO Ledger: hhaaz-2aaaa-aaaaq-aacla-cai
+index-f7da18b2.js:62392 [Wallet] SNS: ELNA AI Ledger: gemj7-oyaaa-aaaaq-aacnq-cai
+index-f7da18b2.js:62392 [Wallet] SNS: ICFC Ledger: ddsp7-7iaaa-aaaaq-aacqq-cai
+index-f7da18b2.js:62392 [Wallet] SNS: ICPanda Ledger: druyg-tyaaa-aaaaq-aactq-cai
+index-f7da18b2.js:62392 [Wallet] SNS: ICPSwap Ledger: ca6gz-lqaaa-aaaaq-aacwa-cai
+index-f7da18b2.js:62392 [Wallet] SNS: Yuku AI Ledger: atbfz-diaaa-aaaaq-aacyq-cai
+index-f7da18b2.js:62392 [Wallet] SNS: EstateDAO Ledger: bliq2-niaaa-aaaaq-aac4q-cai
+index-f7da18b2.js:62392 [Wallet] SNS: Motoko Ledger: k45jy-aiaaa-aaaaq-aadcq-cai
+index-f7da18b2.js:62392 [Wallet] SNS: Swampies Ledger: lrtnw-paaaa-aaaaq-aadfa-cai
+index-f7da18b2.js:62392 [Wallet] SNS: ORIGYN Ledger: lkwrt-vyaaa-aaaaq-aadhq-cai
+index-f7da18b2.js:62392 [Wallet] SNS: WaterNeuron Ledger: jcmow-hyaaa-aaaaq-aadlq-cai
+index-f7da18b2.js:62392 [Wallet] SNS: PHASMA Ledger: np5km-uyaaa-aaaaq-aadrq-cai
+index-f7da18b2.js:62392 [Wallet] SNS: ICVC Ledger: m6xut-mqaaa-aaaaq-aadua-cai
+index-f7da18b2.js:62392 [Wallet] SNS: KongSwap Ledger: o7oak-iyaaa-aaaaq-aadzq-cai
+index-f7da18b2.js:62392 [Wallet] SNS: FomoWell Ledger: o4zzi-qaaaa-aaaaq-aaeeq-cai
+index-f7da18b2.js:62392 [Wallet] SNS: Alice Strategy Ledger: oj6if-riaaa-aaaaq-aaeha-cai
+index-f7da18b2.js:62392 [Wallet] SNS: NFID Wallet Ledger: mih44-vaaaa-aaaaq-aaekq-cai
+index-f7da18b2.js:62392 [Wallet] SNS: IC Explorer Ledger: ifwyg-gaaaa-aaaaq-aaeqq-cai
+index-f7da18b2.js:62392 [Wallet] SNS: Personal DAO Ledger: ixqp7-kqaaa-aaaaq-aaetq-cai
+index-f7da18b2.js:62392 [Wallet] SNS: Cecil The Lion DAO Ledger: jg2ra-syaaa-aaaaq-aaewa-cai
+index-f7da18b2.js:62392 [Wallet] SNS: ICPEx Ledger: lvfsa-2aaaa-aaaaq-aaeyq-cai
+index-f7da18b2.js:62392 [Wallet] SNS: TACO DAO Ledger: kknbx-zyaaa-aaaaq-aae4a-cai
+index-f7da18b2.js:62392 [Wallet] SNS: Tendies Ledger: kylwo-viaaa-aaaaq-aae7a-cai
+index-f7da18b2.js:62396 [Wallet] SNS Ledger IDs from cache: (37) ['zfcdd-tqaaa-aaaaq-aaaga-cai', '2ouva-viaaa-aaaaq-aaamq-cai', '73mez-iiaaa-aaaaq-aaasq-cai', '6rdgd-kyaaa-aaaaq-aaavq-cai', '4c4fd-caaaa-aaaaq-aaa3a-cai', 'xsi2v-cyaaa-aaaaq-aabfq-cai', 'vtrom-gqaaa-aaaaq-aabia-cai', 'uf2wh-taaaa-aaaaq-aabna-cai', 'rxdbk-dyaaa-aaaaq-aabtq-cai', 'qbizb-wiaaa-aaaaq-aabwq-cai', 'tyyy3-4aaaa-aaaaq-aab7a-cai', 'emww2-4yaaa-aaaaq-aacbq-cai', 'f54if-eqaaa-aaaaq-aacea-cai', 'hvgxa-wqaaa-aaaaq-aacia-cai', 'hhaaz-2aaaa-aaaaq-aacla-cai', 'gemj7-oyaaa-aaaaq-aacnq-cai', 'ddsp7-7iaaa-aaaaq-aacqq-cai', 'druyg-tyaaa-aaaaq-aactq-cai', 'ca6gz-lqaaa-aaaaq-aacwa-cai', 'atbfz-diaaa-aaaaq-aacyq-cai', 'bliq2-niaaa-aaaaq-aac4q-cai', 'k45jy-aiaaa-aaaaq-aadcq-cai', 'lrtnw-paaaa-aaaaq-aadfa-cai', 'lkwrt-vyaaa-aaaaq-aadhq-cai', 'jcmow-hyaaa-aaaaq-aadlq-cai', 'np5km-uyaaa-aaaaq-aadrq-cai', 'm6xut-mqaaa-aaaaq-aadua-cai', 'o7oak-iyaaa-aaaaq-aadzq-cai', 'o4zzi-qaaaa-aaaaq-aaeeq-cai', 'oj6if-riaaa-aaaaq-aaeha-cai', 'mih44-vaaaa-aaaaq-aaekq-cai', 'ifwyg-gaaaa-aaaaq-aaeqq-cai', 'ixqp7-kqaaa-aaaaq-aaetq-cai', 'jg2ra-syaaa-aaaaq-aaewa-cai', 'lvfsa-2aaaa-aaaaq-aaeyq-cai', 'kknbx-zyaaa-aaaaq-aae4a-cai', 'kylwo-viaaa-aaaaq-aae7a-cai']
+index-f7da18b2.js:37101 Starting fetchAndCacheSnsData...
+index-f7da18b2.js:37104 Returning cached SNS data: (37) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+index-f7da18b2.js:36148 PriceService initialized successfully
+index-f7da18b2.js:32594 NamingContext: Identity changed, refreshing nicknames...
+index-f7da18b2.js:32506 NamingContext: Fetching names from backend... (background refresh)
+index-f7da18b2.js:29914 Getting all neuron names
+index-f7da18b2.js:29927 Getting all neuron nicknames
+index-f7da18b2.js:30022 Getting all principal names with identity: authenticated
+ Getting all principal nicknames
+ Starting fetchAndCacheSnsData...
+index-f7da18b2.js:37104 Returning cached SNS data: (37) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+index-f7da18b2.js:91936 NeuronsContext useEffect triggered: {isAuthenticated: true, hasIdentity: true, selectedSnsRoot: 'uly3p-iqaaa-aaaaq-aabma-cai', identityPrincipal: 'lcyf6-t6uno-og7on-w4fyq-tegjt-ejrcg-kyaio-wcvvm-yu3vo-h2nbl-jqe'}
+index-f7da18b2.js:91943 NeuronsContext: Proactively fetching neurons for SNS: uly3p-iqaaa-aaaaq-aabma-cai
+index-f7da18b2.js:91813 fetchHotkeyNeuronsData called with: {snsRoot: 'uly3p-iqaaa-aaaaq-aabma-cai', hasIdentity: true, forceRefresh: false}
+index-f7da18b2.js:91824 fetchHotkeyNeuronsData: Checking cache for key: lcyf6-t6uno-og7on-w4fyq-tegjt-ejrcg-kyaio-wcvvm-yu3vo-h2nbl-jqe-uly3p-iqaaa-aaaaq-aabma-cai
+index-f7da18b2.js:91841 fetchHotkeyNeuronsData: No in-memory cached data or forcing refresh, fetching from network
+index-f7da18b2.js:91846 fetchHotkeyNeuronsData: Fetching neurons from SNS...
+index-f7da18b2.js:62400 [Wallet] Fresh SNS data: (37) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Dragginz Ledger: zfcdd-tqaaa-aaaaq-aaaga-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: OpenChat Ledger: 2ouva-viaaa-aaaaq-aaamq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Kinic Ledger: 73mez-iiaaa-aaaaq-aaasq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: DOLR AI Ledger: 6rdgd-kyaaa-aaaaq-aaavq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Mimic Ledger: 4c4fd-caaaa-aaaaq-aaa3a-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: DecideAI DAO Ledger: xsi2v-cyaaa-aaaaq-aabfq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: BOOM DAO Ledger: vtrom-gqaaa-aaaaq-aabia-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Catalyze Ledger: uf2wh-taaaa-aaaaq-aabna-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Nuance Ledger: rxdbk-dyaaa-aaaaq-aabtq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: SONIC Ledger: qbizb-wiaaa-aaaaq-aabwq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Gold DAO Ledger: tyyy3-4aaaa-aaaaq-aab7a-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: TRAX Ledger: emww2-4yaaa-aaaaq-aacbq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Neutrinite Ledger: f54if-eqaaa-aaaaq-aacea-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Sneed Ledger: hvgxa-wqaaa-aaaaq-aacia-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: ICLighthouse DAO Ledger: hhaaz-2aaaa-aaaaq-aacla-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: ELNA AI Ledger: gemj7-oyaaa-aaaaq-aacnq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: ICFC Ledger: ddsp7-7iaaa-aaaaq-aacqq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: ICPanda Ledger: druyg-tyaaa-aaaaq-aactq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: ICPSwap Ledger: ca6gz-lqaaa-aaaaq-aacwa-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Yuku AI Ledger: atbfz-diaaa-aaaaq-aacyq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: EstateDAO Ledger: bliq2-niaaa-aaaaq-aac4q-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Motoko Ledger: k45jy-aiaaa-aaaaq-aadcq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Swampies Ledger: lrtnw-paaaa-aaaaq-aadfa-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: ORIGYN Ledger: lkwrt-vyaaa-aaaaq-aadhq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: WaterNeuron Ledger: jcmow-hyaaa-aaaaq-aadlq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: PHASMA Ledger: np5km-uyaaa-aaaaq-aadrq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: ICVC Ledger: m6xut-mqaaa-aaaaq-aadua-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: KongSwap Ledger: o7oak-iyaaa-aaaaq-aadzq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: FomoWell Ledger: o4zzi-qaaaa-aaaaq-aaeeq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Alice Strategy Ledger: oj6if-riaaa-aaaaq-aaeha-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: NFID Wallet Ledger: mih44-vaaaa-aaaaq-aaekq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: IC Explorer Ledger: ifwyg-gaaaa-aaaaq-aaeqq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Personal DAO Ledger: ixqp7-kqaaa-aaaaq-aaetq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Cecil The Lion DAO Ledger: jg2ra-syaaa-aaaaq-aaewa-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: ICPEx Ledger: lvfsa-2aaaa-aaaaq-aaeyq-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: TACO DAO Ledger: kknbx-zyaaa-aaaaq-aae4a-cai
+index-f7da18b2.js:62405 [Wallet] Fresh SNS: Tendies Ledger: kylwo-viaaa-aaaaq-aae7a-cai
+index-f7da18b2.js:62409 [Wallet] SNS Ledger IDs from fresh data: (37) ['zfcdd-tqaaa-aaaaq-aaaga-cai', '2ouva-viaaa-aaaaq-aaamq-cai', '73mez-iiaaa-aaaaq-aaasq-cai', '6rdgd-kyaaa-aaaaq-aaavq-cai', '4c4fd-caaaa-aaaaq-aaa3a-cai', 'xsi2v-cyaaa-aaaaq-aabfq-cai', 'vtrom-gqaaa-aaaaq-aabia-cai', 'uf2wh-taaaa-aaaaq-aabna-cai', 'rxdbk-dyaaa-aaaaq-aabtq-cai', 'qbizb-wiaaa-aaaaq-aabwq-cai', 'tyyy3-4aaaa-aaaaq-aab7a-cai', 'emww2-4yaaa-aaaaq-aacbq-cai', 'f54if-eqaaa-aaaaq-aacea-cai', 'hvgxa-wqaaa-aaaaq-aacia-cai', 'hhaaz-2aaaa-aaaaq-aacla-cai', 'gemj7-oyaaa-aaaaq-aacnq-cai', 'ddsp7-7iaaa-aaaaq-aacqq-cai', 'druyg-tyaaa-aaaaq-aactq-cai', 'ca6gz-lqaaa-aaaaq-aacwa-cai', 'atbfz-diaaa-aaaaq-aacyq-cai', 'bliq2-niaaa-aaaaq-aac4q-cai', 'k45jy-aiaaa-aaaaq-aadcq-cai', 'lrtnw-paaaa-aaaaq-aadfa-cai', 'lkwrt-vyaaa-aaaaq-aadhq-cai', 'jcmow-hyaaa-aaaaq-aadlq-cai', 'np5km-uyaaa-aaaaq-aadrq-cai', 'm6xut-mqaaa-aaaaq-aadua-cai', 'o7oak-iyaaa-aaaaq-aadzq-cai', 'o4zzi-qaaaa-aaaaq-aaeeq-cai', 'oj6if-riaaa-aaaaq-aaeha-cai', 'mih44-vaaaa-aaaaq-aaekq-cai', 'ifwyg-gaaaa-aaaaq-aaeqq-cai', 'ixqp7-kqaaa-aaaaq-aaetq-cai', 'jg2ra-syaaa-aaaaq-aaewa-cai', 'lvfsa-2aaaa-aaaaq-aaeyq-cai', 'kknbx-zyaaa-aaaaq-aae4a-cai', 'kylwo-viaaa-aaaaq-aae7a-cai']
+index-f7da18b2.js:32576 NamingContext: Names updated. Principal names: 6 Neuron names: 3
+index-f7da18b2.js:54889 Reply notifications debug: {userPrincipal: 'lcyf6-t6uno-og7on-w4fyq-tegjt-ejrcg-kyaio-wcvvm-yu3vo-h2nbl-jqe', newRepliesCount: 0n}
+index-f7da18b2.js:54895 Reply notifications: Found 0 new replies
+index-f7da18b2.js:54978 SMS notifications debug: {userPrincipal: 'lcyf6-t6uno-og7on-w4fyq-tegjt-ejrcg-kyaio-wcvvm-yu3vo-h2nbl-jqe', newMessagesCount: 0n}
+index-f7da18b2.js:54984 SMS notifications: Found 0 new messages
+index-f7da18b2.js:54647 isAdminResult: true
+index-f7da18b2.js:54813 Tip notifications debug: {userPrincipal: 'lcyf6-t6uno-og7on-w4fyq-tegjt-ejrcg-kyaio-wcvvm-yu3vo-h2nbl-jqe', newTipsCount: 0n}
+index-f7da18b2.js:54820 Tip notifications: Found 0 new tips
+index-f7da18b2.js:43368 PremiumContext: Loaded 0 active premium members
+index-f7da18b2.js:32576 NamingContext: Names updated. Principal names: 6 Neuron names: 3
+index-f7da18b2.js:36965 [LogoCache] Loaded 48 logos from IndexedDB

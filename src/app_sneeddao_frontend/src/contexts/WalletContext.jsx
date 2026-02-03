@@ -341,9 +341,17 @@ export const WalletProvider = ({ children }) => {
             }
             
             if (cachedData) {
-                // Restore tokens
+                // Restore tokens (with deduplication by principal)
                 if (cachedData.walletTokens && cachedData.walletTokens.length > 0) {
-                    setWalletTokens(cachedData.walletTokens);
+                    const seenPrincipals = new Set();
+                    const deduplicatedTokens = cachedData.walletTokens.filter(token => {
+                        const principal = normalizeCanisterId(token.principal);
+                        if (!principal) return false;
+                        if (seenPrincipals.has(principal)) return false;
+                        seenPrincipals.add(principal);
+                        return true;
+                    });
+                    setWalletTokens(deduplicatedTokens);
                     setHasFetchedInitial(true);
                 }
                 
@@ -663,8 +671,9 @@ export const WalletProvider = ({ children }) => {
             
             // Only update if still in same fetch session
             if (fetchSessionRef.current === sessionId) {
+                const targetLedger = normalizeCanisterId(ledgerCanisterId);
                 setWalletTokens(prev => prev.map(token => {
-                    if (token.principal === ledgerCanisterId.toString()) {
+                    if (normalizeCanisterId(token.principal) === targetLedger) {
                         const balance = BigInt(token.available || token.balance || 0n);
                         const balanceNum = Number(balance) / (10 ** (token.decimals || 8));
                         const usdValue = conversion_rate ? balanceNum * conversion_rate : null;
@@ -871,8 +880,9 @@ export const WalletProvider = ({ children }) => {
                 return total + BigInt(neuron.maturity_e8s_equivalent || 0n);
             }, 0n);
             
+            const targetLedger = normalizeCanisterId(ledgerId);
             setWalletTokens(prev => prev.map(token => {
-                if (token.principal === ledgerId) {
+                if (normalizeCanisterId(token.principal) === targetLedger) {
                     return { 
                         ...token, 
                         neuronStake,
@@ -1174,8 +1184,28 @@ export const WalletProvider = ({ children }) => {
         if (fetchSessionRef.current !== sessionId) return;
         
         setWalletTokens(prev => {
-            // Check if token already exists
-            const existingIndex = prev.findIndex(t => t.principal === token.principal);
+            // Normalize principal for comparison (Principal/string insensitive)
+            const newPrincipal = normalizeCanisterId(token.principal);
+            
+            // Check if token already exists (using normalized comparison)
+            const existingIndex = prev.findIndex(t => normalizeCanisterId(t.principal) === newPrincipal);
+            
+            // DEBUG: Log token addition/merge for duplicate investigation
+            if (existingIndex >= 0) {
+                console.log(`%c[TOKEN] MERGE ${token.symbol} (${newPrincipal})`, 'color: #2ecc71', {
+                    existingIndex,
+                    prevCount: prev.length,
+                    existingPrincipal: prev[existingIndex]?.principal,
+                    newPrincipal: token.principal,
+                    normalizedMatch: normalizeCanisterId(prev[existingIndex]?.principal) === newPrincipal
+                });
+            } else {
+                console.log(`%c[TOKEN] ADD ${token.symbol} (${newPrincipal})`, 'color: #3498db', {
+                    prevCount: prev.length,
+                    prevPrincipals: prev.map(t => normalizeCanisterId(t.principal))
+                });
+            }
+            
             if (existingIndex >= 0) {
                 // IMPORTANT: Merge with existing token to preserve neuron data loaded from cache
                 const existing = prev[existingIndex];
@@ -1573,7 +1603,16 @@ export const WalletProvider = ({ children }) => {
     // Update tokens from Wallet.jsx (more detailed data including locks, staked, etc.)
     const updateWalletTokens = useCallback((tokens) => {
         if (tokens && tokens.length > 0) {
-            setWalletTokens(tokens);
+            // Deduplicate by principal (Principal/string insensitive)
+            const seenPrincipals = new Set();
+            const deduplicatedTokens = tokens.filter(token => {
+                const principal = normalizeCanisterId(token.principal);
+                if (!principal) return false;
+                if (seenPrincipals.has(principal)) return false;
+                seenPrincipals.add(principal);
+                return true;
+            });
+            setWalletTokens(deduplicatedTokens);
             setLastUpdated(new Date());
             setHasDetailedData(true);
         }

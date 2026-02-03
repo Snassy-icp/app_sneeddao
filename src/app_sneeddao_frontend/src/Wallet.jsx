@@ -43,6 +43,7 @@ import PrincipalInput from './components/PrincipalInput';
 import TokenIcon from './components/TokenIcon';
 import { fetchUserNeurons, fetchUserNeuronsForSns } from './utils/NeuronUtils';
 import { getTipTokensReceivedByUser } from './utils/BackendUtils';
+import { normalizeCanisterId } from './hooks/useNeuronsCache';
 import priceService from './services/PriceService';
 import ConsolidateModal from './ConsolidateModal';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
@@ -3021,7 +3022,7 @@ function Wallet() {
         console.log('Deposit successful');
 
         // Auto-register sGLDT token if not already registered
-        const sgldtExists = tokens.find(t => (t.ledger_canister_id?.toText?.() || t.ledger_canister_id?.toString?.() || t.principal) === SGLDT_CANISTER_ID);
+        const sgldtExists = tokens.find(t => normalizeCanisterId(t.ledger_canister_id) === SGLDT_CANISTER_ID || normalizeCanisterId(t.principal) === SGLDT_CANISTER_ID);
         if (!sgldtExists) {
             console.log('Auto-registering sGLDT token');
             await handleAddLedgerCanister(SGLDT_CANISTER_ID);
@@ -3056,7 +3057,7 @@ function Wallet() {
         console.log('Withdraw successful');
 
         // Auto-register GLDT token if not already registered
-        const gldtExists = tokens.find(t => (t.ledger_canister_id?.toText?.() || t.ledger_canister_id?.toString?.() || t.principal) === GLDT_CANISTER_ID);
+        const gldtExists = tokens.find(t => normalizeCanisterId(t.ledger_canister_id) === GLDT_CANISTER_ID || normalizeCanisterId(t.principal) === GLDT_CANISTER_ID);
         if (!gldtExists) {
             console.log('Auto-registering GLDT token');
             await handleAddLedgerCanister(GLDT_CANISTER_ID);
@@ -7457,7 +7458,7 @@ function Wallet() {
                     onWrap={handleWrap}
                     onUnwrap={handleUnwrap}
                     token={selectedToken}
-                    gldtToken={tokens.find(t => (t.ledger_canister_id?.toText?.() || t.ledger_canister_id?.toString?.() || t.principal) === GLDT_CANISTER_ID)}
+                    gldtToken={tokens.find(t => normalizeCanisterId(t.ledger_canister_id) === GLDT_CANISTER_ID || normalizeCanisterId(t.principal) === GLDT_CANISTER_ID)}
                 />
                 <LockModal
                     show={showLockModal}

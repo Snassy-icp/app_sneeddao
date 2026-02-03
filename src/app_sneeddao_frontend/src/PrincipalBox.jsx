@@ -11,6 +11,7 @@ import { useWalletOptional } from './contexts/WalletContext';
 import { computeAccountId } from './utils/PrincipalUtils';
 import { formatAmount } from './utils/StringUtils';
 import { get_available_backend } from './utils/TokenUtils';
+import { normalizeCanisterId } from './hooks/useNeuronsCache';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
 import SendTokenModal from './SendTokenModal';
@@ -120,10 +121,11 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
 
     // Filter tokens based on hideDust setting
     const tokensWithBalance = useMemo(() => {
-        // Debug: Check for duplicates in source array
+        // Debug: Check for duplicates in source array (using normalized principal comparison)
         const principalCounts = {};
         walletTokens.forEach(t => {
-            principalCounts[t.principal] = (principalCounts[t.principal] || 0) + 1;
+            const normalizedId = normalizeCanisterId(t.principal);
+            principalCounts[normalizedId] = (principalCounts[normalizedId] || 0) + 1;
         });
         const duplicatePrincipals = Object.entries(principalCounts).filter(([, count]) => count > 1);
         if (duplicatePrincipals.length > 0) {
@@ -242,10 +244,11 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
 
     // Get ICP price from token conversion rate
     const icpPrice = useMemo(() => {
+        const icpLedger = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
         const icpToken = walletTokens.find(t => 
             t.symbol === 'ICP' || 
-            t.principal === 'ryjl3-tyaaa-aaaaa-aaaba-cai' ||
-            (t.ledger_canister_id?.toText?.() || t.ledger_canister_id?.toString?.()) === 'ryjl3-tyaaa-aaaaa-aaaba-cai'
+            normalizeCanisterId(t.principal) === icpLedger ||
+            normalizeCanisterId(t.ledger_canister_id) === icpLedger
         );
         return icpToken?.conversion_rate || 0;
     }, [walletTokens]);
@@ -621,9 +624,9 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     // Keep detailToken in sync with walletTokens
     useEffect(() => {
         if (detailToken && walletTokens.length > 0) {
+            const detailPrincipal = normalizeCanisterId(detailToken.principal) || normalizeCanisterId(detailToken.ledger_canister_id);
             const updatedToken = walletTokens.find(t => 
-                t.principal === detailToken.principal || 
-                t.principal === detailToken.ledger_canister_id?.toString?.()
+                normalizeCanisterId(t.principal) === detailPrincipal
             );
             if (updatedToken && updatedToken !== detailToken) {
                 setDetailToken(updatedToken);
