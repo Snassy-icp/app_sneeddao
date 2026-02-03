@@ -16,6 +16,7 @@ import { fetchUserNeuronsForSns, uint8ArrayToHex } from '../utils/NeuronUtils';
 import { getTipTokensReceivedByUser } from '../utils/BackendUtils';
 import { fetchAndCacheSnsData, getAllSnses, getSnsById } from '../utils/SnsUtils';
 import { getNeuronsFromCacheByIds } from '../hooks/useNeuronsCache';
+import { initializeLogoCache, getLogo, setLogo, getLogoSync } from '../hooks/useLogoCache';
 
 const WalletContext = createContext(null);
 
@@ -256,6 +257,15 @@ const migrateFromLocalStorage = async (principalId) => {
 
 export const WalletProvider = ({ children }) => {
     const { identity, isAuthenticated } = useAuth();
+    
+    // Initialize logo cache on mount (loads from IndexedDB into memory)
+    useEffect(() => {
+        initializeLogoCache().then(count => {
+            if (count > 0) {
+                console.log(`%c🖼️ [LOGO CACHE] Loaded ${count} logos from IndexedDB`, 'background: #9b59b6; color: white; padding: 2px 6px;');
+            }
+        });
+    }, []);
     
     // Tokens from the wallet - same structure as Wallet.jsx tokens state
     const [walletTokens, setWalletTokens] = useState([]);
@@ -524,6 +534,8 @@ export const WalletProvider = ({ children }) => {
     const fetchTokenDetailsFast = useCallback(async (ledgerCanisterId, summedLocks = {}) => {
         if (!identity) return null;
 
+        const ledgerId = ledgerCanisterId.toString();
+        
         try {
             const ledgerActor = createLedgerActor(ledgerCanisterId, {
                 agentOptions: { identity }
@@ -531,6 +543,9 @@ export const WalletProvider = ({ children }) => {
 
             const principal = identity.getPrincipal();
             const subaccount = principalToSubAccount(principal);
+
+            // Check for cached logo first (instant display)
+            const cachedLogo = getLogoSync(ledgerId);
 
             const [metadata, symbol, decimals, fee, balance, balance_backend] = await Promise.all([
                 ledgerActor.icrc1_metadata(),
@@ -547,8 +562,23 @@ export const WalletProvider = ({ children }) => {
                 })
             ]);
 
-            const logo = getTokenLogo(metadata);
-            const ledgerId = ledgerCanisterId.toString();
+            // Get logo from metadata
+            let logo = getTokenLogo(metadata);
+            
+            // Handle ICP special case
+            if (symbol.toLowerCase() === "icp" && logo === "") {
+                logo = "icp_symbol.svg";
+            }
+            
+            // Use cached logo if we didn't get one from metadata
+            if (!logo && cachedLogo) {
+                logo = cachedLogo;
+            }
+            
+            // Cache logo in unified logo cache (persists to IndexedDB)
+            if (logo && logo !== '' && logo !== cachedLogo) {
+                setLogo(ledgerId, logo); // Fire and forget
+            }
             
             // Get locked amount from summedLocks map
             const locked = summedLocks[ledgerId] || BigInt(0);
@@ -560,7 +590,7 @@ export const WalletProvider = ({ children }) => {
                 symbol,
                 decimals,
                 fee,
-                logo: symbol.toLowerCase() === "icp" && logo === "" ? "icp_symbol.svg" : logo,
+                logo,
                 balance,
                 balance_backend,
                 locked,
@@ -574,7 +604,17 @@ export const WalletProvider = ({ children }) => {
 
             return token;
         } catch (error) {
-            console.error(`Error fetching token details for ${ledgerCanisterId}:`, error);
+            console.error(`Error fetching token details for ${ledgerId}:`, error);
+            // Return minimal token with cached logo if available
+            const cachedLogo = getLogoSync(ledgerId);
+            if (cachedLogo) {
+                return {
+                    principal: ledgerId,
+                    ledger_canister_id: ledgerCanisterId,
+                    logo: cachedLogo,
+                    error: true
+                };
+            }
             return null;
         }
     }, [identity]);

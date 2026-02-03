@@ -2,15 +2,13 @@ import { createActor as createNnsSnsWActor } from 'external/nns_snsw';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { Principal } from '@dfinity/principal';
 import { HttpAgent } from '@dfinity/agent';
+import { getLogo, setLogo, getLogoSync, hasLogo, clearLogoCache as clearUnifiedLogoCache } from '../hooks/useLogoCache';
 
 const SNS_CACHE_KEY = 'sns_data_cache';
 const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 1 week in milliseconds
 
 // Memory fallback when localStorage fails
 let memoryCache = null;
-
-// In-memory cache for SNS logos
-const logoCache = new Map();
 
 // Safe localStorage wrapper with memory fallback
 const safeStorage = {
@@ -65,11 +63,11 @@ function safeGetCanisterId(canisterIdArray) {
     }
 }
 
-// New function to fetch SNS logo
+// Fetch SNS logo - uses unified logo cache
 export async function fetchSnsLogo(governanceId, agent) {
-    // Check memory cache first
-    if (logoCache.has(governanceId)) {
-        return logoCache.get(governanceId);
+    // Check unified logo cache first (fast, in-memory)
+    if (hasLogo(governanceId)) {
+        return getLogoSync(governanceId);
     }
 
     try {
@@ -77,8 +75,10 @@ export async function fetchSnsLogo(governanceId, agent) {
         const metadataResponse = await governanceActor.get_metadata({});
         const logo = metadataResponse?.logo?.[0] || '';
         
-        // Store in memory cache
-        logoCache.set(governanceId, logo);
+        // Store in unified logo cache (persists in IndexedDB)
+        if (logo) {
+            await setLogo(governanceId, logo);
+        }
         return logo;
     } catch (error) {
         console.error(`Error fetching logo for SNS ${governanceId}:`, error);
@@ -86,9 +86,14 @@ export async function fetchSnsLogo(governanceId, agent) {
     }
 }
 
-// Clear logo cache (useful when debugging or if logos aren't loading correctly)
+// Get SNS logo synchronously (returns null if not cached)
+export function getSnsLogoSync(governanceId) {
+    return getLogoSync(governanceId);
+}
+
+// Clear logo cache (useful when debugging)
 export function clearLogoCache() {
-    logoCache.clear();
+    clearUnifiedLogoCache();
 }
 
 export async function fetchAndCacheSnsData(identity) {

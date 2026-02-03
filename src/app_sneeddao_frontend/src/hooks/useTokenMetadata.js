@@ -1,8 +1,10 @@
 import { useState, useCallback } from 'react';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { getTokenLogo } from '../utils/TokenUtils';
+import { getLogo, setLogo, getLogoSync, hasLogo } from './useLogoCache';
 
 // Global cache for token metadata to persist across component unmounts
+// NOTE: Logos are stored separately in the unified logo cache (IndexedDB)
 const metadataCache = new Map();
 const loadingStates = new Map();
 
@@ -15,7 +17,15 @@ export const useTokenMetadata = () => {
         
         // Check if already cached
         if (metadataCache.has(principalStr)) {
-            return metadataCache.get(principalStr);
+            const cached = metadataCache.get(principalStr);
+            // Try to get logo from unified cache if not in metadata
+            if (!cached.logo || cached.logo === '') {
+                const cachedLogo = getLogoSync(principalStr);
+                if (cachedLogo) {
+                    cached.logo = cachedLogo;
+                }
+            }
+            return cached;
         }
 
         // Check if already loading
@@ -28,7 +38,8 @@ export const useTokenMetadata = () => {
         setLoading(new Map(loadingStates));
 
         try {
-            console.log('Fetching metadata for token:', principalStr);
+            // First check if we have a cached logo (from previous session)
+            let cachedLogo = await getLogo(principalStr);
             
             const ledgerActor = createLedgerActor(tokenPrincipal);
             
@@ -39,32 +50,50 @@ export const useTokenMetadata = () => {
                 ledgerActor.icrc1_decimals()
             ]);
 
-            const logo = getTokenLogo(rawMetadata);
+            // Get logo from metadata
+            let logo = getTokenLogo(rawMetadata);
+            
+            // Handle ICP special case
+            if (symbol.toLowerCase() === "icp" && logo === "") {
+                logo = "icp_symbol.svg";
+            }
+            
+            // Use cached logo if we didn't get one from metadata
+            if (!logo && cachedLogo) {
+                logo = cachedLogo;
+            }
+            
+            // Cache logo in unified logo cache (persists to IndexedDB)
+            if (logo && logo !== '' && logo !== cachedLogo) {
+                await setLogo(principalStr, logo);
+            }
             
             const tokenMetadata = {
                 principal: principalStr,
                 symbol,
                 decimals,
-                logo: symbol.toLowerCase() === "icp" && logo === "" ? "icp_symbol.svg" : logo,
+                logo,
                 metadata: rawMetadata
             };
 
-            // Cache the result globally
+            // Cache metadata (without logo stored here - it's in unified cache)
             metadataCache.set(principalStr, tokenMetadata);
             setMetadata(new Map(metadataCache));
             
-            console.log('Cached metadata for token:', principalStr, tokenMetadata);
             return tokenMetadata;
             
         } catch (error) {
             console.error(`Error fetching metadata for token ${principalStr}:`, error);
+            
+            // Try to get cached logo even on error
+            const cachedLogo = getLogoSync(principalStr);
             
             // Cache error result to avoid repeated failed requests
             const errorMetadata = {
                 principal: principalStr,
                 symbol: principalStr.slice(0, 8) + '...',
                 decimals: 8,
-                logo: '',
+                logo: cachedLogo || '',
                 error: true
             };
             
