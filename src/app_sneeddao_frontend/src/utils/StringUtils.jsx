@@ -25,11 +25,15 @@ const formatAmount = (amount, decimals) => {
 };
 
 const formatAmountWithConversion = (amount, decimals, conversion_rate) => {
+    // Handle undefined/null values from cache
+    if (amount === undefined || amount === null) {
+        return '0.00';
+    }
     const balanceBigInt = BigInt(amount);
-    const decimalsBigInt = BigInt(decimals);
+    const decimalsBigInt = BigInt(decimals || 8);
     const divisor = 10n ** decimalsBigInt;
     const value = Number(balanceBigInt) / Number(divisor);
-    const finalAmount = value * conversion_rate;
+    const finalAmount = value * (conversion_rate || 0);
 
     // Always show 2 decimals for USD amounts with commas
     return finalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
