@@ -3,10 +3,198 @@ import { createActor as createSnsGovernanceActor } from 'external/sns_governance
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { HttpAgent } from '@dfinity/agent';
 import { getSnsById } from '../utils/SnsUtils';
+import { uint8ArrayToHex } from '../utils/NeuronUtils';
+
+// ============================================================================
+// STANDALONE CACHE UTILITIES (for single neuron operations)
+// ============================================================================
+
+const DB_NAME = 'NeuronsDB';
+const DB_VERSION = 1;
+const STORE_NAME = 'neurons';
+
+/**
+ * Initialize IndexedDB (standalone version)
+ */
+const initializeNeuronsDB = () => {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve(request.result);
+        request.onupgradeneeded = (event) => {
+            const db = event.target.result;
+            if (!db.objectStoreNames.contains(STORE_NAME)) {
+                db.createObjectStore(STORE_NAME, { keyPath: 'snsRoot' });
+            }
+        };
+    });
+};
+
+/**
+ * Get a single neuron from cache by its hex ID
+ * @param {string} snsRoot - SNS root canister ID
+ * @param {string} neuronIdHex - Neuron ID in hex format
+ * @returns {Object|null} The neuron object or null if not found
+ */
+export const getNeuronFromCache = async (snsRoot, neuronIdHex) => {
+    try {
+        const db = await initializeNeuronsDB();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction([STORE_NAME], 'readonly');
+            const store = transaction.objectStore(STORE_NAME);
+            const request = store.get(snsRoot);
+            
+            request.onsuccess = () => {
+                const data = request.result;
+                if (data && data.neurons) {
+                    // Find neuron by matching hex ID
+                    const neuron = data.neurons.find(n => {
+                        if (!n.id?.[0]?.id) return false;
+                        const idArray = n.id[0].id;
+                        // Handle both Uint8Array and regular Array
+                        const hex = Array.isArray(idArray) 
+                            ? idArray.map(b => b.toString(16).padStart(2, '0')).join('')
+                            : uint8ArrayToHex(new Uint8Array(idArray));
+                        return hex === neuronIdHex.toLowerCase();
+                    });
+                    
+                    if (neuron) {
+                        // Reconstruct Uint8Array for neuron ID
+                        const reconstructedNeuron = {
+                            ...neuron,
+                            id: neuron.id.map(idObj => ({
+                                ...idObj,
+                                id: new Uint8Array(idObj.id)
+                            }))
+                        };
+                        console.log('%c🧠 [NEURON CACHE] Found neuron in cache:', 'background: #2ecc71; color: white; padding: 2px 6px;', neuronIdHex.substring(0, 16) + '...');
+                        resolve(reconstructedNeuron);
+                    } else {
+                        resolve(null);
+                    }
+                } else {
+                    resolve(null);
+                }
+            };
+            
+            request.onerror = () => reject(request.error);
+        });
+    } catch (error) {
+        console.warn('Error getting neuron from cache:', error);
+        return null;
+    }
+};
+
+/**
+ * Update a single neuron in the cache (or add if not exists)
+ * Does NOT trigger loading all neurons
+ * @param {string} snsRoot - SNS root canister ID
+ * @param {Object} neuron - The neuron object to update
+ */
+export const updateNeuronInCache = async (snsRoot, neuron) => {
+    try {
+        const db = await initializeNeuronsDB();
+        
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction([STORE_NAME], 'readwrite');
+            const store = transaction.objectStore(STORE_NAME);
+            const getRequest = store.get(snsRoot);
+            
+            getRequest.onsuccess = () => {
+                const data = getRequest.result;
+                
+                if (data && data.neurons) {
+                    // Get neuron ID hex for comparison
+                    const neuronIdHex = uint8ArrayToHex(neuron.id[0]?.id);
+                    
+                    // Find and update the neuron, or add it
+                    let found = false;
+                    const updatedNeurons = data.neurons.map(n => {
+                        const existingHex = Array.isArray(n.id?.[0]?.id)
+                            ? n.id[0].id.map(b => b.toString(16).padStart(2, '0')).join('')
+                            : uint8ArrayToHex(new Uint8Array(n.id?.[0]?.id || []));
+                        
+                        if (existingHex === neuronIdHex) {
+                            found = true;
+                            // Serialize the neuron for storage
+                            return {
+                                ...neuron,
+                                id: neuron.id.map(idObj => ({
+                                    ...idObj,
+                                    id: Array.from(idObj.id)
+                                }))
+                            };
+                        }
+                        return n;
+                    });
+                    
+                    // If not found, add it
+                    if (!found) {
+                        updatedNeurons.push({
+                            ...neuron,
+                            id: neuron.id.map(idObj => ({
+                                ...idObj,
+                                id: Array.from(idObj.id)
+                            }))
+                        });
+                    }
+                    
+                    // Save updated cache
+                    const putRequest = store.put({
+                        ...data,
+                        neurons: updatedNeurons,
+                        timestamp: Date.now()
+                    });
+                    
+                    putRequest.onsuccess = () => {
+                        console.log('%c🧠 [NEURON CACHE] Updated neuron in cache:', 'background: #3498db; color: white; padding: 2px 6px;', neuronIdHex.substring(0, 16) + '...');
+                        resolve();
+                    };
+                    putRequest.onerror = () => reject(putRequest.error);
+                } else {
+                    // No cache exists yet - that's OK, the /neurons page will create it
+                    console.log('%c🧠 [NEURON CACHE] No cache exists yet, skipping update', 'background: #95a5a6; color: white; padding: 2px 6px;');
+                    resolve();
+                }
+            };
+            
+            getRequest.onerror = () => reject(getRequest.error);
+        });
+    } catch (error) {
+        console.warn('Error updating neuron in cache:', error);
+    }
+};
+
+/**
+ * Check if cache exists for an SNS
+ * @param {string} snsRoot - SNS root canister ID
+ * @returns {boolean} True if cache exists
+ */
+export const hasCacheForSns = async (snsRoot) => {
+    try {
+        const db = await initializeNeuronsDB();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction([STORE_NAME], 'readonly');
+            const store = transaction.objectStore(STORE_NAME);
+            const request = store.get(snsRoot);
+            
+            request.onsuccess = () => {
+                resolve(!!request.result);
+            };
+            request.onerror = () => reject(request.error);
+        });
+    } catch (error) {
+        return false;
+    }
+};
+
+// ============================================================================
+// MAIN HOOK (for loading all neurons)
+// ============================================================================
 
 /**
  * Reusable hook for fetching and caching SNS neurons using IndexedDB
- * This hook is shared between /neurons and /users pages
+ * This hook is shared between /neurons, /users, and /hub pages
  */
 export default function useNeuronsCache(selectedSnsRoot, identity) {
     const [neurons, setNeurons] = useState([]);
@@ -16,23 +204,8 @@ export default function useNeuronsCache(selectedSnsRoot, identity) {
     const [totalNeuronCount, setTotalNeuronCount] = useState(null);
     const [loadingProgress, setLoadingProgress] = useState({ count: 0, message: '', percent: 0 });
 
-    // IndexedDB initialization
-    const initializeDB = useCallback(() => {
-        return new Promise((resolve, reject) => {
-            const request = indexedDB.open('NeuronsDB', 1);
-            
-            request.onerror = () => reject(request.error);
-            
-            request.onsuccess = () => resolve(request.result);
-            
-            request.onupgradeneeded = (event) => {
-                const db = event.target.result;
-                if (!db.objectStoreNames.contains('neurons')) {
-                    db.createObjectStore('neurons', { keyPath: 'snsRoot' });
-                }
-            };
-        });
-    }, []);
+    // IndexedDB initialization (reuse the standalone function)
+    const initializeDB = useCallback(() => initializeNeuronsDB(), []);
 
     // Get cached data from IndexedDB
     const getCachedData = useCallback(async (snsRoot) => {

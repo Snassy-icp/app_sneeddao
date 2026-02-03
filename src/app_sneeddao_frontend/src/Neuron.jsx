@@ -9,6 +9,7 @@ import Header from './components/Header';
 import './Wallet.css';
 import { fetchAndCacheSnsData, getSnsById, getAllSnses, clearSnsCache, fetchSnsLogo } from './utils/SnsUtils';
 import { formatProposalIdLink, uint8ArrayToHex, getNeuronColor, getOwnerPrincipals, formatNeuronIdLink } from './utils/NeuronUtils';
+import { getNeuronFromCache, updateNeuronInCache } from './hooks/useNeuronsCache';
 import { useNaming } from './NamingContext';
 import { useTheme } from './contexts/ThemeContext';
 import { setNeuronNickname } from './utils/BackendUtils';
@@ -250,8 +251,21 @@ function Neuron() {
     }, [currentNeuronId, selectedSnsRoot]);
 
     const fetchNeuronData = async () => {
-        setLoading(true);
         setError('');
+        
+        // First, try to get from cache for instant display
+        const cachedNeuron = await getNeuronFromCache(selectedSnsRoot, currentNeuronId);
+        if (cachedNeuron) {
+            console.log('%c🧠 [NEURON] Showing cached neuron instantly', 'background: #2ecc71; color: white; padding: 2px 6px;');
+            setNeuronData(cachedNeuron);
+            setLoading(false); // Show cached data immediately
+            // Fetch names for cached data
+            await fetchAllNames();
+        } else {
+            setLoading(true);
+        }
+        
+        // Then fetch fresh data from governance canister
         try {
             const selectedSns = getSnsById(selectedSnsRoot);
             if (!selectedSns) {
@@ -265,16 +279,29 @@ function Neuron() {
             const neuronIdArg = { neuron_id: [{ id: Array.from(neuronIdBytes) }] };
             const response = await snsGovActor.get_neuron(neuronIdArg);
             if (response?.result?.[0]?.Neuron) {
-                setNeuronData(response.result[0].Neuron);
+                const freshNeuron = response.result[0].Neuron;
+                setNeuronData(freshNeuron);
+                
+                // Update the cache with fresh data (doesn't trigger loading all neurons)
+                await updateNeuronInCache(selectedSnsRoot, freshNeuron);
+                
                 await fetchAllNames();
             } else if (response?.result?.[0]?.Error) {
-                setError(response.result[0].Error.error_message);
+                // Only show error if we don't have cached data
+                if (!cachedNeuron) {
+                    setError(response.result[0].Error.error_message);
+                }
             } else {
-                setError('Neuron not found');
+                if (!cachedNeuron) {
+                    setError('Neuron not found');
+                }
             }
         } catch (err) {
             console.error('Error fetching neuron data:', err);
-            setError('Failed to fetch neuron data');
+            // Only show error if we don't have cached data
+            if (!cachedNeuron) {
+                setError('Failed to fetch neuron data');
+            }
         } finally {
             setLoading(false);
         }
