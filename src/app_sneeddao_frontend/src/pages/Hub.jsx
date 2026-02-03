@@ -13,6 +13,7 @@ import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { getSnsById, getAllSnses, fetchAndCacheSnsData } from '../utils/SnsUtils';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
 import useNeuronsCache from '../hooks/useNeuronsCache';
+import { indexNeuronsByOwner } from '../utils/NeuronUtils';
 import OfferCard from '../components/OfferCard';
 import FeedItemCard from '../components/FeedItemCard';
 import priceService from '../services/PriceService';
@@ -410,7 +411,7 @@ function Hub() {
     
     // Sneed neurons are now fetched by useNeuronsCache hook (shared with /users page)
     
-    // Calculate active members from neurons (same logic as /users page)
+    // Calculate active members from neurons using shared indexing engine
     const daoStats = useMemo(() => {
         // Show loading state
         const loading = neuronsLoading && sneedNeurons.length === 0;
@@ -425,67 +426,24 @@ function Hub() {
             };
         }
         
-        // Group neurons by owner and sum stake (same logic as Users.jsx)
-        const ownerStakes = new Map();
-        const MANAGE_PRINCIPALS = 2; // ManageVotingPermission = owner-level permission
+        // ========== INDEXING TIMING START ==========
+        const indexStartTime = performance.now();
+        console.log('%c🔍 [HUB INDEXING] Starting neuron index calculation...', 'background: #ff6b6b; color: white; font-size: 14px; font-weight: bold; padding: 4px 8px;');
+        console.log('%c📊 [HUB INDEXING] Neurons to process: ' + sneedNeurons.length, 'background: #4ecdc4; color: black; font-size: 12px; padding: 2px 6px;');
         
-        // Helper to safely extract principal string from various formats
-        // Handles: Principal object, [Principal] opt array, serialized {_arr} from IndexedDB
-        const extractPrincipalString = (principalData) => {
-            if (!principalData) return null;
-            
-            // If it's an array (opt type), get first element
-            const principal = Array.isArray(principalData) ? principalData[0] : principalData;
-            if (!principal) return null;
-            
-            // If it has a toString method that returns a valid principal string, use it
-            if (typeof principal.toString === 'function') {
-                const str = principal.toString();
-                // Check if it's a valid principal string (not "[object Object]")
-                if (str && !str.includes('[object')) {
-                    return str;
-                }
-            }
-            
-            // If it has toText method (Principal object), use it
-            if (typeof principal.toText === 'function') {
-                return principal.toText();
-            }
-            
-            // If it has _arr property (serialized from IndexedDB), try to reconstruct
-            if (principal._arr && Array.isArray(principal._arr)) {
-                try {
-                    return Principal.fromUint8Array(new Uint8Array(principal._arr)).toText();
-                } catch (e) {
-                    return null;
-                }
-            }
-            
-            return null;
-        };
+        // Use shared indexing engine from NeuronUtils
+        const { ownerStakes, stats } = indexNeuronsByOwner(sneedNeurons);
         
-        sneedNeurons.forEach(neuron => {
-            const stake = BigInt(neuron.cached_neuron_stake_e8s || 0);
-            
-            neuron.permissions?.forEach(p => {
-                const principalStr = extractPrincipalString(p.principal);
-                if (!principalStr) return;
-                
-                // Check if this principal has MANAGE_PRINCIPALS permission (owner)
-                const permTypes = p.permission_type || [];
-                if (permTypes.includes(MANAGE_PRINCIPALS)) {
-                    const currentStake = ownerStakes.get(principalStr) || BigInt(0);
-                    ownerStakes.set(principalStr, currentStake + stake);
-                }
-            });
-        });
-        
-        // Count owners with stake > 0
-        const activeMembers = Array.from(ownerStakes.values()).filter(stake => stake > BigInt(0)).length;
+        // ========== INDEXING TIMING END ==========
+        const indexEndTime = performance.now();
+        const indexDuration = (indexEndTime - indexStartTime).toFixed(2);
+        console.log('%c✅ [HUB INDEXING] Complete!', 'background: #2ecc71; color: white; font-size: 14px; font-weight: bold; padding: 4px 8px;');
+        console.log('%c⏱️ [HUB INDEXING] Duration: ' + indexDuration + 'ms', 'background: #9b59b6; color: white; font-size: 13px; font-weight: bold; padding: 3px 7px;');
+        console.log('%c📈 [HUB INDEXING] Stats: ' + stats.totalNeurons + ' neurons, ' + stats.permissionsProcessed + ' permissions, ' + stats.uniqueOwners + ' unique owners, ' + stats.activeMembers + ' active members', 'background: #3498db; color: white; font-size: 12px; padding: 2px 6px;');
         
         return {
-            activeMembers,
-            totalNeurons: sneedNeurons.length,
+            activeMembers: stats.activeMembers,
+            totalNeurons: stats.totalNeurons,
             loading: neuronsLoading,
             progress: neuronsProgress,
             error: neuronsError

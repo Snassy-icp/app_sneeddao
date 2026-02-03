@@ -7,7 +7,7 @@ import Header from '../components/Header';
 import useNeuronsCache from '../hooks/useNeuronsCache';
 import { fetchAndCacheSnsData, getSnsById, fetchSnsLogo } from '../utils/SnsUtils';
 import { HttpAgent } from '@dfinity/agent';
-import { uint8ArrayToHex } from '../utils/NeuronUtils';
+import { uint8ArrayToHex, indexNeuronsForUsers as sharedIndexNeuronsForUsers } from '../utils/NeuronUtils';
 import { useNaming } from '../NamingContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { Principal } from '@dfinity/principal';
@@ -139,45 +139,6 @@ function Users() {
         }
     }, [searchParams, selectedSnsRoot, updateSelectedSns]);
 
-    // Helper to safely extract principal string from various formats
-    // Handles: Principal object, [Principal] opt array, serialized {_arr} from IndexedDB
-    const extractPrincipalString = (principalData) => {
-        if (!principalData) return null;
-        
-        // If it's an array (opt type), get first element
-        const principal = Array.isArray(principalData) ? principalData[0] : principalData;
-        if (!principal) return null;
-        
-        // If it has a toString method that returns a valid principal string, use it
-        if (typeof principal.toString === 'function') {
-            const str = principal.toString();
-            // Check if it's a valid principal string (not "[object Object]")
-            if (str && !str.includes('[object')) {
-                return str;
-            }
-        }
-        
-        // If it has _arr (serialized Principal from IndexedDB), reconstruct
-        if (principal._arr) {
-            try {
-                return Principal.fromUint8Array(new Uint8Array(principal._arr)).toString();
-            } catch (e) {
-                console.warn('Failed to reconstruct principal from _arr:', e);
-            }
-        }
-        
-        // If it's a Uint8Array directly
-        if (principal instanceof Uint8Array) {
-            try {
-                return Principal.fromUint8Array(principal).toString();
-            } catch (e) {
-                console.warn('Failed to reconstruct principal from Uint8Array:', e);
-            }
-        }
-        
-        return null;
-    };
-
     // Format stake with M/B suffixes for large numbers (millions and above only)
     const formatStakeCompact = (e8sValue) => {
         if (!e8sValue) return '0';
@@ -191,70 +152,24 @@ function Users() {
         return Math.floor(value).toLocaleString();
     };
 
-    // MANAGE_PRINCIPALS permission type (owner permission)
-    const MANAGE_PRINCIPALS = 2;
-
-    // Index neurons by principal (both owners and hotkeys)
+    // Index neurons by principal using shared indexing engine
     const usersData = useMemo(() => {
-        const userMap = new Map();
+        // ========== INDEXING TIMING START ==========
+        const indexStartTime = performance.now();
+        console.log('%c🔍 [USERS INDEXING] Starting neuron index calculation...', 'background: #ff6b6b; color: white; font-size: 14px; font-weight: bold; padding: 4px 8px;');
+        console.log('%c📊 [USERS INDEXING] Neurons to process: ' + neurons.length, 'background: #4ecdc4; color: black; font-size: 12px; padding: 2px 6px;');
         
-        neurons.forEach(neuron => {
-            const neuronId = uint8ArrayToHex(neuron.id[0]?.id);
-            if (!neuronId) return;
-            
-            const stake = BigInt(neuron.cached_neuron_stake_e8s || 0);
-            const maturity = BigInt(neuron.maturity_e8s_equivalent || 0);
-            
-            // Build owner set by checking MANAGE_PRINCIPALS permission directly
-            // This handles both fresh and cached neurons correctly
-            const ownerPrincipals = new Set();
-            const allPrincipals = new Set();
-            
-            neuron.permissions?.forEach(p => {
-                const principalStr = extractPrincipalString(p.principal);
-                if (!principalStr) return;
-                
-                allPrincipals.add(principalStr);
-                
-                // Check if this principal has MANAGE_PRINCIPALS permission (owner)
-                const permTypes = p.permission_type || [];
-                if (permTypes.includes(MANAGE_PRINCIPALS)) {
-                    ownerPrincipals.add(principalStr);
-                }
-            });
-            
-            // Update user data for each principal
-            allPrincipals.forEach(principal => {
-                if (!userMap.has(principal)) {
-                    userMap.set(principal, {
-                        principal,
-                        neurons: [],
-                        ownedNeurons: [],
-                        hotkeyNeurons: [],
-                        totalStake: BigInt(0),
-                        totalMaturity: BigInt(0),
-                        ownedStake: BigInt(0),
-                        hotkeyStake: BigInt(0)
-                    });
-                }
-                
-                const userData = userMap.get(principal);
-                userData.neurons.push(neuron);
-                userData.totalStake += stake;
-                userData.totalMaturity += maturity;
-                
-                // Track if this is owned or hotkey access
-                if (ownerPrincipals.has(principal)) {
-                    userData.ownedNeurons.push(neuron);
-                    userData.ownedStake += stake;
-                } else {
-                    userData.hotkeyNeurons.push(neuron);
-                    userData.hotkeyStake += stake;
-                }
-            });
-        });
+        const result = sharedIndexNeuronsForUsers(neurons);
         
-        return Array.from(userMap.values());
+        // ========== INDEXING TIMING END ==========
+        const indexEndTime = performance.now();
+        const indexDuration = (indexEndTime - indexStartTime).toFixed(2);
+        const activeMembers = result.filter(u => u.ownedStake > 0n).length;
+        console.log('%c✅ [USERS INDEXING] Complete!', 'background: #2ecc71; color: white; font-size: 14px; font-weight: bold; padding: 4px 8px;');
+        console.log('%c⏱️ [USERS INDEXING] Duration: ' + indexDuration + 'ms', 'background: #9b59b6; color: white; font-size: 13px; font-weight: bold; padding: 3px 7px;');
+        console.log('%c📈 [USERS INDEXING] Stats: ' + neurons.length + ' neurons, ' + result.length + ' unique principals, ' + activeMembers + ' owners with stake', 'background: #3498db; color: white; font-size: 12px; padding: 2px 6px;');
+        
+        return result;
     }, [neurons]);
 
     // Get display info for principals

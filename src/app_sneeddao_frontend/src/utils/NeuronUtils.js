@@ -46,6 +46,185 @@ export const safePermissionType = (permission) => {
     return [];
 };
 
+// ============================================================================
+// NEURON INDEXING ENGINE
+// Shared indexing logic for /hub, /users, and anywhere else that needs to 
+// compute owner stakes, member counts, etc. from a list of neurons.
+// ============================================================================
+
+// Permission type constants
+const MANAGE_PRINCIPALS = 2; // ManageVotingPermission = owner-level permission
+
+/**
+ * Safely extract principal string from various formats.
+ * Handles: Principal object, [Principal] opt array, serialized {_arr} from IndexedDB
+ */
+export const extractPrincipalString = (principalData) => {
+    if (!principalData) return null;
+    
+    // If it's an array (opt type), get first element
+    const principal = Array.isArray(principalData) ? principalData[0] : principalData;
+    if (!principal) return null;
+    
+    // If it has a toString method that returns a valid principal string, use it
+    if (typeof principal.toString === 'function') {
+        const str = principal.toString();
+        // Check if it's a valid principal string (not "[object Object]")
+        if (str && !str.includes('[object')) {
+            return str;
+        }
+    }
+    
+    // If it has toText method (Principal object), use it
+    if (typeof principal.toText === 'function') {
+        return principal.toText();
+    }
+    
+    // If it has _arr property (serialized from IndexedDB), try to reconstruct
+    if (principal._arr) {
+        try {
+            return Principal.fromUint8Array(new Uint8Array(principal._arr)).toString();
+        } catch (e) {
+            return null;
+        }
+    }
+    
+    // If it's a Uint8Array directly
+    if (principal instanceof Uint8Array) {
+        try {
+            return Principal.fromUint8Array(principal).toString();
+        } catch (e) {
+            return null;
+        }
+    }
+    
+    return null;
+};
+
+/**
+ * Index neurons by owner principal.
+ * Returns an object with owner stakes map and computed stats.
+ * 
+ * @param {Array} neurons - Array of neuron objects
+ * @returns {Object} { ownerStakes: Map<principal, BigInt>, stats: { activeMembers, totalNeurons, uniqueOwners, permissionsProcessed } }
+ */
+export const indexNeuronsByOwner = (neurons) => {
+    if (!neurons || neurons.length === 0) {
+        return {
+            ownerStakes: new Map(),
+            stats: {
+                activeMembers: 0,
+                totalNeurons: 0,
+                uniqueOwners: 0,
+                permissionsProcessed: 0
+            }
+        };
+    }
+    
+    const ownerStakes = new Map();
+    let permissionsProcessed = 0;
+    
+    neurons.forEach(neuron => {
+        const stake = BigInt(neuron.cached_neuron_stake_e8s || 0);
+        
+        neuron.permissions?.forEach(p => {
+            permissionsProcessed++;
+            const principalStr = extractPrincipalString(p.principal);
+            if (!principalStr) return;
+            
+            // Use safePermissionType to handle serialized/corrupted arrays
+            const permTypes = safePermissionType(p);
+            if (permTypes.includes(MANAGE_PRINCIPALS)) {
+                const currentStake = ownerStakes.get(principalStr) || BigInt(0);
+                ownerStakes.set(principalStr, currentStake + stake);
+            }
+        });
+    });
+    
+    // Count owners with stake > 0 (active members)
+    const activeMembers = Array.from(ownerStakes.values()).filter(stake => stake > BigInt(0)).length;
+    
+    return {
+        ownerStakes,
+        stats: {
+            activeMembers,
+            totalNeurons: neurons.length,
+            uniqueOwners: ownerStakes.size,
+            permissionsProcessed
+        }
+    };
+};
+
+/**
+ * Full neuron index for /users page - includes both owner and hotkey data
+ * @param {Array} neurons - Array of neuron objects
+ * @returns {Array} Array of user data objects with principals, neurons, stakes
+ */
+export const indexNeuronsForUsers = (neurons) => {
+    if (!neurons || neurons.length === 0) {
+        return [];
+    }
+    
+    const userMap = new Map();
+    
+    neurons.forEach(neuron => {
+        const neuronId = uint8ArrayToHex(neuron.id?.[0]?.id);
+        if (!neuronId) return;
+        
+        const stake = BigInt(neuron.cached_neuron_stake_e8s || 0);
+        const maturity = BigInt(neuron.maturity_e8s_equivalent || 0);
+        
+        // Build owner set by checking MANAGE_PRINCIPALS permission
+        const ownerPrincipals = new Set();
+        const allPrincipals = new Set();
+        
+        neuron.permissions?.forEach(p => {
+            const principalStr = extractPrincipalString(p.principal);
+            if (!principalStr) return;
+            
+            allPrincipals.add(principalStr);
+            
+            // Use safePermissionType to handle serialized/corrupted arrays
+            const permTypes = safePermissionType(p);
+            if (permTypes.includes(MANAGE_PRINCIPALS)) {
+                ownerPrincipals.add(principalStr);
+            }
+        });
+        
+        // Update user data for each principal
+        allPrincipals.forEach(principal => {
+            if (!userMap.has(principal)) {
+                userMap.set(principal, {
+                    principal,
+                    neurons: [],
+                    ownedNeurons: [],
+                    hotkeyNeurons: [],
+                    totalStake: BigInt(0),
+                    totalMaturity: BigInt(0),
+                    ownedStake: BigInt(0),
+                    hotkeyStake: BigInt(0)
+                });
+            }
+            
+            const userData = userMap.get(principal);
+            userData.neurons.push(neuron);
+            userData.totalStake += stake;
+            userData.totalMaturity += maturity;
+            
+            // Track if this is owned or hotkey access
+            if (ownerPrincipals.has(principal)) {
+                userData.ownedNeurons.push(neuron);
+                userData.ownedStake += stake;
+            } else {
+                userData.hotkeyNeurons.push(neuron);
+                userData.hotkeyStake += stake;
+            }
+        });
+    });
+    
+    return Array.from(userMap.values());
+};
+
 // Helper function to find owner principals from neuron permissions
 export const getOwnerPrincipals = (neuron) => {
     // Treat principals with MANAGE_PRINCIPALS (aka "ManagePermissions") as owners.
