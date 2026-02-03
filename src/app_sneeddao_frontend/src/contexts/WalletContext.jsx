@@ -345,14 +345,14 @@ export const WalletProvider = ({ children }) => {
                 
                 // Restore tokens
                 if (cachedData.walletTokens && cachedData.walletTokens.length > 0) {
-                    console.log('%c💾 [WALLET CACHE] Restoring', cachedData.walletTokens.length, 'tokens', 'background: #2ecc71; color: white; padding: 2px 6px;');
+                    console.log(`%c💾 [WALLET CACHE] Restoring ${cachedData.walletTokens.length} tokens`, 'background: #2ecc71; color: white; padding: 2px 6px;');
                     setWalletTokens(cachedData.walletTokens);
                     setHasFetchedInitial(true);
                 }
                 
                 // Restore positions
                 if (cachedData.liquidityPositions && cachedData.liquidityPositions.length > 0) {
-                    console.log('%c💾 [POSITIONS CACHE] Restoring', cachedData.liquidityPositions.length, 'positions from cache', 'background: #9b59b6; color: white; padding: 2px 6px;');
+                    console.log(`%c💾 [POSITIONS CACHE] Restoring ${cachedData.liquidityPositions.length} positions from cache`, 'background: #9b59b6; color: white; padding: 2px 6px;');
                     setLiquidityPositions(cachedData.liquidityPositions);
                     setHasFetchedPositions(true);
                     hasPositionsRef.current = true;
@@ -418,7 +418,7 @@ export const WalletProvider = ({ children }) => {
                     if (hydratedMap.size > 0) {
                         setNeuronCache(hydratedMap);
                         setNeuronCacheInitialized(true);
-                        console.log('%c💾 [NEURON CACHE] Hydrated', hydratedMap.size, 'governance caches from IndexedDB', 'background: #9b59b6; color: white; padding: 2px 6px;');
+                        console.log(`%c💾 [NEURON CACHE] Hydrated ${hydratedMap.size} governance caches from IndexedDB`, 'background: #9b59b6; color: white; padding: 2px 6px;');
                     }
                 }
                 
@@ -481,7 +481,7 @@ export const WalletProvider = ({ children }) => {
                 return [govId, neuronIds];
             });
             
-            console.log('%c💾 [POSITIONS CACHE] Saving', liquidityPositions.length, 'positions to cache', 'background: #3498db; color: white; padding: 2px 6px;');
+            console.log(`%c💾 [POSITIONS CACHE] Saving ${liquidityPositions.length} positions to cache`, 'background: #3498db; color: white; padding: 2px 6px;');
             saveWalletCache(principalId, {
                 walletTokens,
                 liquidityPositions,
@@ -795,13 +795,14 @@ export const WalletProvider = ({ children }) => {
     const fetchAndUpdateNeuronTotals = useCallback(async (ledgerCanisterId, sessionId) => {
         const ledgerId = ledgerCanisterId.toString();
         
-        // Check if this is an SNS token
-        if (!snsTokenLedgers.has(ledgerId)) return;
-        
         try {
             // Find the governance canister for this SNS
+            // Use getAllSnses() directly instead of snsTokenLedgers state to avoid race condition
             const allSnses = getAllSnses();
             const snsData = allSnses.find(sns => sns.canisters?.ledger === ledgerId);
+            
+            // Not an SNS token - skip
+            if (!snsData) return;
             
             if (!snsData || !snsData.canisters?.governance) return;
             
@@ -836,7 +837,7 @@ export const WalletProvider = ({ children }) => {
         } catch (error) {
             console.warn(`Could not fetch neuron totals for ${ledgerId}:`, error);
         }
-    }, [identity, snsTokenLedgers, fetchAndCacheNeurons]);
+    }, [identity, fetchAndCacheNeurons]);
 
     // Add a position progressively as it loads
     const addPositionProgressively = useCallback((positionData, sessionId) => {
@@ -875,9 +876,13 @@ export const WalletProvider = ({ children }) => {
                 get_token_conversion_rate(ledger1, decimals1).catch(() => 0)
             ]);
             
+            // Normalize swapCanisterId to string for comparison
+            const targetSwapId = swapCanisterId?.toString?.() || swapCanisterId;
+            
             if (positionsFetchSessionRef.current === sessionId) {
                 setLiquidityPositions(prev => prev.map(p => {
-                    if (p.swapCanisterId === swapCanisterId) {
+                    const pSwapId = p.swapCanisterId?.toString?.() || p.swapCanisterId;
+                    if (pSwapId === targetSwapId) {
                         return { ...p, token0_conversion_rate: rate0, token1_conversion_rate: rate1 };
                     }
                     return p;
@@ -895,7 +900,7 @@ export const WalletProvider = ({ children }) => {
     
     // Fetch compact positions for the quick wallet - PROGRESSIVE
     const fetchCompactPositions = useCallback(async (clearFirst = false, showLoading = true) => {
-        console.log('%c🔄 [POSITIONS FETCH] Called with clearFirst=', clearFirst, 'showLoading=', showLoading, 'hasPositionsRef=', hasPositionsRef.current, 'background: #f39c12; color: black; padding: 2px 6px;');
+        console.log(`%c🔄 [POSITIONS FETCH] Called with clearFirst=${clearFirst} showLoading=${showLoading} hasPositionsRef=${hasPositionsRef.current}`, 'background: #f39c12; color: black; padding: 2px 6px;');
         
         if (!identity || !isAuthenticated) {
             setLiquidityPositions([]);
@@ -916,7 +921,7 @@ export const WalletProvider = ({ children }) => {
         // Only show loading spinner if requested AND we have no data to show
         // Use ref to avoid stale closure issue
         const shouldShowLoading = showLoading && (clearFirst || !hasPositionsRef.current);
-        console.log('%c🔄 [POSITIONS FETCH] shouldShowLoading=', shouldShowLoading, 'background: #f39c12; color: black; padding: 2px 6px;');
+        console.log(`%c🔄 [POSITIONS FETCH] shouldShowLoading=${shouldShowLoading}`, 'background: #f39c12; color: black; padding: 2px 6px;');
         if (shouldShowLoading) {
             setPositionsLoading(true);
         }
