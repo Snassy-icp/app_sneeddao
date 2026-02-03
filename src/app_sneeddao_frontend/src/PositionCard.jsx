@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { formatAmount, getUSD } from './utils/StringUtils';
 import { bigDateToReadable, format_duration } from './utils/DateUtils';
 import { getIcpSwapLink, isLockedPosition, getPositionTVL } from './utils/PositionUtils';
@@ -69,11 +69,21 @@ const PositionLockCountdown = ({ expiryNanos }) => {
     );
 };
 
-const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModal, openLockPositionModal, handleWithdrawPositionRewards, handleClaimLockedPositionFees, handleClaimUnlockedDepositedPositionFees, handleWithdrawPosition, handleWithdrawSwapBalance, handleTransferPositionOwnership, handleRefreshPosition, isRefreshing = false, swapCanisterBalance0, swapCanisterBalance1, token0Fee, token1Fee, hideButtons, hideUnclaimedFees, defaultExpanded = false, defaultLocksExpanded = false, onOpenDetailModal }) => {
+const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendLiquidityPositionModal, openLockPositionModal, handleWithdrawPositionRewards, handleClaimLockedPositionFees, handleClaimUnlockedDepositedPositionFees, handleWithdrawPosition, handleWithdrawSwapBalance, handleTransferPositionOwnership, handleRefreshPosition, isRefreshing = false, swapCanisterBalance0, swapCanisterBalance1, token0Fee, token1Fee, hideButtons, hideUnclaimedFees, defaultExpanded = false, defaultLocksExpanded = false, onOpenDetailModal }) => {
 
     const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
     const { isAuthenticated } = useAuth();
+    
+    // Normalize positionDetails to handle both naming conventions (token0Amount vs amount0)
+    const positionDetails = useMemo(() => ({
+        ...rawPositionDetails,
+        token0Amount: BigInt(rawPositionDetails.token0Amount ?? rawPositionDetails.amount0 ?? 0n),
+        token1Amount: BigInt(rawPositionDetails.token1Amount ?? rawPositionDetails.amount1 ?? 0n),
+        tokensOwed0: BigInt(rawPositionDetails.tokensOwed0 ?? 0n),
+        tokensOwed1: BigInt(rawPositionDetails.tokensOwed1 ?? 0n),
+    }), [rawPositionDetails]);
+    
     const [isExpanded, setIsExpanded] = useState(defaultExpanded);
     const [activeTab, setActiveTab] = useState(defaultLocksExpanded ? 'locks' : 'balance'); // 'balance', 'locks', 'info'
     const [isClaiming, setIsClaiming] = useState(false);

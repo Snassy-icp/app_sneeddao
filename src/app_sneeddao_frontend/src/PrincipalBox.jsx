@@ -170,8 +170,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         return hasAnyValue ? total : null;
     }, [flattenedPositions]);
 
-    // Calculate total portfolio USD value
-    const totalPortfolioUSD = useMemo(() => {
+    // Calculate total tokens USD value
+    const totalTokensUSD = useMemo(() => {
         let total = 0;
         let hasAnyValue = false;
         
@@ -185,8 +185,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
             const neuronMaturity = BigInt(token.neuronMaturity || 0n);
             const totalBalance = available + locked + staked + maturity + rewards + neuronStake + neuronMaturity;
             
-            const balanceNum = Number(totalBalance) / (10 ** (token.decimals || 8));
-            const usdValue = token.conversion_rate ? balanceNum * token.conversion_rate : null;
+            const balanceNum = Number(totalBalance) / Math.pow(10, Number(token.decimals || 8));
+            const usdValue = token.conversion_rate ? balanceNum * Number(token.conversion_rate) : null;
             
             if (usdValue !== null) {
                 total += usdValue;
@@ -196,6 +196,14 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         
         return hasAnyValue ? total : null;
     }, [tokensWithBalance]);
+
+    // Calculate grand total (tokens + positions)
+    const grandTotalUSD = useMemo(() => {
+        const tokens = totalTokensUSD || 0;
+        const positions = totalPositionsUSD || 0;
+        const total = tokens + positions;
+        return total > 0 ? total : null;
+    }, [totalTokensUSD, totalPositionsUSD]);
     
     // Open send modal for a token
     const openSendModal = (token, e) => {
@@ -826,6 +834,36 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                   
                   {/* Wallet Section - now in the padding area */}
                   <div style={{ padding: '12px 16px' }}>
+                      
+                      {/* Grand Total */}
+                      {grandTotalUSD !== null && (
+                          <div style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              marginBottom: '12px',
+                              padding: '10px 12px',
+                              background: `linear-gradient(135deg, ${theme.colors.accent}15, ${theme.colors.accent}05)`,
+                              borderRadius: '8px',
+                              border: `1px solid ${theme.colors.accent}30`
+                          }}>
+                              <span style={{
+                                  color: theme.colors.mutedText,
+                                  fontSize: '11px',
+                                  fontWeight: '500'
+                              }}>
+                                  <FaWallet size={10} style={{ marginRight: '6px' }} />
+                                  Total Balance
+                              </span>
+                              <span style={{
+                                  color: '#10b981',
+                                  fontSize: '16px',
+                                  fontWeight: '700'
+                              }}>
+                                  ${grandTotalUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                          </div>
+                      )}
 
                   {/* Wallet Tabs */}
                       <div style={{ 
@@ -920,7 +958,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                   />
                                   Hide dust
                               </label>
-                              {totalPortfolioUSD !== null && (
+                              {totalTokensUSD !== null && (
                                   <span style={{ 
                                       color: '#10b981',
                                       fontSize: '12px',
@@ -928,7 +966,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                       textTransform: 'none',
                                       letterSpacing: 'normal'
                                   }}>
-                                      ${totalPortfolioUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      ${totalTokensUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </span>
                               )}
                               {refreshWallet && (

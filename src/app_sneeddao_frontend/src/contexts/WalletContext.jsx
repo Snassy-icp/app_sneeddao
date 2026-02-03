@@ -185,7 +185,42 @@ export const WalletProvider = ({ children }) => {
         }
     }, [identity, snsTokenLedgers]);
 
-    // Fetch compact positions for the quick wallet
+    // Add a position progressively as it loads
+    const addPositionProgressively = useCallback((positionData, sessionId) => {
+        if (positionsFetchSessionRef.current !== sessionId) return;
+        
+        setLiquidityPositions(prev => {
+            // Check if position already exists
+            const exists = prev.some(p => p.swapCanisterId === positionData.swapCanisterId);
+            if (exists) {
+                return prev.map(p => p.swapCanisterId === positionData.swapCanisterId ? positionData : p);
+            }
+            return [...prev, positionData];
+        });
+    }, []);
+
+    // Fetch conversion rate for a position and update it in place
+    const fetchPositionConversionRates = useCallback(async (swapCanisterId, ledger0, ledger1, decimals0, decimals1, sessionId) => {
+        try {
+            const [rate0, rate1] = await Promise.all([
+                get_token_conversion_rate(ledger0, decimals0).catch(() => 0),
+                get_token_conversion_rate(ledger1, decimals1).catch(() => 0)
+            ]);
+            
+            if (positionsFetchSessionRef.current === sessionId) {
+                setLiquidityPositions(prev => prev.map(p => {
+                    if (p.swapCanisterId === swapCanisterId) {
+                        return { ...p, token0_conversion_rate: rate0, token1_conversion_rate: rate1 };
+                    }
+                    return p;
+                }));
+            }
+        } catch (e) {
+            console.warn('Could not fetch conversion rates for position:', e);
+        }
+    }, []);
+
+    // Fetch compact positions for the quick wallet - PROGRESSIVE
     const fetchCompactPositions = useCallback(async () => {
         if (!identity || !isAuthenticated) {
             setLiquidityPositions([]);
@@ -195,12 +230,13 @@ export const WalletProvider = ({ children }) => {
 
         const sessionId = ++positionsFetchSessionRef.current;
         setPositionsLoading(true);
+        // Don't clear positions - keep showing existing while refreshing
 
         try {
             const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
             const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
             
-            // Get swap canister IDs
+            // Get swap canister IDs FIRST (fast)
             const swap_canisters = await backendActor.get_swap_canister_ids();
             
             if (swap_canisters.length === 0) {
@@ -211,43 +247,48 @@ export const WalletProvider = ({ children }) => {
                 return;
             }
 
-            // Clear expired position locks
-            try {
-                if (await sneedLockActor.has_expired_position_locks()) {
-                    await sneedLockActor.clear_expired_position_locks();
-                }
-            } catch (e) {
-                console.warn('Could not clear expired position locks:', e);
-            }
-
-            // Get claimed positions
-            const claimed_positions = await sneedLockActor.get_claimed_positions_for_principal(identity.getPrincipal());
-            const claimed_positions_by_swap = {};
-            for (const claimed_position of claimed_positions) {
-                if (!claimed_positions_by_swap[claimed_position.swap_canister_id]) {
-                    claimed_positions_by_swap[claimed_position.swap_canister_id] = [];
-                }
-                claimed_positions_by_swap[claimed_position.swap_canister_id].push(claimed_position);
-            }
-
-            // Fetch positions from each swap canister in parallel
-            const positionResults = await Promise.all(swap_canisters.map(async (swap_canister) => {
+            // Get claimed positions in parallel with swap fetches
+            const claimedPositionsPromise = (async () => {
                 try {
-                    const claimed_positions_for_swap = claimed_positions_by_swap[swap_canister] || [];
-                    const claimed_position_ids_for_swap = claimed_positions_for_swap.map(cp => cp.position_id);
-                    const claimed_positions_for_swap_by_id = {};
-                    for (const cp of claimed_positions_for_swap) {
-                        claimed_positions_for_swap_by_id[cp.position_id] = cp;
-                    }
+                    // Clear expired locks in background
+                    sneedLockActor.has_expired_position_locks().then(async (hasExpired) => {
+                        if (hasExpired) await sneedLockActor.clear_expired_position_locks();
+                    }).catch(() => {});
+                    
+                    return await sneedLockActor.get_claimed_positions_for_principal(identity.getPrincipal());
+                } catch (e) {
+                    console.warn('Could not get claimed positions:', e);
+                    return [];
+                }
+            })();
 
+            // Mark as fetched early so UI shows loading state properly
+            setHasFetchedPositions(true);
+
+            // Fetch each swap canister's positions in parallel - fire and forget pattern
+            swap_canisters.forEach(async (swap_canister) => {
+                if (positionsFetchSessionRef.current !== sessionId) return;
+                
+                try {
                     const swapActor = createIcpSwapActor(swap_canister);
                     
-                    // Get swap metadata
+                    // Get swap metadata first
                     const swap_meta = await swapActor.metadata();
-                    if (!swap_meta.ok) return null;
+                    if (!swap_meta.ok) return;
 
                     const icrc1_ledger0 = swap_meta.ok.token0.address;
                     const icrc1_ledger1 = swap_meta.ok.token1.address;
+
+                    // Get user's position IDs quickly
+                    const userPositionIds = (await swapActor.getUserPositionIdsByPrincipal(identity.getPrincipal())).ok || [];
+                    
+                    // Get claimed positions (from the parallel promise)
+                    const claimed_positions = await claimedPositionsPromise;
+                    const claimed_positions_for_swap = claimed_positions.filter(cp => cp.swap_canister_id === swap_canister);
+                    const claimed_position_ids_for_swap = claimed_positions_for_swap.map(cp => cp.position_id);
+                    
+                    // If no positions for this user in this swap, skip
+                    if (userPositionIds.length === 0 && claimed_position_ids_for_swap.length === 0) return;
 
                     // Get token metadata in parallel
                     const [ledgerActor0, ledgerActor1] = [
@@ -271,8 +312,11 @@ export const WalletProvider = ({ children }) => {
                     if (symbol0?.toLowerCase() === "icp" && token0Logo === "") token0Logo = "icp_symbol.svg";
                     if (symbol1?.toLowerCase() === "icp" && token1Logo === "") token1Logo = "icp_symbol.svg";
 
-                    // Get user's positions
-                    const userPositionIds = (await swapActor.getUserPositionIdsByPrincipal(identity.getPrincipal())).ok || [];
+                    // Build claimed positions lookup
+                    const claimed_positions_for_swap_by_id = {};
+                    for (const cp of claimed_positions_for_swap) {
+                        claimed_positions_for_swap_by_id[cp.position_id] = cp;
+                    }
                     
                     // Fetch positions with amounts
                     let userPositions = [];
@@ -280,7 +324,7 @@ export const WalletProvider = ({ children }) => {
                     const limit = 50;
                     let hasMore = true;
                     
-                    while (hasMore) {
+                    while (hasMore && positionsFetchSessionRef.current === sessionId) {
                         const result = await swapActor.getUserPositionWithTokenAmount(offset, limit);
                         const allPositions = result.ok?.content || [];
                         
@@ -298,13 +342,7 @@ export const WalletProvider = ({ children }) => {
                         hasMore = allPositions.length === limit;
                     }
 
-                    if (userPositions.length === 0) return null;
-
-                    // Get conversion rates in background (don't block)
-                    const [token0_conversion_rate, token1_conversion_rate] = await Promise.all([
-                        get_token_conversion_rate(icrc1_ledger0, decimals0).catch(() => 0),
-                        get_token_conversion_rate(icrc1_ledger1, decimals1).catch(() => 0)
-                    ]);
+                    if (userPositions.length === 0 || positionsFetchSessionRef.current !== sessionId) return;
 
                     // Build position details
                     const positionDetails = userPositions.map(compoundPosition => {
@@ -322,7 +360,8 @@ export const WalletProvider = ({ children }) => {
                         };
                     });
 
-                    return {
+                    // Add position immediately (without conversion rates)
+                    const positionData = {
                         swapCanisterId: swap_canister,
                         token0: Principal.fromText(icrc1_ledger0),
                         token1: Principal.fromText(icrc1_ledger1),
@@ -334,27 +373,31 @@ export const WalletProvider = ({ children }) => {
                         token1Decimals: Number(decimals1),
                         token0Fee: fee0,
                         token1Fee: fee1,
-                        token0_conversion_rate: token0_conversion_rate,
-                        token1_conversion_rate: token1_conversion_rate,
+                        token0_conversion_rate: 0, // Will be updated progressively
+                        token1_conversion_rate: 0,
                         swapCanisterBalance0: 0n,
                         swapCanisterBalance1: 0n,
                         positions: positionDetails,
                         loading: false
                     };
+                    
+                    addPositionProgressively(positionData, sessionId);
+                    
+                    // Fetch conversion rates in background
+                    fetchPositionConversionRates(swap_canister, icrc1_ledger0, icrc1_ledger1, decimals0, decimals1, sessionId);
+                    
                 } catch (err) {
                     console.warn(`Could not fetch positions for swap ${swap_canister}:`, err);
-                    return null;
                 }
-            }));
+            });
 
-            // Filter out null results and update state
-            const validPositions = positionResults.filter(p => p !== null);
+            // Set loading to false after a short delay to allow first positions to appear
+            setTimeout(() => {
+                if (positionsFetchSessionRef.current === sessionId) {
+                    setPositionsLoading(false);
+                }
+            }, 500);
             
-            if (positionsFetchSessionRef.current === sessionId) {
-                setLiquidityPositions(validPositions);
-                setPositionsLoading(false);
-                setHasFetchedPositions(true);
-            }
         } catch (error) {
             console.error('Error fetching compact positions:', error);
             if (positionsFetchSessionRef.current === sessionId) {
@@ -362,7 +405,7 @@ export const WalletProvider = ({ children }) => {
                 setHasFetchedPositions(true);
             }
         }
-    }, [identity, isAuthenticated]);
+    }, [identity, isAuthenticated, addPositionProgressively, fetchPositionConversionRates]);
 
     // Progressive token fetcher - adds tokens as they load
     const addTokenProgressively = useCallback((token, sessionId) => {
