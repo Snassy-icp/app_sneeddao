@@ -242,6 +242,11 @@ export default function Me() {
     const [canisterCycleThresholdOrange, setCanisterCycleThresholdOrange] = useState('');
     const [canisterSettingsSaved, setCanisterSettingsSaved] = useState(false);
     
+    // Cache management
+    const [cacheManagementExpanded, setCacheManagementExpanded] = useState(false);
+    const [clearingCache, setClearingCache] = useState(false);
+    const [cacheCleared, setCacheCleared] = useState(false);
+    
     // Quick access expanded state (persisted) - must be before any early returns
     const [quickAccessExpanded, setQuickAccessExpanded] = useState(() => {
         try {
@@ -363,6 +368,61 @@ export default function Me() {
             alert('Failed to save notification settings');
         } finally {
             setLoadingNotificationSettings(false);
+        }
+    };
+    
+    // Clear all IndexedDB caches
+    const clearAllCaches = async () => {
+        setClearingCache(true);
+        try {
+            const dbNames = [
+                'sneed_wallet_cache',
+                'sneed_logo_cache', 
+                'sneed_token_cache',
+                'sneed_neurons_cache'
+            ];
+            
+            for (const dbName of dbNames) {
+                try {
+                    await new Promise((resolve, reject) => {
+                        const request = indexedDB.deleteDatabase(dbName);
+                        request.onsuccess = () => {
+                            console.log(`[Cache] Deleted ${dbName}`);
+                            resolve();
+                        };
+                        request.onerror = () => reject(request.error);
+                        request.onblocked = () => {
+                            console.warn(`[Cache] Delete blocked for ${dbName}`);
+                            resolve(); // Continue anyway
+                        };
+                    });
+                } catch (e) {
+                    console.warn(`[Cache] Failed to delete ${dbName}:`, e);
+                }
+            }
+            
+            // Also clear localStorage caches
+            const keysToRemove = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && (key.includes('wallet_cache') || key.includes('sns_cache') || key.includes('sneed_'))) {
+                    keysToRemove.push(key);
+                }
+            }
+            keysToRemove.forEach(key => localStorage.removeItem(key));
+            
+            setCacheCleared(true);
+            setTimeout(() => setCacheCleared(false), 3000);
+            
+            // Offer to reload the page
+            if (window.confirm('Cache cleared! Reload page to start fresh?')) {
+                window.location.reload();
+            }
+        } catch (err) {
+            console.error('Failed to clear caches:', err);
+            alert('Failed to clear some caches. Try refreshing the page.');
+        } finally {
+            setClearingCache(false);
         }
     };
     
@@ -1929,6 +1989,66 @@ export default function Me() {
                                             </div>
                                         </>
                                     )}
+                                </SettingsSection>
+
+                                {/* Cache Management */}
+                                <SettingsSection
+                                    title="Cache Management"
+                                    icon={<FaServer size={16} />}
+                                    expanded={cacheManagementExpanded}
+                                    onToggle={() => setCacheManagementExpanded(!cacheManagementExpanded)}
+                                    theme={theme}
+                                >
+                                    <div style={{ padding: '0.5rem 0' }}>
+                                        <p style={{ 
+                                            color: theme.colors.secondaryText, 
+                                            fontSize: '0.85rem', 
+                                            marginBottom: '1rem',
+                                            lineHeight: '1.5'
+                                        }}>
+                                            If you're experiencing issues with duplicate tokens, positions, or stale data, 
+                                            clearing the cache will reset all locally stored data and fetch fresh data on next load.
+                                        </p>
+                                        
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                                            <button
+                                                onClick={clearAllCaches}
+                                                disabled={clearingCache}
+                                                style={{
+                                                    padding: '0.6rem 1.2rem',
+                                                    background: clearingCache ? theme.colors.border : '#dc2626',
+                                                    color: '#fff',
+                                                    border: 'none',
+                                                    borderRadius: '8px',
+                                                    cursor: clearingCache ? 'not-allowed' : 'pointer',
+                                                    fontWeight: '600',
+                                                    fontSize: '0.9rem',
+                                                    opacity: clearingCache ? 0.6 : 1,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.5rem'
+                                                }}
+                                            >
+                                                <FaServer size={14} />
+                                                {clearingCache ? 'Clearing...' : 'Clear All Caches'}
+                                            </button>
+                                            
+                                            {cacheCleared && (
+                                                <span style={{ color: '#22c55e', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                                    <FaCheckCircle size={14} /> Cache cleared!
+                                                </span>
+                                            )}
+                                        </div>
+                                        
+                                        <p style={{ 
+                                            color: theme.colors.secondaryText, 
+                                            fontSize: '0.75rem', 
+                                            marginTop: '0.75rem',
+                                            opacity: 0.7
+                                        }}>
+                                            This clears: wallet data, token metadata, logos, neurons cache
+                                        </p>
+                                    </div>
                                 </SettingsSection>
                             </div>
                         )}

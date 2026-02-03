@@ -28,7 +28,7 @@ const WalletContext = createContext(null);
 const WALLET_DB_NAME = 'sneed_wallet_cache';
 const WALLET_DB_VERSION = 1;
 const WALLET_STORE_NAME = 'walletData';
-const CACHE_VERSION = 2; // Increment when cache structure changes
+const CACHE_VERSION = 3; // Increment when cache structure changes - v3: fixed duplicates & neuron merge
 
 // Initialize IndexedDB for wallet cache
 let walletDbPromise = null;
@@ -832,10 +832,25 @@ export const WalletProvider = ({ children }) => {
         if (positionsFetchSessionRef.current !== sessionId) return;
         
         setLiquidityPositions(prev => {
-            // Check if position already exists
-            const exists = prev.some(p => p.swapCanisterId === positionData.swapCanisterId);
-            if (exists) {
-                return prev.map(p => p.swapCanisterId === positionData.swapCanisterId ? positionData : p);
+            // Normalize swapCanisterId for comparison (ensure string)
+            const newSwapId = positionData.swapCanisterId?.toString?.() || positionData.swapCanisterId;
+            
+            // Check if position already exists (normalize comparison)
+            const existingIndex = prev.findIndex(p => {
+                const existingId = p.swapCanisterId?.toString?.() || p.swapCanisterId;
+                return existingId === newSwapId;
+            });
+            
+            if (existingIndex >= 0) {
+                // Update existing position, preserving conversion rates if new data doesn't have them
+                const existing = prev[existingIndex];
+                const merged = {
+                    ...existing,
+                    ...positionData,
+                    token0_conversion_rate: positionData.token0_conversion_rate ?? existing.token0_conversion_rate,
+                    token1_conversion_rate: positionData.token1_conversion_rate ?? existing.token1_conversion_rate
+                };
+                return prev.map((p, i) => i === existingIndex ? merged : p);
             }
             return [...prev, positionData];
         });
@@ -1076,15 +1091,22 @@ export const WalletProvider = ({ children }) => {
         
         setWalletTokens(prev => {
             // Check if token already exists
-            const exists = prev.some(t => t.principal === token.principal);
-            if (exists) {
-                // Update existing token
-                return prev.map(t => t.principal === token.principal ? token : t);
-            }
-            // Check for duplicates in existing array (shouldn't happen, but debug)
-            const duplicates = prev.filter(t => t.principal === token.principal);
-            if (duplicates.length > 0) {
-                console.warn('%c⚠️ [TOKENS] Duplicate found!', 'background: #e74c3c; color: white;', token.principal, 'already in array', duplicates.length, 'times');
+            const existingIndex = prev.findIndex(t => t.principal === token.principal);
+            if (existingIndex >= 0) {
+                // IMPORTANT: Merge with existing token to preserve neuron data loaded from cache
+                const existing = prev[existingIndex];
+                const merged = {
+                    ...existing, // Keep existing neuron data, usdValue, etc.
+                    ...token,    // Override with fresh balance, metadata
+                    // Explicitly preserve neuron-related fields from cache
+                    neuronStake: token.neuronStake || existing.neuronStake,
+                    neuronMaturity: token.neuronMaturity || existing.neuronMaturity,
+                    neuronsLoaded: token.neuronsLoaded || existing.neuronsLoaded,
+                    // Preserve usdValue if new token doesn't have it
+                    usdValue: token.usdValue ?? existing.usdValue,
+                    conversion_rate: token.conversion_rate ?? existing.conversion_rate
+                };
+                return prev.map((t, i) => i === existingIndex ? merged : t);
             }
             return [...prev, token];
         });
