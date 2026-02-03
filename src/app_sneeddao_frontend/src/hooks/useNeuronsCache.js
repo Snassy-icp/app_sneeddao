@@ -374,7 +374,7 @@ export const updateNeuronInCache = async (snsRoot, neuron) => {
  */
 export const saveNeuronsToCache = async (snsRoot, neurons) => {
     const normalizedRoot = normalizeCanisterId(snsRoot);
-    if (!normalizedRoot || !neurons || neurons.length === 0) return;
+    if (!normalizedRoot || !neurons) return;
     
     try {
         const db = await initializeNeuronsDB();
@@ -388,7 +388,11 @@ export const saveNeuronsToCache = async (snsRoot, neurons) => {
                 const existingData = getRequest.result;
                 let mergedNeurons;
                 
-                if (existingData && existingData.neurons) {
+                // Handle empty arrays - still save to mark this SNS as "checked"
+                if (neurons.length === 0) {
+                    // If we have existing neurons, keep them; otherwise empty array
+                    mergedNeurons = existingData?.neurons || [];
+                } else if (existingData && existingData.neurons) {
                     // Merge: update existing neurons, add new ones
                     const existingMap = new Map();
                     existingData.neurons.forEach(n => {

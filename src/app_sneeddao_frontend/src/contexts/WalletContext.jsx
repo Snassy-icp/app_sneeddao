@@ -445,7 +445,11 @@ export const WalletProvider = ({ children }) => {
                             }
                         }
                         
-                        if (!neuronIds || neuronIds.length === 0) continue;
+                        // For governance IDs with 0 neurons, add empty array to mark as "checked"
+                        if (!neuronIds || neuronIds.length === 0) {
+                            hydratedMap.set(governanceId, []);
+                            continue;
+                        }
                         
                         // Find SNS root for this governance canister
                         const allSnses = getAllSnses();
@@ -456,9 +460,8 @@ export const WalletProvider = ({ children }) => {
                             // Try to hydrate from shared IndexedDB cache
                             try {
                                 const { found, missing } = await getNeuronsFromCacheByIds(snsRoot, neuronIds);
-                                if (found.length > 0) {
-                                    hydratedMap.set(governanceId, found);
-                                }
+                                // Always add to map, even if empty (marks as checked)
+                                hydratedMap.set(governanceId, found);
                                 // Note: missing neurons will be fetched fresh by fetchAndCacheNeurons
                             } catch (e) {
                                 console.warn('Failed to hydrate neurons from cache:', e);
@@ -757,7 +760,8 @@ export const WalletProvider = ({ children }) => {
                 setNeuronCache(prev => new Map(prev).set(govId, neurons));
                 
                 // Also save to the shared IndexedDB cache for persistence
-                if (sns?.rootCanisterId && neurons.length > 0) {
+                // Save even empty arrays to avoid redundant network fetches on refresh
+                if (sns?.rootCanisterId) {
                     // Fire and forget - don't await
                     saveNeuronsToCache(sns.rootCanisterId, neurons).catch(e => {
                         console.warn('Failed to save neurons to shared cache:', e);
