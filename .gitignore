@@ -30,3 +30,6 @@ dist/
 ref/
 
 .mops
+
+# Scratch files in spec
+spec/scratch*

@@ -23,17 +23,36 @@ const STORE_NAME = 'neurons';
 export const normalizeCanisterId = (canisterId) => {
     if (!canisterId) return '';
     if (typeof canisterId === 'string') return canisterId;
-    // Handle Principal objects
-    if (typeof canisterId.toText === 'function') return canisterId.toText();
     // Handle BigInt (for position IDs)
     if (typeof canisterId === 'bigint') return canisterId.toString();
-    // Handle objects with toString (but not plain objects which return "[object Object]")
-    if (typeof canisterId.toString === 'function') {
-        const str = canisterId.toString();
-        if (str !== '[object Object]') return str;
+    
+    // Handle object types
+    if (typeof canisterId === 'object') {
+        // Handle Principal objects with toText method
+        if (typeof canisterId.toText === 'function') return canisterId.toText();
+        
+        // Handle dfinity agent's serialized Principal format: {"__principal__":"..."}
+        if (canisterId.__principal__ && typeof canisterId.__principal__ === 'string') {
+            return canisterId.__principal__;
+        }
+        
+        // Handle our custom serialization format: {"__type":"Principal","value":"..."}
+        if (canisterId.__type === 'Principal' && canisterId.value) {
+            return canisterId.value;
+        }
+        
+        // Handle serialized Principal objects that might have a value property
+        if (canisterId.value && typeof canisterId.value === 'string') {
+            return canisterId.value;
+        }
+        
+        // Handle objects with toString (but not plain objects which return "[object Object]")
+        if (typeof canisterId.toString === 'function') {
+            const str = canisterId.toString();
+            if (str !== '[object Object]') return str;
+        }
     }
-    // Handle serialized Principal objects that might have a value property
-    if (canisterId.value && typeof canisterId.value === 'string') return canisterId.value;
+    
     // Fallback
     return String(canisterId);
 };

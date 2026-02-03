@@ -1,307 +1,272 @@
-    // Create a new neuron
-    const createNeuron = async (amount: bigint) => {
-        try {
-            if (!userLoggedIn.value) {
-                throw new Error('User must be logged in');
-            }
-
-            // console.log('Finding free subaccount for new neuron...');
-            const { subaccount, index } = await findFreeSubaccount();
-            const nonce = BigInt(index);
-            
-            const tacoTokenPrincipal = 'kknbx-zyaaa-aaaaq-aae4a-cai'; // TACO token canister
-            const snsGovernancePrincipal = 'lhdfz-wqaaa-aaaaq-aae3q-cai'; // TACO SNS Governance
-
-            // Step 1: Transfer TACO tokens to SNS Governance with the new subaccount and memo
-            // console.log(`Transferring TACO tokens to new neuron subaccount (nonce: ${nonce})...`);
-            // console.log(`Subaccount (hex): ${Array.from(subaccount).map(b => b.toString(16).padStart(2, '0')).join('')}`);
-            // console.log(`Controller principal: ${userPrincipal.value}`);
-            
-            const transferResult = await transferToNeuronSubaccount(tacoTokenPrincipal, snsGovernancePrincipal, subaccount, amount, nonce);
-            // console.log(`Transfer completed with block index: ${transferResult}`);
-
-            // Step 2: Wait a moment for the transfer to be processed
-            // console.log('Waiting for transfer to be processed...');
-            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
-
-            // Step 3: Claim/refresh the neuron to create it
-            // console.log('Claiming new neuron...');
-            await claimOrRefreshNeuron(subaccount, nonce);
-
-            // console.log('Neuron created successfully!');
-            return { subaccount, success: true };
-        } catch (error: any) {
-            console.error('Error creating neuron:', error);
-            throw error;
-        }
-    }
-
-
-    // Find next available subaccount for neuron creation
-    const findFreeSubaccount = async (): Promise<{ subaccount: Uint8Array, index: number }> => {
-        if (!userLoggedIn.value) {
-            throw new Error('User must be logged in');
-        }
-
-        const authClient = await getAuthClient();
-        const identity = authClient.getIdentity();
-        
-        const agent = await createAgent({
-            identity,
-            host: process.env.DFX_NETWORK === "local" ? `http://localhost:4943` : "https://ic0.app",
-            fetchRootKey: process.env.DFX_NETWORK === "local",
-        });
-
-        // Use the existing SNS governance IDL
-        const { idlFactory } = await import('../../../declarations/sns_governance');
-        
-        const governanceActor = Actor.createActor(idlFactory, {
-            agent,
-            canisterId: 'lhdfz-wqaaa-aaaaq-aae3q-cai'
-        });
-
-        // Try nonces starting from 0
-        for (let nonce = 0n; nonce < 1000n; nonce++) {  // Reasonable upper limit
-            const controllerPrincipal = Principal.fromText(userPrincipal.value);
-            const subaccount = await generateNeuronSubaccount(controllerPrincipal, nonce);
-            
-            try {
-                // Try to get neuron with this subaccount
-                const getNeuronRequest = {
-                    neuron_id: [{
-                        id: Array.from(subaccount)
-                    }]
-                };
-                
-                const result = await governanceActor.get_neuron(getNeuronRequest) as any;
-                
-                // If result.result is empty/null, this subaccount is free
-                if (!result.result || result.result.length === 0) {
-                    return { subaccount, index: Number(nonce) };
-                }
-                
-                // If we get an error or the neuron doesn't exist, this subaccount is free
-                if (result.result[0] && 'Error' in result.result[0]) {
-                    return { subaccount, index: Number(nonce) };
-                }
-                
-            } catch (error) {
-                // If there's an error calling get_neuron, assume this subaccount is free
-                // console.log(`Nonce ${nonce} appears to be free (error calling get_neuron):`, error);
-                return { subaccount, index: Number(nonce) };
-            }
-        }
-        
-        throw new Error('Could not find a free subaccount for neuron creation');
-    }
-
-    // Transfer tokens to neuron subaccount
-    const transferToNeuronSubaccount = async (
-        tokenPrincipal: string,
-        governancePrincipal: string,
-        neuronId: Uint8Array,
-        amount: bigint,
-        memo?: bigint  // Optional memo for neuron creation traceability
-    ) => {
-        const authClient = await getAuthClient();
-        const identity = authClient.getIdentity();
-        
-        const agent = await createAgent({
-            identity,
-            host: process.env.DFX_NETWORK === "local" ? `http://localhost:4943` : "https://ic0.app",
-            fetchRootKey: process.env.DFX_NETWORK === "local",
-        });
-
-        // Create ICRC1 actor for TACO token
-        const icrc1IDL = ({ IDL }: any) => {
-            return IDL.Service({
-                'icrc1_transfer': IDL.Func(
-                    [IDL.Record({
-                        'to': IDL.Record({ 'owner': IDL.Principal, 'subaccount': IDL.Opt(IDL.Vec(IDL.Nat8)) }),
-                        'fee': IDL.Opt(IDL.Nat),
-                        'memo': IDL.Opt(IDL.Vec(IDL.Nat8)),
-                        'from_subaccount': IDL.Opt(IDL.Vec(IDL.Nat8)),
-                        'created_at_time': IDL.Opt(IDL.Nat64),
-                        'amount': IDL.Nat
-                    })],
-                    [IDL.Variant({
-                        'Ok': IDL.Nat,
-                        'Err': IDL.Record({
-                            'InsufficientFunds': IDL.Record({ 'balance': IDL.Nat }),
-                            'BadFee': IDL.Record({ 'expected_fee': IDL.Nat }),
-                            'TemporarilyUnavailable': IDL.Null,
-                            'GenericError': IDL.Record({ 'message': IDL.Text, 'error_code': IDL.Nat }),
-                            'TooOld': IDL.Null,
-                            'CreatedInFuture': IDL.Record({ 'ledger_time': IDL.Nat64 }),
-                            'Duplicate': IDL.Record({ 'duplicate_of': IDL.Nat }),
-                            'BadBurn': IDL.Record({ 'min_burn_amount': IDL.Nat })
-                        })
-                    })]
-                )
-            });
-        };
-
-        const tokenActor = Actor.createActor(icrc1IDL, {
-            agent,
-            canisterId: tokenPrincipal
-        });
-
-        // Convert neuronId to proper subaccount (32 bytes)
-        const subaccount = new Uint8Array(32);
-        subaccount.set(neuronId, 0);
-
-        // Convert memo to bytes if provided
-        const memoBytes = memo ? (() => {
-            const buffer = new ArrayBuffer(8);
-            new DataView(buffer).setBigUint64(0, memo);
-            return Array.from(new Uint8Array(buffer));
-        })() : [];
-
-        const transferArgs = {
-            to: {
-                owner: Principal.fromText(governancePrincipal),
-                subaccount: [Array.from(subaccount)]
-            },
-            fee: [],
-            memo: memo ? [memoBytes] : [],
-            from_subaccount: [],
-            created_at_time: [],
-            amount: amount
-        };
-
-        const result = await tokenActor.icrc1_transfer(transferArgs) as any;
-
-        if ('Ok' in result) {
-            return result.Ok;
-        } else {
-            throw new Error(`Transfer failed: ${JSON.stringify(result.Err)}`);
-        }
-    }
-
-    // Claim or refresh neuron after staking
-    const claimOrRefreshNeuron = async (neuronId: Uint8Array, memo?: bigint) => {
-        const authClient = await getAuthClient();
-        const identity = authClient.getIdentity();
-        
-        const agent = await createAgent({
-            identity,
-            host: process.env.DFX_NETWORK === "local" ? `http://localhost:4943` : "https://ic0.app",
-            fetchRootKey: process.env.DFX_NETWORK === "local",
-        });
-
-        // Use the existing SNS governance IDL
-        const { idlFactory } = await import('../../../declarations/sns_governance');
-        
-        const governanceActor = Actor.createActor(idlFactory, {
-            agent,
-            canisterId: 'lhdfz-wqaaa-aaaaq-aae3q-cai'
-        });
-
-        // Convert neuronId to proper subaccount (32 bytes)
-        const subaccount = new Uint8Array(32);
-        subaccount.set(neuronId, 0);
-
-        // Debug logging
-        // console.log(`ClaimOrRefresh request details:`);
-        // console.log(`- Subaccount: ${Array.from(subaccount).map(b => b.toString(16).padStart(2, '0')).join('')}`);
-        // console.log(`- Memo: ${memo}`);
-        // console.log(`- Controller: ${userPrincipal.value}`);
-
-        // For neuron creation, we need to use MemoAndController variant
-        const manageNeuronRequest = memo !== undefined ? {
-            subaccount: Array.from(subaccount),
-            command: [{
-                ClaimOrRefresh: {
-                    by: [{
-                        MemoAndController: {
-                            controller: [Principal.fromText(userPrincipal.value)],
-                            memo: Number(memo)  // Convert BigInt to Number for IDL
-                        }
-                    }]
-                }
-            }]
-        } : {
-            // For existing neurons, use NeuronId variant
-            subaccount: Array.from(subaccount),
-            command: [{
-                ClaimOrRefresh: {
-                    by: [{
-                        NeuronId: {}
-                    }]
-                }
-            }]
-        };
-
-        // Convert BigInt to string for logging
-        const requestForLogging = JSON.parse(JSON.stringify(manageNeuronRequest, (key, value) =>
-            typeof value === 'bigint' ? value.toString() : value
-        ));
-        // console.log('ManageNeuron request:', JSON.stringify(requestForLogging, null, 2));
-
-        const result = await governanceActor.manage_neuron(manageNeuronRequest) as any;
-        
-        if (result.command && result.command.length > 0 && 'ClaimOrRefresh' in result.command[0]) {
-            return result.command[0].ClaimOrRefresh;
-        } else {
-            throw new Error(`ClaimOrRefresh failed: ${JSON.stringify(result)}`);
-        }
-    }
-
-    // Generate neuron subaccount using the correct SNS formula
-    // SHA256(0x0c, "neuron-stake", principal-bytes, nonce-u64-be)
-    const generateNeuronSubaccount = async (controller: Principal, nonce: bigint): Promise<Uint8Array> => {
-        // u64 → big-endian 8 bytes using DataView (more reliable)
-        const u64be = (value: bigint): Uint8Array => {
-            const buffer = new ArrayBuffer(8);
-            new DataView(buffer).setBigUint64(0, value);
-            return new Uint8Array(buffer);
-        };
-
-        // Build the data to hash
-        const chunks = [
-            Uint8Array.from([0x0c]),                                    // len("neuron-stake")
-            new TextEncoder().encode("neuron-stake"),                   // "neuron-stake"
-            controller.toUint8Array(),                                  // controller principal bytes
-            u64be(nonce),                                               // nonce as u64 big-endian
-        ];
-        
-        // Concatenate all chunks
-        const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-        const data = new Uint8Array(totalLength);
-        let offset = 0;
-        for (const chunk of chunks) {
-            data.set(chunk, offset);
-            offset += chunk.length;
-        }
-        
-        // Hash with SHA-256
-        const digest = await crypto.subtle.digest("SHA-256", data);
-        return new Uint8Array(digest);
-    }
-
-    // Stake TACO tokens to a neuron
-    const stakeToNeuron = async (neuronId: Uint8Array, amount: bigint) => {
-        try {
-            if (!userLoggedIn.value) {
-                throw new Error('User must be logged in');
-            }
-
-            const tacoTokenPrincipal = 'kknbx-zyaaa-aaaaq-aae4a-cai'; // TACO token canister
-            const snsGovernancePrincipal = 'lhdfz-wqaaa-aaaaq-aae3q-cai'; // TACO SNS Governance
-
-            // Step 1: Transfer TACO tokens to SNS Governance with neuron ID as subaccount
-            // console.log('Transferring TACO tokens to neuron subaccount...');
-            await transferToNeuronSubaccount(tacoTokenPrincipal, snsGovernancePrincipal, neuronId, amount);
-
-            // Step 2: Claim/refresh the neuron to recognize the new stake
-            // console.log('Claiming/refreshing neuron...');
-            await claimOrRefreshNeuron(neuronId);
-
-            // console.log('Staking completed successfully!');
-            return true;
-        } catch (error: any) {
-            console.error('Error staking to neuron:', error);
-            throw error;
-        }
-    }
-
+Error with Permissions-Policy header: Unrecognized feature: 'ambient-light-sensor'.
+Error with Permissions-Policy header: Unrecognized feature: 'battery'.
+Error with Permissions-Policy header: Unrecognized feature: 'document-domain'.
+Error with Permissions-Policy header: Unrecognized feature: 'execution-while-not-rendered'.
+Error with Permissions-Policy header: Unrecognized feature: 'execution-while-out-of-viewport'.
+Error with Permissions-Policy header: Unrecognized feature: 'navigation-override'.
+Error with Permissions-Policy header: Unrecognized feature: 'speaker-selection'.
+Error with Permissions-Policy header: Unrecognized feature: 'conversion-measurement'.
+Error with Permissions-Policy header: Unrecognized feature: 'focus-without-user-activation'.
+Error with Permissions-Policy header: Unrecognized feature: 'sync-script'.
+Error with Permissions-Policy header: Unrecognized feature: 'trust-token-redemption'.
+Error with Permissions-Policy header: Unrecognized feature: 'window-placement'.
+Error with Permissions-Policy header: Unrecognized feature: 'vertical-scroll'.
+index-c2c321d2.js:45662 TokenCard constants: {GLDT_CANISTER_ID: '6c7su-kiaaa-aaaar-qaira-cai', SGLDT_CANISTER_ID: 'i2s4q-syaaa-aaaan-qz4sq-cai'}
+index-c2c321d2.js:62190 Wallet constants: {GLDT_CANISTER_ID: '6c7su-kiaaa-aaaar-qaira-cai', SGLDT_CANISTER_ID: 'i2s4q-syaaa-aaaan-qz4sq-cai'}
+index-c2c321d2.js:54434 SnsDropdown: Initial mount, loading SNS data...
+index-c2c321d2.js:54385 SnsDropdown: Starting to load SNS data...
+index-c2c321d2.js:54390 SnsDropdown: Using cached SNS data: (37) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+index-c2c321d2.js:54808 Not authenticated, setting timeout...
+index-c2c321d2.js:37125 Starting fetchAndCacheSnsData...
+index-c2c321d2.js:37128 Returning cached SNS data: (37) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+index-c2c321d2.js:32586 NamingContext: Loaded from cache, starting background refresh...
+index-c2c321d2.js:32506 NamingContext: Fetching names from backend... (background refresh)
+index-c2c321d2.js:29914 Getting all neuron names
+index-c2c321d2.js:30022 Getting all principal names with identity: anonymous
+index-c2c321d2.js:43503 PremiumContext: Fetching active premium members...
+index-c2c321d2.js:92062 NeuronsContext useEffect triggered: {isAuthenticated: false, hasIdentity: false, selectedSnsRoot: 'uly3p-iqaaa-aaaaq-aabma-cai', identityPrincipal: undefined}
+index-c2c321d2.js:92072 NeuronsContext: Clearing neurons data on logout
+index-c2c321d2.js:38054 [TokenCache] Loaded 0 token metadata entries from IndexedDB
+index-c2c321d2.js:54824 Authenticated, checking admin status...
+index-c2c321d2.js:54755 Checking admin status...
+index-c2c321d2.js:54756 Is authenticated: true
+index-c2c321d2.js:54757 Identity: DelegationIdentity {_inner: Ed25519KeyIdentity, _delegation: DelegationChain, _principal: Principal}
+index-c2c321d2.js:54759 Creating backend actor...
+index-c2c321d2.js:54766 Calling caller_is_admin...
+index-c2c321d2.js:37125 Starting fetchAndCacheSnsData...
+index-c2c321d2.js:37128 Returning cached SNS data: (37) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for umz53-fi...
+index-c2c321d2.js:29983 Getting principal name for: {principal: 'lcyf6-t6uno-og7on-w4fyq-tegjt-ejrcg-kyaio-wcvvm-yu3vo-h2nbl-jqe'}
+index-c2c321d2.js:32594 NamingContext: Identity changed, refreshing nicknames...
+index-c2c321d2.js:32506 NamingContext: Fetching names from backend... (background refresh)
+index-c2c321d2.js:29914 Getting all neuron names
+index-c2c321d2.js:29927 Getting all neuron nicknames
+index-c2c321d2.js:30022 Getting all principal names with identity: authenticated
+index-c2c321d2.js:30035 Getting all principal nicknames
+index-c2c321d2.js:37125 Starting fetchAndCacheSnsData...
+index-c2c321d2.js:37128 Returning cached SNS data: (37) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for zqfso-sy...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for 2jvtu-yq...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for 74ncn-fq...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for 6wcax-ha...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for 4l7o7-ui...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for xvj4b-pa...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for xomae-vy...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for rqch6-oa...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for qgj7v-3q...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for tr3th-ki...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for elxqo-ra...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for eqsml-ly...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for fi3zi-fy...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for hodlf-mi...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for gdnpl-da...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for detjl-sq...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for dwv6s-6a...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for cvzxu-ky...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for auadn-oq...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for bmjwo-aq...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for k34pm-nq...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for lyqgk-zi...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for lnxxh-ya...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for jfnic-ka...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for ni4my-za...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for ntzq5-dy...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for oypg6-fa...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for o3y74-5y...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for oa5dz-ha...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for mpg2i-yy...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for icx6s-ly...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for iqrjl-hi...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for jt5an-tq...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for lseuu-xy...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for lhdfz-wq...
+index-c2c321d2.js:38739 [fetchAndCacheNeurons] Fetching from network for kri5s-da...
+index-c2c321d2.js:39401 ⏳ [WALLET] Waiting for cache check to complete...
+index-c2c321d2.js:92062 NeuronsContext useEffect triggered: {isAuthenticated: true, hasIdentity: true, selectedSnsRoot: 'uly3p-iqaaa-aaaaq-aabma-cai', identityPrincipal: 'lcyf6-t6uno-og7on-w4fyq-tegjt-ejrcg-kyaio-wcvvm-yu3vo-h2nbl-jqe'}
+index-c2c321d2.js:92069 NeuronsContext: Proactively fetching neurons for SNS: uly3p-iqaaa-aaaaq-aabma-cai
+index-c2c321d2.js:91939 fetchHotkeyNeuronsData called with: {snsRoot: 'uly3p-iqaaa-aaaaq-aabma-cai', hasIdentity: true, forceRefresh: false}
+index-c2c321d2.js:91950 fetchHotkeyNeuronsData: Checking cache for key: lcyf6-t6uno-og7on-w4fyq-tegjt-ejrcg-kyaio-wcvvm-yu3vo-h2nbl-jqe-uly3p-iqaaa-aaaaq-aabma-cai
+index-c2c321d2.js:91967 fetchHotkeyNeuronsData: No in-memory cached data or forcing refresh, fetching from network
+index-c2c321d2.js:91972 fetchHotkeyNeuronsData: Fetching neurons from SNS...
+index-c2c321d2.js:38421 💾 [WALLET CACHE] Loading from IndexedDB cache, age: 63 seconds
+index-c2c321d2.js:38428 💾 [WALLET CACHE] Restoring 13 tokens
+index-c2c321d2.js:38433 💾 [POSITIONS CACHE] Restoring 3 positions from cache
+index-c2c321d2.js:38439 💾 [POSITIONS CACHE] Position 0: swapId=[object Object]... type={"__principal__":"dftym-6aaaa-aaaag-qdi2q-cai"}, rates=(2.2477286255950166, 48.303730386160105), innerPositions=1
+index-c2c321d2.js:38439 💾 [POSITIONS CACHE] Position 1: swapId=[object Object]... type={"__principal__":"fv7s6-6iaaa-aaaag-qdipa-cai"}, rates=(48.303730386160105, 0.18919921023030745), innerPositions=2
+index-c2c321d2.js:38439 💾 [POSITIONS CACHE] Position 2: swapId=[object Object]... type={"__principal__":"lqt4r-dqaaa-aaaag-qdjpq-cai"}, rates=(48.303730386160105, 0.0002451889995736306), innerPositions=1
+index-c2c321d2.js:38449 ⚠️ [POSITIONS CACHE] Removing duplicate LP [object Object]
+(anonymous) @ index-c2c321d2.js:38449
+loadCache @ index-c2c321d2.js:38442
+await in loadCache
+(anonymous) @ index-c2c321d2.js:38544
+Qj @ index-c2c321d2.js:5453
+Hk @ index-c2c321d2.js:6780
+(anonymous) @ index-c2c321d2.js:6634
+J2 @ index-c2c321d2.js:490
+R2 @ index-c2c321d2.js:520
+index-c2c321d2.js:38449 ⚠️ [POSITIONS CACHE] Removing duplicate LP [object Object]
+(anonymous) @ index-c2c321d2.js:38449
+loadCache @ index-c2c321d2.js:38442
+await in loadCache
+(anonymous) @ index-c2c321d2.js:38544
+Qj @ index-c2c321d2.js:5453
+Hk @ index-c2c321d2.js:6780
+(anonymous) @ index-c2c321d2.js:6634
+J2 @ index-c2c321d2.js:490
+R2 @ index-c2c321d2.js:520
+index-c2c321d2.js:38455 💾 [POSITIONS CACHE] After dedup: 1 positions
+index-c2c321d2.js:39401 ⏳ [WALLET] Waiting for cache check to complete...
+index-c2c321d2.js:54768 isAdminResult: true
+index-c2c321d2.js:55099 SMS notifications debug: {userPrincipal: 'lcyf6-t6uno-og7on-w4fyq-tegjt-ejrcg-kyaio-wcvvm-yu3vo-h2nbl-jqe', newMessagesCount: 0n}
+index-c2c321d2.js:55105 SMS notifications: Found 0 new messages
+index-c2c321d2.js:54934 Tip notifications debug: {userPrincipal: 'lcyf6-t6uno-og7on-w4fyq-tegjt-ejrcg-kyaio-wcvvm-yu3vo-h2nbl-jqe', newTipsCount: 0n}
+index-c2c321d2.js:54941 Tip notifications: Found 0 new tips
+index-c2c321d2.js:55010 Reply notifications debug: {userPrincipal: 'lcyf6-t6uno-og7on-w4fyq-tegjt-ejrcg-kyaio-wcvvm-yu3vo-h2nbl-jqe', newRepliesCount: 0n}
+index-c2c321d2.js:55016 Reply notifications: Found 0 new replies
+index-c2c321d2.js:37761 🧠 [NEURON CACHE] Hydrated 5/5 neurons from shared cache
+index-c2c321d2.js:32576 NamingContext: Names updated. Principal names: 6 Neuron names: 3
+index-c2c321d2.js:32576 NamingContext: Names updated. Principal names: 6 Neuron names: 3
+index-c2c321d2.js:43509 PremiumContext: Loaded 0 active premium members
+index-c2c321d2.js:37761 🧠 [NEURON CACHE] Hydrated 1/1 neurons from shared cache
+index-c2c321d2.js:38566 💾 [POSITIONS CACHE] Saving 1 positions to cache
+index-c2c321d2.js:38571 💾 [POSITIONS SAVE] Position 0: swapId=[object Object]... type=object, innerPositions=1
+index-c2c321d2.js:37761 🧠 [NEURON CACHE] Hydrated 1/1 neurons from shared cache
+index-c2c321d2.js:37761 🧠 [NEURON CACHE] Hydrated 17/17 neurons from shared cache
+index-c2c321d2.js:37761 🧠 [NEURON CACHE] Hydrated 13/13 neurons from shared cache
+index-c2c321d2.js:38521 💾 [NEURON CACHE] Hydrated 5 governance caches from IndexedDB
+index-c2c321d2.js:38538 ✅ [WALLET CACHE] Restore complete
+index-c2c321d2.js:39407 ✨ [WALLET] Have cache, fetching fresh in background
+index-c2c321d2.js:38964 🔄 [POSITIONS FETCH] Called with clearFirst=false showLoading=false hasPositionsRef=true
+index-c2c321d2.js:38977 🔄 [POSITIONS FETCH] shouldShowLoading=false
+index-c2c321d2.js:38566 💾 [POSITIONS CACHE] Saving 1 positions to cache
+index-c2c321d2.js:38571 💾 [POSITIONS SAVE] Position 0: swapId=[object Object]... type=object, innerPositions=1
+index-c2c321d2.js:36148 PriceService initialized successfully
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for umz53-fi, got 0 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for zqfso-sy, got 0 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for xomae-vy, got 0 neurons
+index-c2c321d2.js:39171 [WALLET FETCH] Starting fetch for 11 registered tokens
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for xvj4b-pa, got 0 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for qgj7v-3q, got 0 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for 2jvtu-yq, got 0 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for 74ncn-fq, got 0 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for rqch6-oa, got 0 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for 4l7o7-ui, got 0 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for tr3th-ki, got 0 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for eqsml-ly, got 1 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for bmjwo-aq, got 0 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for hodlf-mi, got 0 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for cvzxu-ky, got 0 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for lyqgk-zi, got 0 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for detjl-sq, got 0 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for jfnic-ka, got 0 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for oypg6-fa, got 0 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for o3y74-5y, got 0 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for ntzq5-dy, got 0 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for jt5an-tq, got 0 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for lnxxh-ya, got 0 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for mpg2i-yy, got 0 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for dwv6s-6a, got 0 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for ni4my-za, got 0 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for elxqo-ra, got 0 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for icx6s-ly, got 0 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for oa5dz-ha, got 0 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for iqrjl-hi, got 0 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for gdnpl-da, got 0 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for k34pm-nq, got 1 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for auadn-oq, got 0 neurons
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for lseuu-xy, got 0 neurons
+index-c2c321d2.js:91974 fetchHotkeyNeuronsData: Got neurons from SNS: 0
+index-c2c321d2.js:91994 fetchHotkeyNeuronsData: Created result structure: {neurons_by_owner: Array(1), total_voting_power: 0, distribution_voting_power: 0}
+index-c2c321d2.js:92002 fetchHotkeyNeuronsData: Successfully cached and set data
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for kri5s-da, got 0 neurons
+index-c2c321d2.js:39180 [WALLET FETCH] Token DOLR loaded, fetching neuron totals...
+index-c2c321d2.js:38825 [NeuronTotals] Called for 6rdgd-ky..., SNS count: 37
+index-c2c321d2.js:38846 [NeuronTotals] Found SNS: DOLR AI, governance: 6wcax-ha...
+index-c2c321d2.js:38850 [NeuronTotals] Fetching neurons for DOLR AI, session=1...
+index-c2c321d2.js:38724 [fetchAndCacheNeurons] Memory cache hit for 6wcax-ha, returning 5 neurons
+index-c2c321d2.js:38852 [NeuronTotals] Got 5 neurons for DOLR AI, checking session...
+index-c2c321d2.js:38864 🧠 [NEURON TOTALS] DOLR AI: 5 neurons, stake=1229018163348, maturity=1010645825
+index-c2c321d2.js:39180 [WALLET FETCH] Token DKP loaded, fetching neuron totals...
+index-c2c321d2.js:38825 [NeuronTotals] Called for zfcdd-tq..., SNS count: 37
+index-c2c321d2.js:38846 [NeuronTotals] Found SNS: Dragginz, governance: zqfso-sy...
+index-c2c321d2.js:38850 [NeuronTotals] Fetching neurons for Dragginz, session=1...
+index-c2c321d2.js:38724 [fetchAndCacheNeurons] Memory cache hit for zqfso-sy, returning 0 neurons
+index-c2c321d2.js:38852 [NeuronTotals] Got 0 neurons for Dragginz, checking session...
+index-c2c321d2.js:39180 [WALLET FETCH] Token EXE loaded, fetching neuron totals...
+index-c2c321d2.js:38825 [NeuronTotals] Called for rh2pm-ry..., SNS count: 37
+index-c2c321d2.js:39180 [WALLET FETCH] Token MOTOKO loaded, fetching neuron totals...
+index-c2c321d2.js:38825 [NeuronTotals] Called for k45jy-ai..., SNS count: 37
+index-c2c321d2.js:38846 [NeuronTotals] Found SNS: Motoko, governance: k34pm-nq...
+index-c2c321d2.js:38850 [NeuronTotals] Fetching neurons for Motoko, session=1...
+index-c2c321d2.js:38724 [fetchAndCacheNeurons] Memory cache hit for k34pm-nq, returning 1 neurons
+index-c2c321d2.js:38852 [NeuronTotals] Got 1 neurons for Motoko, checking session...
+index-c2c321d2.js:38864 🧠 [NEURON TOTALS] Motoko: 1 neurons, stake=1000000000, maturity=0
+index-c2c321d2.js:39180 [WALLET FETCH] Token sGLDT loaded, fetching neuron totals...
+index-c2c321d2.js:38825 [NeuronTotals] Called for i2s4q-sy..., SNS count: 37
+index-c2c321d2.js:39180 [WALLET FETCH] Token SNEED loaded, fetching neuron totals...
+index-c2c321d2.js:38825 [NeuronTotals] Called for hvgxa-wq..., SNS count: 37
+index-c2c321d2.js:38846 [NeuronTotals] Found SNS: Sneed, governance: fi3zi-fy...
+index-c2c321d2.js:38850 [NeuronTotals] Fetching neurons for Sneed, session=1...
+index-c2c321d2.js:38724 [fetchAndCacheNeurons] Memory cache hit for fi3zi-fy, returning 13 neurons
+index-c2c321d2.js:38852 [NeuronTotals] Got 13 neurons for Sneed, checking session...
+index-c2c321d2.js:38864 🧠 [NEURON TOTALS] Sneed: 13 neurons, stake=55021999000, maturity=0
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for 6wcax-ha, got 5 neurons
+index-c2c321d2.js:39180 [WALLET FETCH] Token NTN loaded, fetching neuron totals...
+index-c2c321d2.js:38825 [NeuronTotals] Called for f54if-eq..., SNS count: 37
+index-c2c321d2.js:38846 [NeuronTotals] Found SNS: Neutrinite, governance: eqsml-ly...
+index-c2c321d2.js:38850 [NeuronTotals] Fetching neurons for Neutrinite, session=1...
+index-c2c321d2.js:38724 [fetchAndCacheNeurons] Memory cache hit for eqsml-ly, returning 1 neurons
+index-c2c321d2.js:38852 [NeuronTotals] Got 1 neurons for Neutrinite, checking session...
+index-c2c321d2.js:38864 🧠 [NEURON TOTALS] Neutrinite: 1 neurons, stake=10000000, maturity=0
+index-c2c321d2.js:39180 [WALLET FETCH] Token GLDT loaded, fetching neuron totals...
+index-c2c321d2.js:38825 [NeuronTotals] Called for 6c7su-ki..., SNS count: 37
+index-c2c321d2.js:39180 [WALLET FETCH] Token WTN loaded, fetching neuron totals...
+index-c2c321d2.js:38825 [NeuronTotals] Called for jcmow-hy..., SNS count: 37
+index-c2c321d2.js:38846 [NeuronTotals] Found SNS: WaterNeuron, governance: jfnic-ka...
+index-c2c321d2.js:38850 [NeuronTotals] Fetching neurons for WaterNeuron, session=1...
+index-c2c321d2.js:38724 [fetchAndCacheNeurons] Memory cache hit for jfnic-ka, returning 0 neurons
+index-c2c321d2.js:38852 [NeuronTotals] Got 0 neurons for WaterNeuron, checking session...
+index-c2c321d2.js:39180 [WALLET FETCH] Token TACO loaded, fetching neuron totals...
+index-c2c321d2.js:38825 [NeuronTotals] Called for kknbx-zy..., SNS count: 37
+index-c2c321d2.js:38846 [NeuronTotals] Found SNS: TACO DAO, governance: lhdfz-wq...
+index-c2c321d2.js:38850 [NeuronTotals] Fetching neurons for TACO DAO, session=1...
+index-c2c321d2.js:38724 [fetchAndCacheNeurons] Memory cache hit for lhdfz-wq, returning 17 neurons
+index-c2c321d2.js:38852 [NeuronTotals] Got 17 neurons for TACO DAO, checking session...
+index-c2c321d2.js:38864 🧠 [NEURON TOTALS] TACO DAO: 17 neurons, stake=4938651194839, maturity=0
+index-c2c321d2.js:37710 🧠 [NEURON CACHE] Saved 1 neurons to shared cache for extk7-ga...
+index-c2c321d2.js:39180 [WALLET FETCH] Token cICP loaded, fetching neuron totals...
+index-c2c321d2.js:38825 [NeuronTotals] Called for n6tkf-tq..., SNS count: 37
+index-c2c321d2.js:36965 [LogoCache] Loaded 48 logos from IndexedDB
+index-c2c321d2.js:38371 🖼️ [LOGO CACHE] Loaded 48 logos from IndexedDB
+index-c2c321d2.js:38825 [NeuronTotals] Called for 4c4fd-ca..., SNS count: 37
+index-c2c321d2.js:38846 [NeuronTotals] Found SNS: Mimic, governance: 4l7o7-ui...
+index-c2c321d2.js:38850 [NeuronTotals] Fetching neurons for Mimic, session=1...
+index-c2c321d2.js:38724 [fetchAndCacheNeurons] Memory cache hit for 4l7o7-ui, returning 0 neurons
+index-c2c321d2.js:38852 [NeuronTotals] Got 0 neurons for Mimic, checking session...
+index-c2c321d2.js:37710 🧠 [NEURON CACHE] Saved 1 neurons to shared cache for ko36b-my...
+index-c2c321d2.js:37710 🧠 [NEURON CACHE] Saved 5 neurons to shared cache for 67bll-ri...
+index-c2c321d2.js:38936 💵 [CONVERSION RATES] Fetching for dftym-6aaa... sessionId=1
+index-c2c321d2.js:38941 💵 [CONVERSION RATES] Got rates for dftym-6aaa...: rate0=2.2477286255950166, rate1=48.303730386160105, currentSession=1, mySession=1
+index-c2c321d2.js:38946 💵 [CONVERSION RATES] Updating dftym-6aaa...: old rates=(0, 0) → new=(2.2477286255950166, 48.303730386160105)
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for lhdfz-wq, got 17 neurons
+index-c2c321d2.js:37710 🧠 [NEURON CACHE] Saved 17 neurons to shared cache for lacdn-3i...
+index-c2c321d2.js:38747 [fetchAndCacheNeurons] Network fetch complete for fi3zi-fy, got 13 neurons
+index-c2c321d2.js:37710 🧠 [NEURON CACHE] Saved 13 neurons to shared cache for fp274-ia...
+index-c2c321d2.js:38936 💵 [CONVERSION RATES] Fetching for lqt4r-dqaa... sessionId=1
+index-c2c321d2.js:38941 💵 [CONVERSION RATES] Got rates for lqt4r-dqaa...: rate0=48.303730386160105, rate1=0.0002451889995736306, currentSession=1, mySession=1
+index-c2c321d2.js:38946 💵 [CONVERSION RATES] Updating lqt4r-dqaa...: old rates=(0, 0) → new=(48.303730386160105, 0.0002451889995736306)
+index-c2c321d2.js:55485 Collectibles notifications: 0 rewards, 2 LP fees, 0 maturity. 0 items >= $1 threshold (2 total)
+index-c2c321d2.js:38936 💵 [CONVERSION RATES] Fetching for fv7s6-6iaa... sessionId=1
+index-c2c321d2.js:38941 💵 [CONVERSION RATES] Got rates for fv7s6-6iaa...: rate0=48.303730386160105, rate1=0.18919921023030745, currentSession=1, mySession=1
+index-c2c321d2.js:38946 💵 [CONVERSION RATES] Updating fv7s6-6iaa...: old rates=(0, 0) → new=(48.303730386160105, 0.18919921023030745)
+index-c2c321d2.js:38566 💾 [POSITIONS CACHE] Saving 4 positions to cache
+index-c2c321d2.js:38571 💾 [POSITIONS SAVE] Position 0: swapId=[object Object]... type=object, innerPositions=1
+index-c2c321d2.js:38571 💾 [POSITIONS SAVE] Position 1: swapId=dftym-6aaaa-aaa... type=object, innerPositions=1
+index-c2c321d2.js:38571 💾 [POSITIONS SAVE] Position 2: swapId=lqt4r-dqaaa-aaa... type=object, innerPositions=1
+index-c2c321d2.js:38571 💾 [POSITIONS SAVE] Position 3: swapId=fv7s6-6iaaa-aaa... type=object, innerPositions=2
+index-c2c321d2.js:38825 [NeuronTotals] Called for ryjl3-ty..., SNS count: 37
+index-c2c321d2.js:38566 💾 [POSITIONS CACHE] Saving 4 positions to cache
+index-c2c321d2.js:38571 💾 [POSITIONS SAVE] Position 0: swapId=[object Object]... type=object, innerPositions=1
+index-c2c321d2.js:38571 💾 [POSITIONS SAVE] Position 1: swapId=dftym-6aaaa-aaa... type=object, innerPositions=1
+index-c2c321d2.js:38571 💾 [POSITIONS SAVE] Position 2: swapId=lqt4r-dqaaa-aaa... type=object, innerPositions=1
+index-c2c321d2.js:38571 💾 [POSITIONS SAVE] Position 3: swapId=fv7s6-6iaaa-aaa... type=object, innerPositions=2
