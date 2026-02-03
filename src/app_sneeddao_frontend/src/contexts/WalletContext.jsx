@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { Principal } from '@dfinity/principal';
+import { principalToSubAccount } from '@dfinity/utils';
 import { useAuth } from '../AuthContext';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
@@ -7,7 +8,7 @@ import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'declarations/rll';
 import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
-import { getTokenLogo, get_token_conversion_rate } from '../utils/TokenUtils';
+import { getTokenLogo, get_token_conversion_rate, get_available, get_available_backend } from '../utils/TokenUtils';
 import { fetchUserNeuronsForSns } from '../utils/NeuronUtils';
 import { getTipTokensReceivedByUser } from '../utils/BackendUtils';
 import { fetchAndCacheSnsData, getAllSnses } from '../utils/SnsUtils';
@@ -73,8 +74,8 @@ export const WalletProvider = ({ children }) => {
         return snsTokenLedgers.has(ledgerId);
     }, [snsTokenLedgers]);
 
-    // Fetch token details for a single ledger - FAST version (no conversion rate)
-    const fetchTokenDetailsFast = useCallback(async (ledgerCanisterId) => {
+    // Fetch token details for a single ledger - includes locked and backend balance
+    const fetchTokenDetailsFast = useCallback(async (ledgerCanisterId, summedLocks = {}) => {
         if (!identity) return null;
 
         try {
@@ -82,31 +83,50 @@ export const WalletProvider = ({ children }) => {
                 agentOptions: { identity }
             });
 
-            const [metadata, symbol, decimals, fee, balance] = await Promise.all([
+            const principal = identity.getPrincipal();
+            const subaccount = principalToSubAccount(principal);
+
+            const [metadata, symbol, decimals, fee, balance, balance_backend] = await Promise.all([
                 ledgerActor.icrc1_metadata(),
                 ledgerActor.icrc1_symbol(),
                 ledgerActor.icrc1_decimals(),
                 ledgerActor.icrc1_fee(),
                 ledgerActor.icrc1_balance_of({ 
-                    owner: identity.getPrincipal(), 
+                    owner: principal, 
                     subaccount: [] 
+                }),
+                ledgerActor.icrc1_balance_of({ 
+                    owner: Principal.fromText(sneedLockCanisterId), 
+                    subaccount: [subaccount] 
                 })
             ]);
 
             const logo = getTokenLogo(metadata);
+            const ledgerId = ledgerCanisterId.toString();
+            
+            // Get locked amount from summedLocks map
+            const locked = summedLocks[ledgerId] || BigInt(0);
 
-            return {
-                principal: ledgerCanisterId.toString(),
+            // Create token object with all balances
+            const token = {
+                principal: ledgerId,
                 ledger_canister_id: ledgerCanisterId,
                 symbol,
                 decimals,
                 fee,
                 logo: symbol.toLowerCase() === "icp" && logo === "" ? "icp_symbol.svg" : logo,
                 balance,
-                available: balance,
+                balance_backend,
+                locked,
                 conversion_rate: null, // Will be fetched progressively
                 usdValue: null
             };
+
+            // Calculate available balances using same logic as Wallet.jsx
+            token.available_backend = get_available_backend(token);
+            token.available = get_available(token);
+
+            return token;
         } catch (error) {
             console.error(`Error fetching token details for ${ledgerCanisterId}:`, error);
             return null;
@@ -439,11 +459,25 @@ export const WalletProvider = ({ children }) => {
             const backendActor = createBackendActor(backendCanisterId, { 
                 agentOptions: { identity } 
             });
+            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { 
+                agentOptions: { identity } 
+            });
 
             // Track known ledgers to avoid duplicates
             const knownLedgers = new Set();
 
-            // 1. Get registered ledger canister IDs from backend FIRST (fastest)
+            // 1. Fetch summed locks from sneed_lock (needed for locked balances)
+            // Also clear expired locks if any
+            if (await sneedLockActor.has_expired_locks()) {
+                await sneedLockActor.clear_expired_locks();
+            }
+            const summedLocksList = await sneedLockActor.get_summed_locks();
+            const summedLocks = {};
+            for (const [tokenLedger, amount] of summedLocksList) {
+                summedLocks[tokenLedger.toString()] = amount;
+            }
+
+            // 2. Get registered ledger canister IDs from backend
             const registeredLedgers = await backendActor.get_ledger_canister_ids();
             
             // Start fetching registered tokens immediately (don't wait for RLL/tips)
@@ -452,7 +486,7 @@ export const WalletProvider = ({ children }) => {
                 if (!knownLedgers.has(ledgerId)) {
                     knownLedgers.add(ledgerId);
                     // Fire and forget - will add progressively
-                    fetchTokenDetailsFast(ledger).then(token => {
+                    fetchTokenDetailsFast(ledger, summedLocks).then(token => {
                         if (token && fetchSessionRef.current === sessionId) {
                             addTokenProgressively(token, sessionId);
                             // Then fetch USD value and neuron totals in background
@@ -464,7 +498,7 @@ export const WalletProvider = ({ children }) => {
                 }
             });
 
-            // 2. Get reward tokens from RLL (in parallel, don't block)
+            // 3. Get reward tokens from RLL (in parallel, don't block)
             (async () => {
                 try {
                     const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
@@ -477,7 +511,7 @@ export const WalletProvider = ({ children }) => {
                         const ledgerId = ledger.toString();
                         if (!knownLedgers.has(ledgerId) && fetchSessionRef.current === sessionId) {
                             knownLedgers.add(ledgerId);
-                            fetchTokenDetailsFast(ledger).then(token => {
+                            fetchTokenDetailsFast(ledger, summedLocks).then(token => {
                                 if (token && fetchSessionRef.current === sessionId) {
                                     addTokenProgressively(token, sessionId);
                                     fetchAndUpdateConversionRate(ledger, token.decimals, sessionId);
@@ -491,7 +525,7 @@ export const WalletProvider = ({ children }) => {
                 }
             })();
 
-            // 3. Get tokens from received tips (in parallel, don't block)
+            // 4. Get tokens from received tips (in parallel, don't block)
             (async () => {
                 try {
                     const forumActor = createForumActor(forumCanisterId, {
@@ -507,7 +541,7 @@ export const WalletProvider = ({ children }) => {
                         const ledgerId = ledger.toString();
                         if (!knownLedgers.has(ledgerId) && fetchSessionRef.current === sessionId) {
                             knownLedgers.add(ledgerId);
-                            fetchTokenDetailsFast(ledger).then(token => {
+                            fetchTokenDetailsFast(ledger, summedLocks).then(token => {
                                 if (token && fetchSessionRef.current === sessionId) {
                                     addTokenProgressively(token, sessionId);
                                     fetchAndUpdateConversionRate(ledger, token.decimals, sessionId);
