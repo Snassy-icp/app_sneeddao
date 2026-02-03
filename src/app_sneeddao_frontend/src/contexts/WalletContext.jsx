@@ -36,9 +36,17 @@ export const WalletProvider = ({ children }) => {
     const positionsFetchSessionRef = useRef(0);
     
     // Global neuron cache - stores all reachable neurons by governance canister ID
-    // This cache is used by wallet, token cards, VP bar, voting, etc.
+    // This cache is independent of wallet tokens and used by:
+    // - Wallet token cards (staked amounts)
+    // - Quick wallet
+    // - VP bar
+    // - /me page neurons tab
+    // - Forum voting
+    // - Any component that needs neuron data
     const [neuronCache, setNeuronCache] = useState(new Map()); // Map<governanceCanisterId, neuron[]>
     const [neuronCacheLoading, setNeuronCacheLoading] = useState(new Set()); // Set of governance IDs currently loading
+    const [neuronCacheInitialized, setNeuronCacheInitialized] = useState(false);
+    const neuronCacheFetchSessionRef = useRef(0);
 
     // Load SNS data to know which tokens are SNS tokens
     useEffect(() => {
@@ -234,8 +242,61 @@ export const WalletProvider = ({ children }) => {
             });
         } else {
             setNeuronCache(new Map());
+            setNeuronCacheInitialized(false);
         }
     }, []);
+
+    // Proactively fetch neurons for ALL SNS tokens on login
+    // This is independent of wallet tokens - fetches for all known SNS
+    const fetchAllSnsNeurons = useCallback(async () => {
+        if (!identity || !isAuthenticated) return;
+        
+        const sessionId = ++neuronCacheFetchSessionRef.current;
+        
+        try {
+            // Get all known SNS tokens
+            const allSnses = getAllSnses();
+            if (!allSnses || allSnses.length === 0) {
+                // Try to fetch fresh SNS data
+                const freshData = await fetchAndCacheSnsData(identity);
+                if (!freshData || freshData.length === 0) return;
+            }
+            
+            const snsList = getAllSnses();
+            
+            // Fetch neurons for each SNS in parallel (fire and forget for speed)
+            for (const sns of snsList) {
+                if (neuronCacheFetchSessionRef.current !== sessionId) return;
+                
+                const governanceCanisterId = sns.canisters?.governance;
+                if (!governanceCanisterId) continue;
+                
+                // Skip if already cached or loading
+                if (neuronCache.has(governanceCanisterId)) continue;
+                if (neuronCacheLoading.has(governanceCanisterId)) continue;
+                
+                // Fire and forget - don't await, let them load in parallel
+                fetchAndCacheNeurons(governanceCanisterId).catch(err => {
+                    console.warn(`[WalletContext] Failed to fetch neurons for ${sns.name || governanceCanisterId}:`, err);
+                });
+            }
+            
+            setNeuronCacheInitialized(true);
+        } catch (error) {
+            console.warn('[WalletContext] Error fetching all SNS neurons:', error);
+        }
+    }, [identity, isAuthenticated, neuronCache, neuronCacheLoading, fetchAndCacheNeurons]);
+
+    // Proactively fetch neurons for all SNS on login
+    useEffect(() => {
+        if (isAuthenticated && identity && !neuronCacheInitialized) {
+            fetchAllSnsNeurons();
+        }
+        if (!isAuthenticated) {
+            setNeuronCache(new Map());
+            setNeuronCacheInitialized(false);
+        }
+    }, [isAuthenticated, identity, neuronCacheInitialized, fetchAllSnsNeurons]);
 
     // Fetch neuron totals for an SNS token and update it in place (uses cache)
     const fetchAndUpdateNeuronTotals = useCallback(async (ledgerCanisterId, sessionId) => {
@@ -808,10 +869,13 @@ export const WalletProvider = ({ children }) => {
             positionsLoading,
             updateLiquidityPositions,
             // Neuron cache - global cache of all reachable neurons by governance canister
+            // Independent of wallet tokens - fetches for ALL SNS on login
             neuronCache,
+            neuronCacheInitialized,
             getNeuronsForGovernance,
             getCachedNeurons,
-            clearNeuronCache
+            clearNeuronCache,
+            fetchAllSnsNeurons
         }}>
             {children}
         </WalletContext.Provider>
