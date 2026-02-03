@@ -557,7 +557,7 @@ function Wallet() {
     const [rewardDetailsLoading, setRewardDetailsLoading] = useState({});
     const [totalDollarValue, setTotalDollarValue] = useState(0.0);
     const [snsTokens, setSnsTokens] = useState(new Set()); // Set of ledger canister IDs that are SNS tokens
-    const [neuronTotals, setNeuronTotals] = useState({}); // Track neuron USD values by token ledger ID
+    const [neuronTotals, setNeuronTotals] = useState({}); // Track additional neuron details (collectableMaturity) by token ledger ID
     const [hideDust, setHideDust] = useState(() => {
         try {
             const saved = localStorage.getItem('hideDust_Wallet');
@@ -936,9 +936,11 @@ function Wallet() {
             const availableUSD = (available / divisor) * rate;
             const lockedUSD = (locked / divisor) * rate;
             
-            const neuronData = neuronTotals[ledgerId];
-            const stakedUSD = neuronData?.staked || 0;
-            const maturityUSD = neuronData?.maturity || 0;
+            // Use token.neuronStake/neuronMaturity directly (like PrincipalBox)
+            const neuronStake = Number(token.neuronStake || 0n);
+            const neuronMaturity = Number(token.neuronMaturity || 0n);
+            const stakedUSD = (neuronStake / divisor) * rate;
+            const maturityUSD = (neuronMaturity / divisor) * rate;
             
             const rewardRaw = rewardDetailsLoading?.[token.ledger_canister_id];
             const rewardUSD = rewardRaw ? (Number(BigInt(rewardRaw)) / divisor) * rate : 0;
@@ -2624,39 +2626,36 @@ function Wallet() {
                 rewardsTotal += rewardAmount;
             }
             
-            // Add neuron breakdown (staked + maturity) if available
+            // Add neuron breakdown (staked + maturity) directly from token data (like PrincipalBox)
+            // This ensures neuron totals show instantly from cached tokens
+            const neuronStake = BigInt(token.neuronStake || 0n);
+            const neuronMaturity = BigInt(token.neuronMaturity || 0n);
+            
+            if (neuronStake > 0n) {
+                const stakedUSD = Number(neuronStake) / divisor * rate;
+                stakedTotal += stakedUSD;
+                total += stakedUSD;
+            }
+            
+            if (neuronMaturity > 0n) {
+                hasAnyMaturity = true;
+                const maturityUSD = Number(neuronMaturity) / divisor * rate;
+                maturityTotal += maturityUSD;
+                total += maturityUSD;
+            }
+            
+            // Track collectable maturity from neuronTotals (requires TokenCard to compute)
             if (neuronTotals[ledgerId]) {
                 const neuronData = neuronTotals[ledgerId];
-                if (typeof neuronData === 'object') {
-                    stakedTotal += neuronData.staked || 0;
-                    if (neuronData.maturity && neuronData.maturity > 0) {
-                        hasAnyMaturity = true;
-                        maturityTotal += neuronData.maturity;
-                    }
-                    // Track collectable maturity (user has DISBURSE_MATURITY permission)
-                    if (neuronData.collectableMaturity && neuronData.collectableMaturity > 0) {
-                        hasAnyCollectableMaturity = true;
-                        collectableMaturityTotal += neuronData.collectableMaturity;
-                    }
-                } else {
-                    // Legacy support: if it's just a number, add to staked
-                    stakedTotal += neuronData || 0;
+                if (typeof neuronData === 'object' && neuronData.collectableMaturity && neuronData.collectableMaturity > 0) {
+                    hasAnyCollectableMaturity = true;
+                    collectableMaturityTotal += neuronData.collectableMaturity;
                 }
             }
             
-            // Get base token TVL (liquid + locked + rewards)
+            // Get base token TVL (liquid + locked + rewards) - neuron totals already added above
             const baseTVL = getTokenTVL(token, rewardDetailsLoading, false);
             total += baseTVL;
-            
-            // Add neuron totals
-            if (neuronTotals[ledgerId]) {
-                const neuronData = neuronTotals[ledgerId];
-                if (typeof neuronData === 'object') {
-                    total += neuronData.total || 0;
-                } else {
-                    total += neuronData || 0;
-                }
-            }
         }
 
         // Calculate liquidity and fees from LP positions
@@ -5179,7 +5178,7 @@ function Wallet() {
                             if (hideDust) {
                                 const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
                                 
-                                // Calculate base token USD value
+                                // Calculate base token USD value (including neuron stake/maturity like PrincipalBox)
                                 let usdValue = 0;
                                 if (token.conversion_rate) {
                                     const available = BigInt(token.available || token.balance || 0n);
@@ -5187,19 +5186,12 @@ function Wallet() {
                                     const staked = BigInt(token.staked || 0n);
                                     const maturity = BigInt(token.maturity || 0n);
                                     const rewards = BigInt(token.rewards || 0n);
-                                    const totalBalance = available + locked + staked + maturity + rewards;
+                                    // Include neuron stake/maturity directly from token (cached)
+                                    const neuronStake = BigInt(token.neuronStake || 0n);
+                                    const neuronMaturity = BigInt(token.neuronMaturity || 0n);
+                                    const totalBalance = available + locked + staked + maturity + rewards + neuronStake + neuronMaturity;
                                     const balanceNum = Number(totalBalance) / (10 ** (token.decimals || 8));
                                     usdValue = balanceNum * token.conversion_rate;
-                                }
-                                
-                                // Add neuron totals if available (in USD)
-                                if (neuronTotals[ledgerId]) {
-                                    const neuronData = neuronTotals[ledgerId];
-                                    if (typeof neuronData === 'object') {
-                                        usdValue += neuronData.total || 0;
-                                    } else {
-                                        usdValue += neuronData;
-                                    }
                                 }
                                 
                                 return usdValue >= 0.01;
