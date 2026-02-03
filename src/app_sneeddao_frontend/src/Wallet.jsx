@@ -426,7 +426,12 @@ function Wallet() {
         refreshWallet: contextRefreshWallet,
         updateWalletTokens, 
         setLoading: setWalletLoading, 
+        // Positions from context (shared with quick wallet)
+        liquidityPositions: contextLiquidityPositions,
+        positionsLoading: contextPositionsLoading,
+        hasFetchedPositions: contextHasFetchedPositions,
         updateLiquidityPositions,
+        refreshPositions: contextRefreshPositions,
         hasFetchedInitial: contextHasFetchedTokens
     } = useWallet();
     const navigate = useNavigate();
@@ -487,9 +492,44 @@ function Wallet() {
     const [showTransferTokenLockModal, setShowTransferTokenLockModal] = useState(false);
     const [selectedTokenLock, setSelectedTokenLock] = useState(null);
     const [locks, setLocks] = useState([]);
-    const [liquidityPositions, setLiquidityPositions] = useState([]);
+    
+    // Local position overrides for immediate UI updates (merged with context positions)
+    const [localPositionOverrides, setLocalPositionOverrides] = useState({});
+    
+    // Merge context positions with local overrides (same pattern as tokens)
+    const liquidityPositions = useMemo(() => {
+        if (!contextLiquidityPositions || contextLiquidityPositions.length === 0) return [];
+        return contextLiquidityPositions.map(pos => {
+            const swapId = pos.swapCanisterId?.toString?.() || pos.swapCanisterId?.toText?.() || pos.swapCanisterId;
+            if (localPositionOverrides[swapId]) {
+                return { ...pos, ...localPositionOverrides[swapId] };
+            }
+            return pos;
+        });
+    }, [contextLiquidityPositions, localPositionOverrides]);
+    
+    // Helper to update a single position (for immediate UI feedback)
+    const updateSinglePosition = useCallback((swapId, updates) => {
+        const swapIdStr = swapId?.toString?.() || swapId?.toText?.() || swapId;
+        setLocalPositionOverrides(prev => ({
+            ...prev,
+            [swapIdStr]: { ...prev[swapIdStr], ...updates }
+        }));
+    }, []);
+    
+    // Helper to set positions (syncs to context)
+    const setLiquidityPositions = useCallback((newPositionsOrUpdater) => {
+        if (typeof newPositionsOrUpdater === 'function') {
+            const updated = newPositionsOrUpdater(liquidityPositions);
+            updateLiquidityPositions(updated);
+        } else {
+            updateLiquidityPositions(newPositionsOrUpdater);
+        }
+        setLocalPositionOverrides({}); // Clear local overrides after full update
+    }, [liquidityPositions, updateLiquidityPositions]);
     const [refreshTrigger, setRefreshTrigger] = useState(0);
-    const [showPositionsSpinner, setShowPositionsSpinner] = useState(true);
+    // Derive positions spinner from context (positions are now fetched by WalletContext)
+    const showPositionsSpinner = contextPositionsLoading || (!contextHasFetchedPositions && contextLiquidityPositions.length === 0);
     const [showTokensSpinner, setShowTokensSpinner] = useState(true);
     const [lockDetailsLoading, setLockDetailsLoading] = useState({});
     const [refreshingTokens, setRefreshingTokens] = useState(new Set());
@@ -787,11 +827,11 @@ function Wallet() {
         }
     }, [isAuthenticated, contextHasFetchedTokens, walletTokens]);
     
-    // Fetch wallet-specific data (positions, neuron managers, etc.) on mount
+    // Fetch wallet-specific data (neuron managers, etc.) on mount
+    // Positions are now fetched by WalletContext and shared with quick wallet
     useEffect(() => {
         if (!isAuthenticated) return;
         
-        fetchLiquidityPositions();
         fetchIcpPrice();
         fetchNeuronManagers();
         fetchIcpToCyclesRate();
@@ -802,22 +842,15 @@ function Wallet() {
     useEffect(() => {
         if (refreshTrigger > 0 && isAuthenticated) {
             hasInitializedRef.current = false;
-            // Trigger context refresh which will update our derived tokens
+            setLocalPositionOverrides({}); // Clear local overrides
+            // Trigger context refresh which will update our derived tokens and positions
             if (contextRefreshWallet) {
                 contextRefreshWallet();
             }
-            fetchLiquidityPositions();
         }
     }, [refreshTrigger, isAuthenticated, contextRefreshWallet]);
 
-    // Note: No longer syncing tokens to WalletContext here - tokens is now derived FROM context
-
-    // Sync liquidity positions to WalletContext (detailed data)
-    useEffect(() => {
-        if (updateLiquidityPositions) {
-            updateLiquidityPositions(liquidityPositions, showPositionsSpinner);
-        }
-    }, [liquidityPositions, showPositionsSpinner, updateLiquidityPositions]);
+    // Note: Tokens and positions are now derived FROM WalletContext (shared with quick wallet)
 
     // Sync loading state to WalletContext (when Wallet.jsx is actively fetching)
     useEffect(() => {
@@ -1310,9 +1343,9 @@ function Wallet() {
         }
     }
 
-    // Fetch the liquidity positions from the backend and update the state
-    async function fetchLiquidityPositions() {
-        setShowPositionsSpinner(true);
+    // Fetch detailed liquidity positions (includes lock info, etc.)
+    // This updates the shared context cache
+    async function fetchDetailedPositions() {
         try {
             const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
             const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
@@ -1512,8 +1545,6 @@ function Wallet() {
             }));
         } catch (error) {
             console.error('Error fetching liquidity positions: ', error);
-        } finally { 
-            setShowPositionsSpinner(false);
         }
     }
 
@@ -3081,7 +3112,7 @@ function Wallet() {
         console.log('Deposit successful');
 
         // Auto-register sGLDT token if not already registered
-        const sgldtExists = tokens.find(t => t.ledger_canister_id?.toText() === SGLDT_CANISTER_ID);
+        const sgldtExists = tokens.find(t => (t.ledger_canister_id?.toText?.() || t.ledger_canister_id?.toString?.() || t.principal) === SGLDT_CANISTER_ID);
         if (!sgldtExists) {
             console.log('Auto-registering sGLDT token');
             await handleAddLedgerCanister(SGLDT_CANISTER_ID);
@@ -3116,7 +3147,7 @@ function Wallet() {
         console.log('Withdraw successful');
 
         // Auto-register GLDT token if not already registered
-        const gldtExists = tokens.find(t => t.ledger_canister_id?.toText() === GLDT_CANISTER_ID);
+        const gldtExists = tokens.find(t => (t.ledger_canister_id?.toText?.() || t.ledger_canister_id?.toString?.() || t.principal) === GLDT_CANISTER_ID);
         if (!gldtExists) {
             console.log('Auto-registering GLDT token');
             await handleAddLedgerCanister(GLDT_CANISTER_ID);
@@ -3332,7 +3363,8 @@ function Wallet() {
                 }
             }
 
-            /*await*/ fetchLiquidityPositions();
+            // Refresh positions in context (shared with quick wallet)
+            if (contextRefreshPositions) contextRefreshPositions();
         } catch (error) {
             console.error('=== handleSendLiquidityPosition ERROR ===');
             console.error('Error:', error);
@@ -4055,7 +4087,8 @@ function Wallet() {
         const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
         await backendActor.register_swap_canister_id(Principal.fromText(swapCanisterId));
 
-        /*await*/ fetchLiquidityPositions();
+        // Refresh positions in context (shared with quick wallet)
+        if (contextRefreshPositions) contextRefreshPositions();
     };
 
     const handleUnregisterToken = async (ledgerCanisterId) => {
@@ -4079,7 +4112,8 @@ function Wallet() {
         setConfirmAction(() => async () => {
             const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
             await backendActor.unregister_swap_canister_id(swapCanisterId);
-            /*await*/ fetchLiquidityPositions();
+            // Refresh positions in context (shared with quick wallet)
+            if (contextRefreshPositions) contextRefreshPositions();
         });
         setConfirmMessage(`You are about to unregister swap canister ${swapCanisterId}?`);
         setShowConfirmModal(true);
@@ -4250,9 +4284,10 @@ function Wallet() {
     const handleRefreshAllWallet = async () => {
         setRefreshingAllWallet(true);
         try {
+            // Refresh positions in context (shared with quick wallet)
+            if (contextRefreshPositions) contextRefreshPositions();
             await Promise.all([
                 fetchBalancesAndLocks(),
-                fetchLiquidityPositions(),
                 fetchIcpPrice()
             ]);
         } catch (error) {
@@ -4275,8 +4310,14 @@ function Wallet() {
 
     const handleRefreshPositionsSection = async () => {
         setRefreshingPositionsSection(true);
+        setLocalPositionOverrides({}); // Clear local overrides
         try {
-            await fetchLiquidityPositions();
+            // Use context's refresh function (shared with quick wallet)
+            if (contextRefreshPositions) {
+                contextRefreshPositions();
+            }
+            // Wait a bit for the refresh to complete
+            await new Promise(resolve => setTimeout(resolve, 2000));
         } catch (error) {
             console.error('Error refreshing positions section:', error);
         } finally {
@@ -7512,7 +7553,7 @@ function Wallet() {
                     onWrap={handleWrap}
                     onUnwrap={handleUnwrap}
                     token={selectedToken}
-                    gldtToken={tokens.find(t => t.ledger_canister_id?.toText() === GLDT_CANISTER_ID)}
+                    gldtToken={tokens.find(t => (t.ledger_canister_id?.toText?.() || t.ledger_canister_id?.toString?.() || t.principal) === GLDT_CANISTER_ID)}
                 />
                 <LockModal
                     show={showLockModal}

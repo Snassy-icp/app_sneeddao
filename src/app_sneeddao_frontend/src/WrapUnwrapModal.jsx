@@ -21,8 +21,9 @@ function WrapUnwrapModal({ show, onClose, onWrap, onUnwrap, token, gldtToken }) 
   const [confirmAction, setConfirmAction] = useState(null);
   const [confirmMessage, setConfirmMessage] = useState('');
 
-  const isWrapMode = token?.ledger_canister_id?.toText() === GLDT_CANISTER_ID;
-  const isUnwrapMode = token?.ledger_canister_id?.toText() === SGLDT_CANISTER_ID;
+  const tokenLedgerId = token?.ledger_canister_id?.toText?.() || token?.ledger_canister_id?.toString?.() || token?.principal;
+  const isWrapMode = tokenLedgerId === GLDT_CANISTER_ID;
+  const isUnwrapMode = tokenLedgerId === SGLDT_CANISTER_ID;
   
   /*console.log('WrapUnwrapModal mode detection:', {
     token_symbol: token?.symbol,

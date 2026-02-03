@@ -958,11 +958,19 @@ export const WalletProvider = ({ children }) => {
         }
     }, []);
 
-    // Update liquidity positions from Wallet.jsx
+    // Update liquidity positions (for local overrides from Wallet.jsx)
     const updateLiquidityPositions = useCallback((positions, loading = false) => {
-        setLiquidityPositions(positions || []);
+        if (positions && positions.length > 0) {
+            setLiquidityPositions(positions);
+        }
         setPositionsLoading(loading);
     }, []);
+    
+    // Refresh positions only (without refreshing tokens)
+    const refreshPositions = useCallback(() => {
+        setHasFetchedPositions(false);
+        fetchCompactPositions();
+    }, [fetchCompactPositions]);
 
     // Set loading state
     const setLoading = useCallback((loading) => {
@@ -1094,7 +1102,9 @@ export const WalletProvider = ({ children }) => {
             // Liquidity positions
             liquidityPositions,
             positionsLoading,
+            hasFetchedPositions,
             updateLiquidityPositions,
+            refreshPositions,
             // Neuron cache - global cache of all reachable neurons by governance canister
             // Independent of wallet tokens - fetches for ALL SNS on login
             neuronCache,
