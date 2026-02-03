@@ -976,8 +976,11 @@ function Wallet() {
             for (const positionDetails of lp.positions) {
                 const fees0USD = parseFloat(formatAmountWithConversion(positionDetails.tokensOwed0, lp.token0Decimals, lp.token0_conversion_rate)) || 0;
                 const fees1USD = parseFloat(formatAmountWithConversion(positionDetails.tokensOwed1, lp.token1Decimals, lp.token1_conversion_rate)) || 0;
-                const liq0USD = parseFloat(formatAmountWithConversion(positionDetails.token0Amount, lp.token0Decimals, lp.token0_conversion_rate)) || 0;
-                const liq1USD = parseFloat(formatAmountWithConversion(positionDetails.token1Amount, lp.token1Decimals, lp.token1_conversion_rate)) || 0;
+                // Handle both token0Amount/token1Amount and amount0/amount1 naming conventions
+                const token0Amt = positionDetails.token0Amount ?? positionDetails.amount0 ?? 0n;
+                const token1Amt = positionDetails.token1Amount ?? positionDetails.amount1 ?? 0n;
+                const liq0USD = parseFloat(formatAmountWithConversion(token0Amt, lp.token0Decimals, lp.token0_conversion_rate)) || 0;
+                const liq1USD = parseFloat(formatAmountWithConversion(token1Amt, lp.token1Decimals, lp.token1_conversion_rate)) || 0;
                 
                 lines.push('');
                 lines.push(`${lp.token0Symbol}/${lp.token1Symbol} #${positionDetails.positionId}`);
@@ -2676,8 +2679,11 @@ function Wallet() {
                 feesTotal += fees0USD + fees1USD;
                 
                 // Calculate position liquidity (excluding fees)
-                const position0USD = parseFloat(formatAmountWithConversion(positionDetails.token0Amount, lp.token0Decimals, lp.token0_conversion_rate));
-                const position1USD = parseFloat(formatAmountWithConversion(positionDetails.token1Amount, lp.token1Decimals, lp.token1_conversion_rate));
+                // Handle both token0Amount/token1Amount and amount0/amount1 naming conventions
+                const token0Amt = positionDetails.token0Amount ?? positionDetails.amount0 ?? 0n;
+                const token1Amt = positionDetails.token1Amount ?? positionDetails.amount1 ?? 0n;
+                const position0USD = parseFloat(formatAmountWithConversion(token0Amt, lp.token0Decimals, lp.token0_conversion_rate));
+                const position1USD = parseFloat(formatAmountWithConversion(token1Amt, lp.token1Decimals, lp.token1_conversion_rate));
                 const positionLiquidityValue = position0USD + position1USD;
                 
                 // If position is locked, add to locked total, otherwise to liquidity total
