@@ -20,7 +20,7 @@ const STORE_NAME = 'neurons';
  * @param {Principal|string|object} canisterId - The canister ID in any format
  * @returns {string} The canister ID as a string
  */
-export const normalizeCanisterId = (canisterId) => {
+export const normalizeId = (canisterId) => {
     if (!canisterId) return '';
     if (typeof canisterId === 'string') return canisterId;
     // Handle BigInt (for position IDs)
@@ -81,7 +81,7 @@ const initializeNeuronsDB = () => {
  * @returns {Object|null} The neuron object or null if not found
  */
 export const getNeuronFromCache = async (snsRoot, neuronIdHex) => {
-    const normalizedRoot = normalizeCanisterId(snsRoot);
+    const normalizedRoot = normalizeId(snsRoot);
     if (!normalizedRoot) return null;
     
     try {
@@ -146,24 +146,24 @@ export const getOrFetchNeuron = async ({ snsRoot, governanceCanisterId, neuronId
     if (!neuronIdHex) return null;
     
     // Normalize IDs
-    const normalizedRoot = normalizeCanisterId(snsRoot);
-    let normalizedGovId = normalizeCanisterId(governanceCanisterId);
+    const normalizedRoot = normalizeId(snsRoot);
+    let normalizedGovId = normalizeId(governanceCanisterId);
     
     // If we have snsRoot but no governanceCanisterId, look it up
     if (normalizedRoot && !normalizedGovId) {
         const sns = getSnsById(normalizedRoot);
         if (sns?.canisters?.governance) {
-            normalizedGovId = normalizeCanisterId(sns.canisters.governance);
+            normalizedGovId = normalizeId(sns.canisters.governance);
         }
     }
     
     // If we have governanceCanisterId but no snsRoot, look it up
     if (normalizedGovId && !normalizedRoot) {
         const allSnses = getAllSnses();
-        const sns = allSnses.find(s => normalizeCanisterId(s.canisters?.governance) === normalizedGovId);
+        const sns = allSnses.find(s => normalizeId(s.canisters?.governance) === normalizedGovId);
         if (sns?.rootCanisterId) {
             // Use the found root for cache operations
-            const foundRoot = normalizeCanisterId(sns.rootCanisterId);
+            const foundRoot = normalizeId(sns.rootCanisterId);
             return getOrFetchNeuronInternal(foundRoot, normalizedGovId, neuronIdHex, identity);
         }
     }
@@ -223,14 +223,14 @@ export const fetchNeuronFresh = async ({ snsRoot, governanceCanisterId, neuronId
     if (!neuronIdHex || !identity) return null;
     
     // Normalize and resolve IDs
-    const normalizedRoot = normalizeCanisterId(snsRoot);
-    let normalizedGovId = normalizeCanisterId(governanceCanisterId);
+    const normalizedRoot = normalizeId(snsRoot);
+    let normalizedGovId = normalizeId(governanceCanisterId);
     
     // If we have snsRoot but no governanceCanisterId, look it up
     if (normalizedRoot && !normalizedGovId) {
         const sns = getSnsById(normalizedRoot);
         if (sns?.canisters?.governance) {
-            normalizedGovId = normalizeCanisterId(sns.canisters.governance);
+            normalizedGovId = normalizeId(sns.canisters.governance);
         }
     }
     
@@ -238,9 +238,9 @@ export const fetchNeuronFresh = async ({ snsRoot, governanceCanisterId, neuronId
     let effectiveRoot = normalizedRoot;
     if (normalizedGovId && !effectiveRoot) {
         const allSnses = getAllSnses();
-        const sns = allSnses.find(s => normalizeCanisterId(s.canisters?.governance) === normalizedGovId);
+        const sns = allSnses.find(s => normalizeId(s.canisters?.governance) === normalizedGovId);
         if (sns?.rootCanisterId) {
-            effectiveRoot = normalizeCanisterId(sns.rootCanisterId);
+            effectiveRoot = normalizeId(sns.rootCanisterId);
         }
     }
     
@@ -269,7 +269,7 @@ export const fetchNeuronFresh = async ({ snsRoot, governanceCanisterId, neuronId
  * @param {Object} neuron - The neuron object to update
  */
 export const updateNeuronInCache = async (snsRoot, neuron) => {
-    const normalizedRoot = normalizeCanisterId(snsRoot);
+    const normalizedRoot = normalizeId(snsRoot);
     if (!normalizedRoot || !neuron?.id?.[0]?.id) return;
     
     try {
@@ -354,7 +354,7 @@ export const updateNeuronInCache = async (snsRoot, neuron) => {
  * @param {Object[]} neurons - Array of neuron objects to save
  */
 export const saveNeuronsToCache = async (snsRoot, neurons) => {
-    const normalizedRoot = normalizeCanisterId(snsRoot);
+    const normalizedRoot = normalizeId(snsRoot);
     if (!normalizedRoot || !neurons) return;
     
     try {
@@ -448,7 +448,7 @@ export const saveNeuronsToCache = async (snsRoot, neurons) => {
  * @returns {boolean} True if cache exists
  */
 export const hasCacheForSns = async (snsRoot) => {
-    const normalizedRoot = normalizeCanisterId(snsRoot);
+    const normalizedRoot = normalizeId(snsRoot);
     if (!normalizedRoot) return false;
     
     try {
@@ -477,7 +477,7 @@ export const hasCacheForSns = async (snsRoot) => {
  * @returns {Object[]} Array of neuron objects, or empty array if not found
  */
 export const getAllNeuronsForSns = async (snsRoot) => {
-    const normalizedRoot = normalizeCanisterId(snsRoot);
+    const normalizedRoot = normalizeId(snsRoot);
     if (!normalizedRoot) return [];
     
     try {
@@ -520,7 +520,7 @@ export const getAllNeuronsForSns = async (snsRoot) => {
  * @returns {Object} { found: neuron[], missing: string[] } - Found neurons and missing IDs
  */
 export const getNeuronsFromCacheByIds = async (snsRoot, neuronIdHexArray) => {
-    const normalizedRoot = normalizeCanisterId(snsRoot);
+    const normalizedRoot = normalizeId(snsRoot);
     if (!normalizedRoot || !neuronIdHexArray || neuronIdHexArray.length === 0) {
         return { found: [], missing: neuronIdHexArray || [] };
     }
@@ -587,17 +587,17 @@ export const getNeuronsFromCacheByIds = async (snsRoot, neuronIdHexArray) => {
  * @returns {Object[]} Array of neurons (those found in cache + those fetched from network)
  */
 export const getOrFetchNeuronsByIds = async ({ snsRoot, governanceCanisterId, neuronIdHexArray, identity }) => {
-    const normalizedRoot = normalizeCanisterId(snsRoot);
+    const normalizedRoot = normalizeId(snsRoot);
     if (!normalizedRoot || !neuronIdHexArray || neuronIdHexArray.length === 0) {
         return [];
     }
     
     // Resolve governance canister ID if not provided
-    let normalizedGovId = normalizeCanisterId(governanceCanisterId);
+    let normalizedGovId = normalizeId(governanceCanisterId);
     if (!normalizedGovId) {
         const sns = getSnsById(normalizedRoot);
         if (sns?.canisters?.governance) {
-            normalizedGovId = normalizeCanisterId(sns.canisters.governance);
+            normalizedGovId = normalizeId(sns.canisters.governance);
         }
     }
     
@@ -651,7 +651,7 @@ export const getOrFetchNeuronsByIds = async ({ snsRoot, governanceCanisterId, ne
  * @param {Principal|string} snsRoot - SNS root canister ID (accepts Principal or string)
  */
 export const clearCacheForSns = async (snsRoot) => {
-    const normalizedRoot = normalizeCanisterId(snsRoot);
+    const normalizedRoot = normalizeId(snsRoot);
     if (!normalizedRoot) return;
     
     try {
@@ -681,7 +681,7 @@ export const clearCacheForSns = async (snsRoot) => {
  */
 export default function useNeuronsCache(selectedSnsRoot, identity) {
     // Normalize the selected SNS root
-    const normalizedSnsRoot = normalizeCanisterId(selectedSnsRoot);
+    const normalizedSnsRoot = normalizeId(selectedSnsRoot);
     const [neurons, setNeurons] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -694,7 +694,7 @@ export default function useNeuronsCache(selectedSnsRoot, identity) {
 
     // Get cached data from IndexedDB
     const getCachedData = useCallback(async (snsRoot) => {
-        const normalized = normalizeCanisterId(snsRoot);
+        const normalized = normalizeId(snsRoot);
         if (!normalized) return null;
         
         try {
@@ -731,7 +731,7 @@ export default function useNeuronsCache(selectedSnsRoot, identity) {
 
     // Set cache data in IndexedDB
     const setCacheData = useCallback(async (snsRoot, neurons, metadata) => {
-        const normalized = normalizeCanisterId(snsRoot);
+        const normalized = normalizeId(snsRoot);
         if (!normalized) return;
         
         try {

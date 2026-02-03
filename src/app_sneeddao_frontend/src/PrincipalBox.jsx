@@ -11,7 +11,7 @@ import { useWalletOptional } from './contexts/WalletContext';
 import { computeAccountId } from './utils/PrincipalUtils';
 import { formatAmount } from './utils/StringUtils';
 import { get_available_backend } from './utils/TokenUtils';
-import { normalizeCanisterId } from './hooks/useNeuronsCache';
+import { normalizeId } from './hooks/useNeuronsCache';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
 import SendTokenModal from './SendTokenModal';
@@ -124,7 +124,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         // Debug: Check for duplicates in source array (using normalized principal comparison with fallback)
         const principalCounts = {};
         walletTokens.forEach(t => {
-            const normalizedId = normalizeCanisterId(t.principal) || normalizeCanisterId(t.ledger_canister_id);
+            const normalizedId = normalizeId(t.principal) || normalizeId(t.ledger_canister_id);
             principalCounts[normalizedId] = (principalCounts[normalizedId] || 0) + 1;
         });
         const duplicatePrincipals = Object.entries(principalCounts).filter(([, count]) => count > 1);
@@ -247,8 +247,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         const icpLedger = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
         const icpToken = walletTokens.find(t => 
             t.symbol === 'ICP' || 
-            normalizeCanisterId(t.principal) === icpLedger ||
-            normalizeCanisterId(t.ledger_canister_id) === icpLedger
+            normalizeId(t.principal) === icpLedger ||
+            normalizeId(t.ledger_canister_id) === icpLedger
         );
         return icpToken?.conversion_rate || 0;
     }, [walletTokens]);
@@ -624,9 +624,9 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     // Keep detailToken in sync with walletTokens
     useEffect(() => {
         if (detailToken && walletTokens.length > 0) {
-            const detailPrincipal = normalizeCanisterId(detailToken.principal) || normalizeCanisterId(detailToken.ledger_canister_id);
+            const detailPrincipal = normalizeId(detailToken.principal) || normalizeId(detailToken.ledger_canister_id);
             const updatedToken = walletTokens.find(t => 
-                normalizeCanisterId(t.principal) === detailPrincipal
+                normalizeId(t.principal) === detailPrincipal
             );
             if (updatedToken && updatedToken !== detailToken) {
                 setDetailToken(updatedToken);
@@ -1283,9 +1283,9 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                               </div>
                           ) : (
                               tokensWithBalance.map((token, index) => {
-                                  // Use normalizeCanisterId for the key to ensure consistent keys
+                                  // Use normalizeId for the key to ensure consistent keys
                                   // between cached tokens (might be serialized objects) and network tokens (Principal objects)
-                                  const ledgerId = normalizeCanisterId(token.principal) || normalizeCanisterId(token.ledger_canister_id);
+                                  const ledgerId = normalizeId(token.principal) || normalizeId(token.ledger_canister_id);
                                   // Calculate total balance (available + locked + staked + maturity + rewards + neurons)
                                   const available = BigInt(token.available || token.balance || 0n);
                                   const locked = BigInt(token.locked || 0n);

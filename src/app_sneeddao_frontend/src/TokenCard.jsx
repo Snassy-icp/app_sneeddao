@@ -7,7 +7,7 @@ import { Principal } from '@dfinity/principal';
 import { useTheme } from './contexts/ThemeContext';
 import { useAuth } from './AuthContext';
 import { getSnsById, getAllSnses } from './utils/SnsUtils';
-import { normalizeCanisterId } from './hooks/useNeuronsCache';
+import { normalizeId } from './hooks/useNeuronsCache';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { NeuronDisplay } from './components/NeuronDisplay';
@@ -1100,9 +1100,9 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         }
 
         // STEP 1: Find SNS data
-        const normalizedLedgerId = normalizeCanisterId(token.ledger_canister_id);
+        const normalizedLedgerId = normalizeId(token.ledger_canister_id);
         const allSnses = getAllSnses();
-        const snsData = allSnses.find(sns => normalizeCanisterId(sns.canisters?.ledger) === normalizedLedgerId);
+        const snsData = allSnses.find(sns => normalizeId(sns.canisters?.ledger) === normalizedLedgerId);
         
         if (!snsData || !snsData.canisters?.governance) {
             return;

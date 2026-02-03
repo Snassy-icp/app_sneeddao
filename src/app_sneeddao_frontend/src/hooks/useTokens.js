@@ -7,7 +7,7 @@ import { createActor as createForumActor, canisterId as forumCanisterId } from '
 import { getTokenLogo, get_token_conversion_rate } from '../utils/TokenUtils';
 import { fetchUserNeuronsForSns } from '../utils/NeuronUtils';
 import { getTipTokensReceivedByUser } from '../utils/BackendUtils';
-import { normalizeCanisterId } from './useNeuronsCache';
+import { normalizeId } from './useNeuronsCache';
 
 // Custom hook for managing tokens data
 export const useTokens = (identity) => {
@@ -172,10 +172,10 @@ export const useTokens = (identity) => {
             );
             
             if (updatedToken) {
-                const updatedPrincipal = normalizeCanisterId(updatedToken.principal);
+                const updatedPrincipal = normalizeId(updatedToken.principal);
                 setTokens(prevTokens => 
                     prevTokens.map(token => 
-                        normalizeCanisterId(token.principal) === updatedPrincipal ? updatedToken : token
+                        normalizeId(token.principal) === updatedPrincipal ? updatedToken : token
                     )
                 );
             }

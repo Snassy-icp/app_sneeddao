@@ -15,7 +15,7 @@ import { getTokenLogo, get_token_conversion_rate, get_available, get_available_b
 import { fetchUserNeuronsForSns, uint8ArrayToHex } from '../utils/NeuronUtils';
 import { getTipTokensReceivedByUser } from '../utils/BackendUtils';
 import { fetchAndCacheSnsData, getAllSnses, getSnsById } from '../utils/SnsUtils';
-import { getNeuronsFromCacheByIds, saveNeuronsToCache, getAllNeuronsForSns, normalizeCanisterId } from '../hooks/useNeuronsCache';
+import { getNeuronsFromCacheByIds, saveNeuronsToCache, getAllNeuronsForSns, normalizeId } from '../hooks/useNeuronsCache';
 import { initializeLogoCache, getLogo, setLogo, getLogoSync } from '../hooks/useLogoCache';
 import { initializeTokenCache, setLedgerList, getTokenMetadataSync } from '../hooks/useTokenCache';
 
@@ -346,7 +346,7 @@ export const WalletProvider = ({ children }) => {
                 if (cachedData.walletTokens && cachedData.walletTokens.length > 0) {
                     const seenPrincipals = new Set();
                     const deduplicatedTokens = cachedData.walletTokens.filter(token => {
-                        const principal = normalizeCanisterId(token.principal) || normalizeCanisterId(token.ledger_canister_id);
+                        const principal = normalizeId(token.principal) || normalizeId(token.ledger_canister_id);
                         if (!principal) return false;
                         if (seenPrincipals.has(principal)) return false;
                         seenPrincipals.add(principal);
@@ -358,10 +358,10 @@ export const WalletProvider = ({ children }) => {
                 
                 // Restore positions (with deduplication)
                 if (cachedData.liquidityPositions && cachedData.liquidityPositions.length > 0) {
-                    // Deduplicate by swapCanisterId (using normalizeCanisterId for Principal/string insensitivity)
+                    // Deduplicate by swapCanisterId (using normalizeId for Principal/string insensitivity)
                     const seenSwapIds = new Set();
                     const deduplicatedPositions = cachedData.liquidityPositions.filter(pos => {
-                        const swapId = normalizeCanisterId(pos.swapCanisterId);
+                        const swapId = normalizeId(pos.swapCanisterId);
                         if (!swapId) return false;
                         if (seenSwapIds.has(swapId)) return false;
                         seenSwapIds.add(swapId);
@@ -373,7 +373,7 @@ export const WalletProvider = ({ children }) => {
                         if (!lp.positions || lp.positions.length === 0) return lp;
                         const seenPositionIds = new Set();
                         const cleanedInnerPositions = lp.positions.filter(pos => {
-                            const posId = normalizeCanisterId(pos.positionId);
+                            const posId = normalizeId(pos.positionId);
                             if (seenPositionIds.has(posId)) return false;
                             seenPositionIds.add(posId);
                             return true;
@@ -418,7 +418,7 @@ export const WalletProvider = ({ children }) => {
                         }
                         
                         // Normalize governance ID for consistent cache keys
-                        const normalizedGovId = normalizeCanisterId(governanceId);
+                        const normalizedGovId = normalizeId(governanceId);
                         
                         // For governance IDs with 0 neurons, add empty array to mark as "checked"
                         if (!neuronIds || neuronIds.length === 0) {
@@ -428,7 +428,7 @@ export const WalletProvider = ({ children }) => {
                         
                         // Find SNS root for this governance canister
                         const allSnses = getAllSnses();
-                        const sns = allSnses.find(s => normalizeCanisterId(s.canisters?.governance) === normalizedGovId);
+                        const sns = allSnses.find(s => normalizeId(s.canisters?.governance) === normalizedGovId);
                         const snsRoot = sns?.rootCanisterId;
                         
                         if (snsRoot) {
@@ -672,9 +672,9 @@ export const WalletProvider = ({ children }) => {
             
             // Only update if still in same fetch session
             if (fetchSessionRef.current === sessionId) {
-                const targetLedger = normalizeCanisterId(ledgerCanisterId);
+                const targetLedger = normalizeId(ledgerCanisterId);
                 setWalletTokens(prev => prev.map(token => {
-                    const tokenId = normalizeCanisterId(token.principal) || normalizeCanisterId(token.ledger_canister_id);
+                    const tokenId = normalizeId(token.principal) || normalizeId(token.ledger_canister_id);
                     if (tokenId === targetLedger) {
                         const balance = BigInt(token.available || token.balance || 0n);
                         const balanceNum = Number(balance) / (10 ** (token.decimals || 8));
@@ -693,7 +693,7 @@ export const WalletProvider = ({ children }) => {
     // Uses promise-based request deduplication - if a fetch is in-flight, subsequent callers share the same promise
     const fetchAndCacheNeurons = useCallback(async (governanceCanisterId) => {
         // Normalize the governance canister ID (accepts Principal or string)
-        const govId = normalizeCanisterId(governanceCanisterId);
+        const govId = normalizeId(governanceCanisterId);
         if (!govId) return [];
         
         if (!identity) {
@@ -716,7 +716,7 @@ export const WalletProvider = ({ children }) => {
             try {
                 // Find the SNS for this governance canister
                 const allSnses = getAllSnses();
-                const sns = allSnses.find(s => normalizeCanisterId(s.canisters?.governance) === govId);
+                const sns = allSnses.find(s => normalizeId(s.canisters?.governance) === govId);
                 
                 // Check IndexedDB cache BEFORE going to network
                 if (sns?.rootCanisterId) {
@@ -769,14 +769,14 @@ export const WalletProvider = ({ children }) => {
     // Get cached neurons synchronously (returns empty array if not yet loaded)
     // Uses ref for truly synchronous access - state might be stale due to React's async updates
     const getCachedNeurons = useCallback((governanceCanisterId) => {
-        const govId = normalizeCanisterId(governanceCanisterId);
+        const govId = normalizeId(governanceCanisterId);
         return neuronCacheRef.current.get(govId) || [];
     }, []);
     
     // Clear neuron cache (e.g., on refresh)
     const clearNeuronCache = useCallback((governanceCanisterId = null) => {
         if (governanceCanisterId) {
-            const govId = normalizeCanisterId(governanceCanisterId);
+            const govId = normalizeId(governanceCanisterId);
             setNeuronCache(prev => {
                 const newMap = new Map(prev);
                 newMap.delete(govId);
@@ -882,9 +882,9 @@ export const WalletProvider = ({ children }) => {
                 return total + BigInt(neuron.maturity_e8s_equivalent || 0n);
             }, 0n);
             
-            const targetLedger = normalizeCanisterId(ledgerId);
+            const targetLedger = normalizeId(ledgerId);
             setWalletTokens(prev => prev.map(token => {
-                const tokenId = normalizeCanisterId(token.principal) || normalizeCanisterId(token.ledger_canister_id);
+                const tokenId = normalizeId(token.principal) || normalizeId(token.ledger_canister_id);
                 if (tokenId === targetLedger) {
                     return { 
                         ...token, 
@@ -906,10 +906,10 @@ export const WalletProvider = ({ children }) => {
         
         setLiquidityPositions(prev => {
             // Normalize swapCanisterId for comparison (Principal/string insensitive)
-            const newSwapId = normalizeCanisterId(positionData.swapCanisterId);
+            const newSwapId = normalizeId(positionData.swapCanisterId);
             
             // Check if LP already exists (normalize comparison)
-            const existingIndex = prev.findIndex(p => normalizeCanisterId(p.swapCanisterId) === newSwapId);
+            const existingIndex = prev.findIndex(p => normalizeId(p.swapCanisterId) === newSwapId);
             
             if (existingIndex >= 0) {
                 // Update existing LP, preserving conversion rates if new data doesn't have them
@@ -920,7 +920,7 @@ export const WalletProvider = ({ children }) => {
                 if (existing.positions && existing.positions.length > 0 && mergedPositions.length > 0) {
                     const seenPositionIds = new Set();
                     mergedPositions = mergedPositions.filter(pos => {
-                        const posId = normalizeCanisterId(pos.positionId);
+                        const posId = normalizeId(pos.positionId);
                         if (seenPositionIds.has(posId)) return false;
                         seenPositionIds.add(posId);
                         return true;
@@ -947,7 +947,7 @@ export const WalletProvider = ({ children }) => {
             let newPositions = positionData.positions || [];
             const seenPositionIds = new Set();
             newPositions = newPositions.filter(pos => {
-                const posId = normalizeCanisterId(pos.positionId);
+                const posId = normalizeId(pos.positionId);
                 if (seenPositionIds.has(posId)) return false;
                 seenPositionIds.add(posId);
                 return true;
@@ -960,7 +960,7 @@ export const WalletProvider = ({ children }) => {
     // Fetch conversion rate for a position and update it in place
     const fetchPositionConversionRates = useCallback(async (swapCanisterId, ledger0, ledger1, decimals0, decimals1, sessionId) => {
         try {
-            const targetSwapId = normalizeCanisterId(swapCanisterId);
+            const targetSwapId = normalizeId(swapCanisterId);
             
             const [rate0, rate1] = await Promise.all([
                 get_token_conversion_rate(ledger0, decimals0).catch(() => 0),
@@ -969,7 +969,7 @@ export const WalletProvider = ({ children }) => {
             
             if (positionsFetchSessionRef.current === sessionId) {
                 setLiquidityPositions(prev => prev.map(p => {
-                    if (normalizeCanisterId(p.swapCanisterId) === targetSwapId) {
+                    if (normalizeId(p.swapCanisterId) === targetSwapId) {
                         return { ...p, token0_conversion_rate: rate0, token1_conversion_rate: rate1 };
                     }
                     return p;
@@ -1188,11 +1188,11 @@ export const WalletProvider = ({ children }) => {
         
         setWalletTokens(prev => {
             // Normalize principal for comparison - try both principal and ledger_canister_id
-            const newPrincipal = normalizeCanisterId(token.principal) || normalizeCanisterId(token.ledger_canister_id);
+            const newPrincipal = normalizeId(token.principal) || normalizeId(token.ledger_canister_id);
             
             // Check if token already exists (using normalized comparison of both principal AND ledger_canister_id)
             const existingIndex = prev.findIndex(t => {
-                const existingPrincipal = normalizeCanisterId(t.principal) || normalizeCanisterId(t.ledger_canister_id);
+                const existingPrincipal = normalizeId(t.principal) || normalizeId(t.ledger_canister_id);
                 return existingPrincipal === newPrincipal;
             });
             
@@ -1598,7 +1598,7 @@ export const WalletProvider = ({ children }) => {
             // Deduplicate by principal (Principal/string insensitive, with ledger_canister_id fallback)
             const seenPrincipals = new Set();
             const deduplicatedTokens = tokens.filter(token => {
-                const principal = normalizeCanisterId(token.principal) || normalizeCanisterId(token.ledger_canister_id);
+                const principal = normalizeId(token.principal) || normalizeId(token.ledger_canister_id);
                 if (!principal) return false;
                 if (seenPrincipals.has(principal)) return false;
                 seenPrincipals.add(principal);
@@ -1616,7 +1616,7 @@ export const WalletProvider = ({ children }) => {
             // Deduplicate by swapCanisterId (Principal/string insensitive)
             const seenSwapIds = new Set();
             const deduplicatedPositions = positions.filter(pos => {
-                const swapId = normalizeCanisterId(pos.swapCanisterId);
+                const swapId = normalizeId(pos.swapCanisterId);
                 if (seenSwapIds.has(swapId)) return false;
                 seenSwapIds.add(swapId);
                 return true;
@@ -1627,7 +1627,7 @@ export const WalletProvider = ({ children }) => {
                 if (!lp.positions || lp.positions.length === 0) return lp;
                 const seenPositionIds = new Set();
                 const cleanedInnerPositions = lp.positions.filter(pos => {
-                    const posId = normalizeCanisterId(pos.positionId);
+                    const posId = normalizeId(pos.positionId);
                     if (seenPositionIds.has(posId)) return false;
                     seenPositionIds.add(posId);
                     return true;
