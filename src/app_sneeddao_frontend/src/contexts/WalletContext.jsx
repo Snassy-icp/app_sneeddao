@@ -34,6 +34,11 @@ export const WalletProvider = ({ children }) => {
     const [positionsLoading, setPositionsLoading] = useState(false);
     const [hasFetchedPositions, setHasFetchedPositions] = useState(false);
     const positionsFetchSessionRef = useRef(0);
+    
+    // Global neuron cache - stores all reachable neurons by governance canister ID
+    // This cache is used by wallet, token cards, VP bar, voting, etc.
+    const [neuronCache, setNeuronCache] = useState(new Map()); // Map<governanceCanisterId, neuron[]>
+    const [neuronCacheLoading, setNeuronCacheLoading] = useState(new Set()); // Set of governance IDs currently loading
 
     // Load SNS data to know which tokens are SNS tokens
     useEffect(() => {
@@ -158,7 +163,81 @@ export const WalletProvider = ({ children }) => {
         }
     }, []);
 
-    // Fetch neuron totals for an SNS token and update it in place
+    // Fetch neurons for a governance canister and cache them
+    const fetchAndCacheNeurons = useCallback(async (governanceCanisterId) => {
+        if (!identity) return [];
+        
+        // Check if already in cache
+        if (neuronCache.has(governanceCanisterId)) {
+            return neuronCache.get(governanceCanisterId);
+        }
+        
+        // Check if already loading
+        if (neuronCacheLoading.has(governanceCanisterId)) {
+            // Wait for it to load by polling
+            await new Promise(resolve => {
+                const checkInterval = setInterval(() => {
+                    if (!neuronCacheLoading.has(governanceCanisterId)) {
+                        clearInterval(checkInterval);
+                        resolve();
+                    }
+                }, 100);
+                // Timeout after 30 seconds
+                setTimeout(() => {
+                    clearInterval(checkInterval);
+                    resolve();
+                }, 30000);
+            });
+            return neuronCache.get(governanceCanisterId) || [];
+        }
+        
+        // Mark as loading
+        setNeuronCacheLoading(prev => new Set(prev).add(governanceCanisterId));
+        
+        try {
+            const neurons = await fetchUserNeuronsForSns(identity, governanceCanisterId);
+            
+            // Cache the neurons
+            setNeuronCache(prev => new Map(prev).set(governanceCanisterId, neurons));
+            
+            return neurons;
+        } catch (error) {
+            console.warn(`Could not fetch neurons for governance ${governanceCanisterId}:`, error);
+            return [];
+        } finally {
+            // Mark as done loading
+            setNeuronCacheLoading(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(governanceCanisterId);
+                return newSet;
+            });
+        }
+    }, [identity, neuronCache, neuronCacheLoading]);
+    
+    // Get neurons from cache (or fetch if not cached)
+    const getNeuronsForGovernance = useCallback(async (governanceCanisterId) => {
+        return fetchAndCacheNeurons(governanceCanisterId);
+    }, [fetchAndCacheNeurons]);
+    
+    // Get cached neurons synchronously (returns empty array if not yet loaded)
+    const getCachedNeurons = useCallback((governanceCanisterId) => {
+        return neuronCache.get(governanceCanisterId) || [];
+    }, [neuronCache]);
+    
+    // Clear neuron cache (e.g., on refresh)
+    const clearNeuronCache = useCallback((governanceCanisterId = null) => {
+        if (governanceCanisterId) {
+            setNeuronCache(prev => {
+                const newMap = new Map(prev);
+                newMap.delete(governanceCanisterId);
+                return newMap;
+            });
+        } else {
+            setNeuronCache(new Map());
+        }
+    }, []);
+
+    // Fetch neuron totals for an SNS token and update it in place (uses cache)
     const fetchAndUpdateNeuronTotals = useCallback(async (ledgerCanisterId, sessionId) => {
         const ledgerId = ledgerCanisterId.toString();
         
@@ -174,8 +253,8 @@ export const WalletProvider = ({ children }) => {
             
             const governanceCanisterId = snsData.canisters.governance;
             
-            // Fetch neurons
-            const neurons = await fetchUserNeuronsForSns(identity, governanceCanisterId);
+            // Fetch neurons (uses cache)
+            const neurons = await fetchAndCacheNeurons(governanceCanisterId);
             
             if (fetchSessionRef.current !== sessionId) return;
             
@@ -203,7 +282,7 @@ export const WalletProvider = ({ children }) => {
         } catch (error) {
             console.warn(`Could not fetch neuron totals for ${ledgerId}:`, error);
         }
-    }, [identity, snsTokenLedgers]);
+    }, [identity, snsTokenLedgers, fetchAndCacheNeurons]);
 
     // Add a position progressively as it loads
     const addPositionProgressively = useCallback((positionData, sessionId) => {
@@ -586,6 +665,7 @@ export const WalletProvider = ({ children }) => {
             // Clear wallet on logout
             setWalletTokens([]);
             setLiquidityPositions([]);
+            setNeuronCache(new Map());
             setHasFetchedInitial(false);
             setHasFetchedPositions(false);
             setHasDetailedData(false);
@@ -617,6 +697,7 @@ export const WalletProvider = ({ children }) => {
     const clearWallet = useCallback(() => {
         setWalletTokens([]);
         setLiquidityPositions([]);
+        setNeuronCache(new Map());
         setLastUpdated(null);
         setHasFetchedInitial(false);
         setHasFetchedPositions(false);
@@ -627,6 +708,8 @@ export const WalletProvider = ({ children }) => {
     const refreshWallet = useCallback(() => {
         setHasFetchedInitial(false);
         setHasFetchedPositions(false);
+        // Clear neuron cache so neurons are refetched
+        setNeuronCache(new Map());
         fetchCompactWalletTokens();
         fetchCompactPositions();
     }, [fetchCompactWalletTokens, fetchCompactPositions]);
@@ -723,7 +806,12 @@ export const WalletProvider = ({ children }) => {
             // Liquidity positions
             liquidityPositions,
             positionsLoading,
-            updateLiquidityPositions
+            updateLiquidityPositions,
+            // Neuron cache - global cache of all reachable neurons by governance canister
+            neuronCache,
+            getNeuronsForGovernance,
+            getCachedNeurons,
+            clearNeuronCache
         }}>
             {children}
         </WalletContext.Provider>

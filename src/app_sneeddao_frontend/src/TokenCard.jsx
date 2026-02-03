@@ -10,6 +10,7 @@ import { getSnsById } from './utils/SnsUtils';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { NeuronDisplay } from './components/NeuronDisplay';
+import { useWalletOptional } from './contexts/WalletContext';
 import { fetchUserNeuronsForSns } from './utils/NeuronUtils';
 import { useNaming } from './NamingContext';
 import { VotingPowerCalculator } from './utils/VotingPowerUtils';
@@ -84,6 +85,11 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
     const { getNeuronDisplayName } = useNaming();
+    
+    // Get wallet context for neuron cache
+    const walletContext = useWalletOptional();
+    const getNeuronsForGovernance = walletContext?.getNeuronsForGovernance;
+    const clearNeuronCache = walletContext?.clearNeuronCache;
     const [showBalanceBreakdown, setShowBalanceBreakdown] = useState(() => {
         // Auto-expand if there's a backend balance
         return (token.available_backend || 0n) > 0n;
@@ -547,8 +553,19 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         if (!governanceCanisterId || !identity) return;
         
         try {
-            // Use the reachable neurons function (finds neurons through ownership chain)
-            const loadedNeurons = await fetchUserNeuronsForSns(identity, governanceCanisterId);
+            // Clear the cache for this governance canister and refetch
+            if (clearNeuronCache) {
+                clearNeuronCache(governanceCanisterId);
+            }
+            
+            // Fetch neurons using the global cache (or fallback)
+            let loadedNeurons;
+            if (getNeuronsForGovernance) {
+                loadedNeurons = await getNeuronsForGovernance(governanceCanisterId);
+            } else {
+                loadedNeurons = await fetchUserNeuronsForSns(identity, governanceCanisterId);
+            }
+            
             setNeurons(loadedNeurons);
             
             // Notify parent of loaded neurons (for collect maturity feature)
@@ -1073,15 +1090,12 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     ? token.ledger_canister_id 
                     : token.ledger_canister_id?.toString();
                 
-                // We need to find the SNS root from the ledger ID
-                // For now, we'll need to pass the governance canister ID
-                // Let's get it from the SNS data
+                // Get SNS data to find governance canister
                 const { getAllSnses } = await import('./utils/SnsUtils');
                 const allSnses = getAllSnses();
                 const snsData = allSnses.find(sns => sns.canisters?.ledger === ledgerIdString);
                 
                 if (!snsData || !snsData.canisters?.governance) {
-                    //console.log(`[TokenCard] No SNS governance found for ${token.symbol}`);
                     setNeuronsLoading(false);
                     return;
                 }
@@ -1090,28 +1104,31 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 const rootId = snsData.rootCanisterId;
                 setSnsRootCanisterId(rootId);
                 setGovernanceCanisterId(govCanisterId);
-                //console.log(`[TokenCard] Fetching neurons for ${token.symbol} from governance:`, govCanisterId);
 
                 const governanceActor = createSnsGovernanceActor(govCanisterId, { agentOptions: { identity } });
                 
-                // Fetch neurons using the reachable neurons function (finds neurons through ownership chain)
+                // Fetch neurons from global cache (instant if already loaded by quick wallet)
                 // and nervous system parameters in parallel
+                const neuronsPromise = getNeuronsForGovernance 
+                    ? getNeuronsForGovernance(govCanisterId)
+                    : fetchUserNeuronsForSns(identity, govCanisterId);
+                    
                 const [loadedNeurons, paramsResponse] = await Promise.all([
-                    fetchUserNeuronsForSns(identity, govCanisterId),
+                    neuronsPromise,
                     governanceActor.get_nervous_system_parameters(null)
                 ]);
-                setNeurons(loadedNeurons);
+                
                 setNervousSystemParameters(paramsResponse);
+                const calc = new VotingPowerCalculator();
+                calc.setParams(paramsResponse);
+                setVotingPowerCalc(calc);
+                
+                setNeurons(loadedNeurons);
                 
                 // Notify parent of loaded neurons (for collect maturity feature)
                 if (onNeuronsLoaded) {
                     onNeuronsLoaded(loadedNeurons);
                 }
-                
-                // Initialize voting power calculator
-                const calc = new VotingPowerCalculator();
-                calc.setParams(paramsResponse);
-                setVotingPowerCalc(calc);
             } catch (error) {
                 console.error(`[TokenCard] Error fetching neurons for ${token.symbol}:`, error);
             } finally {
@@ -1120,7 +1137,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         }
 
         fetchNeurons();
-    }, [isSnsToken, isAuthenticated, identity, token.ledger_canister_id, token.symbol]);
+    }, [isSnsToken, isAuthenticated, identity, token.ledger_canister_id, token.symbol, getNeuronsForGovernance]);
 
     return (
         <div className="card">
