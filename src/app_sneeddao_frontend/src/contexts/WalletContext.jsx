@@ -148,6 +148,7 @@ export const WalletProvider = ({ children }) => {
     const [positionsLoading, setPositionsLoading] = useState(false);
     const [hasFetchedPositions, setHasFetchedPositions] = useState(false);
     const positionsFetchSessionRef = useRef(0);
+    const hasPositionsRef = useRef(false); // Track if we have positions (for stale closure safety)
     
     // Global neuron cache - stores all reachable neurons by governance canister ID
     // This cache is independent of wallet tokens and used by:
@@ -172,6 +173,7 @@ export const WalletProvider = ({ children }) => {
     
     // Track if we loaded from persistent cache (for instant display)
     const [loadedFromCache, setLoadedFromCache] = useState(false);
+    const [cacheCheckComplete, setCacheCheckComplete] = useState(false); // True after cache check finishes (with or without data)
     const hasInitializedFromCacheRef = useRef(false);
     
     // Get principal ID for cache key
@@ -194,8 +196,12 @@ export const WalletProvider = ({ children }) => {
             
             // Restore positions
             if (cachedData.liquidityPositions && cachedData.liquidityPositions.length > 0) {
+                console.log('%c💾 [POSITIONS CACHE] Restoring', cachedData.liquidityPositions.length, 'positions from cache', 'background: #9b59b6; color: white; padding: 2px 6px;');
                 setLiquidityPositions(cachedData.liquidityPositions);
                 setHasFetchedPositions(true);
+                hasPositionsRef.current = true;
+            } else {
+                console.log('%c💾 [POSITIONS CACHE] No cached positions found', 'background: #e74c3c; color: white; padding: 2px 6px;');
             }
             
             // Restore neuron cache from IDs (hydrate from shared IndexedDB cache)
@@ -277,6 +283,8 @@ export const WalletProvider = ({ children }) => {
             setLoadedFromCache(true);
         }
         
+        // Mark cache check as complete (whether we found data or not)
+        setCacheCheckComplete(true);
         hasInitializedFromCacheRef.current = true;
     }, [principalId]);
     
@@ -309,6 +317,7 @@ export const WalletProvider = ({ children }) => {
                 return [govId, neuronIds];
             });
             
+            console.log('%c💾 [POSITIONS CACHE] Saving', liquidityPositions.length, 'positions to cache', 'background: #3498db; color: white; padding: 2px 6px;');
             saveWalletCache(principalId, {
                 walletTokens,
                 liquidityPositions,
@@ -659,8 +668,15 @@ export const WalletProvider = ({ children }) => {
         }
     }, []);
 
+    // Keep ref in sync with liquidityPositions length
+    useEffect(() => {
+        hasPositionsRef.current = liquidityPositions.length > 0;
+    }, [liquidityPositions]);
+    
     // Fetch compact positions for the quick wallet - PROGRESSIVE
-    const fetchCompactPositions = useCallback(async (clearFirst = false) => {
+    const fetchCompactPositions = useCallback(async (clearFirst = false, showLoading = true) => {
+        console.log('%c🔄 [POSITIONS FETCH] Called with clearFirst=', clearFirst, 'showLoading=', showLoading, 'hasPositionsRef=', hasPositionsRef.current, 'background: #f39c12; color: black; padding: 2px 6px;');
+        
         if (!identity || !isAuthenticated) {
             setLiquidityPositions([]);
             setPositionsLoading(false);
@@ -668,12 +684,21 @@ export const WalletProvider = ({ children }) => {
         }
 
         const sessionId = ++positionsFetchSessionRef.current;
-        setPositionsLoading(true);
         
         // Only clear positions if explicitly requested (e.g., on manual refresh)
         // This preserves cached data during background refresh
         if (clearFirst) {
+            console.log('%c🔄 [POSITIONS FETCH] Clearing positions (clearFirst=true)', 'background: #e74c3c; color: white; padding: 2px 6px;');
             setLiquidityPositions([]);
+            hasPositionsRef.current = false;
+        }
+        
+        // Only show loading spinner if requested AND we have no data to show
+        // Use ref to avoid stale closure issue
+        const shouldShowLoading = showLoading && (clearFirst || !hasPositionsRef.current);
+        console.log('%c🔄 [POSITIONS FETCH] shouldShowLoading=', shouldShowLoading, 'background: #f39c12; color: black; padding: 2px 6px;');
+        if (shouldShowLoading) {
+            setPositionsLoading(true);
         }
 
         try {
@@ -1191,6 +1216,13 @@ export const WalletProvider = ({ children }) => {
     
     useEffect(() => {
         if (isAuthenticated && identity) {
+            // Wait for cache check to complete before deciding what to do
+            // This prevents the race condition where we fetch before cache is loaded
+            if (!cacheCheckComplete) {
+                console.log('%c⏳ [WALLET] Waiting for cache check to complete...', 'background: #95a5a6; color: white; padding: 2px 6px;');
+                return;
+            }
+            
             // Guard against concurrent fetches
             if (isFetchingRef.current) return;
             
@@ -1198,16 +1230,18 @@ export const WalletProvider = ({ children }) => {
             // Use a ref to track if we've fetched fresh data this session
             if (loadedFromCache && !hasFetchedFreshRef.current) {
                 // We have cached data showing, fetch fresh in background
+                console.log('%c✨ [WALLET] Have cache, fetching fresh in background', 'background: #2ecc71; color: white; padding: 2px 6px;');
                 hasFetchedFreshRef.current = true;
                 isFetchingRef.current = true;
                 // Don't show loading state since we have cached data
                 fetchCompactWalletTokens();
-                fetchCompactPositions();
+                fetchCompactPositions(false, false); // Don't clear, don't show loading
                 fetchNeuronManagers();
                 // Reset fetching flag after a short delay
                 setTimeout(() => { isFetchingRef.current = false; }, 100);
             } else if (!hasFetchedInitial && !loadedFromCache) {
                 // No cached data, need to fetch from scratch
+                console.log('%c🔄 [WALLET] No cache, fetching from scratch', 'background: #e74c3c; color: white; padding: 2px 6px;');
                 isFetchingRef.current = true;
                 fetchCompactWalletTokens();
                 fetchCompactPositions(true); // Clear first since no cache
@@ -1229,11 +1263,12 @@ export const WalletProvider = ({ children }) => {
             setHasDetailedData(false);
             setLastUpdated(null);
             setLoadedFromCache(false);
+            setCacheCheckComplete(false);
             hasFetchedFreshRef.current = false;
             hasInitializedFromCacheRef.current = false;
             isFetchingRef.current = false;
         }
-    }, [isAuthenticated, identity, hasFetchedInitial, loadedFromCache, fetchCompactWalletTokens, fetchCompactPositions, fetchNeuronManagers]);
+    }, [isAuthenticated, identity, hasFetchedInitial, loadedFromCache, cacheCheckComplete, fetchCompactWalletTokens, fetchCompactPositions, fetchNeuronManagers]);
 
     // Update tokens from Wallet.jsx (more detailed data including locks, staked, etc.)
     const updateWalletTokens = useCallback((tokens) => {
