@@ -13,6 +13,7 @@ import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { getSnsById, getAllSnses, fetchAndCacheSnsData } from '../utils/SnsUtils';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
 import useNeuronsCache from '../hooks/useNeuronsCache';
+import { getLogoSync } from '../hooks/useLogoCache';
 import { indexNeuronsByOwner } from '../utils/NeuronUtils';
 import OfferCard from '../components/OfferCard';
 import FeedItemCard from '../components/FeedItemCard';
@@ -695,12 +696,19 @@ function Hub() {
                     .filter(item => item.sns_root_canister_id?.[0])
                     .map(item => item.sns_root_canister_id[0].toString()))];
                 
-                // Look up logos from cached SNS data - this is synchronous and won't error
+                // Look up logos from unified logo cache - this is synchronous and fast
                 const logos = {};
                 snsRoots.forEach(rootId => {
-                    const snsData = getSnsById(rootId);
-                    if (snsData?.logo) {
-                        logos[rootId] = snsData.logo;
+                    // Try rootId first, then governance ID
+                    let logo = getLogoSync(rootId);
+                    if (!logo) {
+                        const snsData = getSnsById(rootId);
+                        if (snsData?.canisters?.governance) {
+                            logo = getLogoSync(snsData.canisters.governance);
+                        }
+                    }
+                    if (logo) {
+                        logos[rootId] = logo;
                     }
                 });
                 if (Object.keys(logos).length > 0) {

@@ -17,6 +17,7 @@ import { getTipTokensReceivedByUser } from '../utils/BackendUtils';
 import { fetchAndCacheSnsData, getAllSnses, getSnsById } from '../utils/SnsUtils';
 import { getNeuronsFromCacheByIds } from '../hooks/useNeuronsCache';
 import { initializeLogoCache, getLogo, setLogo, getLogoSync } from '../hooks/useLogoCache';
+import { initializeTokenCache, setLedgerList, getTokenMetadataSync } from '../hooks/useTokenCache';
 
 const WalletContext = createContext(null);
 
@@ -258,11 +259,19 @@ const migrateFromLocalStorage = async (principalId) => {
 export const WalletProvider = ({ children }) => {
     const { identity, isAuthenticated } = useAuth();
     
-    // Initialize logo cache on mount (loads from IndexedDB into memory)
+    // Initialize caches on mount (loads from IndexedDB into memory)
     useEffect(() => {
+        // Initialize logo cache
         initializeLogoCache().then(count => {
             if (count > 0) {
                 console.log(`%c🖼️ [LOGO CACHE] Loaded ${count} logos from IndexedDB`, 'background: #9b59b6; color: white; padding: 2px 6px;');
+            }
+        });
+        
+        // Initialize token metadata cache
+        initializeTokenCache().then(count => {
+            if (count > 0) {
+                console.log(`%c🪙 [TOKEN CACHE] Loaded ${count} token metadata entries from IndexedDB`, 'background: #3498db; color: white; padding: 2px 6px;');
             }
         });
     }, []);
@@ -1119,6 +1128,9 @@ export const WalletProvider = ({ children }) => {
 
             // 2. Get registered ledger canister IDs from backend
             const registeredLedgers = await backendActor.get_ledger_canister_ids();
+            
+            // Cache the registered ledgers list
+            setLedgerList('registered', registeredLedgers);
             
             // Start fetching registered tokens immediately (don't wait for RLL/tips)
             registeredLedgers.forEach(ledger => {

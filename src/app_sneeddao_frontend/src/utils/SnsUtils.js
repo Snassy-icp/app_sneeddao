@@ -186,18 +186,25 @@ export async function fetchAndCacheSnsData(identity) {
 
                     // Get metadata from governance canister
                     const metadataResponse = await governanceActor.get_metadata({});
-                    console.log('Metadata response:', metadataResponse); // Debug log
 
                     // Extract only essential metadata
                     const name = metadataResponse?.name?.[0] || `SNS ${rootCanisterId.slice(0, 8)}...`;
                     const logo = metadataResponse?.logo?.[0] || '';
                     const symbol = metadataResponse?.symbol?.[0] || '';
                     
-                    // Store only essential data
+                    // Cache logo separately in unified logo cache (don't store in SNS data)
+                    if (logo) {
+                        // Cache by governance ID (for SNS logo lookups)
+                        setLogo(governanceId, logo);
+                        // Also cache by root canister ID (alternative lookup)
+                        setLogo(rootCanisterId, logo);
+                    }
+                    
+                    // Store only essential data (NO logo - it's in unified logo cache)
                     const snsData = {
                         rootCanisterId,
                         name,
-                        logo,
+                        // logo removed - use getSnsLogoSync(governanceId) or getLogoSync(governanceId)
                         token_symbol: symbol,
                         canisters: {
                             governance: governanceId,
@@ -290,16 +297,33 @@ function cacheSnsData(data) {
 
 export function getSnsById(rootCanisterId) {
     const cachedData = getCachedSnsData();
-    return cachedData?.find(sns => sns.rootCanisterId === rootCanisterId);
+    const sns = cachedData?.find(sns => sns.rootCanisterId === rootCanisterId);
+    if (sns) {
+        // Add logo from unified logo cache for backwards compatibility
+        const logo = getLogoSync(rootCanisterId) || getLogoSync(sns.canisters?.governance);
+        return { ...sns, logo };
+    }
+    return sns;
 }
 
 export function getSnsByLedgerId(ledgerCanisterId) {
     const cachedData = getCachedSnsData();
-    return cachedData?.find(sns => sns.canisters?.ledger === ledgerCanisterId);
+    const sns = cachedData?.find(sns => sns.canisters?.ledger === ledgerCanisterId);
+    if (sns) {
+        // Add logo from unified logo cache for backwards compatibility
+        const logo = getLogoSync(sns.rootCanisterId) || getLogoSync(sns.canisters?.governance);
+        return { ...sns, logo };
+    }
+    return sns;
 }
 
 export function getAllSnses() {
-    return getCachedSnsData() || [];
+    const cachedData = getCachedSnsData() || [];
+    // Add logos from unified logo cache for backwards compatibility
+    return cachedData.map(sns => ({
+        ...sns,
+        logo: getLogoSync(sns.rootCanisterId) || getLogoSync(sns.canisters?.governance) || ''
+    }));
 }
 
 // New function to fetch a single SNS data immediately
@@ -362,10 +386,16 @@ export async function fetchSingleSnsData(rootCanisterId, identity) {
         const logo = metadataResponse?.logo?.[0] || '';
         const symbol = metadataResponse?.symbol?.[0] || '';
         
+        // Cache logo in unified logo cache (don't store in SNS data)
+        if (logo) {
+            setLogo(governanceId, logo);
+            setLogo(rootCanisterId, logo);
+        }
+        
         const snsData = {
             rootCanisterId,
             name,
-            logo,
+            // logo removed - use getLogoSync(governanceId)
             token_symbol: symbol,
             canisters: {
                 governance: governanceId,
@@ -375,7 +405,6 @@ export async function fetchSingleSnsData(rootCanisterId, identity) {
             }
         };
         
-        console.log('Successfully fetched single SNS:', snsData); // Debug log
         return snsData;
     } catch (error) {
         console.error(`Error fetching single SNS data for ${rootCanisterId}:`, error);
@@ -453,10 +482,16 @@ export async function fetchAndCacheSnsDataOptimized(identity, options = {}) {
                 const logo = metadataResponse?.logo?.[0] || '';
                 const symbol = metadataResponse?.symbol?.[0] || '';
                 
+                // Cache logo in unified logo cache
+                if (logo) {
+                    setLogo(governanceId, logo);
+                    setLogo(rootCanisterId, logo);
+                }
+                
                 const snsData = {
                     rootCanisterId,
                     name,
-                    logo,
+                    // logo removed - use getLogoSync(governanceId)
                     token_symbol: symbol,
                     canisters: {
                         governance: governanceId,
