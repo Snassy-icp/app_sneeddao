@@ -8,7 +8,7 @@ import { useSns } from './contexts/SnsContext';
 import Header from './components/Header';
 import './Wallet.css';
 import { fetchAndCacheSnsData, getSnsById, getAllSnses, clearSnsCache, fetchSnsLogo } from './utils/SnsUtils';
-import { formatProposalIdLink, uint8ArrayToHex, getNeuronColor, getOwnerPrincipals, formatNeuronIdLink } from './utils/NeuronUtils';
+import { formatProposalIdLink, uint8ArrayToHex, getNeuronColor, getOwnerPrincipals, formatNeuronIdLink, extractPrincipalString } from './utils/NeuronUtils';
 import { getNeuronFromCache, updateNeuronInCache } from './hooks/useNeuronsCache';
 import { useNaming } from './NamingContext';
 import { useTheme } from './contexts/ThemeContext';
@@ -874,11 +874,19 @@ function Neuron() {
             if (!neuronData?.permissions || !principalNames || !principalNicknames) return;
             const uniquePrincipals = new Set();
             getOwnerPrincipals(neuronData).forEach(p => uniquePrincipals.add(p));
-            neuronData.permissions.forEach(p => { if (p.principal) uniquePrincipals.add(p.principal.toString()); });
+            // Use extractPrincipalString to safely handle cached/serialized principals
+            neuronData.permissions.forEach(p => {
+                const principalStr = extractPrincipalString(p.principal);
+                if (principalStr) uniquePrincipals.add(principalStr);
+            });
             const displayInfoMap = new Map();
             Array.from(uniquePrincipals).forEach(principal => {
-                const displayInfo = getPrincipalDisplayInfoFromContext(Principal.fromText(principal), principalNames, principalNicknames);
-                displayInfoMap.set(principal, displayInfo);
+                try {
+                    const displayInfo = getPrincipalDisplayInfoFromContext(Principal.fromText(principal), principalNames, principalNicknames);
+                    displayInfoMap.set(principal, displayInfo);
+                } catch (e) {
+                    console.warn('Failed to parse principal:', principal, e);
+                }
             });
             setPrincipalDisplayInfo(displayInfoMap);
         };
