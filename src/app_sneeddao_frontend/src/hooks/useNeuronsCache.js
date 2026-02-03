@@ -188,6 +188,73 @@ export const hasCacheForSns = async (snsRoot) => {
     }
 };
 
+/**
+ * Get multiple neurons from cache by their hex IDs
+ * @param {string} snsRoot - SNS root canister ID
+ * @param {string[]} neuronIdHexArray - Array of neuron IDs in hex format
+ * @returns {Object} { found: neuron[], missing: string[] } - Found neurons and missing IDs
+ */
+export const getNeuronsFromCacheByIds = async (snsRoot, neuronIdHexArray) => {
+    if (!neuronIdHexArray || neuronIdHexArray.length === 0) {
+        return { found: [], missing: [] };
+    }
+    
+    try {
+        const db = await initializeNeuronsDB();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction([STORE_NAME], 'readonly');
+            const store = transaction.objectStore(STORE_NAME);
+            const request = store.get(snsRoot);
+            
+            request.onsuccess = () => {
+                const data = request.result;
+                if (!data || !data.neurons) {
+                    resolve({ found: [], missing: neuronIdHexArray });
+                    return;
+                }
+                
+                const found = [];
+                const foundIds = new Set();
+                const idSet = new Set(neuronIdHexArray.map(id => id.toLowerCase()));
+                
+                data.neurons.forEach(n => {
+                    if (!n.id?.[0]?.id) return;
+                    const idArray = n.id[0].id;
+                    const hex = Array.isArray(idArray) 
+                        ? idArray.map(b => b.toString(16).padStart(2, '0')).join('')
+                        : uint8ArrayToHex(new Uint8Array(idArray));
+                    
+                    if (idSet.has(hex.toLowerCase())) {
+                        // Reconstruct Uint8Array for neuron ID
+                        const reconstructedNeuron = {
+                            ...n,
+                            id: n.id.map(idObj => ({
+                                ...idObj,
+                                id: new Uint8Array(idObj.id)
+                            }))
+                        };
+                        found.push(reconstructedNeuron);
+                        foundIds.add(hex.toLowerCase());
+                    }
+                });
+                
+                const missing = neuronIdHexArray.filter(id => !foundIds.has(id.toLowerCase()));
+                
+                if (found.length > 0) {
+                    console.log(`%c🧠 [NEURON CACHE] Hydrated ${found.length}/${neuronIdHexArray.length} neurons from shared cache`, 'background: #2ecc71; color: white; padding: 2px 6px;');
+                }
+                
+                resolve({ found, missing });
+            };
+            
+            request.onerror = () => reject(request.error);
+        });
+    } catch (error) {
+        console.warn('Error getting neurons from cache:', error);
+        return { found: [], missing: neuronIdHexArray };
+    }
+};
+
 // ============================================================================
 // MAIN HOOK (for loading all neurons)
 // ============================================================================

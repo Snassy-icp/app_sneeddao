@@ -12,9 +12,10 @@ import { createActor as createFactoryActor, canisterId as factoryCanisterId } fr
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
 import { HttpAgent } from '@dfinity/agent';
 import { getTokenLogo, get_token_conversion_rate, get_available, get_available_backend } from '../utils/TokenUtils';
-import { fetchUserNeuronsForSns } from '../utils/NeuronUtils';
+import { fetchUserNeuronsForSns, uint8ArrayToHex } from '../utils/NeuronUtils';
 import { getTipTokensReceivedByUser } from '../utils/BackendUtils';
-import { fetchAndCacheSnsData, getAllSnses } from '../utils/SnsUtils';
+import { fetchAndCacheSnsData, getAllSnses, getSnsById } from '../utils/SnsUtils';
+import { getNeuronsFromCacheByIds } from '../hooks/useNeuronsCache';
 
 const WalletContext = createContext(null);
 
@@ -197,15 +198,63 @@ export const WalletProvider = ({ children }) => {
                 setHasFetchedPositions(true);
             }
             
-            // Restore neuron cache (Map)
-            if (cachedData.neuronCache) {
-                // Cache stores it as an object with entries, convert back to Map if needed
-                if (cachedData.neuronCache instanceof Map) {
-                    setNeuronCache(cachedData.neuronCache);
-                } else if (Array.isArray(cachedData.neuronCache)) {
-                    setNeuronCache(new Map(cachedData.neuronCache));
-                }
-                setNeuronCacheInitialized(true);
+            // Restore neuron cache from IDs (hydrate from shared IndexedDB cache)
+            // We now store only neuron IDs in localStorage and hydrate from shared cache
+            if (cachedData.neuronCacheIds || cachedData.neuronCache) {
+                // Handle both old format (neuronCache with full objects) and new format (neuronCacheIds)
+                const cacheData = cachedData.neuronCacheIds || cachedData.neuronCache;
+                const entries = cacheData instanceof Map ? Array.from(cacheData.entries()) : 
+                               Array.isArray(cacheData) ? cacheData : [];
+                
+                // For each governance, try to hydrate neurons from shared IndexedDB cache
+                (async () => {
+                    const hydratedMap = new Map();
+                    
+                    for (const [governanceId, neuronDataOrIds] of entries) {
+                        // Extract neuron IDs from either old format (full objects) or new format (just IDs)
+                        let neuronIds;
+                        if (Array.isArray(neuronDataOrIds) && neuronDataOrIds.length > 0) {
+                            if (typeof neuronDataOrIds[0] === 'string') {
+                                // New format: just IDs
+                                neuronIds = neuronDataOrIds;
+                            } else if (neuronDataOrIds[0]?.id) {
+                                // Old format: full neuron objects - extract IDs
+                                neuronIds = neuronDataOrIds.map(n => {
+                                    const idArray = n.id?.[0]?.id;
+                                    if (!idArray) return null;
+                                    return Array.isArray(idArray) 
+                                        ? idArray.map(b => b.toString(16).padStart(2, '0')).join('')
+                                        : uint8ArrayToHex(new Uint8Array(idArray));
+                                }).filter(Boolean);
+                            }
+                        }
+                        
+                        if (!neuronIds || neuronIds.length === 0) continue;
+                        
+                        // Find SNS root for this governance canister
+                        const allSnses = getAllSnses();
+                        const sns = allSnses.find(s => s.canisters?.governance === governanceId);
+                        const snsRoot = sns?.rootCanisterId;
+                        
+                        if (snsRoot) {
+                            // Try to hydrate from shared IndexedDB cache
+                            const { found, missing } = await getNeuronsFromCacheByIds(snsRoot, neuronIds);
+                            if (found.length > 0) {
+                                hydratedMap.set(governanceId, found);
+                            }
+                            // Note: missing neurons will be fetched fresh by fetchAndCacheNeurons
+                        } else if (Array.isArray(neuronDataOrIds) && neuronDataOrIds[0]?.id) {
+                            // No SNS mapping but we have old format full objects - use them directly
+                            hydratedMap.set(governanceId, neuronDataOrIds);
+                        }
+                    }
+                    
+                    if (hydratedMap.size > 0) {
+                        setNeuronCache(hydratedMap);
+                        setNeuronCacheInitialized(true);
+                        console.log(`[WalletContext] Hydrated ${hydratedMap.size} governance caches from shared neuron cache`);
+                    }
+                })();
             }
             
             // Restore neuron managers
@@ -245,10 +294,25 @@ export const WalletProvider = ({ children }) => {
         }
         
         saveCacheTimeoutRef.current = setTimeout(() => {
+            // Convert neuronCache to just IDs for efficient storage
+            // Full neuron data lives in shared IndexedDB cache
+            const neuronCacheIds = Array.from(neuronCache.entries()).map(([govId, neurons]) => {
+                const neuronIds = neurons.map(n => {
+                    const idArray = n.id?.[0]?.id;
+                    if (!idArray) return null;
+                    return idArray instanceof Uint8Array 
+                        ? uint8ArrayToHex(idArray)
+                        : Array.isArray(idArray)
+                            ? idArray.map(b => b.toString(16).padStart(2, '0')).join('')
+                            : null;
+                }).filter(Boolean);
+                return [govId, neuronIds];
+            });
+            
             saveWalletCache(principalId, {
                 walletTokens,
                 liquidityPositions,
-                neuronCache: Array.from(neuronCache.entries()), // Convert Map to array for storage
+                neuronCacheIds, // Store only IDs, not full neuron objects
                 neuronManagers,
                 managerNeurons,
                 managerNeuronsTotal,
