@@ -121,10 +121,10 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
 
     // Filter tokens based on hideDust setting
     const tokensWithBalance = useMemo(() => {
-        // Debug: Check for duplicates in source array (using normalized principal comparison)
+        // Debug: Check for duplicates in source array (using normalized principal comparison with fallback)
         const principalCounts = {};
         walletTokens.forEach(t => {
-            const normalizedId = normalizeCanisterId(t.principal);
+            const normalizedId = normalizeCanisterId(t.principal) || normalizeCanisterId(t.ledger_canister_id);
             principalCounts[normalizedId] = (principalCounts[normalizedId] || 0) + 1;
         });
         const duplicatePrincipals = Object.entries(principalCounts).filter(([, count]) => count > 1);
@@ -1283,7 +1283,9 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                               </div>
                           ) : (
                               tokensWithBalance.map((token, index) => {
-                                  const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
+                                  // Use normalizeCanisterId for the key to ensure consistent keys
+                                  // between cached tokens (might be serialized objects) and network tokens (Principal objects)
+                                  const ledgerId = normalizeCanisterId(token.principal) || normalizeCanisterId(token.ledger_canister_id);
                                   // Calculate total balance (available + locked + staked + maturity + rewards + neurons)
                                   const available = BigInt(token.available || token.balance || 0n);
                                   const locked = BigInt(token.locked || 0n);
