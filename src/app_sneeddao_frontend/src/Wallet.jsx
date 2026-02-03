@@ -764,38 +764,51 @@ function Wallet() {
         loadSnsData();
     }, [identity]);
 
+    // Track if we've already done initial setup to prevent repeated fetches
+    const hasInitializedRef = useRef(false);
+    
+    // Initialize tokens: use context if available, otherwise fetch
     useEffect(() => {
-        if (!isAuthenticated) {
-            // Don't redirect - stay on wallet page and show login message
-            return;
-        }
-
-        // If context already has tokens, use those - no need to refetch
-        // This makes navigating to /wallet instant when quick wallet has loaded
-        const contextHasData = walletTokens && walletTokens.length > 0;
+        if (!isAuthenticated) return;
+        if (hasInitializedRef.current) return; // Already initialized
         
-        if (!contextHasData) {
-            // Only reset and fetch if context doesn't have data
-            setLiquidityPositions([]);
-            Object.keys(known_icrc1_ledgers).forEach(key => delete known_icrc1_ledgers[key]);
-            fetchBalancesAndLocks();
-        } else {
-            // Context has tokens - just mark loading as done
+        // If context already has tokens, use them (instant load)
+        if (contextHasFetchedTokens && walletTokens && walletTokens.length > 0) {
             setShowTokensSpinner(false);
-            // Still populate known_icrc1_ledgers for incremental updates
+            // Populate known_icrc1_ledgers for future incremental updates
             walletTokens.forEach(token => {
                 const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.principal;
                 if (ledgerId) known_icrc1_ledgers[ledgerId] = true;
             });
+            hasInitializedRef.current = true;
+        } else if (!contextHasFetchedTokens) {
+            // Context hasn't fetched yet - wait for it
+            // Don't double-fetch, context will load the data
         }
+    }, [isAuthenticated, contextHasFetchedTokens, walletTokens]);
+    
+    // Fetch wallet-specific data (positions, neuron managers, etc.) on mount
+    useEffect(() => {
+        if (!isAuthenticated) return;
         
-        // These are wallet-specific and should always run
         fetchLiquidityPositions();
         fetchIcpPrice();
         fetchNeuronManagers();
         fetchIcpToCyclesRate();
         fetchTrackedCanisters();
-    }, [isAuthenticated, location.search, refreshTrigger]);
+    }, [isAuthenticated]);
+    
+    // Handle manual refresh
+    useEffect(() => {
+        if (refreshTrigger > 0 && isAuthenticated) {
+            hasInitializedRef.current = false;
+            // Trigger context refresh which will update our derived tokens
+            if (contextRefreshWallet) {
+                contextRefreshWallet();
+            }
+            fetchLiquidityPositions();
+        }
+    }, [refreshTrigger, isAuthenticated, contextRefreshWallet]);
 
     // Note: No longer syncing tokens to WalletContext here - tokens is now derived FROM context
 
