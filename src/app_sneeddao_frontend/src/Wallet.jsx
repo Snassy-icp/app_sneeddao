@@ -843,6 +843,19 @@ function Wallet() {
         }
     }, [isAuthenticated, contextHasFetchedTokens, walletTokens]);
     
+    // Fetch rewards when tokens are loaded (either from context or fresh fetch)
+    // Rewards are not cached, so we need to fetch them each time
+    const hasInitializedRewardsRef = useRef(false);
+    useEffect(() => {
+        if (!isAuthenticated || !identity) return;
+        if (hasInitializedRewardsRef.current) return;
+        if (!tokens || tokens.length === 0) return;
+        
+        // Fetch rewards once tokens are available
+        hasInitializedRewardsRef.current = true;
+        fetchRewardDetails();
+    }, [isAuthenticated, identity, tokens]);
+    
     // Fetch wallet-specific data on mount
     // Positions and neuron managers are now fetched by WalletContext and shared with quick wallet
     useEffect(() => {
@@ -857,6 +870,7 @@ function Wallet() {
     useEffect(() => {
         if (refreshTrigger > 0 && isAuthenticated) {
             hasInitializedRef.current = false;
+            hasInitializedRewardsRef.current = false; // Reset rewards fetch flag
             setLocalPositionOverrides({}); // Clear local overrides
             // Trigger context refresh which will update our derived tokens and positions
             if (contextRefreshWallet) {
@@ -943,7 +957,7 @@ function Wallet() {
             const stakedUSD = (neuronStake / divisor) * rate;
             const maturityUSD = (neuronMaturity / divisor) * rate;
             
-            const rewardRaw = rewardDetailsLoading?.[token.ledger_canister_id];
+            const rewardRaw = rewardDetailsLoading?.[ledgerId];
             const rewardUSD = rewardRaw ? (Number(BigInt(rewardRaw)) / divisor) * rate : 0;
             
             const tokenTotal = availableUSD + lockedUSD + stakedUSD + maturityUSD + rewardUSD;
@@ -1112,81 +1126,98 @@ function Wallet() {
     }
 
     async function fetchRewardDetails(for_ledger_id) {
-        if (for_ledger_id) {
+        const normalizedForLedgerId = for_ledger_id ? normalizeId(for_ledger_id) : null;
+        
+        if (normalizedForLedgerId) {
             setRewardDetailsLoading(prevState => ({
                 ...prevState,
-                [normalizeId(for_ledger_id)]: BigInt(-1)
+                [normalizedForLedgerId]: BigInt(-1)
             }));
         } else {
             setRewardDetailsLoading({});
         }
-        // fetch rewards from RLL canister
-        const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
         
-        // Get neurons using the common utility function with Sneed governance canister
-        const sneedGovernanceCanisterId = 'fi3zi-fyaaa-aaaaq-aachq-cai';
-        const neurons = await fetchUserNeuronsForSns(identity, sneedGovernanceCanisterId);
-        
-        // Then get rewards using the new query method
-        const arr_balances = await rllActor.balances_of_hotkey_neurons(neurons);
+        try {
+            // fetch rewards from RLL canister
+            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
+            
+            // Get neurons using the common utility function with Sneed governance canister
+            const sneedGovernanceCanisterId = 'fi3zi-fyaaa-aaaaq-aachq-cai';
+            const neurons = await fetchUserNeuronsForSns(identity, sneedGovernanceCanisterId);
+            
+            // Then get rewards using the new query method
+            const arr_balances = await rllActor.balances_of_hotkey_neurons(neurons);
 
-        var new_reward_balances = {};
-        var new_icrc1_ledgers = [];
+            var new_reward_balances = {};
+            var new_icrc1_ledgers = [];
 
-        for (const balance of arr_balances) {
-            const ledger_id = normalizeId(balance[0]);
-            new_reward_balances[ledger_id] = BigInt(balance[1]);
-            if (!known_icrc1_ledgers[ledger_id]) {
-                known_icrc1_ledgers[ledger_id] = true;
-                new_icrc1_ledgers[new_icrc1_ledgers.length] = balance[0];
-            }
-        };
+            for (const balance of arr_balances) {
+                const ledger_id = normalizeId(balance[0]);
+                new_reward_balances[ledger_id] = BigInt(balance[1]);
+                if (!known_icrc1_ledgers[ledger_id]) {
+                    known_icrc1_ledgers[ledger_id] = true;
+                    new_icrc1_ledgers[new_icrc1_ledgers.length] = balance[0];
+                }
+            };
 
-        if (for_ledger_id) {
-            const normalizedForLedgerId = normalizeId(for_ledger_id);
-            setRewardDetailsLoading(prevState => ({
-                ...prevState,
-                [normalizedForLedgerId]: new_reward_balances[normalizedForLedgerId]
-            }));
-        } else {
-            if (Object.keys(new_reward_balances).length === 0) {
-                setRewardDetailsLoading({ "aaaa-aa" : -1 }); // make non-empty to prevent forever spinners
+            if (normalizedForLedgerId) {
+                // Set to 0 if no rewards for this token (clear the loading state)
+                const rewardValue = new_reward_balances[normalizedForLedgerId] ?? 0n;
+                setRewardDetailsLoading(prevState => ({
+                    ...prevState,
+                    [normalizedForLedgerId]: rewardValue
+                }));
             } else {
-                setRewardDetailsLoading(new_reward_balances);
+                if (Object.keys(new_reward_balances).length === 0) {
+                    setRewardDetailsLoading({ "aaaa-aa" : 0 }); // make non-empty with 0 to indicate loaded
+                } else {
+                    setRewardDetailsLoading(new_reward_balances);
+                }
             }
-        }
 
-        if (new_icrc1_ledgers.length > 0) {
-            // Reverse order to match main tokens ordering
-            const reversedLedgers = [...new_icrc1_ledgers].reverse();
-            
-            // Add placeholders at the end to preserve order
-            const placeholders = reversedLedgers.map(ledger => ({
-                ledger_canister_id: ledger,
-                symbol: '...',
-                decimals: 8,
-                fee: 0n,
-                logo: '',
-                balance: 0n,
-                balance_backend: 0n,
-                locked: 0n,
-                available: 0n,
-                available_backend: 0n,
-                conversion_rate: 0,
-                loading: true
-            }));
-            setTokens(prevTokens => [...prevTokens, ...placeholders]);
-            
-            const allUpdatedTokens = await Promise.all(reversedLedgers.map(async (icrc1_ledger) => {
-                const updatedToken = await fetchTokenDetails(icrc1_ledger, summed_locks);
-                // Update the specific token by matching ledger_canister_id
-                setTokens(prevTokens => prevTokens.map(token => 
-                    normalizeId(token.ledger_canister_id) === normalizeId(icrc1_ledger) ? updatedToken : token
-                ));
-                return updatedToken;
-            }));
+            if (new_icrc1_ledgers.length > 0) {
+                // Reverse order to match main tokens ordering
+                const reversedLedgers = [...new_icrc1_ledgers].reverse();
+                
+                // Add placeholders at the end to preserve order
+                const placeholders = reversedLedgers.map(ledger => ({
+                    ledger_canister_id: ledger,
+                    symbol: '...',
+                    decimals: 8,
+                    fee: 0n,
+                    logo: '',
+                    balance: 0n,
+                    balance_backend: 0n,
+                    locked: 0n,
+                    available: 0n,
+                    available_backend: 0n,
+                    conversion_rate: 0,
+                    loading: true
+                }));
+                setTokens(prevTokens => [...prevTokens, ...placeholders]);
+                
+                const allUpdatedTokens = await Promise.all(reversedLedgers.map(async (icrc1_ledger) => {
+                    const updatedToken = await fetchTokenDetails(icrc1_ledger, summed_locks);
+                    // Update the specific token by matching ledger_canister_id
+                    setTokens(prevTokens => prevTokens.map(token => 
+                        normalizeId(token.ledger_canister_id) === normalizeId(icrc1_ledger) ? updatedToken : token
+                    ));
+                    return updatedToken;
+                }));
 
-            fetchLockDetails(allUpdatedTokens);
+                fetchLockDetails(allUpdatedTokens);
+            }
+        } catch (error) {
+            console.error('Error fetching reward details:', error);
+            // Clear loading state on error
+            if (normalizedForLedgerId) {
+                setRewardDetailsLoading(prevState => ({
+                    ...prevState,
+                    [normalizedForLedgerId]: 0n // Set to 0 to clear loading
+                }));
+            } else {
+                setRewardDetailsLoading({ "aaaa-aa" : 0 }); // make non-empty with 0 to indicate loaded (with error)
+            }
         }
     }
 
