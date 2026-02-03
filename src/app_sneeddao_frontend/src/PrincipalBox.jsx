@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaCopy, FaCheck, FaWallet, FaPaperPlane, FaKey, FaIdCard, FaExternalLinkAlt, FaSync, FaCoins, FaWater, FaLock } from 'react-icons/fa';
+import { FaCopy, FaCheck, FaWallet, FaPaperPlane, FaKey, FaIdCard, FaExternalLinkAlt, FaSync, FaCoins, FaWater, FaLock, FaBug, FaTimes } from 'react-icons/fa';
+import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { Principal } from '@dfinity/principal';
 import { principalToSubAccount } from '@dfinity/utils';
 import { useAuth } from './AuthContext';
@@ -45,6 +46,9 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const [detailPosition, setDetailPosition] = useState(null);
     const [detailPositionDetails, setDetailPositionDetails] = useState(null);
     const [isRefreshingPosition, setIsRefreshingPosition] = useState(false);
+    const [isAdmin, setIsAdmin] = useState(false);
+    const [showDebugReportModal, setShowDebugReportModal] = useState(false);
+    const [debugReportCopied, setDebugReportCopied] = useState(false);
     const popupRef = useRef(null);
     const { login, identity } = useAuth();
     const { theme } = useTheme();
@@ -84,6 +88,27 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         window.addEventListener('storage', handleStorageChange);
         return () => window.removeEventListener('storage', handleStorageChange);
     }, []);
+
+    // Check admin status for debug features
+    useEffect(() => {
+        const checkAdmin = async () => {
+            if (!identity) {
+                setIsAdmin(false);
+                return;
+            }
+            try {
+                const backendActor = createBackendActor(backendCanisterId, {
+                    agentOptions: { identity }
+                });
+                const result = await backendActor.caller_is_admin();
+                setIsAdmin(result);
+            } catch (err) {
+                console.warn('Error checking admin status:', err);
+                setIsAdmin(false);
+            }
+        };
+        checkAdmin();
+    }, [identity]);
 
     // Filter tokens based on hideDust setting
     const tokensWithBalance = useMemo(() => {
@@ -204,6 +229,100 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         const total = tokens + positions;
         return total > 0 ? total : null;
     }, [totalTokensUSD, totalPositionsUSD]);
+
+    // Generate debug report for quick wallet totals
+    const generateQuickWalletDebugReport = useCallback(() => {
+        const timestamp = new Date().toISOString();
+        const lines = [];
+        
+        lines.push('='.repeat(60));
+        lines.push('QUICK WALLET DEBUG REPORT');
+        lines.push(`Generated: ${timestamp}`);
+        lines.push('='.repeat(60));
+        lines.push('');
+        
+        // Summary - calculated values
+        lines.push('--- SUMMARY (Calculated) ---');
+        lines.push(`Tokens Total (calculated): $${(totalTokensUSD || 0).toFixed(2)}`);
+        lines.push(`Positions Total (calculated): $${(totalPositionsUSD || 0).toFixed(2)}`);
+        lines.push(`Grand Total (calculated): $${(grandTotalUSD || 0).toFixed(2)}`);
+        lines.push('');
+        
+        // Token details
+        lines.push('--- TOKEN DETAILS ---');
+        lines.push(`Tokens count: ${walletTokens.length}`);
+        lines.push(`Tokens with balance: ${tokensWithBalance.length}`);
+        lines.push('');
+        
+        for (const token of tokensWithBalance) {
+            const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.ledger_canister_id || token.principal;
+            const decimals = Number(token.decimals || 8);
+            const divisor = Math.pow(10, decimals);
+            const rate = Number(token.conversion_rate || 0);
+            
+            const available = Number(token.available || token.balance || 0n);
+            const locked = Number(token.locked || 0n);
+            const neuronStake = Number(token.neuronStake || 0n);
+            const neuronMaturity = Number(token.neuronMaturity || 0n);
+            
+            const availableUSD = (available / divisor) * rate;
+            const lockedUSD = (locked / divisor) * rate;
+            const neuronStakeUSD = (neuronStake / divisor) * rate;
+            const neuronMaturityUSD = (neuronMaturity / divisor) * rate;
+            const tokenTotal = availableUSD + lockedUSD + neuronStakeUSD + neuronMaturityUSD;
+            
+            lines.push(`${token.symbol} (${ledgerId})`);
+            lines.push(`  Decimals: ${decimals}, Rate: ${rate}`);
+            lines.push(`  Available: ${(available / divisor).toFixed(8)} = $${availableUSD.toFixed(2)}`);
+            lines.push(`  Locked: ${(locked / divisor).toFixed(8)} = $${lockedUSD.toFixed(2)}`);
+            if (neuronStake > 0) lines.push(`  NeuronStake: ${(neuronStake / divisor).toFixed(8)} = $${neuronStakeUSD.toFixed(2)}`);
+            if (neuronMaturity > 0) lines.push(`  NeuronMaturity: ${(neuronMaturity / divisor).toFixed(8)} = $${neuronMaturityUSD.toFixed(2)}`);
+            lines.push(`  Token Total: $${tokenTotal.toFixed(2)}`);
+            lines.push(`  Has neuronsLoaded: ${token.neuronsLoaded || false}`);
+            lines.push('');
+        }
+        
+        // LP Positions details
+        lines.push('--- LP POSITION DETAILS ---');
+        lines.push(`Positions count: ${flattenedPositions.length}`);
+        lines.push('');
+        
+        for (const { position, positionDetails } of flattenedPositions) {
+            const decimals0 = Number(position.token0Decimals || 8);
+            const decimals1 = Number(position.token1Decimals || 8);
+            const amount0 = positionDetails.amount0 !== undefined 
+                ? Number(positionDetails.amount0) / Math.pow(10, decimals0) 
+                : 0;
+            const amount1 = positionDetails.amount1 !== undefined 
+                ? Number(positionDetails.amount1) / Math.pow(10, decimals1) 
+                : 0;
+            const fees0 = positionDetails.tokensOwed0 !== undefined 
+                ? Number(positionDetails.tokensOwed0) / Math.pow(10, decimals0) 
+                : 0;
+            const fees1 = positionDetails.tokensOwed1 !== undefined 
+                ? Number(positionDetails.tokensOwed1) / Math.pow(10, decimals1) 
+                : 0;
+            
+            const liq0USD = position.token0_conversion_rate ? amount0 * Number(position.token0_conversion_rate) : 0;
+            const liq1USD = position.token1_conversion_rate ? amount1 * Number(position.token1_conversion_rate) : 0;
+            const fee0USD = position.token0_conversion_rate ? fees0 * Number(position.token0_conversion_rate) : 0;
+            const fee1USD = position.token1_conversion_rate ? fees1 * Number(position.token1_conversion_rate) : 0;
+            
+            lines.push(`${position.token0Symbol}/${position.token1Symbol} #${positionDetails.positionId}`);
+            lines.push(`  Swap: ${position.swapCanisterId}`);
+            lines.push(`  Token0 Rate: ${position.token0_conversion_rate}, Token1 Rate: ${position.token1_conversion_rate}`);
+            lines.push(`  Token0 Liquidity: ${amount0.toFixed(8)} = $${liq0USD.toFixed(2)}, Fees: ${fees0.toFixed(8)} = $${fee0USD.toFixed(2)}`);
+            lines.push(`  Token1 Liquidity: ${amount1.toFixed(8)} = $${liq1USD.toFixed(2)}, Fees: ${fees1.toFixed(8)} = $${fee1USD.toFixed(2)}`);
+            lines.push(`  Position Total: $${(liq0USD + liq1USD + fee0USD + fee1USD).toFixed(2)}`);
+            lines.push('');
+        }
+        
+        lines.push('='.repeat(60));
+        lines.push('END REPORT');
+        lines.push('='.repeat(60));
+        
+        return lines.join('\n');
+    }, [walletTokens, tokensWithBalance, flattenedPositions, totalTokensUSD, totalPositionsUSD, grandTotalUSD]);
     
     // Open send modal for a token
     const openSendModal = (token, e) => {
@@ -855,13 +974,37 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                   <FaWallet size={10} style={{ marginRight: '6px' }} />
                                   Total Balance
                               </span>
-                              <span style={{
-                                  color: '#10b981',
-                                  fontSize: '16px',
-                                  fontWeight: '700'
-                              }}>
-                                  ${grandTotalUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span style={{
+                                      color: '#10b981',
+                                      fontSize: '16px',
+                                      fontWeight: '700'
+                                  }}>
+                                      ${grandTotalUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </span>
+                                  {/* Admin debug report button */}
+                                  {isAdmin && (
+                                      <button
+                                          onClick={(e) => {
+                                              e.stopPropagation();
+                                              setShowDebugReportModal(true);
+                                          }}
+                                          style={{
+                                              background: 'transparent',
+                                              border: `1px solid ${theme.colors.border}`,
+                                              borderRadius: '4px',
+                                              padding: '3px 5px',
+                                              cursor: 'pointer',
+                                              color: theme.colors.mutedText,
+                                              display: 'flex',
+                                              alignItems: 'center'
+                                          }}
+                                          title="Debug Report"
+                                      >
+                                          <FaBug size={9} />
+                                      </button>
+                                  )}
+                              </div>
                           </div>
                       )}
 
@@ -1669,6 +1812,109 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
           token0Fee={detailPosition?.token0Fee}
           token1Fee={detailPosition?.token1Fee}
       />
+      
+      {/* Debug Report Modal (Admin only) */}
+      {showDebugReportModal && (
+          <div style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.7)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 10001,
+              padding: '20px'
+          }} onClick={() => setShowDebugReportModal(false)}>
+              <div style={{
+                  background: theme.colors.primaryBg,
+                  borderRadius: '12px',
+                  padding: '20px',
+                  maxWidth: '800px',
+                  maxHeight: '80vh',
+                  width: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px'
+              }} onClick={(e) => e.stopPropagation()}>
+                  <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      borderBottom: `1px solid ${theme.colors.border}`,
+                      paddingBottom: '12px'
+                  }}>
+                      <h3 style={{ 
+                          margin: 0, 
+                          color: theme.colors.primaryText,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          fontSize: '1rem'
+                      }}>
+                          <FaBug /> Quick Wallet Debug Report
+                      </h3>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                              onClick={() => {
+                                  navigator.clipboard.writeText(generateQuickWalletDebugReport());
+                                  setDebugReportCopied(true);
+                                  setTimeout(() => setDebugReportCopied(false), 2000);
+                              }}
+                              style={{
+                                  background: debugReportCopied ? '#10b981' : theme.colors.accent,
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '6px',
+                                  padding: '8px 12px',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  fontSize: '0.85rem'
+                              }}
+                          >
+                              {debugReportCopied ? <FaCheck /> : <FaCopy />}
+                              {debugReportCopied ? 'Copied!' : 'Copy'}
+                          </button>
+                          <button
+                              onClick={() => setShowDebugReportModal(false)}
+                              style={{
+                                  background: 'transparent',
+                                  border: `1px solid ${theme.colors.border}`,
+                                  borderRadius: '6px',
+                                  padding: '8px 12px',
+                                  cursor: 'pointer',
+                                  color: theme.colors.primaryText,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  fontSize: '0.85rem'
+                              }}
+                          >
+                              <FaTimes /> Close
+                          </button>
+                      </div>
+                  </div>
+                  <pre style={{
+                      flex: 1,
+                      overflow: 'auto',
+                      background: theme.colors.secondaryBg,
+                      padding: '12px',
+                      borderRadius: '6px',
+                      fontSize: '0.7rem',
+                      fontFamily: 'monospace',
+                      color: theme.colors.primaryText,
+                      whiteSpace: 'pre-wrap',
+                      margin: 0
+                  }}>
+                      {generateQuickWalletDebugReport()}
+                  </pre>
+              </div>
+          </div>
+      )}
   </>
   );
 }

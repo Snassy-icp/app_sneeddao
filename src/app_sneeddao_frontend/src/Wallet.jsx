@@ -55,7 +55,7 @@ import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings, getCanis
 import { PERM } from './utils/NeuronPermissionUtils.jsx';
 import { Actor } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
-import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle, FaTint, FaSeedling, FaGift, FaHourglassHalf, FaWater, FaUnlock, FaCheck, FaExclamationTriangle, FaCrown, FaBox, FaDatabase, FaCog, FaExternalLinkAlt, FaTimes, FaLightbulb, FaArrowRight, FaDollarSign, FaChartBar, FaBullseye, FaMoneyBillWave } from 'react-icons/fa';
+import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle, FaTint, FaSeedling, FaGift, FaHourglassHalf, FaWater, FaUnlock, FaCheck, FaExclamationTriangle, FaCrown, FaBox, FaDatabase, FaCog, FaExternalLinkAlt, FaTimes, FaLightbulb, FaArrowRight, FaDollarSign, FaChartBar, FaBullseye, FaMoneyBillWave, FaBug, FaCopy } from 'react-icons/fa';
 
 // Custom CSS for Wallet page animations
 const walletCustomStyles = `
@@ -587,6 +587,11 @@ function Wallet() {
     const [canisterTopUpError, setCanisterTopUpError] = useState('');
     const [canisterTopUpSuccess, setCanisterTopUpSuccess] = useState('');
     const [canisterToppingUp, setCanisterToppingUp] = useState(false);
+    
+    // Admin debug report state
+    const [isAdmin, setIsAdmin] = useState(false);
+    const [showDebugReportModal, setShowDebugReportModal] = useState(false);
+    const [debugReportCopied, setDebugReportCopied] = useState(false);
     const [transferCanisterModalOpen, setTransferCanisterModalOpen] = useState(false);
     const [transferTargetCanister, setTransferTargetCanister] = useState(null);
     const [transferCanisterRecipient, setTransferCanisterRecipient] = useState('');
@@ -751,6 +756,137 @@ function Wallet() {
     useEffect(() => {
         setWalletLoading(showTokensSpinner);
     }, [showTokensSpinner, setWalletLoading]);
+
+    // Check admin status for debug features
+    useEffect(() => {
+        const checkAdmin = async () => {
+            if (!identity || !isAuthenticated) {
+                setIsAdmin(false);
+                return;
+            }
+            try {
+                const backendActor = createBackendActor(backendCanisterId, {
+                    agentOptions: { identity }
+                });
+                const result = await backendActor.caller_is_admin();
+                setIsAdmin(result);
+            } catch (err) {
+                console.warn('Error checking admin status:', err);
+                setIsAdmin(false);
+            }
+        };
+        checkAdmin();
+    }, [identity, isAuthenticated]);
+
+    // Generate debug report for wallet totals
+    const generateDebugReport = () => {
+        const timestamp = new Date().toISOString();
+        const lines = [];
+        
+        lines.push('='.repeat(60));
+        lines.push('WALLET DEBUG REPORT');
+        lines.push(`Generated: ${timestamp}`);
+        lines.push('='.repeat(60));
+        lines.push('');
+        
+        // Summary
+        lines.push('--- SUMMARY ---');
+        lines.push(`Grand Total: $${totalDollarValue}`);
+        lines.push(`Tokens Total: $${tokensTotal.toFixed(2)}`);
+        lines.push(`LP Positions Total: $${lpPositionsTotal.toFixed(2)}`);
+        lines.push('');
+        
+        // Breakdown
+        lines.push('--- BREAKDOWN ---');
+        lines.push(`Liquid: $${totalBreakdown.liquid?.toFixed(2) || '0.00'}`);
+        lines.push(`Locked (tokens): $${totalBreakdown.locked?.toFixed(2) || '0.00'}`);
+        lines.push(`Staked (neurons): $${totalBreakdown.staked?.toFixed(2) || '0.00'}`);
+        lines.push(`Maturity: $${totalBreakdown.maturity?.toFixed(2) || '0.00'}`);
+        lines.push(`Rewards: $${totalBreakdown.rewards?.toFixed(2) || '0.00'}`);
+        lines.push(`LP Liquidity: $${totalBreakdown.liquidity?.toFixed(2) || '0.00'}`);
+        lines.push(`LP Fees: $${totalBreakdown.fees?.toFixed(2) || '0.00'}`);
+        lines.push('');
+        
+        // Token details
+        lines.push('--- TOKEN DETAILS ---');
+        for (const token of tokens) {
+            const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
+            const divisor = 10 ** (token.decimals || 8);
+            const rate = token.conversion_rate || 0;
+            
+            const available = Number(token.available || 0n);
+            const locked = Number(token.locked || 0n);
+            const availableUSD = (available / divisor) * rate;
+            const lockedUSD = (locked / divisor) * rate;
+            
+            const neuronData = neuronTotals[ledgerId];
+            const stakedUSD = neuronData?.staked || 0;
+            const maturityUSD = neuronData?.maturity || 0;
+            
+            const rewardRaw = rewardDetailsLoading?.[token.ledger_canister_id];
+            const rewardUSD = rewardRaw ? (Number(BigInt(rewardRaw)) / divisor) * rate : 0;
+            
+            const tokenTotal = availableUSD + lockedUSD + stakedUSD + maturityUSD + rewardUSD;
+            
+            if (tokenTotal > 0.001 || available > 0 || locked > 0) {
+                lines.push('');
+                lines.push(`${token.symbol} (${ledgerId})`);
+                lines.push(`  Decimals: ${token.decimals}, Rate: ${rate}`);
+                lines.push(`  Available: ${(available / divisor).toFixed(8)} = $${availableUSD.toFixed(2)}`);
+                lines.push(`  Locked: ${(locked / divisor).toFixed(8)} = $${lockedUSD.toFixed(2)}`);
+                if (stakedUSD > 0) lines.push(`  Staked (neurons): $${stakedUSD.toFixed(2)}`);
+                if (maturityUSD > 0) lines.push(`  Maturity: $${maturityUSD.toFixed(2)}`);
+                if (rewardUSD > 0) lines.push(`  Rewards: $${rewardUSD.toFixed(2)}`);
+                lines.push(`  Token Total: $${tokenTotal.toFixed(2)}`);
+            }
+        }
+        
+        // neuronTotals state
+        lines.push('');
+        lines.push('--- NEURON TOTALS STATE ---');
+        for (const [ledgerId, data] of Object.entries(neuronTotals)) {
+            if (typeof data === 'object') {
+                lines.push(`${ledgerId}: total=$${data.total?.toFixed(2)}, staked=$${data.staked?.toFixed(2)}, maturity=$${data.maturity?.toFixed(2)}`);
+            } else {
+                lines.push(`${ledgerId}: ${data}`);
+            }
+        }
+        
+        // LP Positions details
+        lines.push('');
+        lines.push('--- LP POSITION DETAILS ---');
+        for (const lp of liquidityPositions) {
+            for (const positionDetails of lp.positions) {
+                const fees0USD = parseFloat(formatAmountWithConversion(positionDetails.tokensOwed0, lp.token0Decimals, lp.token0_conversion_rate)) || 0;
+                const fees1USD = parseFloat(formatAmountWithConversion(positionDetails.tokensOwed1, lp.token1Decimals, lp.token1_conversion_rate)) || 0;
+                const liq0USD = parseFloat(formatAmountWithConversion(positionDetails.token0Amount, lp.token0Decimals, lp.token0_conversion_rate)) || 0;
+                const liq1USD = parseFloat(formatAmountWithConversion(positionDetails.token1Amount, lp.token1Decimals, lp.token1_conversion_rate)) || 0;
+                
+                lines.push('');
+                lines.push(`${lp.token0Symbol}/${lp.token1Symbol} #${positionDetails.positionId}`);
+                lines.push(`  Swap: ${lp.swapCanisterId}`);
+                lines.push(`  Token0 Liquidity: $${liq0USD.toFixed(2)}, Fees: $${fees0USD.toFixed(2)}`);
+                lines.push(`  Token1 Liquidity: $${liq1USD.toFixed(2)}, Fees: $${fees1USD.toFixed(2)}`);
+                lines.push(`  Position Total: $${(liq0USD + liq1USD + fees0USD + fees1USD).toFixed(2)}`);
+            }
+        }
+        
+        // Manager neurons
+        if (managerNeuronsTotal > 0 && icpPrice) {
+            lines.push('');
+            lines.push('--- ICP NEURON MANAGERS ---');
+            lines.push(`Total ICP: ${managerNeuronsTotal.toFixed(8)}`);
+            lines.push(`ICP Price: $${icpPrice}`);
+            lines.push(`USD Value: $${(managerNeuronsTotal * icpPrice).toFixed(2)}`);
+        }
+        
+        lines.push('');
+        lines.push('='.repeat(60));
+        lines.push('END REPORT');
+        lines.push('='.repeat(60));
+        
+        return lines.join('\n');
+    };
 
     // Fetch ICP price
     const fetchIcpPrice = async () => {
@@ -4527,11 +4663,38 @@ function Wallet() {
                                         )}
                                     </div>
                                     <div style={{ 
-                                        color: walletPrimary, 
-                                        fontSize: '1.5rem', 
-                                        fontWeight: '700'
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem'
                                     }}>
-                                        ${totalDollarValue}
+                                        <div style={{ 
+                                            color: walletPrimary, 
+                                            fontSize: '1.5rem', 
+                                            fontWeight: '700'
+                                        }}>
+                                            ${totalDollarValue}
+                                        </div>
+                                        {/* Admin debug report button */}
+                                        {isAdmin && (
+                                            <button
+                                                onClick={() => setShowDebugReportModal(true)}
+                                                style={{
+                                                    background: 'transparent',
+                                                    border: `1px solid ${theme.colors.border}`,
+                                                    borderRadius: '4px',
+                                                    padding: '4px 6px',
+                                                    cursor: 'pointer',
+                                                    color: theme.colors.mutedText,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px',
+                                                    fontSize: '0.7rem'
+                                                }}
+                                                title="Debug Report"
+                                            >
+                                                <FaBug size={10} />
+                                            </button>
+                                        )}
                                     </div>
                                     {/* Breakdown badges inside portfolio card */}
                                     {totalBreakdown && (totalBreakdown.liquid > 0 || totalBreakdown.staked > 0 || totalBreakdown.locked > 0 || totalBreakdown.liquidity > 0 || totalBreakdown.hasAnyRewards || totalBreakdown.hasAnyFees || totalBreakdown.hasAnyMaturity) && (
@@ -7325,6 +7488,109 @@ function Wallet() {
                     items={consolidateItems}
                     onConsolidate={handleConsolidateItem}
                 />
+                
+                {/* Debug Report Modal (Admin only) */}
+                {showDebugReportModal && (
+                    <div style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: 'rgba(0,0,0,0.7)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 10000,
+                        padding: '20px'
+                    }} onClick={() => setShowDebugReportModal(false)}>
+                        <div style={{
+                            background: theme.colors.primaryBg,
+                            borderRadius: '12px',
+                            padding: '20px',
+                            maxWidth: '800px',
+                            maxHeight: '80vh',
+                            width: '100%',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '12px'
+                        }} onClick={(e) => e.stopPropagation()}>
+                            <div style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                borderBottom: `1px solid ${theme.colors.border}`,
+                                paddingBottom: '12px'
+                            }}>
+                                <h3 style={{ 
+                                    margin: 0, 
+                                    color: theme.colors.primaryText,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px'
+                                }}>
+                                    <FaBug /> /wallet Debug Report
+                                </h3>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <button
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(generateDebugReport());
+                                            setDebugReportCopied(true);
+                                            setTimeout(() => setDebugReportCopied(false), 2000);
+                                        }}
+                                        style={{
+                                            background: debugReportCopied ? '#10b981' : theme.colors.accent,
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '6px',
+                                            padding: '8px 12px',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            fontSize: '0.85rem'
+                                        }}
+                                    >
+                                        {debugReportCopied ? <FaCheck /> : <FaCopy />}
+                                        {debugReportCopied ? 'Copied!' : 'Copy'}
+                                    </button>
+                                    <button
+                                        onClick={() => setShowDebugReportModal(false)}
+                                        style={{
+                                            background: 'transparent',
+                                            border: `1px solid ${theme.colors.border}`,
+                                            borderRadius: '6px',
+                                            padding: '8px 12px',
+                                            cursor: 'pointer',
+                                            color: theme.colors.primaryText,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            fontSize: '0.85rem'
+                                        }}
+                                    >
+                                        <FaTimes /> Close
+                                    </button>
+                                </div>
+                            </div>
+                            <pre style={{
+                                flex: 1,
+                                overflow: 'auto',
+                                background: theme.colors.secondaryBg,
+                                padding: '12px',
+                                borderRadius: '6px',
+                                fontSize: '0.75rem',
+                                fontFamily: 'monospace',
+                                color: theme.colors.primaryText,
+                                whiteSpace: 'pre-wrap',
+                                margin: 0
+                            }}>
+                                {generateDebugReport()}
+                            </pre>
+                        </div>
+                    </div>
+                )}
+                
                 <TokenCardModal
                     show={showTokenDetailModal}
                     onClose={() => setShowTokenDetailModal(false)}
