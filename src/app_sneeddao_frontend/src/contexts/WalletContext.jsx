@@ -20,187 +20,233 @@ import { getNeuronsFromCacheByIds } from '../hooks/useNeuronsCache';
 const WalletContext = createContext(null);
 
 // ============================================================================
-// PERSISTENT CACHE HELPERS
+// PERSISTENT CACHE HELPERS (IndexedDB - much larger quota than localStorage)
 // ============================================================================
 
-const WALLET_CACHE_KEY_PREFIX = 'walletCache_';
-const CACHE_VERSION = 1; // Increment if cache structure changes
+const WALLET_DB_NAME = 'sneed_wallet_cache';
+const WALLET_DB_VERSION = 1;
+const WALLET_STORE_NAME = 'walletData';
+const CACHE_VERSION = 2; // Increment when cache structure changes
 
-// Custom JSON replacer to handle BigInt, Principal, TypedArrays, Map, Set
-const jsonReplacer = (key, value) => {
-    if (typeof value === 'bigint') {
-        return { __type: 'BigInt', value: value.toString() };
-    }
-    if (value && typeof value === 'object' && value._isPrincipal) {
-        return { __type: 'Principal', value: value.toString() };
-    }
-    if (value instanceof Principal) {
-        return { __type: 'Principal', value: value.toString() };
-    }
-    if (value instanceof Map) {
-        return { __type: 'Map', value: Array.from(value.entries()) };
-    }
-    if (value instanceof Set) {
-        return { __type: 'Set', value: Array.from(value) };
-    }
-    // Handle TypedArrays (Uint8Array, Int32Array, etc.) - common in candid data
-    if (ArrayBuffer.isView(value) && !(value instanceof DataView)) {
-        return { __type: 'TypedArray', arrayType: value.constructor.name, value: Array.from(value) };
-    }
-    return value;
-};
-
-// Custom JSON reviver to restore BigInt, Principal, TypedArrays, Map, Set
-const jsonReviver = (key, value) => {
-    if (value && typeof value === 'object' && value.__type) {
-        switch (value.__type) {
-            case 'BigInt':
-                return BigInt(value.value);
-            case 'Principal':
-                return Principal.fromText(value.value);
-            case 'Map':
-                return new Map(value.value.map(([k, v]) => [k, v]));
-            case 'Set':
-                return new Set(value.value);
-            case 'TypedArray':
-                // Restore typed arrays
-                const TypedArrayConstructor = globalThis[value.arrayType];
-                if (TypedArrayConstructor) {
-                    return new TypedArrayConstructor(value.value);
-                }
-                return value.value; // Fallback to regular array
-            default:
-                return value;
-        }
-    }
-    return value;
-};
-
-// Strip large fields from tokens to reduce cache size
-const stripTokensForCache = (tokens) => {
-    if (!tokens) return tokens;
-    return tokens.map(token => {
-        const stripped = { ...token };
-        // Remove logo if it's a large base64 string (keep small URLs)
-        if (stripped.logo && stripped.logo.length > 200) {
-            delete stripped.logo;
-        }
-        return stripped;
-    });
-};
-
-// Strip large fields from positions to reduce cache size
-const stripPositionsForCache = (positions) => {
-    if (!positions) return positions;
-    return positions.map(pos => {
-        const stripped = { ...pos };
-        // Remove logos if they're large base64 strings
-        if (stripped.token0Logo && stripped.token0Logo.length > 200) {
-            delete stripped.token0Logo;
-        }
-        if (stripped.token1Logo && stripped.token1Logo.length > 200) {
-            delete stripped.token1Logo;
-        }
-        return stripped;
-    });
-};
-
-// Clear all wallet caches (for quota management)
-const clearAllWalletCaches = () => {
-    const keysToRemove = [];
-    for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith(WALLET_CACHE_KEY_PREFIX)) {
-            keysToRemove.push(key);
-        }
-    }
-    keysToRemove.forEach(key => localStorage.removeItem(key));
-    console.log(`[WalletContext] Cleared ${keysToRemove.length} wallet caches to free space`);
-};
-
-// Save wallet cache to localStorage
-const saveWalletCache = (principalId, data) => {
-    try {
-        const cacheKey = `${WALLET_CACHE_KEY_PREFIX}${principalId}`;
+// Initialize IndexedDB for wallet cache
+let walletDbPromise = null;
+const initializeWalletDB = () => {
+    if (walletDbPromise) return walletDbPromise;
+    
+    walletDbPromise = new Promise((resolve, reject) => {
+        const request = indexedDB.open(WALLET_DB_NAME, WALLET_DB_VERSION);
         
-        // Strip large fields to reduce cache size
-        const compactData = {
-            ...data,
-            walletTokens: stripTokensForCache(data.walletTokens),
-            liquidityPositions: stripPositionsForCache(data.liquidityPositions)
+        request.onerror = () => {
+            console.error('[WalletContext] Failed to open IndexedDB:', request.error);
+            reject(request.error);
         };
         
-        const cacheData = {
+        request.onsuccess = () => {
+            resolve(request.result);
+        };
+        
+        request.onupgradeneeded = (event) => {
+            const db = event.target.result;
+            if (!db.objectStoreNames.contains(WALLET_STORE_NAME)) {
+                db.createObjectStore(WALLET_STORE_NAME, { keyPath: 'principalId' });
+            }
+        };
+    });
+    
+    return walletDbPromise;
+};
+
+// Custom serialization for IndexedDB (handles BigInt, Principal, etc.)
+const serializeForDB = (obj) => {
+    return JSON.parse(JSON.stringify(obj, (key, value) => {
+        if (typeof value === 'bigint') {
+            return { __type: 'BigInt', value: value.toString() };
+        }
+        if (value && typeof value === 'object' && value._isPrincipal) {
+            return { __type: 'Principal', value: value.toString() };
+        }
+        if (value instanceof Principal) {
+            return { __type: 'Principal', value: value.toString() };
+        }
+        if (value instanceof Map) {
+            return { __type: 'Map', value: Array.from(value.entries()) };
+        }
+        if (value instanceof Set) {
+            return { __type: 'Set', value: Array.from(value) };
+        }
+        if (ArrayBuffer.isView(value) && !(value instanceof DataView)) {
+            return { __type: 'TypedArray', arrayType: value.constructor.name, value: Array.from(value) };
+        }
+        return value;
+    }));
+};
+
+// Custom deserialization from IndexedDB
+const deserializeFromDB = (obj) => {
+    if (!obj) return obj;
+    
+    const revive = (value) => {
+        if (value && typeof value === 'object') {
+            if (value.__type) {
+                switch (value.__type) {
+                    case 'BigInt':
+                        return BigInt(value.value);
+                    case 'Principal':
+                        return Principal.fromText(value.value);
+                    case 'Map':
+                        return new Map(value.value.map(([k, v]) => [k, revive(v)]));
+                    case 'Set':
+                        return new Set(value.value.map(v => revive(v)));
+                    case 'TypedArray':
+                        const TypedArrayConstructor = globalThis[value.arrayType];
+                        if (TypedArrayConstructor) {
+                            return new TypedArrayConstructor(value.value);
+                        }
+                        return value.value;
+                }
+            }
+            // Recursively process objects and arrays
+            if (Array.isArray(value)) {
+                return value.map(v => revive(v));
+            }
+            const result = {};
+            for (const key of Object.keys(value)) {
+                result[key] = revive(value[key]);
+            }
+            return result;
+        }
+        return value;
+    };
+    
+    return revive(obj);
+};
+
+// Save wallet cache to IndexedDB (async)
+const saveWalletCache = async (principalId, data) => {
+    try {
+        const db = await initializeWalletDB();
+        
+        const cacheData = serializeForDB({
+            principalId,
             version: CACHE_VERSION,
             timestamp: Date.now(),
-            ...compactData
-        };
-        const serialized = JSON.stringify(cacheData, jsonReplacer);
+            ...data
+        });
         
-        // Check if serialized data is too large (warn if > 2MB)
-        if (serialized.length > 2 * 1024 * 1024) {
-            console.warn(`[WalletContext] Cache is large: ${(serialized.length / 1024 / 1024).toFixed(2)}MB`);
-        }
-        
-        localStorage.setItem(cacheKey, serialized);
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction([WALLET_STORE_NAME], 'readwrite');
+            const store = transaction.objectStore(WALLET_STORE_NAME);
+            const request = store.put(cacheData);
+            
+            request.onsuccess = () => {
+                resolve();
+            };
+            request.onerror = () => {
+                console.warn('[WalletContext] Failed to save to IndexedDB:', request.error);
+                reject(request.error);
+            };
+        });
     } catch (error) {
-        if (error.name === 'QuotaExceededError') {
-            console.warn('[WalletContext] localStorage quota exceeded, clearing old caches...');
-            // Try to free up space by clearing all wallet caches
-            clearAllWalletCaches();
-            // Try one more time with stripped data
-            try {
-                const cacheKey = `${WALLET_CACHE_KEY_PREFIX}${principalId}`;
-                const minimalData = {
-                    version: CACHE_VERSION,
-                    timestamp: Date.now(),
-                    walletTokens: stripTokensForCache(data.walletTokens),
-                    // Skip positions and other large data on retry
-                    neuronCacheIds: data.neuronCacheIds,
-                    lastUpdated: data.lastUpdated
-                };
-                const serialized = JSON.stringify(minimalData, jsonReplacer);
-                localStorage.setItem(cacheKey, serialized);
-                console.log('[WalletContext] Saved minimal cache after quota error');
-            } catch (retryError) {
-                console.error('[WalletContext] Failed to save even minimal cache:', retryError);
-            }
-        } else {
-            console.warn('[WalletContext] Failed to save cache:', error);
-        }
+        console.warn('[WalletContext] Failed to save cache:', error);
     }
 };
 
-// Load wallet cache from localStorage
-const loadWalletCache = (principalId) => {
+// Load wallet cache from IndexedDB (async)
+const loadWalletCache = async (principalId) => {
     try {
-        const cacheKey = `${WALLET_CACHE_KEY_PREFIX}${principalId}`;
-        const serialized = localStorage.getItem(cacheKey);
-        if (!serialized) return null;
+        const db = await initializeWalletDB();
         
-        const data = JSON.parse(serialized, jsonReviver);
-        
-        // Check cache version
-        if (data.version !== CACHE_VERSION) {
-            console.log('[WalletContext] Cache version mismatch, clearing');
-            localStorage.removeItem(cacheKey);
-            return null;
-        }
-        
-        return data;
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction([WALLET_STORE_NAME], 'readonly');
+            const store = transaction.objectStore(WALLET_STORE_NAME);
+            const request = store.get(principalId);
+            
+            request.onsuccess = () => {
+                const data = request.result;
+                if (!data) {
+                    resolve(null);
+                    return;
+                }
+                
+                // Check cache version
+                if (data.version !== CACHE_VERSION) {
+                    console.log('[WalletContext] Cache version mismatch, clearing');
+                    // Clear old version
+                    const deleteTransaction = db.transaction([WALLET_STORE_NAME], 'readwrite');
+                    deleteTransaction.objectStore(WALLET_STORE_NAME).delete(principalId);
+                    resolve(null);
+                    return;
+                }
+                
+                // Deserialize and return
+                resolve(deserializeFromDB(data));
+            };
+            
+            request.onerror = () => {
+                console.warn('[WalletContext] Failed to load from IndexedDB:', request.error);
+                reject(request.error);
+            };
+        });
     } catch (error) {
         console.warn('[WalletContext] Failed to load cache:', error);
         return null;
     }
 };
 
-// Clear wallet cache for a principal
-const clearWalletCache = (principalId) => {
+// Clear wallet cache for a principal from IndexedDB
+const clearWalletCache = async (principalId) => {
     try {
-        const cacheKey = `${WALLET_CACHE_KEY_PREFIX}${principalId}`;
-        localStorage.removeItem(cacheKey);
+        const db = await initializeWalletDB();
+        
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction([WALLET_STORE_NAME], 'readwrite');
+            const store = transaction.objectStore(WALLET_STORE_NAME);
+            const request = store.delete(principalId);
+            
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
     } catch (error) {
         console.warn('[WalletContext] Failed to clear cache:', error);
+    }
+};
+
+// Migrate from localStorage to IndexedDB (one-time migration)
+const migrateFromLocalStorage = async (principalId) => {
+    try {
+        const oldCacheKey = `walletCache_${principalId}`;
+        const oldData = localStorage.getItem(oldCacheKey);
+        
+        if (oldData) {
+            console.log('[WalletContext] Migrating cache from localStorage to IndexedDB...');
+            const parsed = JSON.parse(oldData, (key, value) => {
+                if (value && typeof value === 'object' && value.__type) {
+                    switch (value.__type) {
+                        case 'BigInt': return BigInt(value.value);
+                        case 'Principal': return Principal.fromText(value.value);
+                        case 'Map': return new Map(value.value);
+                        case 'Set': return new Set(value.value);
+                        case 'TypedArray':
+                            const Constructor = globalThis[value.arrayType];
+                            return Constructor ? new Constructor(value.value) : value.value;
+                    }
+                }
+                return value;
+            });
+            
+            // Save to IndexedDB
+            await saveWalletCache(principalId, parsed);
+            
+            // Remove from localStorage
+            localStorage.removeItem(oldCacheKey);
+            console.log('[WalletContext] Migration complete, localStorage cache removed');
+            
+            return parsed;
+        }
+        return null;
+    } catch (error) {
+        console.warn('[WalletContext] Migration failed:', error);
+        return null;
     }
 };
 
@@ -266,9 +312,16 @@ export const WalletProvider = ({ children }) => {
         hasInitializedFromCacheRef.current = true;
         
         const loadCache = async () => {
-            const cachedData = loadWalletCache(principalId);
+            // First try to migrate from old localStorage cache (one-time)
+            let cachedData = await migrateFromLocalStorage(principalId);
+            
+            // If no migrated data, load from IndexedDB
+            if (!cachedData) {
+                cachedData = await loadWalletCache(principalId);
+            }
+            
             if (cachedData) {
-                console.log('%c💾 [WALLET CACHE] Loading from persistent cache, age:', 'background: #3498db; color: white; padding: 2px 6px;',
+                console.log('%c💾 [WALLET CACHE] Loading from IndexedDB cache, age:', 'background: #3498db; color: white; padding: 2px 6px;',
                     Math.round((Date.now() - cachedData.timestamp) / 1000), 'seconds');
                 
                 // Restore tokens
