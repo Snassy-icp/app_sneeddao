@@ -166,6 +166,99 @@ export const updateNeuronInCache = async (snsRoot, neuron) => {
 };
 
 /**
+ * Save neurons to the shared cache (for use by WalletContext and other consumers)
+ * This merges with existing neurons rather than replacing
+ * @param {string} snsRoot - SNS root canister ID
+ * @param {Object[]} neurons - Array of neuron objects to save
+ */
+export const saveNeuronsToCache = async (snsRoot, neurons) => {
+    if (!snsRoot || !neurons || neurons.length === 0) return;
+    
+    try {
+        const db = await initializeNeuronsDB();
+        
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction([STORE_NAME], 'readwrite');
+            const store = transaction.objectStore(STORE_NAME);
+            const getRequest = store.get(snsRoot);
+            
+            getRequest.onsuccess = () => {
+                const existingData = getRequest.result;
+                let mergedNeurons;
+                
+                if (existingData && existingData.neurons) {
+                    // Merge: update existing neurons, add new ones
+                    const existingMap = new Map();
+                    existingData.neurons.forEach(n => {
+                        if (n.id?.[0]?.id) {
+                            const idArray = n.id[0].id;
+                            const hex = Array.isArray(idArray) 
+                                ? idArray.map(b => b.toString(16).padStart(2, '0')).join('')
+                                : uint8ArrayToHex(new Uint8Array(idArray));
+                            existingMap.set(hex.toLowerCase(), n);
+                        }
+                    });
+                    
+                    // Add/update with new neurons
+                    neurons.forEach(neuron => {
+                        if (neuron.id?.[0]?.id) {
+                            const idArray = neuron.id[0].id;
+                            const hex = idArray instanceof Uint8Array
+                                ? uint8ArrayToHex(idArray)
+                                : Array.isArray(idArray)
+                                    ? idArray.map(b => b.toString(16).padStart(2, '0')).join('')
+                                    : '';
+                            
+                            // Serialize for storage
+                            const serializedNeuron = {
+                                ...neuron,
+                                id: neuron.id.map(idObj => ({
+                                    ...idObj,
+                                    id: idObj.id instanceof Uint8Array 
+                                        ? Array.from(idObj.id)
+                                        : Array.isArray(idObj.id) ? idObj.id : []
+                                }))
+                            };
+                            existingMap.set(hex.toLowerCase(), serializedNeuron);
+                        }
+                    });
+                    
+                    mergedNeurons = Array.from(existingMap.values());
+                } else {
+                    // No existing data - just serialize the new neurons
+                    mergedNeurons = neurons.map(neuron => ({
+                        ...neuron,
+                        id: neuron.id.map(idObj => ({
+                            ...idObj,
+                            id: idObj.id instanceof Uint8Array 
+                                ? Array.from(idObj.id)
+                                : Array.isArray(idObj.id) ? idObj.id : []
+                        }))
+                    }));
+                }
+                
+                const putRequest = store.put({
+                    snsRoot,
+                    neurons: mergedNeurons,
+                    metadata: existingData?.metadata || { symbol: 'SNS' },
+                    timestamp: Date.now()
+                });
+                
+                putRequest.onsuccess = () => {
+                    console.log(`%c🧠 [NEURON CACHE] Saved ${neurons.length} neurons to shared cache for ${snsRoot.substring(0, 8)}...`, 'background: #3498db; color: white; padding: 2px 6px;');
+                    resolve();
+                };
+                putRequest.onerror = () => reject(putRequest.error);
+            };
+            
+            getRequest.onerror = () => reject(getRequest.error);
+        });
+    } catch (error) {
+        console.warn('Error saving neurons to cache:', error);
+    }
+};
+
+/**
  * Check if cache exists for an SNS
  * @param {string} snsRoot - SNS root canister ID
  * @returns {boolean} True if cache exists

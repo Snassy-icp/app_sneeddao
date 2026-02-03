@@ -15,7 +15,7 @@ import { getTokenLogo, get_token_conversion_rate, get_available, get_available_b
 import { fetchUserNeuronsForSns, uint8ArrayToHex } from '../utils/NeuronUtils';
 import { getTipTokensReceivedByUser } from '../utils/BackendUtils';
 import { fetchAndCacheSnsData, getAllSnses, getSnsById } from '../utils/SnsUtils';
-import { getNeuronsFromCacheByIds } from '../hooks/useNeuronsCache';
+import { getNeuronsFromCacheByIds, saveNeuronsToCache } from '../hooks/useNeuronsCache';
 import { initializeLogoCache, getLogo, setLogo, getLogoSync } from '../hooks/useLogoCache';
 import { initializeTokenCache, setLedgerList, getTokenMetadataSync } from '../hooks/useTokenCache';
 
@@ -687,8 +687,19 @@ export const WalletProvider = ({ children }) => {
         try {
             const neurons = await fetchUserNeuronsForSns(identity, governanceCanisterId);
             
-            // Cache the neurons
+            // Cache the neurons in local state
             setNeuronCache(prev => new Map(prev).set(governanceCanisterId, neurons));
+            
+            // Also save to the shared IndexedDB cache for persistence
+            // Find the SNS root for this governance canister
+            const allSnses = getAllSnses();
+            const sns = allSnses.find(s => s.canisters?.governance === governanceCanisterId);
+            if (sns?.rootCanisterId && neurons.length > 0) {
+                // Fire and forget - don't await
+                saveNeuronsToCache(sns.rootCanisterId, neurons).catch(e => {
+                    console.warn('Failed to save neurons to shared cache:', e);
+                });
+            }
             
             return neurons;
         } catch (error) {
