@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaCopy, FaCheck, FaWallet, FaPaperPlane, FaKey, FaIdCard, FaExternalLinkAlt, FaSync, FaCoins, FaWater, FaLock, FaBug, FaTimes } from 'react-icons/fa';
+import { FaCopy, FaCheck, FaWallet, FaPaperPlane, FaKey, FaIdCard, FaExternalLinkAlt, FaSync, FaCoins, FaWater, FaLock, FaBug, FaTimes, FaBrain } from 'react-icons/fa';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { Principal } from '@dfinity/principal';
 import { principalToSubAccount } from '@dfinity/utils';
@@ -41,7 +41,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
             return false;
         }
     });
-    const [walletTab, setWalletTab] = useState('tokens'); // 'tokens' or 'positions'
+    const [walletTab, setWalletTab] = useState('tokens'); // 'tokens', 'positions', or 'managers'
     const [showPositionDetailModal, setShowPositionDetailModal] = useState(false);
     const [detailPosition, setDetailPosition] = useState(null);
     const [detailPositionDetails, setDetailPositionDetails] = useState(null);
@@ -69,6 +69,13 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     // Get liquidity positions from context
     const liquidityPositions = walletContext?.liquidityPositions || [];
     const positionsLoading = walletContext?.positionsLoading || false;
+    
+    // Get neuron managers from context
+    const neuronManagers = walletContext?.neuronManagers || [];
+    const managerNeurons = walletContext?.managerNeurons || {};
+    const managerNeuronsTotal = walletContext?.managerNeuronsTotal || 0;
+    const neuronManagersLoading = walletContext?.neuronManagersLoading || false;
+    const hasFetchedManagers = walletContext?.hasFetchedManagers || false;
     
     // Sync hideDust with localStorage and listen for changes from other components
     useEffect(() => {
@@ -222,13 +229,30 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         return hasAnyValue ? total : null;
     }, [tokensWithBalance]);
 
-    // Calculate grand total (tokens + positions)
+    // Get ICP price from token conversion rate
+    const icpPrice = useMemo(() => {
+        const icpToken = walletTokens.find(t => 
+            t.symbol === 'ICP' || 
+            t.principal === 'ryjl3-tyaaa-aaaaa-aaaba-cai' ||
+            (t.ledger_canister_id?.toText?.() || t.ledger_canister_id?.toString?.()) === 'ryjl3-tyaaa-aaaaa-aaaba-cai'
+        );
+        return icpToken?.conversion_rate || 0;
+    }, [walletTokens]);
+    
+    // Calculate managers USD value (ICP neurons total * ICP price)
+    const totalManagersUSD = useMemo(() => {
+        if (!managerNeuronsTotal || !icpPrice) return null;
+        return managerNeuronsTotal * icpPrice;
+    }, [managerNeuronsTotal, icpPrice]);
+    
+    // Calculate grand total (tokens + positions + managers)
     const grandTotalUSD = useMemo(() => {
         const tokens = totalTokensUSD || 0;
         const positions = totalPositionsUSD || 0;
-        const total = tokens + positions;
+        const managers = totalManagersUSD || 0;
+        const total = tokens + positions + managers;
         return total > 0 ? total : null;
-    }, [totalTokensUSD, totalPositionsUSD]);
+    }, [totalTokensUSD, totalPositionsUSD, totalManagersUSD]);
 
     // Generate debug report for quick wallet totals
     const generateQuickWalletDebugReport = useCallback(() => {
@@ -245,6 +269,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         lines.push('--- SUMMARY (Calculated) ---');
         lines.push(`Tokens Total (calculated): $${(totalTokensUSD || 0).toFixed(2)}`);
         lines.push(`Positions Total (calculated): $${(totalPositionsUSD || 0).toFixed(2)}`);
+        lines.push(`Managers Total (calculated): $${(totalManagersUSD || 0).toFixed(2)}`);
         lines.push(`Grand Total (calculated): $${(grandTotalUSD || 0).toFixed(2)}`);
         lines.push('');
         
@@ -317,12 +342,47 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
             lines.push('');
         }
         
+        // Neuron Managers details
+        lines.push('--- NEURON MANAGERS DETAILS ---');
+        lines.push(`Managers count: ${neuronManagers.length}`);
+        lines.push(`ICP Price: $${icpPrice}`);
+        lines.push(`Total Manager ICP: ${managerNeuronsTotal.toFixed(8)}`);
+        lines.push(`Total Manager USD: $${(totalManagersUSD || 0).toFixed(2)}`);
+        lines.push('');
+        
+        for (const manager of neuronManagers) {
+            const canisterIdStr = manager.canisterId?.toString?.() || manager.canisterId?.toText?.() || manager.canisterId;
+            const neuronsData = managerNeurons[canisterIdStr];
+            const neurons = neuronsData?.neurons || [];
+            
+            let managerIcpTotal = 0;
+            neurons.forEach(neuron => {
+                if (neuron.info) {
+                    managerIcpTotal += Number(neuron.info.stake_e8s || 0) / 1e8;
+                }
+                if (neuron.full) {
+                    managerIcpTotal += Number(neuron.full.maturity_e8s_equivalent || 0) / 1e8;
+                    if (neuron.full.staked_maturity_e8s_equivalent?.[0]) {
+                        managerIcpTotal += Number(neuron.full.staked_maturity_e8s_equivalent[0]) / 1e8;
+                    }
+                }
+            });
+            
+            const managerUsdValue = icpPrice ? managerIcpTotal * icpPrice : 0;
+            
+            lines.push(`Manager: ${canisterIdStr}`);
+            lines.push(`  Neurons: ${neurons.length}`);
+            lines.push(`  ICP Total: ${managerIcpTotal.toFixed(8)}`);
+            lines.push(`  USD Value: $${managerUsdValue.toFixed(2)}`);
+            lines.push('');
+        }
+        
         lines.push('='.repeat(60));
         lines.push('END REPORT');
         lines.push('='.repeat(60));
         
         return lines.join('\n');
-    }, [walletTokens, tokensWithBalance, flattenedPositions, totalTokensUSD, totalPositionsUSD, grandTotalUSD]);
+    }, [walletTokens, tokensWithBalance, flattenedPositions, neuronManagers, managerNeurons, managerNeuronsTotal, icpPrice, totalTokensUSD, totalPositionsUSD, totalManagersUSD, grandTotalUSD]);
     
     // Open send modal for a token
     const openSendModal = (token, e) => {
@@ -1054,6 +1114,26 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                               <FaWater size={10} />
                               Positions
                           </button>
+                          <button
+                              onClick={() => setWalletTab('managers')}
+                              style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '5px 10px',
+                                  background: walletTab === 'managers' ? `${theme.colors.accent}20` : 'transparent',
+                                  border: `1px solid ${walletTab === 'managers' ? theme.colors.accent : theme.colors.border}`,
+                                  borderRadius: '6px',
+                                  cursor: 'pointer',
+                                  color: walletTab === 'managers' ? theme.colors.accent : theme.colors.mutedText,
+                                  fontSize: '11px',
+                                  fontWeight: walletTab === 'managers' ? '600' : '500',
+                                  transition: 'all 0.2s ease'
+                              }}
+                          >
+                              <FaBrain size={10} />
+                              Managers
+                          </button>
                       </div>
 
                       {/* Tokens Tab Header */}
@@ -1713,6 +1793,234 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                           >
                               <FaWater size={11} />
                               View All Positions
+                          </button>
+                      )}
+                      </>
+                      )}
+
+                      {/* Managers Tab Header */}
+                      {walletTab === 'managers' && (
+                      <div 
+                          style={{ 
+                              color: theme.colors.mutedText, 
+                              fontSize: '10px', 
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.5px',
+                              marginBottom: '8px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between'
+                          }}
+                      >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <FaBrain size={10} />
+                              ICP Neuron Managers
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              {totalManagersUSD !== null && (
+                                  <span style={{ 
+                                      color: '#10b981',
+                                      fontSize: '12px',
+                                      fontWeight: '600',
+                                      textTransform: 'none',
+                                      letterSpacing: 'normal'
+                                  }}>
+                                      ${totalManagersUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </span>
+                              )}
+                          </div>
+                      </div>
+                      )}
+
+                      {/* Managers Tab Content */}
+                      {walletTab === 'managers' && (
+                      <>
+                      <div 
+                          className="compact-wallet-container"
+                          style={{ 
+                              display: 'flex', 
+                              flexDirection: 'column', 
+                              gap: '6px',
+                              maxHeight: '320px',
+                              overflowY: 'auto',
+                              overflowX: 'hidden',
+                              paddingRight: '4px'
+                          }}
+                      >
+                          {neuronManagersLoading && neuronManagers.length === 0 ? (
+                              <div style={{ 
+                                  color: theme.colors.mutedText, 
+                                  fontSize: '12px',
+                                  textAlign: 'center',
+                                  padding: '20px'
+                              }}>
+                                  Loading managers...
+                              </div>
+                          ) : neuronManagers.length === 0 ? (
+                              <div style={{ 
+                                  color: theme.colors.mutedText, 
+                                  fontSize: '12px',
+                                  textAlign: 'center',
+                                  padding: '20px'
+                              }}>
+                                  No neuron managers found
+                              </div>
+                          ) : (
+                              neuronManagers.map((manager, index) => {
+                                  const canisterIdStr = manager.canisterId?.toString?.() || manager.canisterId?.toText?.() || manager.canisterId;
+                                  const neuronsData = managerNeurons[canisterIdStr];
+                                  const neurons = neuronsData?.neurons || [];
+                                  const isLoading = neuronsData?.loading;
+                                  
+                                  // Calculate ICP value for this manager
+                                  let managerIcpTotal = 0;
+                                  neurons.forEach(neuron => {
+                                      if (neuron.info) {
+                                          managerIcpTotal += Number(neuron.info.stake_e8s || 0) / 1e8;
+                                      }
+                                      if (neuron.full) {
+                                          managerIcpTotal += Number(neuron.full.maturity_e8s_equivalent || 0) / 1e8;
+                                          if (neuron.full.staked_maturity_e8s_equivalent?.[0]) {
+                                              managerIcpTotal += Number(neuron.full.staked_maturity_e8s_equivalent[0]) / 1e8;
+                                          }
+                                      }
+                                  });
+                                  
+                                  const managerUsdValue = icpPrice ? managerIcpTotal * icpPrice : null;
+                                  
+                                  return (
+                                      <div
+                                          key={index}
+                                          onClick={() => {
+                                              navigate('/wallet');
+                                              setShowPopup(false);
+                                          }}
+                                          style={{
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: '10px',
+                                              padding: '10px',
+                                              backgroundColor: theme.colors.secondaryBg,
+                                              borderRadius: '10px',
+                                              cursor: 'pointer',
+                                              transition: 'all 0.2s ease',
+                                              border: `1px solid ${theme.colors.border}`
+                                          }}
+                                          onMouseOver={(e) => {
+                                              e.currentTarget.style.backgroundColor = `${theme.colors.accent}15`;
+                                              e.currentTarget.style.borderColor = theme.colors.accent;
+                                          }}
+                                          onMouseOut={(e) => {
+                                              e.currentTarget.style.backgroundColor = theme.colors.secondaryBg;
+                                              e.currentTarget.style.borderColor = theme.colors.border;
+                                          }}
+                                      >
+                                          {/* Manager Icon */}
+                                          <div 
+                                              style={{
+                                                  width: '36px',
+                                                  height: '36px',
+                                                  borderRadius: '50%',
+                                                  backgroundColor: `${theme.colors.accent}20`,
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  justifyContent: 'center',
+                                                  flexShrink: 0
+                                              }}
+                                          >
+                                              <FaBrain size={18} style={{ color: theme.colors.accent }} />
+                                          </div>
+                                          
+                                          {/* Manager Info */}
+                                          <div style={{ 
+                                              flex: 1, 
+                                              minWidth: 0,
+                                              display: 'flex',
+                                              flexDirection: 'column',
+                                              gap: '2px'
+                                          }}>
+                                              <span style={{ 
+                                                  color: theme.colors.primaryText,
+                                                  fontSize: '13px',
+                                                  fontWeight: '500',
+                                                  overflow: 'hidden',
+                                                  textOverflow: 'ellipsis',
+                                                  whiteSpace: 'nowrap'
+                                              }}>
+                                                  {canisterIdStr.slice(0, 5)}...{canisterIdStr.slice(-5)}
+                                              </span>
+                                              <span style={{ 
+                                                  color: theme.colors.mutedText,
+                                                  fontSize: '11px',
+                                                  opacity: 0.8
+                                              }}>
+                                                  {neurons.length} neuron{neurons.length !== 1 ? 's' : ''}
+                                              </span>
+                                          </div>
+                                          
+                                          {/* Manager Value */}
+                                          <div style={{
+                                              textAlign: 'right',
+                                              flexShrink: 0
+                                          }}>
+                                              <div style={{ 
+                                                  color: theme.colors.primaryText,
+                                                  fontSize: '13px',
+                                                  fontWeight: '600'
+                                              }}>
+                                                  {isLoading 
+                                                      ? '...'
+                                                      : managerUsdValue !== null 
+                                                          ? `$${managerUsdValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                                          : 'N/A'
+                                                  }
+                                              </div>
+                                              <div style={{
+                                                  color: theme.colors.mutedText,
+                                                  fontSize: '10px'
+                                              }}>
+                                                  {managerIcpTotal > 0 ? `${managerIcpTotal.toFixed(4)} ICP` : ''}
+                                              </div>
+                                          </div>
+                                      </div>
+                                  );
+                              })
+                          )}
+                      </div>
+                      {neuronManagers.length > 0 && (
+                          <button
+                              onClick={() => {
+                                  navigate('/wallet');
+                                  setShowPopup(false);
+                              }}
+                              style={{
+                                  width: '100%',
+                                  marginTop: '8px',
+                                  padding: '10px',
+                                  backgroundColor: 'transparent',
+                                  border: `1px solid ${theme.colors.border}`,
+                                  borderRadius: '8px',
+                                  color: theme.colors.accent,
+                                  fontSize: '12px',
+                                  fontWeight: '500',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s ease',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '6px'
+                              }}
+                              onMouseOver={(e) => {
+                                  e.target.style.backgroundColor = theme.colors.primaryBg;
+                                  e.target.style.borderColor = theme.colors.accent;
+                              }}
+                              onMouseOut={(e) => {
+                                  e.target.style.backgroundColor = 'transparent';
+                                  e.target.style.borderColor = theme.colors.border;
+                              }}
+                          >
+                              <FaBrain size={11} />
+                              View All Managers
                           </button>
                       )}
                       </>

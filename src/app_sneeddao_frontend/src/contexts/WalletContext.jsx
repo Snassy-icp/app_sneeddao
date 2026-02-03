@@ -8,6 +8,9 @@ import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'declarations/rll';
 import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
+import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
+import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
+import { HttpAgent } from '@dfinity/agent';
 import { getTokenLogo, get_token_conversion_rate, get_available, get_available_backend } from '../utils/TokenUtils';
 import { fetchUserNeuronsForSns } from '../utils/NeuronUtils';
 import { getTipTokensReceivedByUser } from '../utils/BackendUtils';
@@ -158,6 +161,14 @@ export const WalletProvider = ({ children }) => {
     const [neuronCacheInitialized, setNeuronCacheInitialized] = useState(false);
     const neuronCacheFetchSessionRef = useRef(0);
     
+    // ICP Neuron Managers - shared between quick wallet and /wallet page
+    const [neuronManagers, setNeuronManagers] = useState([]); // Array of { canisterId, version, isController }
+    const [managerNeurons, setManagerNeurons] = useState({}); // canisterId -> { loading, neurons, error }
+    const [managerNeuronsTotal, setManagerNeuronsTotal] = useState(0); // Total ICP value
+    const [neuronManagersLoading, setNeuronManagersLoading] = useState(false);
+    const [hasFetchedManagers, setHasFetchedManagers] = useState(false);
+    const managersFetchSessionRef = useRef(0);
+    
     // Track if we loaded from persistent cache (for instant display)
     const [loadedFromCache, setLoadedFromCache] = useState(false);
     const hasInitializedFromCacheRef = useRef(false);
@@ -197,6 +208,18 @@ export const WalletProvider = ({ children }) => {
                 setNeuronCacheInitialized(true);
             }
             
+            // Restore neuron managers
+            if (cachedData.neuronManagers && cachedData.neuronManagers.length > 0) {
+                setNeuronManagers(cachedData.neuronManagers);
+                setHasFetchedManagers(true);
+            }
+            if (cachedData.managerNeurons) {
+                setManagerNeurons(cachedData.managerNeurons);
+            }
+            if (cachedData.managerNeuronsTotal !== undefined) {
+                setManagerNeuronsTotal(cachedData.managerNeuronsTotal);
+            }
+            
             // Restore last updated
             if (cachedData.lastUpdated) {
                 setLastUpdated(new Date(cachedData.lastUpdated));
@@ -226,6 +249,9 @@ export const WalletProvider = ({ children }) => {
                 walletTokens,
                 liquidityPositions,
                 neuronCache: Array.from(neuronCache.entries()), // Convert Map to array for storage
+                neuronManagers,
+                managerNeurons,
+                managerNeuronsTotal,
                 lastUpdated: lastUpdated?.getTime() || Date.now()
             });
         }, 2000); // Save 2 seconds after last change
@@ -235,7 +261,7 @@ export const WalletProvider = ({ children }) => {
                 clearTimeout(saveCacheTimeoutRef.current);
             }
         };
-    }, [principalId, isAuthenticated, walletTokens, liquidityPositions, neuronCache, lastUpdated, hasFetchedInitial, loadedFromCache]);
+    }, [principalId, isAuthenticated, walletTokens, liquidityPositions, neuronCache, neuronManagers, managerNeurons, managerNeuronsTotal, lastUpdated, hasFetchedInitial, loadedFromCache]);
 
     // Load SNS data to know which tokens are SNS tokens
     useEffect(() => {
@@ -904,6 +930,192 @@ export const WalletProvider = ({ children }) => {
         }
     }, [identity, isAuthenticated, fetchTokenDetailsFast, addTokenProgressively, fetchAndUpdateConversionRate, fetchAndUpdateNeuronTotals]);
 
+    // ============================================================================
+    // ICP NEURON MANAGERS
+    // ============================================================================
+    
+    // Fetch neurons for a specific manager canister
+    const fetchManagerNeuronsData = useCallback(async (managerCanisterId) => {
+        if (!identity) return;
+        
+        const canisterIdStr = typeof managerCanisterId === 'string' ? managerCanisterId : managerCanisterId.toString();
+        
+        // Set loading state
+        setManagerNeurons(prev => ({
+            ...prev,
+            [canisterIdStr]: { loading: true, neurons: prev[canisterIdStr]?.neurons || [], error: null }
+        }));
+        
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const manager = createManagerActor(canisterIdStr, { agent });
+            
+            // Get neuron IDs
+            const neuronIds = await manager.getNeuronIds();
+            
+            if (!neuronIds || neuronIds.length === 0) {
+                setManagerNeurons(prev => ({
+                    ...prev,
+                    [canisterIdStr]: { loading: false, neurons: [], error: null }
+                }));
+                return;
+            }
+            
+            // Fetch neuron info for each neuron
+            const neuronsData = await Promise.all(
+                neuronIds.map(async (neuronId) => {
+                    try {
+                        const [infoResult, fullResult] = await Promise.all([
+                            manager.getNeuronInfo(neuronId),
+                            manager.getFullNeuron(neuronId),
+                        ]);
+                        
+                        const neuronInfo = infoResult && infoResult.length > 0 ? infoResult[0] : null;
+                        const fullNeuron = fullResult && fullResult.length > 0 ? fullResult[0] : null;
+                        
+                        return {
+                            id: neuronId,
+                            info: neuronInfo,
+                            full: fullNeuron,
+                        };
+                    } catch (err) {
+                        console.error(`Error fetching neuron ${neuronId}:`, err);
+                        return { id: neuronId, info: null, full: null, error: err.message };
+                    }
+                })
+            );
+            
+            setManagerNeurons(prev => ({
+                ...prev,
+                [canisterIdStr]: { loading: false, neurons: neuronsData, error: null }
+            }));
+        } catch (err) {
+            console.error(`Error fetching neurons for ${canisterIdStr}:`, err);
+            setManagerNeurons(prev => ({
+                ...prev,
+                [canisterIdStr]: { loading: false, neurons: [], error: err.message }
+            }));
+        }
+    }, [identity]);
+    
+    // Fetch all ICP Neuron Managers
+    const fetchNeuronManagers = useCallback(async () => {
+        if (!identity || !isAuthenticated) {
+            setNeuronManagers([]);
+            return;
+        }
+        
+        const sessionId = ++managersFetchSessionRef.current;
+        setNeuronManagersLoading(true);
+        
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const factory = createFactoryActor(factoryCanisterId, { agent });
+            
+            // Fetch managers
+            const canisterIds = await factory.getMyManagers();
+            
+            if (managersFetchSessionRef.current !== sessionId) return;
+            
+            if (canisterIds.length > 0) {
+                const updatedManagers = [];
+                
+                await Promise.all(canisterIds.map(async (canisterIdPrincipal) => {
+                    const canisterId = canisterIdPrincipal.toString();
+                    let currentVersion = { major: 0, minor: 0, patch: 0 };
+                    let neuronCount = 0;
+                    
+                    try {
+                        const managerActor = createManagerActor(canisterIdPrincipal, { agent });
+                        const [count, version] = await Promise.all([
+                            managerActor.getNeuronCount(),
+                            managerActor.getVersion(),
+                        ]);
+                        neuronCount = Number(count);
+                        currentVersion = version;
+                    } catch (err) {
+                        console.error(`Error fetching data for ${canisterId}:`, err);
+                    }
+                    
+                    updatedManagers.push({ 
+                        canisterId: canisterIdPrincipal, 
+                        version: currentVersion, 
+                        neuronCount 
+                    });
+                }));
+                
+                if (managersFetchSessionRef.current !== sessionId) return;
+                
+                setNeuronManagers(updatedManagers);
+                setHasFetchedManagers(true);
+                
+                // Fetch neurons for all managers in parallel (for total calculation)
+                updatedManagers.forEach(manager => {
+                    fetchManagerNeuronsData(manager.canisterId.toString());
+                });
+            } else {
+                setNeuronManagers([]);
+                setHasFetchedManagers(true);
+            }
+        } catch (err) {
+            console.error('Error fetching neuron managers:', err);
+            if (managersFetchSessionRef.current === sessionId) {
+                setHasFetchedManagers(true);
+            }
+        } finally {
+            if (managersFetchSessionRef.current === sessionId) {
+                setNeuronManagersLoading(false);
+            }
+        }
+    }, [identity, isAuthenticated, fetchManagerNeuronsData]);
+    
+    // Calculate total ICP value from all manager neurons
+    useEffect(() => {
+        let totalIcp = 0;
+        
+        Object.values(managerNeurons).forEach(managerData => {
+            if (managerData.neurons && managerData.neurons.length > 0) {
+                managerData.neurons.forEach(neuron => {
+                    if (neuron.info) {
+                        // Add stake (in e8s)
+                        totalIcp += Number(neuron.info.stake_e8s || 0) / 1e8;
+                    }
+                    if (neuron.full) {
+                        // Add maturity (in e8s)
+                        totalIcp += Number(neuron.full.maturity_e8s_equivalent || 0) / 1e8;
+                        // Add staked maturity if any
+                        if (neuron.full.staked_maturity_e8s_equivalent?.[0]) {
+                            totalIcp += Number(neuron.full.staked_maturity_e8s_equivalent[0]) / 1e8;
+                        }
+                    }
+                });
+            }
+        });
+        
+        setManagerNeuronsTotal(totalIcp);
+    }, [managerNeurons]);
+    
+    // Refresh neuron managers
+    const refreshNeuronManagers = useCallback(() => {
+        setHasFetchedManagers(false);
+        setManagerNeurons({});
+        fetchNeuronManagers();
+    }, [fetchNeuronManagers]);
+
     // Fetch tokens and positions when user authenticates
     // Always fetch fresh data in background, even if we loaded from persistent cache
     const hasFetchedFreshRef = useRef(false);
@@ -923,6 +1135,7 @@ export const WalletProvider = ({ children }) => {
                 // Don't show loading state since we have cached data
                 fetchCompactWalletTokens();
                 fetchCompactPositions();
+                fetchNeuronManagers();
                 // Reset fetching flag after a short delay
                 setTimeout(() => { isFetchingRef.current = false; }, 100);
             } else if (!hasFetchedInitial && !loadedFromCache) {
@@ -930,6 +1143,7 @@ export const WalletProvider = ({ children }) => {
                 isFetchingRef.current = true;
                 fetchCompactWalletTokens();
                 fetchCompactPositions();
+                fetchNeuronManagers();
                 setTimeout(() => { isFetchingRef.current = false; }, 100);
             }
         }
@@ -937,9 +1151,13 @@ export const WalletProvider = ({ children }) => {
             // Clear wallet on logout
             setWalletTokens([]);
             setLiquidityPositions([]);
+            setNeuronManagers([]);
+            setManagerNeurons({});
+            setManagerNeuronsTotal(0);
             setNeuronCache(new Map());
             setHasFetchedInitial(false);
             setHasFetchedPositions(false);
+            setHasFetchedManagers(false);
             setHasDetailedData(false);
             setLastUpdated(null);
             setLoadedFromCache(false);
@@ -947,7 +1165,7 @@ export const WalletProvider = ({ children }) => {
             hasInitializedFromCacheRef.current = false;
             isFetchingRef.current = false;
         }
-    }, [isAuthenticated, identity, hasFetchedInitial, loadedFromCache, fetchCompactWalletTokens, fetchCompactPositions]);
+    }, [isAuthenticated, identity, hasFetchedInitial, loadedFromCache, fetchCompactWalletTokens, fetchCompactPositions, fetchNeuronManagers]);
 
     // Update tokens from Wallet.jsx (more detailed data including locks, staked, etc.)
     const updateWalletTokens = useCallback((tokens) => {
@@ -981,10 +1199,14 @@ export const WalletProvider = ({ children }) => {
     const clearWallet = useCallback(() => {
         setWalletTokens([]);
         setLiquidityPositions([]);
+        setNeuronManagers([]);
+        setManagerNeurons({});
+        setManagerNeuronsTotal(0);
         setNeuronCache(new Map());
         setLastUpdated(null);
         setHasFetchedInitial(false);
         setHasFetchedPositions(false);
+        setHasFetchedManagers(false);
         setHasDetailedData(false);
         setLoadedFromCache(false);
         
@@ -998,16 +1220,19 @@ export const WalletProvider = ({ children }) => {
     const refreshWallet = useCallback(() => {
         setHasFetchedInitial(false);
         setHasFetchedPositions(false);
+        setHasFetchedManagers(false);
         setLoadedFromCache(false);
         // Clear neuron cache so neurons are refetched
         setNeuronCache(new Map());
         setNeuronCacheInitialized(false);
+        setManagerNeurons({});
         // Note: Don't clear persistent cache on refresh - it will be updated with fresh data
         fetchCompactWalletTokens();
         fetchCompactPositions();
+        fetchNeuronManagers();
         // Also refetch all neurons
         fetchAllSnsNeurons();
-    }, [fetchCompactWalletTokens, fetchCompactPositions, fetchAllSnsNeurons]);
+    }, [fetchCompactWalletTokens, fetchCompactPositions, fetchNeuronManagers, fetchAllSnsNeurons]);
 
     // Helper to calculate send amounts (frontend vs backend balance)
     const calcSendAmounts = useCallback((token, bigintAmount) => {
@@ -1112,7 +1337,15 @@ export const WalletProvider = ({ children }) => {
             getNeuronsForGovernance,
             getCachedNeurons,
             clearNeuronCache,
-            fetchAllSnsNeurons
+            fetchAllSnsNeurons,
+            // ICP Neuron Managers - shared between quick wallet and /wallet
+            neuronManagers,
+            managerNeurons,
+            managerNeuronsTotal,
+            neuronManagersLoading,
+            hasFetchedManagers,
+            refreshNeuronManagers,
+            fetchManagerNeuronsData
         }}>
             {children}
         </WalletContext.Provider>

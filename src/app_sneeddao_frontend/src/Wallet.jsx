@@ -432,7 +432,15 @@ function Wallet() {
         hasFetchedPositions: contextHasFetchedPositions,
         updateLiquidityPositions,
         refreshPositions: contextRefreshPositions,
-        hasFetchedInitial: contextHasFetchedTokens
+        hasFetchedInitial: contextHasFetchedTokens,
+        // Neuron managers from context (shared with quick wallet)
+        neuronManagers: contextNeuronManagers,
+        managerNeurons: contextManagerNeurons,
+        managerNeuronsTotal: contextManagerNeuronsTotal,
+        neuronManagersLoading: contextNeuronManagersLoading,
+        hasFetchedManagers: contextHasFetchedManagers,
+        refreshNeuronManagers: contextRefreshNeuronManagers,
+        fetchManagerNeuronsData: contextFetchManagerNeuronsData
     } = useWallet();
     const navigate = useNavigate();
     
@@ -596,8 +604,14 @@ function Wallet() {
         }
     });
     
-    // ICP Neuron Manager state
-    const [neuronManagers, setNeuronManagers] = useState([]);
+    // ICP Neuron Manager state - from context (shared with quick wallet)
+    // Use context values with local aliases for compatibility
+    const neuronManagers = contextNeuronManagers || [];
+    const managerNeurons = contextManagerNeurons || {};
+    const managerNeuronsTotal = contextManagerNeuronsTotal || 0;
+    const neuronManagersLoading = contextNeuronManagersLoading;
+    
+    // Local UI state for managers (not shared with context)
     const [neuronManagerCounts, setNeuronManagerCounts] = useState({}); // canisterId -> neuron count
     const [neuronManagerCycles, setNeuronManagerCycles] = useState({}); // canisterId -> cycles
     const [neuronManagerIsController, setNeuronManagerIsController] = useState({}); // canisterId -> boolean
@@ -619,7 +633,6 @@ function Wallet() {
             return true;
         }
     });
-    const [neuronManagersLoading, setNeuronManagersLoading] = useState(false);
     const [refreshingNeuronManagers, setRefreshingNeuronManagers] = useState(false);
     const [transferModalOpen, setTransferModalOpen] = useState(false);
     const [transferTargetManager, setTransferTargetManager] = useState(null);
@@ -685,10 +698,8 @@ function Wallet() {
     const [refreshingCanisterCard, setRefreshingCanisterCard] = useState(null); // canisterId being refreshed
     const [refreshingManagerCard, setRefreshingManagerCard] = useState(null); // canisterId being refreshed
     
-    // Expanded manager cards and their neurons
+    // Expanded manager cards and their neurons (UI state only)
     const [expandedManagerCards, setExpandedManagerCards] = useState({}); // canisterId -> boolean
-    const [managerNeurons, setManagerNeurons] = useState({}); // canisterId -> { loading, neurons, error }
-    const [managerNeuronsTotal, setManagerNeuronsTotal] = useState(0); // Total ICP value of all manager neurons
     const [expandedNeuronsInManager, setExpandedNeuronsInManager] = useState({}); // "canisterId:neuronId" -> boolean
 
     const dex_icpswap = 1;
@@ -827,13 +838,12 @@ function Wallet() {
         }
     }, [isAuthenticated, contextHasFetchedTokens, walletTokens]);
     
-    // Fetch wallet-specific data (neuron managers, etc.) on mount
-    // Positions are now fetched by WalletContext and shared with quick wallet
+    // Fetch wallet-specific data on mount
+    // Positions and neuron managers are now fetched by WalletContext and shared with quick wallet
     useEffect(() => {
         if (!isAuthenticated) return;
         
         fetchIcpPrice();
-        fetchNeuronManagers();
         fetchIcpToCyclesRate();
         fetchTrackedCanisters();
     }, [isAuthenticated]);
@@ -1563,11 +1573,11 @@ function Wallet() {
         return compareVersions(version, latestOfficialVersion) < 0;
     };
 
-    // Fetch ICP Neuron Managers
-    async function fetchNeuronManagers() {
-        if (!identity) return;
+    // Fetch additional manager data (cycles, controller status) - supplements context data
+    // Main manager fetching is done by WalletContext
+    async function fetchManagerSupplementalData() {
+        if (!identity || neuronManagers.length === 0) return;
         
-        setNeuronManagersLoading(true);
         try {
             const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
                 ? 'https://ic0.app' 
@@ -1579,87 +1589,65 @@ function Wallet() {
             
             const factory = createFactoryActor(factoryCanisterId, { agent });
             
-            // Fetch managers and official versions in parallel
-            const [canisterIds, officialVersions] = await Promise.all([
-                factory.getMyManagers(),
-                factory.getOfficialVersions(),
-            ]);
-            
-            // Find latest official version
+            // Fetch official versions
+            const officialVersions = await factory.getOfficialVersions();
             if (officialVersions && officialVersions.length > 0) {
                 const sorted = [...officialVersions].sort((a, b) => compareVersions(b, a));
                 setLatestOfficialVersion(sorted[0]);
             }
             
-            // Fetch neuron counts, versions, and cycles for all managers
-            if (canisterIds.length > 0) {
-                const counts = {};
-                const cycles = {};
-                const updatedManagers = [];
+            // Fetch cycles and controller status for all managers
+            const counts = {};
+            const cycles = {};
+            const controllerStatus = {};
+            
+            await Promise.all(neuronManagers.map(async (manager) => {
+                const canisterIdPrincipal = manager.canisterId;
+                const canisterId = canisterIdPrincipal?.toString?.() || canisterIdPrincipal?.toText?.() || canisterIdPrincipal;
                 
-                await Promise.all(canisterIds.map(async (canisterIdPrincipal) => {
-                    const canisterId = canisterIdPrincipal.toText();
-                    let currentVersion = { major: 0, minor: 0, patch: 0 };
-                    
-                    try {
-                        const managerActor = createManagerActor(canisterIdPrincipal, { agent });
-                        const [count, version] = await Promise.all([
-                            managerActor.getNeuronCount(),
-                            managerActor.getVersion(),
-                        ]);
-                        counts[canisterId] = Number(count);
-                        currentVersion = version;
-                    } catch (err) {
-                        console.error(`Error fetching data for ${canisterId}:`, err);
-                        counts[canisterId] = null;
-                    }
-                    
-                    // Try to fetch cycles (may fail if not controller)
-                    // Need to create actor with effectiveCanisterId for management canister
-                    let isController = false;
-                    try {
-                        const mgmtActor = Actor.createActor(managementCanisterIdlFactory, {
-                            agent,
-                            canisterId: MANAGEMENT_CANISTER_ID,
-                            callTransform: (methodName, args, callConfig) => ({
-                                ...callConfig,
-                                effectiveCanisterId: canisterIdPrincipal,
-                            }),
-                        });
-                        const status = await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
-                        cycles[canisterId] = Number(status.cycles);
-                        isController = true;
-                    } catch (cyclesErr) {
-                        // Not a controller, can't get cycles
-                        cycles[canisterId] = null;
-                    }
-                    
-                    // Create manager object with canisterId and version
-                    updatedManagers.push({ canisterId: canisterIdPrincipal, version: currentVersion, isController });
-                }));
+                counts[canisterId] = manager.neuronCount || 0;
                 
-                setNeuronManagers(updatedManagers);
-                setNeuronManagerCounts(counts);
-                setNeuronManagerCycles(cycles);
+                // Try to fetch cycles (may fail if not controller)
+                let isController = false;
+                try {
+                    const mgmtActor = Actor.createActor(managementCanisterIdlFactory, {
+                        agent,
+                        canisterId: MANAGEMENT_CANISTER_ID,
+                        callTransform: (methodName, args, callConfig) => ({
+                            ...callConfig,
+                            effectiveCanisterId: typeof canisterIdPrincipal === 'string' 
+                                ? Principal.fromText(canisterIdPrincipal) 
+                                : canisterIdPrincipal,
+                        }),
+                    });
+                    const principalObj = typeof canisterIdPrincipal === 'string' 
+                        ? Principal.fromText(canisterIdPrincipal) 
+                        : canisterIdPrincipal;
+                    const status = await mgmtActor.canister_status({ canister_id: principalObj });
+                    cycles[canisterId] = Number(status.cycles);
+                    isController = true;
+                } catch (cyclesErr) {
+                    // Not a controller, can't get cycles
+                    cycles[canisterId] = null;
+                }
                 
-                // Set controller status from manager objects
-                const controllerStatus = {};
-                updatedManagers.forEach(m => {
-                    controllerStatus[m.canisterId.toText()] = m.isController;
-                });
-                setNeuronManagerIsController(controllerStatus);
-                
-                // Fetch neurons for all managers in parallel (for wallet total calculation)
-                Promise.all(canisterIds.map(cid => fetchManagerNeuronsData(cid.toText())));
-            } else {
-                setNeuronManagers([]);
-            }
+                controllerStatus[canisterId] = isController;
+            }));
+            
+            setNeuronManagerCounts(counts);
+            setNeuronManagerCycles(cycles);
+            setNeuronManagerIsController(controllerStatus);
         } catch (err) {
-            console.error('Error fetching neuron managers:', err);
-        } finally {
-            setNeuronManagersLoading(false);
+            console.error('Error fetching manager supplemental data:', err);
         }
     }
+    
+    // Fetch supplemental data when managers are loaded from context
+    useEffect(() => {
+        if (neuronManagers.length > 0 && isAuthenticated) {
+            fetchManagerSupplementalData();
+        }
+    }, [neuronManagers, isAuthenticated]);
 
     // Fetch tracked canisters (wallet canisters)
     async function fetchTrackedCanisters() {
@@ -2009,7 +1997,7 @@ function Wallet() {
             setTopUpManagerId(null);
             
             // Refresh data
-            fetchNeuronManagers();
+            if (contextRefreshNeuronManagers) contextRefreshNeuronManagers();
             fetchTokens();
             
         } catch (err) {
@@ -2231,76 +2219,12 @@ function Wallet() {
         }
     }
 
-    // Fetch neurons for a specific manager canister
-    async function fetchManagerNeuronsData(managerCanisterId) {
-        if (!identity) return;
-        
-        const canisterIdStr = typeof managerCanisterId === 'string' ? managerCanisterId : managerCanisterId.toText();
-        
-        // Set loading state
-        setManagerNeurons(prev => ({
-            ...prev,
-            [canisterIdStr]: { loading: true, neurons: [], error: null }
-        }));
-        
-        try {
-            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
-                ? 'https://ic0.app' 
-                : 'http://localhost:4943';
-            const agent = new HttpAgent({ identity, host });
-            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                await agent.fetchRootKey();
-            }
-            
-            const manager = createManagerActor(canisterIdStr, { agent });
-            
-            // Get neuron IDs
-            const neuronIds = await manager.getNeuronIds();
-            
-            if (!neuronIds || neuronIds.length === 0) {
-                setManagerNeurons(prev => ({
-                    ...prev,
-                    [canisterIdStr]: { loading: false, neurons: [], error: null }
-                }));
-                return;
-            }
-            
-            // Fetch neuron info for each neuron
-            const neuronsData = await Promise.all(
-                neuronIds.map(async (neuronId) => {
-                    try {
-                        const [infoResult, fullResult] = await Promise.all([
-                            manager.getNeuronInfo(neuronId),
-                            manager.getFullNeuron(neuronId),
-                        ]);
-                        
-                        const neuronInfo = infoResult && infoResult.length > 0 ? infoResult[0] : null;
-                        const fullNeuron = fullResult && fullResult.length > 0 ? fullResult[0] : null;
-                        
-                        return {
-                            id: neuronId,
-                            info: neuronInfo,
-                            full: fullNeuron,
-                        };
-                    } catch (err) {
-                        console.error(`Error fetching neuron ${neuronId}:`, err);
-                        return { id: neuronId, info: null, full: null, error: err.message };
-                    }
-                })
-            );
-            
-            setManagerNeurons(prev => ({
-                ...prev,
-                [canisterIdStr]: { loading: false, neurons: neuronsData, error: null }
-            }));
-        } catch (err) {
-            console.error(`Error fetching neurons for ${canisterIdStr}:`, err);
-            setManagerNeurons(prev => ({
-                ...prev,
-                [canisterIdStr]: { loading: false, neurons: [], error: err.message }
-            }));
+    // Fetch neurons for a specific manager canister (uses context function)
+    const fetchManagerNeuronsData = (managerCanisterId) => {
+        if (contextFetchManagerNeuronsData) {
+            contextFetchManagerNeuronsData(managerCanisterId);
         }
-    }
+    };
     
     // Toggle manager card expansion
     const toggleManagerCard = (canisterId) => {
@@ -2406,7 +2330,7 @@ function Wallet() {
             setTransferSuccess(`✅ Successfully transferred control to ${newController.toText()}`);
             
             // Refresh the list (the transferred manager will no longer appear)
-            await fetchNeuronManagers();
+            if (contextRefreshNeuronManagers) contextRefreshNeuronManagers();
             
             // Close modal after a brief delay to show success
             setTimeout(() => {
@@ -2442,7 +2366,7 @@ function Wallet() {
                 throw new Error(result.Err);
             }
             
-            await fetchNeuronManagers();
+            if (contextRefreshNeuronManagers) contextRefreshNeuronManagers();
             return { success: true };
         } catch (err) {
             console.error('Error registering manager:', err);
@@ -2468,7 +2392,7 @@ function Wallet() {
                 throw new Error(result.Err);
             }
             
-            await fetchNeuronManagers();
+            if (contextRefreshNeuronManagers) contextRefreshNeuronManagers();
             return { success: true };
         } catch (err) {
             console.error('Error deregistering manager:', err);
@@ -2799,31 +2723,7 @@ function Wallet() {
         setLpPositionsTotal(lpUsdTotal);
     }, [tokens, liquidityPositions, rewardDetailsLoading, neuronTotals, managerNeuronsTotal, icpPrice]);
 
-    // Calculate total ICP value from all manager neurons
-    useEffect(() => {
-        let totalIcp = 0;
-        
-        Object.values(managerNeurons).forEach(managerData => {
-            if (managerData.neurons && managerData.neurons.length > 0) {
-                managerData.neurons.forEach(neuron => {
-                    if (neuron.info) {
-                        // Add stake (in e8s)
-                        totalIcp += Number(neuron.info.stake_e8s || 0) / 1e8;
-                    }
-                    if (neuron.full) {
-                        // Add maturity (in e8s)
-                        totalIcp += Number(neuron.full.maturity_e8s_equivalent || 0) / 1e8;
-                        // Add staked maturity if any
-                        if (neuron.full.staked_maturity_e8s_equivalent?.[0]) {
-                            totalIcp += Number(neuron.full.staked_maturity_e8s_equivalent[0]) / 1e8;
-                        }
-                    }
-                });
-            }
-        });
-        
-        setManagerNeuronsTotal(totalIcp);
-    }, [managerNeurons]);
+    // Note: Total ICP value from manager neurons is now calculated in WalletContext
 
     const calc_send_amounts = (token, amount) => {
         console.log('=== calc_send_amounts START ===');
@@ -4328,7 +4228,9 @@ function Wallet() {
     const handleRefreshNeuronManagers = async () => {
         setRefreshingNeuronManagers(true);
         try {
-            await fetchNeuronManagers();
+            if (contextRefreshNeuronManagers) contextRefreshNeuronManagers();
+            // Wait a bit for the refresh to complete
+            await new Promise(resolve => setTimeout(resolve, 2000));
         } catch (error) {
             console.error('Error refreshing neuron managers:', error);
         } finally {
