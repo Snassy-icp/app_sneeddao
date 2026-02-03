@@ -363,6 +363,11 @@ export const WalletProvider = ({ children }) => {
                 // Restore positions (with deduplication)
                 if (cachedData.liquidityPositions && cachedData.liquidityPositions.length > 0) {
                     console.log(`%c💾 [POSITIONS CACHE] Restoring ${cachedData.liquidityPositions.length} positions from cache`, 'background: #9b59b6; color: white; padding: 2px 6px;');
+                    // Debug: Log conversion rates from cache
+                    cachedData.liquidityPositions.forEach(p => {
+                        const swapId = normalizeCanisterId(p.swapCanisterId);
+                        console.log(`%c💾 [POSITIONS CACHE] Position ${swapId?.substring(0, 10)}... rates: token0=${p.token0_conversion_rate}, token1=${p.token1_conversion_rate}`, 'background: #9b59b6; color: white; padding: 2px 6px;');
+                    });
                     
                     // Deduplicate by swapCanisterId (using normalizeCanisterId for Principal/string insensitivity)
                     const seenSwapIds = new Set();
@@ -959,6 +964,7 @@ export const WalletProvider = ({ children }) => {
             if (existingIndex >= 0) {
                 // Update existing LP, preserving conversion rates if new data doesn't have them
                 const existing = prev[existingIndex];
+                console.log(`%c📊 [POSITIONS] Merging ${newSwapId.substring(0, 10)}...: existing rates=(${existing.token0_conversion_rate}, ${existing.token1_conversion_rate}), new rates=(${positionData.token0_conversion_rate}, ${positionData.token1_conversion_rate})`, 'background: #3498db; color: white; padding: 2px 6px;');
                 
                 // Deduplicate inner positions array by positionId
                 let mergedPositions = positionData.positions || [];
@@ -979,8 +985,14 @@ export const WalletProvider = ({ children }) => {
                     ...existing,
                     ...positionData,
                     positions: mergedPositions,
-                    token0_conversion_rate: positionData.token0_conversion_rate ?? existing.token0_conversion_rate,
-                    token1_conversion_rate: positionData.token1_conversion_rate ?? existing.token1_conversion_rate
+                    // Preserve cached conversion rates if new data has 0 (meaning "not yet fetched")
+                    // Only overwrite if new rate is non-zero (actual fetched value)
+                    token0_conversion_rate: (positionData.token0_conversion_rate && positionData.token0_conversion_rate !== 0) 
+                        ? positionData.token0_conversion_rate 
+                        : existing.token0_conversion_rate,
+                    token1_conversion_rate: (positionData.token1_conversion_rate && positionData.token1_conversion_rate !== 0) 
+                        ? positionData.token1_conversion_rate 
+                        : existing.token1_conversion_rate
                 };
                 return prev.map((p, i) => i === existingIndex ? merged : p);
             }
@@ -1005,21 +1017,29 @@ export const WalletProvider = ({ children }) => {
     // Fetch conversion rate for a position and update it in place
     const fetchPositionConversionRates = useCallback(async (swapCanisterId, ledger0, ledger1, decimals0, decimals1, sessionId) => {
         try {
+            const targetSwapId = normalizeCanisterId(swapCanisterId);
+            console.log(`%c💵 [CONVERSION RATES] Fetching for ${targetSwapId.substring(0, 10)}... sessionId=${sessionId}`, 'background: #9b59b6; color: white; padding: 2px 6px;');
+            
             const [rate0, rate1] = await Promise.all([
                 get_token_conversion_rate(ledger0, decimals0).catch(() => 0),
                 get_token_conversion_rate(ledger1, decimals1).catch(() => 0)
             ]);
             
-            // Normalize swapCanisterId (Principal/string insensitive)
-            const targetSwapId = normalizeCanisterId(swapCanisterId);
+            console.log(`%c💵 [CONVERSION RATES] Got rates for ${targetSwapId.substring(0, 10)}...: rate0=${rate0}, rate1=${rate1}, currentSession=${positionsFetchSessionRef.current}, mySession=${sessionId}`, 'background: #9b59b6; color: white; padding: 2px 6px;');
             
             if (positionsFetchSessionRef.current === sessionId) {
-                setLiquidityPositions(prev => prev.map(p => {
-                    if (normalizeCanisterId(p.swapCanisterId) === targetSwapId) {
-                        return { ...p, token0_conversion_rate: rate0, token1_conversion_rate: rate1 };
-                    }
-                    return p;
-                }));
+                setLiquidityPositions(prev => {
+                    const updated = prev.map(p => {
+                        if (normalizeCanisterId(p.swapCanisterId) === targetSwapId) {
+                            console.log(`%c💵 [CONVERSION RATES] Updating ${targetSwapId.substring(0, 10)}...: old rates=(${p.token0_conversion_rate}, ${p.token1_conversion_rate}) → new=(${rate0}, ${rate1})`, 'background: #2ecc71; color: white; padding: 2px 6px;');
+                            return { ...p, token0_conversion_rate: rate0, token1_conversion_rate: rate1 };
+                        }
+                        return p;
+                    });
+                    return updated;
+                });
+            } else {
+                console.warn(`%c💵 [CONVERSION RATES] Skipping stale update for ${targetSwapId.substring(0, 10)}... (session ${sessionId} != current ${positionsFetchSessionRef.current})`, 'background: #e74c3c; color: white; padding: 2px 6px;');
             }
         } catch (e) {
             console.warn('Could not fetch conversion rates for position:', e);
