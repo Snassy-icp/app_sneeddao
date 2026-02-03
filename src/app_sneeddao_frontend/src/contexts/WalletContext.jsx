@@ -15,7 +15,7 @@ import { getTokenLogo, get_token_conversion_rate, get_available, get_available_b
 import { fetchUserNeuronsForSns, uint8ArrayToHex } from '../utils/NeuronUtils';
 import { getTipTokensReceivedByUser } from '../utils/BackendUtils';
 import { fetchAndCacheSnsData, getAllSnses, getSnsById } from '../utils/SnsUtils';
-import { getNeuronsFromCacheByIds, saveNeuronsToCache, normalizeCanisterId } from '../hooks/useNeuronsCache';
+import { getNeuronsFromCacheByIds, saveNeuronsToCache, getAllNeuronsForSns, normalizeCanisterId } from '../hooks/useNeuronsCache';
 import { initializeLogoCache, getLogo, setLogo, getLogoSync } from '../hooks/useLogoCache';
 import { initializeTokenCache, setLedgerList, getTokenMetadataSync } from '../hooks/useTokenCache';
 
@@ -700,16 +700,30 @@ export const WalletProvider = ({ children }) => {
                 const allSnses = getAllSnses();
                 const sns = allSnses.find(s => normalizeCanisterId(s.canisters?.governance) === govId);
                 
-                // Fetch from network - this returns only the user's reachable neurons
+                // Check IndexedDB cache BEFORE going to network
+                if (sns?.rootCanisterId) {
+                    try {
+                        const cachedNeurons = await getAllNeuronsForSns(sns.rootCanisterId);
+                        if (cachedNeurons && cachedNeurons.length > 0) {
+                            // Found in IndexedDB - update memory cache and return
+                            neuronCacheRef.current.set(govId, cachedNeurons);
+                            setNeuronCache(prev => new Map(prev).set(govId, cachedNeurons));
+                            return cachedNeurons;
+                        }
+                    } catch (e) {
+                        // IndexedDB check failed, continue to network fetch
+                    }
+                }
+                
+                // Not in cache - fetch from network
                 const neurons = await fetchUserNeuronsForSns(identity, govId);
                 
-                // Cache the neurons in local state
+                // Cache the neurons in memory
+                neuronCacheRef.current.set(govId, neurons);
                 setNeuronCache(prev => new Map(prev).set(govId, neurons));
                 
                 // Also save to the shared IndexedDB cache for persistence
-                // Save even empty arrays to avoid redundant network fetches on refresh
                 if (sns?.rootCanisterId) {
-                    // Fire and forget - don't await
                     saveNeuronsToCache(sns.rootCanisterId, neurons).catch(() => {});
                 }
                 

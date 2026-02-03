@@ -214,13 +214,25 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         return neuron.cached_neuron_stake_e8s || 0n;
     };
 
+    // Get total neuron stake - prefer cached token value for instant display
     const getTotalNeuronStake = () => {
+        // If we have cached value on token (from WalletContext), use it for instant display
+        if (token.neuronStake !== undefined && token.neuronStake !== null && token.neuronStake !== 0n) {
+            return BigInt(token.neuronStake);
+        }
+        // Fall back to computing from loaded neurons
         return neurons.reduce((total, neuron) => {
             return total + BigInt(getNeuronStake(neuron));
         }, 0n);
     };
 
+    // Get total neuron maturity - prefer cached token value for instant display
     const getTotalNeuronMaturity = () => {
+        // If we have cached value on token (from WalletContext), use it for instant display
+        if (token.neuronMaturity !== undefined && token.neuronMaturity !== null && token.neuronMaturity !== 0n) {
+            return BigInt(token.neuronMaturity);
+        }
+        // Fall back to computing from loaded neurons
         return neurons.reduce((total, neuron) => {
             return total + BigInt(neuron.maturity_e8s_equivalent || 0n);
         }, 0n);
@@ -1105,30 +1117,33 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 setSnsRootCanisterId(rootId);
                 setGovernanceCanisterId(govCanisterId);
 
-                const governanceActor = createSnsGovernanceActor(govCanisterId, { agentOptions: { identity } });
-                
                 // Fetch neurons from global cache (instant if already loaded by quick wallet)
-                // and nervous system parameters in parallel
-                const neuronsPromise = getNeuronsForGovernance 
-                    ? getNeuronsForGovernance(govCanisterId)
-                    : fetchUserNeuronsForSns(identity, govCanisterId);
-                    
-                const [loadedNeurons, paramsResponse] = await Promise.all([
-                    neuronsPromise,
-                    governanceActor.get_nervous_system_parameters(null)
-                ]);
+                // DON'T block on nervous system parameters - fetch those in background
+                const loadedNeurons = getNeuronsForGovernance 
+                    ? await getNeuronsForGovernance(govCanisterId)
+                    : await fetchUserNeuronsForSns(identity, govCanisterId);
                 
-                setNervousSystemParameters(paramsResponse);
-                const calc = new VotingPowerCalculator();
-                calc.setParams(paramsResponse);
-                setVotingPowerCalc(calc);
-                
+                // Show neurons immediately
                 setNeurons(loadedNeurons);
                 
                 // Notify parent of loaded neurons (for collect maturity feature)
                 if (onNeuronsLoaded) {
                     onNeuronsLoaded(loadedNeurons);
                 }
+                
+                // Fetch nervous system parameters in background (for voting power display)
+                // This is a network call, so don't block neuron display on it
+                const governanceActor = createSnsGovernanceActor(govCanisterId, { agentOptions: { identity } });
+                governanceActor.get_nervous_system_parameters(null)
+                    .then(paramsResponse => {
+                        setNervousSystemParameters(paramsResponse);
+                        const calc = new VotingPowerCalculator();
+                        calc.setParams(paramsResponse);
+                        setVotingPowerCalc(calc);
+                    })
+                    .catch(() => {
+                        // Parameters failed to load - neurons still display fine
+                    });
             } catch (error) {
                 console.error(`[TokenCard] Error fetching neurons for ${token.symbol}:`, error);
             } finally {
