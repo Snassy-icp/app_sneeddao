@@ -18,6 +18,7 @@ import { fetchAndCacheSnsData, getAllSnses, getSnsById } from '../utils/SnsUtils
 import { getNeuronsFromCacheByIds, saveNeuronsToCache, getAllNeuronsForSns, normalizeId } from '../hooks/useNeuronsCache';
 import { initializeLogoCache, getLogo, setLogo, getLogoSync } from '../hooks/useLogoCache';
 import { initializeTokenCache, setLedgerList, getTokenMetadataSync } from '../hooks/useTokenCache';
+import { getCachedRewards, setCachedRewards } from '../hooks/useRewardsCache';
 
 const WalletContext = createContext(null);
 
@@ -352,7 +353,19 @@ export const WalletProvider = ({ children }) => {
                         seenPrincipals.add(principal);
                         return true;
                     });
-                    setWalletTokens(deduplicatedTokens);
+                    
+                    // Load cached rewards and apply to tokens
+                    const cachedRewards = await getCachedRewards(principalId);
+                    const tokensWithRewards = deduplicatedTokens.map(token => {
+                        const tokenId = normalizeId(token.principal) || normalizeId(token.ledger_canister_id);
+                        const reward = cachedRewards?.[tokenId];
+                        if (reward !== undefined) {
+                            return { ...token, rewards: reward };
+                        }
+                        return token;
+                    });
+                    
+                    setWalletTokens(tokensWithRewards);
                     setHasFetchedInitial(true);
                 }
                 
@@ -900,6 +913,49 @@ export const WalletProvider = ({ children }) => {
         }
     }, [identity, fetchAndCacheNeurons]);
 
+    // Fetch and update rewards for all tokens (stores on tokens, caches to IndexedDB)
+    const fetchAndUpdateRewards = useCallback(async (sessionId) => {
+        if (!identity) return;
+        
+        try {
+            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
+            const sneedGovernanceCanisterId = 'fi3zi-fyaaa-aaaaq-aachq-cai';
+            const neurons = await fetchUserNeuronsForSns(identity, sneedGovernanceCanisterId);
+            const rewardBalances = await rllActor.balances_of_hotkey_neurons(neurons);
+            
+            // Build rewards map
+            const rewardsMap = {};
+            rewardBalances.forEach(balance => {
+                const ledgerId = normalizeId(balance[0]);
+                rewardsMap[ledgerId] = BigInt(balance[1]);
+            });
+            
+            // Save rewards to cache (for instant load next time)
+            setCachedRewards(identity.getPrincipal(), rewardsMap);
+            
+            // Update all tokens with their reward amounts
+            if (fetchSessionRef.current === sessionId) {
+                setWalletTokens(prev => prev.map(token => {
+                    const tokenId = normalizeId(token.principal) || normalizeId(token.ledger_canister_id);
+                    const reward = rewardsMap[tokenId];
+                    if (reward !== undefined) {
+                        return { ...token, rewards: reward };
+                    }
+                    // Set to 0n if no rewards (not undefined) - indicates "loaded, no rewards"
+                    if (token.rewards === undefined) {
+                        return { ...token, rewards: 0n };
+                    }
+                    return token;
+                }));
+            }
+            
+            return rewardsMap;
+        } catch (error) {
+            console.warn('Could not fetch rewards:', error);
+            return {};
+        }
+    }, [identity]);
+
     // Add a position progressively as it loads
     const addPositionProgressively = useCallback((positionData, sessionId) => {
         if (positionsFetchSessionRef.current !== sessionId) return;
@@ -1276,9 +1332,14 @@ export const WalletProvider = ({ children }) => {
                 }
             });
 
-            // 3. Get reward tokens from RLL (in parallel, don't block)
+            // 3. Get rewards from RLL and update tokens (in parallel, don't block)
+            // This both discovers new tokens with rewards AND updates reward amounts on all tokens
             (async () => {
                 try {
+                    // Fetch rewards and update all tokens with reward amounts
+                    const rewardsMap = await fetchAndUpdateRewards(sessionId);
+                    
+                    // Also discover new tokens that have rewards (but aren't in registered list)
                     const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
                     const sneedGovernanceCanisterId = 'fi3zi-fyaaa-aaaaq-aachq-cai';
                     const neurons = await fetchUserNeuronsForSns(identity, sneedGovernanceCanisterId);
@@ -1286,12 +1347,14 @@ export const WalletProvider = ({ children }) => {
                     
                     rewardBalances.forEach(balance => {
                         const ledger = balance[0];
-                        const ledgerId = ledger.toString();
+                        const ledgerId = normalizeId(ledger);
                         if (!knownLedgers.has(ledgerId) && fetchSessionRef.current === sessionId) {
                             knownLedgers.add(ledgerId);
                             fetchTokenDetailsFast(ledger, summedLocks).then(token => {
                                 if (token && fetchSessionRef.current === sessionId) {
-                                    addTokenProgressively(token, sessionId);
+                                    // Add reward amount to token
+                                    const tokenWithReward = { ...token, rewards: rewardsMap[ledgerId] || 0n };
+                                    addTokenProgressively(tokenWithReward, sessionId);
                                     fetchAndUpdateConversionRate(ledger, token.decimals, sessionId);
                                     fetchAndUpdateNeuronTotals(ledger, sessionId);
                                 }
@@ -1611,6 +1674,20 @@ export const WalletProvider = ({ children }) => {
         }
     }, []);
 
+    // Update just the rewards on tokens (called from Wallet.jsx when rewards are fetched)
+    const updateTokenRewards = useCallback((rewardsMap) => {
+        if (!rewardsMap || Object.keys(rewardsMap).length === 0) return;
+        
+        setWalletTokens(prev => prev.map(token => {
+            const tokenId = normalizeId(token.principal) || normalizeId(token.ledger_canister_id);
+            const reward = rewardsMap[tokenId];
+            if (reward !== undefined) {
+                return { ...token, rewards: reward };
+            }
+            return token;
+        }));
+    }, []);
+
     // Update liquidity positions (for local overrides from Wallet.jsx)
     const updateLiquidityPositions = useCallback((positions, loading = false) => {
         if (positions && positions.length > 0) {
@@ -1776,6 +1853,7 @@ export const WalletProvider = ({ children }) => {
             hasFetchedInitial,
             loadedFromCache, // True if initial data came from browser cache
             updateWalletTokens,
+            updateTokenRewards, // Update just the rewards on tokens
             setLoading,
             clearWallet,
             refreshWallet,

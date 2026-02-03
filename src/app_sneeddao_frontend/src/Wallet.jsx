@@ -45,6 +45,7 @@ import { fetchUserNeurons, fetchUserNeuronsForSns } from './utils/NeuronUtils';
 import { getTipTokensReceivedByUser } from './utils/BackendUtils';
 import { normalizeId } from './hooks/useNeuronsCache';
 import { getCachedRewards, setCachedRewards } from './hooks/useRewardsCache';
+import { getCachedLocks, setCachedLocks } from './hooks/useLocksCache';
 import priceService from './services/PriceService';
 import ConsolidateModal from './ConsolidateModal';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
@@ -426,7 +427,8 @@ function Wallet() {
         walletTokens, 
         walletLoading, 
         refreshWallet: contextRefreshWallet,
-        updateWalletTokens, 
+        updateWalletTokens,
+        updateTokenRewards, // Sync rewards to context for quick wallet
         setLoading: setWalletLoading, 
         // Positions from context (shared with quick wallet)
         liquidityPositions: contextLiquidityPositions,
@@ -854,7 +856,7 @@ function Wallet() {
         
         hasInitializedRewardsRef.current = true;
         
-        // Load cached rewards instantly, then fetch fresh in background
+        // Load cached rewards and locks instantly, then fetch fresh in background
         const userPrincipal = identity.getPrincipal();
         (async () => {
             // First, load cached rewards for instant display
@@ -864,8 +866,25 @@ function Wallet() {
                 setRewardDetailsLoading(cachedRewards);
             }
             
-            // Then fetch fresh rewards in background (will update cache)
+            // Load cached locks for instant display
+            const cachedLocksData = await getCachedLocks(userPrincipal);
+            if (cachedLocksData && Object.keys(cachedLocksData).length > 0) {
+                // Show cached locks immediately
+                setLocks(cachedLocksData);
+                // Mark all cached locks as "loaded" (not loading)
+                const loadedState = {};
+                for (const ledgerId of Object.keys(cachedLocksData)) {
+                    loadedState[ledgerId] = false;
+                }
+                setLockDetailsLoading(prev => ({ ...prev, ...loadedState }));
+            }
+            
+            // Then fetch fresh rewards and locks in background (will update cache)
             fetchRewardDetails();
+            // Fetch fresh locks (will silently update if cached data exists)
+            if (tokens && tokens.length > 0) {
+                fetchLockDetails(tokens);
+            }
         })();
     }, [isAuthenticated, identity, tokens]);
     
@@ -1190,6 +1209,8 @@ function Wallet() {
                 } else {
                     setRewardDetailsLoading(new_reward_balances);
                     setCachedRewards(identity.getPrincipal(), new_reward_balances);
+                    // Sync rewards to WalletContext for quick wallet
+                    updateTokenRewards(new_reward_balances);
                 }
             }
 
@@ -2593,19 +2614,27 @@ function Wallet() {
     }
 
     async function fetchLockDetails(currentTokens) {
-        // Initialize lockDetailsLoading state
+        // Don't show loading spinners if we already have cached data - silent background update
         const initialLoadingState = {};
         currentTokens.forEach(token => {
             const ledgerId = normalizeId(token.ledger_canister_id);
-            initialLoadingState[ledgerId] = true;
+            // Only set loading if we don't have cached locks for this token
+            if (!locks[ledgerId] || locks[ledgerId].length === 0) {
+                initialLoadingState[ledgerId] = true;
+            }
         });
-        setLockDetailsLoading(prevState => ({...prevState, ...initialLoadingState}))
+        if (Object.keys(initialLoadingState).length > 0) {
+            setLockDetailsLoading(prevState => ({...prevState, ...initialLoadingState}));
+        }
 
         const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
         if (await sneedLockActor.has_expired_locks()) {
             await sneedLockActor.clear_expired_locks();
         }
         const locks_from_backend = await sneedLockActor.get_token_locks();
+
+        // Build all locks at once for caching
+        const allLocks = {};
 
         // Fetch lock details for each token in parallel
         await Promise.all(currentTokens.map(async (token) => {
@@ -2626,6 +2655,9 @@ function Wallet() {
                     }
                 }
     
+                // Store for caching
+                allLocks[ledgerId] = tokenLocks;
+
                 // Update locks state for this token
                 setLocks(prevLocks => ({
                     ...prevLocks,
@@ -2649,6 +2681,11 @@ function Wallet() {
 
             }
         }));
+
+        // Save all locks to cache for instant load next time
+        if (Object.keys(allLocks).length > 0) {
+            setCachedLocks(identity.getPrincipal(), allLocks);
+        }
     }
 
     useEffect(() => {
