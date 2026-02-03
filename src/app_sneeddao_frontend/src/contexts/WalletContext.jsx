@@ -364,10 +364,10 @@ export const WalletProvider = ({ children }) => {
                 if (cachedData.liquidityPositions && cachedData.liquidityPositions.length > 0) {
                     console.log(`%c💾 [POSITIONS CACHE] Restoring ${cachedData.liquidityPositions.length} positions from cache`, 'background: #9b59b6; color: white; padding: 2px 6px;');
                     
-                    // Deduplicate by swapCanisterId
+                    // Deduplicate by swapCanisterId (using normalizeCanisterId for Principal/string insensitivity)
                     const seenSwapIds = new Set();
                     const deduplicatedPositions = cachedData.liquidityPositions.filter(pos => {
-                        const swapId = pos.swapCanisterId?.toString?.() || pos.swapCanisterId;
+                        const swapId = normalizeCanisterId(pos.swapCanisterId);
                         if (seenSwapIds.has(swapId)) {
                             console.warn(`%c⚠️ [POSITIONS CACHE] Removing duplicate LP ${swapId}`, 'background: #f39c12; color: black;');
                             return false;
@@ -381,7 +381,7 @@ export const WalletProvider = ({ children }) => {
                         if (!lp.positions || lp.positions.length === 0) return lp;
                         const seenPositionIds = new Set();
                         const cleanedInnerPositions = lp.positions.filter(pos => {
-                            const posId = pos.positionId?.toString?.() || pos.positionId;
+                            const posId = normalizeCanisterId(pos.positionId);
                             if (seenPositionIds.has(posId)) {
                                 console.warn(`%c⚠️ [POSITIONS CACHE] Removing duplicate position ${posId} in LP`, 'background: #f39c12; color: black;');
                                 return false;
@@ -943,21 +943,18 @@ export const WalletProvider = ({ children }) => {
         if (positionsFetchSessionRef.current !== sessionId) return;
         
         setLiquidityPositions(prev => {
-            // Normalize swapCanisterId for comparison (ensure string)
-            const newSwapId = positionData.swapCanisterId?.toString?.() || positionData.swapCanisterId;
+            // Normalize swapCanisterId for comparison (Principal/string insensitive)
+            const newSwapId = normalizeCanisterId(positionData.swapCanisterId);
             
             // Debug: Check for pre-existing duplicates in prev array
-            const prevSwapIds = prev.map(p => p.swapCanisterId?.toString?.() || p.swapCanisterId);
+            const prevSwapIds = prev.map(p => normalizeCanisterId(p.swapCanisterId));
             const prevDuplicates = prevSwapIds.filter((id, idx) => prevSwapIds.indexOf(id) !== idx);
             if (prevDuplicates.length > 0) {
                 console.error('%c🚨 [POSITIONS] PRE-EXISTING DUPLICATES in positions!', 'background: #e74c3c; color: white;', prevDuplicates);
             }
             
             // Check if LP already exists (normalize comparison)
-            const existingIndex = prev.findIndex(p => {
-                const existingId = p.swapCanisterId?.toString?.() || p.swapCanisterId;
-                return existingId === newSwapId;
-            });
+            const existingIndex = prev.findIndex(p => normalizeCanisterId(p.swapCanisterId) === newSwapId);
             
             if (existingIndex >= 0) {
                 // Update existing LP, preserving conversion rates if new data doesn't have them
@@ -968,7 +965,7 @@ export const WalletProvider = ({ children }) => {
                 if (existing.positions && existing.positions.length > 0 && mergedPositions.length > 0) {
                     const seenPositionIds = new Set();
                     mergedPositions = mergedPositions.filter(pos => {
-                        const posId = pos.positionId?.toString?.() || pos.positionId;
+                        const posId = normalizeCanisterId(pos.positionId);
                         if (seenPositionIds.has(posId)) {
                             console.warn(`%c⚠️ [POSITIONS] Duplicate positionId ${posId} in LP ${newSwapId}`, 'background: #f39c12; color: black;');
                             return false;
@@ -992,7 +989,7 @@ export const WalletProvider = ({ children }) => {
             let newPositions = positionData.positions || [];
             const seenPositionIds = new Set();
             newPositions = newPositions.filter(pos => {
-                const posId = pos.positionId?.toString?.() || pos.positionId;
+                const posId = normalizeCanisterId(pos.positionId);
                 if (seenPositionIds.has(posId)) {
                     console.warn(`%c⚠️ [POSITIONS] Duplicate positionId ${posId} in new LP ${newSwapId}`, 'background: #f39c12; color: black;');
                     return false;
@@ -1013,13 +1010,12 @@ export const WalletProvider = ({ children }) => {
                 get_token_conversion_rate(ledger1, decimals1).catch(() => 0)
             ]);
             
-            // Normalize swapCanisterId to string for comparison
-            const targetSwapId = swapCanisterId?.toString?.() || swapCanisterId;
+            // Normalize swapCanisterId (Principal/string insensitive)
+            const targetSwapId = normalizeCanisterId(swapCanisterId);
             
             if (positionsFetchSessionRef.current === sessionId) {
                 setLiquidityPositions(prev => prev.map(p => {
-                    const pSwapId = p.swapCanisterId?.toString?.() || p.swapCanisterId;
-                    if (pSwapId === targetSwapId) {
+                    if (normalizeCanisterId(p.swapCanisterId) === targetSwapId) {
                         return { ...p, token0_conversion_rate: rate0, token1_conversion_rate: rate1 };
                     }
                     return p;
@@ -1664,10 +1660,10 @@ export const WalletProvider = ({ children }) => {
     // Update liquidity positions (for local overrides from Wallet.jsx)
     const updateLiquidityPositions = useCallback((positions, loading = false) => {
         if (positions && positions.length > 0) {
-            // Deduplicate by swapCanisterId
+            // Deduplicate by swapCanisterId (Principal/string insensitive)
             const seenSwapIds = new Set();
             const deduplicatedPositions = positions.filter(pos => {
-                const swapId = pos.swapCanisterId?.toString?.() || pos.swapCanisterId;
+                const swapId = normalizeCanisterId(pos.swapCanisterId);
                 if (seenSwapIds.has(swapId)) {
                     console.warn(`%c⚠️ [POSITIONS UPDATE] Removing duplicate LP ${swapId}`, 'background: #f39c12; color: black;');
                     return false;
@@ -1681,7 +1677,7 @@ export const WalletProvider = ({ children }) => {
                 if (!lp.positions || lp.positions.length === 0) return lp;
                 const seenPositionIds = new Set();
                 const cleanedInnerPositions = lp.positions.filter(pos => {
-                    const posId = pos.positionId?.toString?.() || pos.positionId;
+                    const posId = normalizeCanisterId(pos.positionId);
                     if (seenPositionIds.has(posId)) {
                         console.warn(`%c⚠️ [POSITIONS UPDATE] Removing duplicate position ${posId}`, 'background: #f39c12; color: black;');
                         return false;
