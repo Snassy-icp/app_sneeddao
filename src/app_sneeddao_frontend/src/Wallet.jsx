@@ -420,7 +420,15 @@ function Wallet() {
     const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
     const { isPremium } = usePremiumStatus(identity);
-    const { updateWalletTokens, setLoading: setWalletLoading, updateLiquidityPositions } = useWallet();
+    const { 
+        walletTokens, 
+        walletLoading, 
+        refreshWallet: contextRefreshWallet,
+        updateWalletTokens, 
+        setLoading: setWalletLoading, 
+        updateLiquidityPositions,
+        hasFetchedInitial: contextHasFetchedTokens
+    } = useWallet();
     const navigate = useNavigate();
     
     // Compute account ID for the logged-in user
@@ -429,7 +437,42 @@ function Wallet() {
         return computeAccountId(identity.getPrincipal());
     }, [identity]);
     const location = useLocation();
-    const [tokens, setTokens] = useState([]);
+    // Use WalletContext as the source of truth for tokens
+    // Local state is only used for additional Wallet.jsx-specific updates
+    const [localTokenOverrides, setLocalTokenOverrides] = useState({});
+    
+    // Merge context tokens with any local overrides (for immediate UI updates after operations)
+    const tokens = useMemo(() => {
+        if (!walletTokens || walletTokens.length === 0) return [];
+        return walletTokens.map(token => {
+            const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.principal;
+            if (localTokenOverrides[ledgerId]) {
+                return { ...token, ...localTokenOverrides[ledgerId] };
+            }
+            return token;
+        });
+    }, [walletTokens, localTokenOverrides]);
+    
+    // Helper to update a single token (for immediate UI feedback after operations)
+    const updateSingleToken = useCallback((ledgerId, updates) => {
+        setLocalTokenOverrides(prev => ({
+            ...prev,
+            [ledgerId]: { ...prev[ledgerId], ...updates }
+        }));
+    }, []);
+    
+    // Helper to set tokens (for backwards compatibility with existing code)
+    const setTokens = useCallback((newTokensOrUpdater) => {
+        if (typeof newTokensOrUpdater === 'function') {
+            // For function updates, we can't easily apply to context, so update context directly
+            const updated = newTokensOrUpdater(tokens);
+            updateWalletTokens(updated);
+        } else {
+            updateWalletTokens(newTokensOrUpdater);
+        }
+        // Clear local overrides when setting full token list
+        setLocalTokenOverrides({});
+    }, [tokens, updateWalletTokens]);
     const [showSendModal, setShowSendModal] = useState(false);
     const [showWrapUnwrapModal, setShowWrapUnwrapModal] = useState(false);
     const [showWithdrawModal, setShowWithdrawModal] = useState(false);
@@ -727,12 +770,26 @@ function Wallet() {
             return;
         }
 
-        // Reset states and cache when component mounts
-        setTokens([]);
-        setLiquidityPositions([]);
-        Object.keys(known_icrc1_ledgers).forEach(key => delete known_icrc1_ledgers[key]);
+        // If context already has tokens, use those - no need to refetch
+        // This makes navigating to /wallet instant when quick wallet has loaded
+        const contextHasData = walletTokens && walletTokens.length > 0;
         
-        fetchBalancesAndLocks();
+        if (!contextHasData) {
+            // Only reset and fetch if context doesn't have data
+            setLiquidityPositions([]);
+            Object.keys(known_icrc1_ledgers).forEach(key => delete known_icrc1_ledgers[key]);
+            fetchBalancesAndLocks();
+        } else {
+            // Context has tokens - just mark loading as done
+            setShowTokensSpinner(false);
+            // Still populate known_icrc1_ledgers for incremental updates
+            walletTokens.forEach(token => {
+                const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.principal;
+                if (ledgerId) known_icrc1_ledgers[ledgerId] = true;
+            });
+        }
+        
+        // These are wallet-specific and should always run
         fetchLiquidityPositions();
         fetchIcpPrice();
         fetchNeuronManagers();
@@ -740,10 +797,7 @@ function Wallet() {
         fetchTrackedCanisters();
     }, [isAuthenticated, location.search, refreshTrigger]);
 
-    // Sync tokens to the global WalletContext so other components (like PrincipalBox) can access them
-    useEffect(() => {
-        updateWalletTokens(tokens);
-    }, [tokens, updateWalletTokens]);
+    // Note: No longer syncing tokens to WalletContext here - tokens is now derived FROM context
 
     // Sync liquidity positions to WalletContext (detailed data)
     useEffect(() => {
@@ -752,9 +806,12 @@ function Wallet() {
         }
     }, [liquidityPositions, showPositionsSpinner, updateLiquidityPositions]);
 
-    // Sync loading state to WalletContext
+    // Sync loading state to WalletContext (when Wallet.jsx is actively fetching)
     useEffect(() => {
-        setWalletLoading(showTokensSpinner);
+        // Only update context loading if we're doing a wallet-specific fetch
+        if (showTokensSpinner) {
+            setWalletLoading(true);
+        }
     }, [showTokensSpinner, setWalletLoading]);
 
     // Check admin status for debug features
