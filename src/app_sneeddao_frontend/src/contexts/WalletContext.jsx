@@ -15,7 +15,7 @@ import { getTokenLogo, get_token_conversion_rate, get_available, get_available_b
 import { fetchUserNeuronsForSns, uint8ArrayToHex } from '../utils/NeuronUtils';
 import { getTipTokensReceivedByUser } from '../utils/BackendUtils';
 import { fetchAndCacheSnsData, getAllSnses, getSnsById } from '../utils/SnsUtils';
-import { getNeuronsFromCacheByIds, saveNeuronsToCache } from '../hooks/useNeuronsCache';
+import { getNeuronsFromCacheByIds, saveNeuronsToCache, normalizeCanisterId } from '../hooks/useNeuronsCache';
 import { initializeLogoCache, getLogo, setLogo, getLogoSync } from '../hooks/useLogoCache';
 import { initializeTokenCache, setLedgerList, getTokenMetadataSync } from '../hooks/useTokenCache';
 
@@ -697,25 +697,29 @@ export const WalletProvider = ({ children }) => {
 
     // Fetch neurons for a governance canister and cache them
     const fetchAndCacheNeurons = useCallback(async (governanceCanisterId) => {
+        // Normalize the governance canister ID (accepts Principal or string)
+        const govId = normalizeCanisterId(governanceCanisterId);
+        if (!govId) return [];
+        
         if (!identity) {
             console.log(`[fetchAndCacheNeurons] No identity, returning []`);
             return [];
         }
         
         // Check if already in memory cache (use ref to get latest value, avoid stale closure)
-        if (neuronCacheRef.current.has(governanceCanisterId)) {
-            const cached = neuronCacheRef.current.get(governanceCanisterId);
-            console.log(`[fetchAndCacheNeurons] Memory cache hit for ${governanceCanisterId.substring(0, 8)}, returning ${cached.length} neurons`);
+        if (neuronCacheRef.current.has(govId)) {
+            const cached = neuronCacheRef.current.get(govId);
+            console.log(`[fetchAndCacheNeurons] Memory cache hit for ${govId.substring(0, 8)}, returning ${cached.length} neurons`);
             return cached;
         }
         
         // Check if already loading (use ref to get latest value)
-        if (neuronCacheLoadingRef.current.has(governanceCanisterId)) {
-            console.log(`[fetchAndCacheNeurons] Already loading ${governanceCanisterId.substring(0, 8)}, waiting...`);
+        if (neuronCacheLoadingRef.current.has(govId)) {
+            console.log(`[fetchAndCacheNeurons] Already loading ${govId.substring(0, 8)}, waiting...`);
             // Wait for it to load by polling (use ref to check latest loading state)
             await new Promise(resolve => {
                 const checkInterval = setInterval(() => {
-                    if (!neuronCacheLoadingRef.current.has(governanceCanisterId)) {
+                    if (!neuronCacheLoadingRef.current.has(govId)) {
                         clearInterval(checkInterval);
                         resolve();
                     }
@@ -727,18 +731,18 @@ export const WalletProvider = ({ children }) => {
                 }, 30000);
             });
             // Use ref to get the LATEST cache value after waiting
-            const cached = neuronCacheRef.current.get(governanceCanisterId) || [];
-            console.log(`[fetchAndCacheNeurons] Wait complete for ${governanceCanisterId.substring(0, 8)}, returning ${cached.length} neurons`);
+            const cached = neuronCacheRef.current.get(govId) || [];
+            console.log(`[fetchAndCacheNeurons] Wait complete for ${govId.substring(0, 8)}, returning ${cached.length} neurons`);
             return cached;
         }
         
         // Mark as loading
-        setNeuronCacheLoading(prev => new Set(prev).add(governanceCanisterId));
+        setNeuronCacheLoading(prev => new Set(prev).add(govId));
         
         try {
             // Find the SNS for this governance canister
             const allSnses = getAllSnses();
-            const sns = allSnses.find(s => s.canisters?.governance === governanceCanisterId);
+            const sns = allSnses.find(s => normalizeCanisterId(s.canisters?.governance) === govId);
             
             // NOTE: We no longer use getAllNeuronsForSns as fallback because it returns ALL neurons
             // from the shared cache (including from /neurons page visits), not just the user's neurons.
@@ -746,11 +750,11 @@ export const WalletProvider = ({ children }) => {
             // If memory cache misses, we fetch fresh from network to get only user's neurons.
             
             // Fetch from network - this returns only the user's reachable neurons
-            console.log(`[fetchAndCacheNeurons] Fetching from network for ${governanceCanisterId.substring(0, 8)}...`);
-            const neurons = await fetchUserNeuronsForSns(identity, governanceCanisterId);
+            console.log(`[fetchAndCacheNeurons] Fetching from network for ${govId.substring(0, 8)}...`);
+            const neurons = await fetchUserNeuronsForSns(identity, govId);
             
             // Cache the neurons in local state
-            setNeuronCache(prev => new Map(prev).set(governanceCanisterId, neurons));
+            setNeuronCache(prev => new Map(prev).set(govId, neurons));
             
             // Also save to the shared IndexedDB cache for persistence
             if (sns?.rootCanisterId && neurons.length > 0) {
@@ -760,16 +764,16 @@ export const WalletProvider = ({ children }) => {
                 });
             }
             
-            console.log(`[fetchAndCacheNeurons] Network fetch complete for ${governanceCanisterId.substring(0, 8)}, got ${neurons.length} neurons`);
+            console.log(`[fetchAndCacheNeurons] Network fetch complete for ${govId.substring(0, 8)}, got ${neurons.length} neurons`);
             return neurons;
         } catch (error) {
-            console.warn(`Could not fetch neurons for governance ${governanceCanisterId}:`, error);
+            console.warn(`Could not fetch neurons for governance ${govId}:`, error);
             return [];
         } finally {
             // Mark as done loading
             setNeuronCacheLoading(prev => {
                 const newSet = new Set(prev);
-                newSet.delete(governanceCanisterId);
+                newSet.delete(govId);
                 return newSet;
             });
         }
@@ -782,15 +786,17 @@ export const WalletProvider = ({ children }) => {
     
     // Get cached neurons synchronously (returns empty array if not yet loaded)
     const getCachedNeurons = useCallback((governanceCanisterId) => {
-        return neuronCache.get(governanceCanisterId) || [];
+        const govId = normalizeCanisterId(governanceCanisterId);
+        return neuronCache.get(govId) || [];
     }, [neuronCache]);
     
     // Clear neuron cache (e.g., on refresh)
     const clearNeuronCache = useCallback((governanceCanisterId = null) => {
         if (governanceCanisterId) {
+            const govId = normalizeCanisterId(governanceCanisterId);
             setNeuronCache(prev => {
                 const newMap = new Map(prev);
-                newMap.delete(governanceCanisterId);
+                newMap.delete(govId);
                 return newMap;
             });
         } else {

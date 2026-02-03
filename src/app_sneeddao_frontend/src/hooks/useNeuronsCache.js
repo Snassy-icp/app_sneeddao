@@ -14,6 +14,20 @@ const DB_VERSION = 1;
 const STORE_NAME = 'neurons';
 
 /**
+ * Normalize a canister ID to string format
+ * Accepts Principal objects, strings, or anything with toString()/toText()
+ * @param {Principal|string|object} canisterId - The canister ID in any format
+ * @returns {string} The canister ID as a string
+ */
+export const normalizeCanisterId = (canisterId) => {
+    if (!canisterId) return '';
+    if (typeof canisterId === 'string') return canisterId;
+    if (typeof canisterId.toText === 'function') return canisterId.toText();
+    if (typeof canisterId.toString === 'function') return canisterId.toString();
+    return String(canisterId);
+};
+
+/**
  * Initialize IndexedDB (standalone version)
  */
 const initializeNeuronsDB = () => {
@@ -32,17 +46,20 @@ const initializeNeuronsDB = () => {
 
 /**
  * Get a single neuron from cache by its hex ID
- * @param {string} snsRoot - SNS root canister ID
+ * @param {Principal|string} snsRoot - SNS root canister ID (accepts Principal or string)
  * @param {string} neuronIdHex - Neuron ID in hex format
  * @returns {Object|null} The neuron object or null if not found
  */
 export const getNeuronFromCache = async (snsRoot, neuronIdHex) => {
+    const normalizedRoot = normalizeCanisterId(snsRoot);
+    if (!normalizedRoot) return null;
+    
     try {
         const db = await initializeNeuronsDB();
         return new Promise((resolve, reject) => {
             const transaction = db.transaction([STORE_NAME], 'readonly');
             const store = transaction.objectStore(STORE_NAME);
-            const request = store.get(snsRoot);
+            const request = store.get(normalizedRoot);
             
             request.onsuccess = () => {
                 const data = request.result;
@@ -87,75 +104,83 @@ export const getNeuronFromCache = async (snsRoot, neuronIdHex) => {
 
 /**
  * Update a single neuron in the cache (or add if not exists)
- * Does NOT trigger loading all neurons
- * @param {string} snsRoot - SNS root canister ID
+ * Creates the cache entry if it doesn't exist - does NOT require loading all neurons first
+ * @param {Principal|string} snsRoot - SNS root canister ID (accepts Principal or string)
  * @param {Object} neuron - The neuron object to update
  */
 export const updateNeuronInCache = async (snsRoot, neuron) => {
+    const normalizedRoot = normalizeCanisterId(snsRoot);
+    if (!normalizedRoot || !neuron?.id?.[0]?.id) return;
+    
     try {
         const db = await initializeNeuronsDB();
         
         return new Promise((resolve, reject) => {
             const transaction = db.transaction([STORE_NAME], 'readwrite');
             const store = transaction.objectStore(STORE_NAME);
-            const getRequest = store.get(snsRoot);
+            const getRequest = store.get(normalizedRoot);
             
             getRequest.onsuccess = () => {
                 const data = getRequest.result;
                 
+                // Get neuron ID hex for comparison
+                const idArray = neuron.id[0].id;
+                const neuronIdHex = idArray instanceof Uint8Array
+                    ? uint8ArrayToHex(idArray)
+                    : Array.isArray(idArray)
+                        ? idArray.map(b => b.toString(16).padStart(2, '0')).join('')
+                        : '';
+                
+                // Serialize the neuron for storage
+                const serializedNeuron = {
+                    ...neuron,
+                    id: neuron.id.map(idObj => ({
+                        ...idObj,
+                        id: idObj.id instanceof Uint8Array 
+                            ? Array.from(idObj.id)
+                            : Array.isArray(idObj.id) ? idObj.id : []
+                    }))
+                };
+                
+                let updatedNeurons;
+                
                 if (data && data.neurons) {
-                    // Get neuron ID hex for comparison
-                    const neuronIdHex = uint8ArrayToHex(neuron.id[0]?.id);
-                    
                     // Find and update the neuron, or add it
                     let found = false;
-                    const updatedNeurons = data.neurons.map(n => {
+                    updatedNeurons = data.neurons.map(n => {
                         const existingHex = Array.isArray(n.id?.[0]?.id)
                             ? n.id[0].id.map(b => b.toString(16).padStart(2, '0')).join('')
                             : uint8ArrayToHex(new Uint8Array(n.id?.[0]?.id || []));
                         
-                        if (existingHex === neuronIdHex) {
+                        if (existingHex.toLowerCase() === neuronIdHex.toLowerCase()) {
                             found = true;
-                            // Serialize the neuron for storage
-                            return {
-                                ...neuron,
-                                id: neuron.id.map(idObj => ({
-                                    ...idObj,
-                                    id: Array.from(idObj.id)
-                                }))
-                            };
+                            return serializedNeuron;
                         }
                         return n;
                     });
                     
                     // If not found, add it
                     if (!found) {
-                        updatedNeurons.push({
-                            ...neuron,
-                            id: neuron.id.map(idObj => ({
-                                ...idObj,
-                                id: Array.from(idObj.id)
-                            }))
-                        });
+                        updatedNeurons.push(serializedNeuron);
                     }
-                    
-                    // Save updated cache
-                    const putRequest = store.put({
-                        ...data,
-                        neurons: updatedNeurons,
-                        timestamp: Date.now()
-                    });
-                    
-                    putRequest.onsuccess = () => {
-                        console.log('%c🧠 [NEURON CACHE] Updated neuron in cache:', 'background: #3498db; color: white; padding: 2px 6px;', neuronIdHex.substring(0, 16) + '...');
-                        resolve();
-                    };
-                    putRequest.onerror = () => reject(putRequest.error);
                 } else {
-                    // No cache exists yet - that's OK, the /neurons page will create it
-                    console.log('%c🧠 [NEURON CACHE] No cache exists yet, skipping update', 'background: #95a5a6; color: white; padding: 2px 6px;');
-                    resolve();
+                    // No cache exists yet - create it with just this neuron
+                    updatedNeurons = [serializedNeuron];
                 }
+                
+                // Save updated cache
+                const putRequest = store.put({
+                    snsRoot: normalizedRoot,
+                    neurons: updatedNeurons,
+                    metadata: data?.metadata || { symbol: 'SNS' },
+                    timestamp: Date.now()
+                });
+                
+                putRequest.onsuccess = () => {
+                    console.log('%c🧠 [NEURON CACHE] Updated neuron in cache:', 'background: #3498db; color: white; padding: 2px 6px;', neuronIdHex.substring(0, 16) + '...');
+                    resolve();
+                };
+                putRequest.onerror = () => reject(putRequest.error);
             };
             
             getRequest.onerror = () => reject(getRequest.error);
@@ -168,11 +193,12 @@ export const updateNeuronInCache = async (snsRoot, neuron) => {
 /**
  * Save neurons to the shared cache (for use by WalletContext and other consumers)
  * This merges with existing neurons rather than replacing
- * @param {string} snsRoot - SNS root canister ID
+ * @param {Principal|string} snsRoot - SNS root canister ID (accepts Principal or string)
  * @param {Object[]} neurons - Array of neuron objects to save
  */
 export const saveNeuronsToCache = async (snsRoot, neurons) => {
-    if (!snsRoot || !neurons || neurons.length === 0) return;
+    const normalizedRoot = normalizeCanisterId(snsRoot);
+    if (!normalizedRoot || !neurons || neurons.length === 0) return;
     
     try {
         const db = await initializeNeuronsDB();
@@ -180,7 +206,7 @@ export const saveNeuronsToCache = async (snsRoot, neurons) => {
         return new Promise((resolve, reject) => {
             const transaction = db.transaction([STORE_NAME], 'readwrite');
             const store = transaction.objectStore(STORE_NAME);
-            const getRequest = store.get(snsRoot);
+            const getRequest = store.get(normalizedRoot);
             
             getRequest.onsuccess = () => {
                 const existingData = getRequest.result;
@@ -238,14 +264,14 @@ export const saveNeuronsToCache = async (snsRoot, neurons) => {
                 }
                 
                 const putRequest = store.put({
-                    snsRoot,
+                    snsRoot: normalizedRoot,
                     neurons: mergedNeurons,
                     metadata: existingData?.metadata || { symbol: 'SNS' },
                     timestamp: Date.now()
                 });
                 
                 putRequest.onsuccess = () => {
-                    console.log(`%c🧠 [NEURON CACHE] Saved ${neurons.length} neurons to shared cache for ${snsRoot.substring(0, 8)}...`, 'background: #3498db; color: white; padding: 2px 6px;');
+                    console.log(`%c🧠 [NEURON CACHE] Saved ${neurons.length} neurons to shared cache for ${normalizedRoot.substring(0, 8)}...`, 'background: #3498db; color: white; padding: 2px 6px;');
                     resolve();
                 };
                 putRequest.onerror = () => reject(putRequest.error);
@@ -260,16 +286,19 @@ export const saveNeuronsToCache = async (snsRoot, neurons) => {
 
 /**
  * Check if cache exists for an SNS
- * @param {string} snsRoot - SNS root canister ID
+ * @param {Principal|string} snsRoot - SNS root canister ID (accepts Principal or string)
  * @returns {boolean} True if cache exists
  */
 export const hasCacheForSns = async (snsRoot) => {
+    const normalizedRoot = normalizeCanisterId(snsRoot);
+    if (!normalizedRoot) return false;
+    
     try {
         const db = await initializeNeuronsDB();
         return new Promise((resolve, reject) => {
             const transaction = db.transaction([STORE_NAME], 'readonly');
             const store = transaction.objectStore(STORE_NAME);
-            const request = store.get(snsRoot);
+            const request = store.get(normalizedRoot);
             
             request.onsuccess = () => {
                 resolve(!!request.result);
@@ -283,18 +312,22 @@ export const hasCacheForSns = async (snsRoot) => {
 
 /**
  * Get ALL neurons for an SNS from the shared cache
- * @param {string} snsRoot - SNS root canister ID
+ * NOTE: This returns ALL cached neurons for the SNS, which may include neurons
+ * from different sources (wallet, /neurons page). Use getNeuronsFromCacheByIds
+ * for filtering to specific neurons.
+ * @param {Principal|string} snsRoot - SNS root canister ID (accepts Principal or string)
  * @returns {Object[]} Array of neuron objects, or empty array if not found
  */
 export const getAllNeuronsForSns = async (snsRoot) => {
-    if (!snsRoot) return [];
+    const normalizedRoot = normalizeCanisterId(snsRoot);
+    if (!normalizedRoot) return [];
     
     try {
         const db = await initializeNeuronsDB();
         return new Promise((resolve, reject) => {
             const transaction = db.transaction([STORE_NAME], 'readonly');
             const store = transaction.objectStore(STORE_NAME);
-            const request = store.get(snsRoot);
+            const request = store.get(normalizedRoot);
             
             request.onsuccess = () => {
                 const data = request.result;
@@ -312,7 +345,7 @@ export const getAllNeuronsForSns = async (snsRoot) => {
                     })) || n.id
                 }));
                 
-                console.log(`%c🧠 [NEURON CACHE] IndexedDB hit for ${snsRoot.substring(0, 8)}: ${neurons.length} neurons`, 'background: #27ae60; color: white; padding: 2px 6px;');
+                console.log(`%c🧠 [NEURON CACHE] IndexedDB hit for ${normalizedRoot.substring(0, 8)}: ${neurons.length} neurons`, 'background: #27ae60; color: white; padding: 2px 6px;');
                 resolve(neurons);
             };
             
@@ -326,13 +359,14 @@ export const getAllNeuronsForSns = async (snsRoot) => {
 
 /**
  * Get multiple neurons from cache by their hex IDs
- * @param {string} snsRoot - SNS root canister ID
+ * @param {Principal|string} snsRoot - SNS root canister ID (accepts Principal or string)
  * @param {string[]} neuronIdHexArray - Array of neuron IDs in hex format
  * @returns {Object} { found: neuron[], missing: string[] } - Found neurons and missing IDs
  */
 export const getNeuronsFromCacheByIds = async (snsRoot, neuronIdHexArray) => {
-    if (!neuronIdHexArray || neuronIdHexArray.length === 0) {
-        return { found: [], missing: [] };
+    const normalizedRoot = normalizeCanisterId(snsRoot);
+    if (!normalizedRoot || !neuronIdHexArray || neuronIdHexArray.length === 0) {
+        return { found: [], missing: neuronIdHexArray || [] };
     }
     
     try {
@@ -340,7 +374,7 @@ export const getNeuronsFromCacheByIds = async (snsRoot, neuronIdHexArray) => {
         return new Promise((resolve, reject) => {
             const transaction = db.transaction([STORE_NAME], 'readonly');
             const store = transaction.objectStore(STORE_NAME);
-            const request = store.get(snsRoot);
+            const request = store.get(normalizedRoot);
             
             request.onsuccess = () => {
                 const data = request.result;
@@ -391,15 +425,45 @@ export const getNeuronsFromCacheByIds = async (snsRoot, neuronIdHexArray) => {
     }
 };
 
+/**
+ * Clear cache for a specific SNS
+ * @param {Principal|string} snsRoot - SNS root canister ID (accepts Principal or string)
+ */
+export const clearCacheForSns = async (snsRoot) => {
+    const normalizedRoot = normalizeCanisterId(snsRoot);
+    if (!normalizedRoot) return;
+    
+    try {
+        const db = await initializeNeuronsDB();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction([STORE_NAME], 'readwrite');
+            const store = transaction.objectStore(STORE_NAME);
+            const request = store.delete(normalizedRoot);
+            
+            request.onsuccess = () => {
+                console.log(`%c🧠 [NEURON CACHE] Cleared cache for ${normalizedRoot.substring(0, 8)}`, 'background: #e74c3c; color: white; padding: 2px 6px;');
+                resolve();
+            };
+            request.onerror = () => reject(request.error);
+        });
+    } catch (error) {
+        console.warn('Error clearing neuron cache:', error);
+    }
+};
+
 // ============================================================================
-// MAIN HOOK (for loading all neurons)
+// MAIN HOOK (for loading all neurons - used by /neurons, /users, /hub pages)
 // ============================================================================
 
 /**
  * Reusable hook for fetching and caching SNS neurons using IndexedDB
  * This hook is shared between /neurons, /users, and /hub pages
+ * NOTE: This loads ALL neurons for an SNS - for individual neuron operations,
+ * use the standalone functions like getNeuronFromCache, updateNeuronInCache
  */
 export default function useNeuronsCache(selectedSnsRoot, identity) {
+    // Normalize the selected SNS root
+    const normalizedSnsRoot = normalizeCanisterId(selectedSnsRoot);
     const [neurons, setNeurons] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -412,12 +476,15 @@ export default function useNeuronsCache(selectedSnsRoot, identity) {
 
     // Get cached data from IndexedDB
     const getCachedData = useCallback(async (snsRoot) => {
+        const normalized = normalizeCanisterId(snsRoot);
+        if (!normalized) return null;
+        
         try {
             const db = await initializeDB();
             return new Promise((resolve, reject) => {
                 const transaction = db.transaction(['neurons'], 'readonly');
                 const store = transaction.objectStore('neurons');
-                const request = store.get(snsRoot);
+                const request = store.get(normalized);
                 
                 request.onsuccess = () => {
                     const data = request.result;
@@ -446,6 +513,9 @@ export default function useNeuronsCache(selectedSnsRoot, identity) {
 
     // Set cache data in IndexedDB
     const setCacheData = useCallback(async (snsRoot, neurons, metadata) => {
+        const normalized = normalizeCanisterId(snsRoot);
+        if (!normalized) return;
+        
         try {
             const db = await initializeDB();
             return new Promise((resolve, reject) => {
@@ -462,7 +532,7 @@ export default function useNeuronsCache(selectedSnsRoot, identity) {
                 }));
                 
                 const request = store.put({
-                    snsRoot,
+                    snsRoot: normalized,
                     neurons: serializedNeurons,
                     metadata,
                     timestamp: Date.now()
@@ -476,23 +546,16 @@ export default function useNeuronsCache(selectedSnsRoot, identity) {
         }
     }, [initializeDB]);
 
-    // Clear cache for a specific SNS
+    // Clear cache for a specific SNS (uses the standalone function)
     const clearCache = useCallback(async (snsRoot) => {
-        try {
-            const db = await initializeDB();
-            const transaction = db.transaction(['neurons'], 'readwrite');
-            const store = transaction.objectStore('neurons');
-            await store.delete(snsRoot);
-        } catch (error) {
-            console.warn('Error clearing cache:', error);
-        }
-    }, [initializeDB]);
+        return clearCacheForSns(snsRoot);
+    }, []);
 
     // Fetch neuron count from SNS API
     const fetchNeuronCount = useCallback(async () => {
-        if (!selectedSnsRoot) return 0;
+        if (!normalizedSnsRoot) return 0;
         try {
-            const response = await fetch(`https://sns-api.internetcomputer.org/api/v2/snses/${selectedSnsRoot}/neurons/count`);
+            const response = await fetch(`https://sns-api.internetcomputer.org/api/v2/snses/${normalizedSnsRoot}/neurons/count`);
             const data = await response.json();
             const total = data.total || 0;
             setTotalNeuronCount(total);
@@ -501,18 +564,18 @@ export default function useNeuronsCache(selectedSnsRoot, identity) {
             console.error('Error fetching neuron count:', error);
             return 0;
         }
-    }, [selectedSnsRoot]);
+    }, [normalizedSnsRoot]);
 
     // Fetch neurons from the governance canister
     const fetchNeurons = useCallback(async () => {
-        if (!selectedSnsRoot) return;
+        if (!normalizedSnsRoot) return;
         
         setLoading(true);
         setError('');
         setLoadingProgress({ count: 0, message: 'Initializing...', percent: 0 });
         
         try {
-            const selectedSns = getSnsById(selectedSnsRoot);
+            const selectedSns = getSnsById(normalizedSnsRoot);
             if (!selectedSns) {
                 setError('Selected SNS not found');
                 setLoading(false);
@@ -612,7 +675,7 @@ export default function useNeuronsCache(selectedSnsRoot, identity) {
             }
 
             // Cache the fetched data
-            await setCacheData(selectedSnsRoot, sortedNeurons, { symbol });
+            await setCacheData(normalizedSnsRoot, sortedNeurons, { symbol });
             
             setLoadingProgress({ 
                 count: sortedNeurons.length,
@@ -626,38 +689,38 @@ export default function useNeuronsCache(selectedSnsRoot, identity) {
         } finally {
             setLoading(false);
         }
-    }, [selectedSnsRoot, identity, fetchNeuronCount, setCacheData]);
+    }, [normalizedSnsRoot, identity, fetchNeuronCount, setCacheData]);
 
     // Load data (from cache or fetch)
     const loadData = useCallback(async () => {
-        if (!selectedSnsRoot) return;
+        if (!normalizedSnsRoot) return;
         
-        const cachedData = await getCachedData(selectedSnsRoot);
+        const cachedData = await getCachedData(normalizedSnsRoot);
         if (cachedData) {
-            console.log('Loading from cache for SNS:', selectedSnsRoot);
+            console.log('Loading from cache for SNS:', normalizedSnsRoot);
             setLoadingProgress({ count: cachedData.neurons.length, message: 'Loading from cache...', percent: 100 });
             setNeurons(cachedData.neurons);
             setTokenSymbol(cachedData.metadata.symbol);
             setLoading(false);
         } else {
-            console.log('No cache found for SNS:', selectedSnsRoot);
+            console.log('No cache found for SNS:', normalizedSnsRoot);
             await fetchNeurons();
         }
-    }, [selectedSnsRoot, getCachedData, fetchNeurons]);
+    }, [normalizedSnsRoot, getCachedData, fetchNeurons]);
 
     // Refresh data (clear cache and fetch)
     const refreshData = useCallback(async () => {
-        await clearCache(selectedSnsRoot);
+        await clearCache(normalizedSnsRoot);
         await fetchNeurons();
-    }, [selectedSnsRoot, clearCache, fetchNeurons]);
+    }, [normalizedSnsRoot, clearCache, fetchNeurons]);
 
-    // Auto-load when selectedSnsRoot changes
+    // Auto-load when normalizedSnsRoot changes
     useEffect(() => {
-        if (selectedSnsRoot) {
+        if (normalizedSnsRoot) {
             setNeurons([]);
             loadData();
         }
-    }, [selectedSnsRoot]);
+    }, [normalizedSnsRoot]);
 
     return {
         neurons,
