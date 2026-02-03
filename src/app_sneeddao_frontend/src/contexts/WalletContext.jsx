@@ -265,19 +265,8 @@ export const WalletProvider = ({ children }) => {
     
     // Initialize caches on mount (loads from IndexedDB into memory)
     useEffect(() => {
-        // Initialize logo cache
-        initializeLogoCache().then(count => {
-            if (count > 0) {
-                console.log(`%c🖼️ [LOGO CACHE] Loaded ${count} logos from IndexedDB`, 'background: #9b59b6; color: white; padding: 2px 6px;');
-            }
-        });
-        
-        // Initialize token metadata cache
-        initializeTokenCache().then(count => {
-            if (count > 0) {
-                console.log(`%c🪙 [TOKEN CACHE] Loaded ${count} token metadata entries from IndexedDB`, 'background: #3498db; color: white; padding: 2px 6px;');
-            }
-        });
+        initializeLogoCache();
+        initializeTokenCache();
     }, []);
     
     // Tokens from the wallet - same structure as Wallet.jsx tokens state
@@ -352,44 +341,23 @@ export const WalletProvider = ({ children }) => {
             }
             
             if (cachedData) {
-                console.log('%c💾 [WALLET CACHE] Loading from IndexedDB cache, age:', 'background: #3498db; color: white; padding: 2px 6px;',
-                    Math.round((Date.now() - cachedData.timestamp) / 1000), 'seconds');
-                
                 // Restore tokens
                 if (cachedData.walletTokens && cachedData.walletTokens.length > 0) {
-                    console.log(`%c💾 [WALLET CACHE] Restoring ${cachedData.walletTokens.length} tokens`, 'background: #2ecc71; color: white; padding: 2px 6px;');
                     setWalletTokens(cachedData.walletTokens);
                     setHasFetchedInitial(true);
                 }
                 
                 // Restore positions (with deduplication)
                 if (cachedData.liquidityPositions && cachedData.liquidityPositions.length > 0) {
-                    console.log(`%c💾 [POSITIONS CACHE] Restoring ${cachedData.liquidityPositions.length} positions from cache`, 'background: #9b59b6; color: white; padding: 2px 6px;');
-                    
-                    // Debug: Log each position in detail
-                    cachedData.liquidityPositions.forEach((p, idx) => {
-                        const swapIdRaw = p.swapCanisterId;
-                        const swapIdNormalized = normalizeCanisterId(p.swapCanisterId);
-                        const swapIdType = swapIdRaw ? (typeof swapIdRaw === 'object' ? (swapIdRaw._isPrincipal ? 'Principal' : JSON.stringify(swapIdRaw).substring(0, 50)) : typeof swapIdRaw) : 'null';
-                        console.log(`%c💾 [POSITIONS CACHE] Position ${idx}: swapId=${swapIdNormalized?.substring(0, 15)}... type=${swapIdType}, rates=(${p.token0_conversion_rate}, ${p.token1_conversion_rate}), innerPositions=${p.positions?.length || 0}`, 'background: #9b59b6; color: white; padding: 2px 6px;');
-                    });
-                    
                     // Deduplicate by swapCanisterId (using normalizeCanisterId for Principal/string insensitivity)
                     const seenSwapIds = new Set();
                     const deduplicatedPositions = cachedData.liquidityPositions.filter(pos => {
                         const swapId = normalizeCanisterId(pos.swapCanisterId);
-                        if (!swapId) {
-                            console.error(`%c🚨 [POSITIONS CACHE] Position has invalid swapCanisterId:`, 'background: #e74c3c; color: white;', pos.swapCanisterId);
-                            return false;
-                        }
-                        if (seenSwapIds.has(swapId)) {
-                            console.warn(`%c⚠️ [POSITIONS CACHE] Removing duplicate LP ${swapId}`, 'background: #f39c12; color: black;');
-                            return false;
-                        }
+                        if (!swapId) return false;
+                        if (seenSwapIds.has(swapId)) return false;
                         seenSwapIds.add(swapId);
                         return true;
                     });
-                    console.log(`%c💾 [POSITIONS CACHE] After dedup: ${deduplicatedPositions.length} positions`, 'background: #9b59b6; color: white; padding: 2px 6px;');
                     
                     // Also deduplicate inner positions arrays
                     const cleanedPositions = deduplicatedPositions.map(lp => {
@@ -397,10 +365,7 @@ export const WalletProvider = ({ children }) => {
                         const seenPositionIds = new Set();
                         const cleanedInnerPositions = lp.positions.filter(pos => {
                             const posId = normalizeCanisterId(pos.positionId);
-                            if (seenPositionIds.has(posId)) {
-                                console.warn(`%c⚠️ [POSITIONS CACHE] Removing duplicate position ${posId} in LP`, 'background: #f39c12; color: black;');
-                                return false;
-                            }
+                            if (seenPositionIds.has(posId)) return false;
                             seenPositionIds.add(posId);
                             return true;
                         });
@@ -410,8 +375,6 @@ export const WalletProvider = ({ children }) => {
                     setLiquidityPositions(cleanedPositions);
                     setHasFetchedPositions(true);
                     hasPositionsRef.current = true;
-                } else {
-                    console.log('%c💾 [POSITIONS CACHE] No cached positions found', 'background: #e74c3c; color: white; padding: 2px 6px;');
                 }
                 
                 // Restore neuron cache from IDs (hydrate from shared IndexedDB cache)
@@ -478,7 +441,6 @@ export const WalletProvider = ({ children }) => {
                         neuronCacheRef.current = hydratedMap;
                         setNeuronCache(hydratedMap);
                         setNeuronCacheInitialized(true);
-                        console.log(`%c💾 [NEURON CACHE] Hydrated ${hydratedMap.size} governance caches from IndexedDB`, 'background: #9b59b6; color: white; padding: 2px 6px;');
                     }
                 }
                 
@@ -500,9 +462,6 @@ export const WalletProvider = ({ children }) => {
                 }
                 
                 setLoadedFromCache(true);
-                console.log('%c✅ [WALLET CACHE] Restore complete', 'background: #2ecc71; color: white; padding: 2px 6px;');
-            } else {
-                console.log('%c💾 [WALLET CACHE] No cache found', 'background: #e74c3c; color: white; padding: 2px 6px;');
             }
             
             // Mark cache check as complete AFTER all async operations (including neuron hydration)
@@ -541,13 +500,6 @@ export const WalletProvider = ({ children }) => {
                 return [govId, neuronIds];
             });
             
-            console.log(`%c💾 [POSITIONS CACHE] Saving ${liquidityPositions.length} positions to cache`, 'background: #3498db; color: white; padding: 2px 6px;');
-            // Debug: Log what we're saving
-            liquidityPositions.forEach((p, idx) => {
-                const swapIdNormalized = normalizeCanisterId(p.swapCanisterId);
-                const swapIdType = typeof p.swapCanisterId;
-                console.log(`%c💾 [POSITIONS SAVE] Position ${idx}: swapId=${swapIdNormalized?.substring(0, 15)}... type=${swapIdType}, innerPositions=${p.positions?.length || 0}`, 'background: #3498db; color: white; padding: 2px 6px;');
-            });
             saveWalletCache(principalId, {
                 walletTokens,
                 liquidityPositions,
@@ -727,21 +679,17 @@ export const WalletProvider = ({ children }) => {
         if (!govId) return [];
         
         if (!identity) {
-            console.log(`[fetchAndCacheNeurons] No identity, returning []`);
             return [];
         }
         
         // Check if already in memory cache (use ref to get latest value, avoid stale closure)
         if (neuronCacheRef.current.has(govId)) {
-            const cached = neuronCacheRef.current.get(govId);
-            console.log(`[fetchAndCacheNeurons] Memory cache hit for ${govId.substring(0, 8)}, returning ${cached.length} neurons`);
-            return cached;
+            return neuronCacheRef.current.get(govId);
         }
         
         // Check if there's already an in-flight request for this govId (request deduplication)
         const existingPromise = neuronFetchPromisesRef.current.get(govId);
         if (existingPromise) {
-            console.log(`[fetchAndCacheNeurons] Sharing in-flight request for ${govId.substring(0, 8)}...`);
             return existingPromise;
         }
         
@@ -753,7 +701,6 @@ export const WalletProvider = ({ children }) => {
                 const sns = allSnses.find(s => normalizeCanisterId(s.canisters?.governance) === govId);
                 
                 // Fetch from network - this returns only the user's reachable neurons
-                console.log(`[fetchAndCacheNeurons] Fetching from network for ${govId.substring(0, 8)}...`);
                 const neurons = await fetchUserNeuronsForSns(identity, govId);
                 
                 // Cache the neurons in local state
@@ -763,12 +710,9 @@ export const WalletProvider = ({ children }) => {
                 // Save even empty arrays to avoid redundant network fetches on refresh
                 if (sns?.rootCanisterId) {
                     // Fire and forget - don't await
-                    saveNeuronsToCache(sns.rootCanisterId, neurons).catch(e => {
-                        console.warn('Failed to save neurons to shared cache:', e);
-                    });
+                    saveNeuronsToCache(sns.rootCanisterId, neurons).catch(() => {});
                 }
                 
-                console.log(`[fetchAndCacheNeurons] Network fetch complete for ${govId.substring(0, 8)}, got ${neurons.length} neurons`);
                 return neurons;
             } catch (error) {
                 console.warn(`Could not fetch neurons for governance ${govId}:`, error);
@@ -873,47 +817,26 @@ export const WalletProvider = ({ children }) => {
             // Use getAllSnses() directly instead of snsTokenLedgers state to avoid race condition
             let allSnses = getAllSnses();
             
-            console.log(`[NeuronTotals] Called for ${ledgerId.substring(0, 8)}..., SNS count: ${allSnses.length}`);
-            
             // If SNS data isn't loaded yet (cache was cleared), wait for it to load
-            // This can happen when the user clears cache - SNS data fetch is async
             if (allSnses.length === 0) {
-                console.log(`[NeuronTotals] Waiting for SNS data to load for ${ledgerId.substring(0, 8)}...`);
                 // Wait up to 10 seconds for SNS data to load, checking every 200ms
                 for (let i = 0; i < 50; i++) {
                     await new Promise(resolve => setTimeout(resolve, 200));
-                    if (fetchSessionRef.current !== sessionId) return; // Session changed, abort
+                    if (fetchSessionRef.current !== sessionId) return;
                     allSnses = getAllSnses();
-                    if (allSnses.length > 0) {
-                        console.log(`[NeuronTotals] SNS data loaded (${allSnses.length} SNSes)`);
-                        break;
-                    }
+                    if (allSnses.length > 0) break;
                 }
             }
             
             const snsData = allSnses.find(sns => sns.canisters?.ledger === ledgerId);
-            
-            // Not an SNS token - skip silently (this is expected for non-SNS tokens)
-            if (!snsData) {
-                // Only log for debugging if we expected this to be an SNS token
-                return;
-            }
-            
-            console.log(`[NeuronTotals] Found SNS: ${snsData.name || ledgerId.substring(0, 8)}, governance: ${snsData.canisters?.governance?.substring(0, 8)}...`);
-            
             if (!snsData || !snsData.canisters?.governance) return;
             
             const governanceCanisterId = snsData.canisters.governance;
             
             // Fetch neurons (uses cache)
-            console.log(`[NeuronTotals] Fetching neurons for ${snsData.name}, session=${sessionId}...`);
             const neurons = await fetchAndCacheNeurons(governanceCanisterId);
-            console.log(`[NeuronTotals] Got ${neurons.length} neurons for ${snsData.name}, checking session...`);
             
-            if (fetchSessionRef.current !== sessionId) {
-                console.log(`[NeuronTotals] Session changed (${sessionId} vs ${fetchSessionRef.current}), aborting for ${snsData.name}`);
-                return;
-            }
+            if (fetchSessionRef.current !== sessionId) return;
             
             // Calculate totals
             const neuronStake = neurons.reduce((total, neuron) => {
@@ -923,11 +846,6 @@ export const WalletProvider = ({ children }) => {
             const neuronMaturity = neurons.reduce((total, neuron) => {
                 return total + BigInt(neuron.maturity_e8s_equivalent || 0n);
             }, 0n);
-            
-            // Update token with neuron data
-            if (neurons.length > 0) {
-                console.log(`%c🧠 [NEURON TOTALS] ${snsData.name || ledgerId.substring(0, 8)}: ${neurons.length} neurons, stake=${neuronStake}, maturity=${neuronMaturity}`, 'background: #9b59b6; color: white; padding: 2px 6px;');
-            }
             
             setWalletTokens(prev => prev.map(token => {
                 if (token.principal === ledgerId) {
@@ -953,20 +871,12 @@ export const WalletProvider = ({ children }) => {
             // Normalize swapCanisterId for comparison (Principal/string insensitive)
             const newSwapId = normalizeCanisterId(positionData.swapCanisterId);
             
-            // Debug: Check for pre-existing duplicates in prev array
-            const prevSwapIds = prev.map(p => normalizeCanisterId(p.swapCanisterId));
-            const prevDuplicates = prevSwapIds.filter((id, idx) => prevSwapIds.indexOf(id) !== idx);
-            if (prevDuplicates.length > 0) {
-                console.error('%c🚨 [POSITIONS] PRE-EXISTING DUPLICATES in positions!', 'background: #e74c3c; color: white;', prevDuplicates);
-            }
-            
             // Check if LP already exists (normalize comparison)
             const existingIndex = prev.findIndex(p => normalizeCanisterId(p.swapCanisterId) === newSwapId);
             
             if (existingIndex >= 0) {
                 // Update existing LP, preserving conversion rates if new data doesn't have them
                 const existing = prev[existingIndex];
-                console.log(`%c📊 [POSITIONS] Merging ${newSwapId.substring(0, 10)}...: existing rates=(${existing.token0_conversion_rate}, ${existing.token1_conversion_rate}), new rates=(${positionData.token0_conversion_rate}, ${positionData.token1_conversion_rate})`, 'background: #3498db; color: white; padding: 2px 6px;');
                 
                 // Deduplicate inner positions array by positionId
                 let mergedPositions = positionData.positions || [];
@@ -974,10 +884,7 @@ export const WalletProvider = ({ children }) => {
                     const seenPositionIds = new Set();
                     mergedPositions = mergedPositions.filter(pos => {
                         const posId = normalizeCanisterId(pos.positionId);
-                        if (seenPositionIds.has(posId)) {
-                            console.warn(`%c⚠️ [POSITIONS] Duplicate positionId ${posId} in LP ${newSwapId}`, 'background: #f39c12; color: black;');
-                            return false;
-                        }
+                        if (seenPositionIds.has(posId)) return false;
                         seenPositionIds.add(posId);
                         return true;
                     });
@@ -1004,10 +911,7 @@ export const WalletProvider = ({ children }) => {
             const seenPositionIds = new Set();
             newPositions = newPositions.filter(pos => {
                 const posId = normalizeCanisterId(pos.positionId);
-                if (seenPositionIds.has(posId)) {
-                    console.warn(`%c⚠️ [POSITIONS] Duplicate positionId ${posId} in new LP ${newSwapId}`, 'background: #f39c12; color: black;');
-                    return false;
-                }
+                if (seenPositionIds.has(posId)) return false;
                 seenPositionIds.add(posId);
                 return true;
             });
@@ -1020,31 +924,22 @@ export const WalletProvider = ({ children }) => {
     const fetchPositionConversionRates = useCallback(async (swapCanisterId, ledger0, ledger1, decimals0, decimals1, sessionId) => {
         try {
             const targetSwapId = normalizeCanisterId(swapCanisterId);
-            console.log(`%c💵 [CONVERSION RATES] Fetching for ${targetSwapId.substring(0, 10)}... sessionId=${sessionId}`, 'background: #9b59b6; color: white; padding: 2px 6px;');
             
             const [rate0, rate1] = await Promise.all([
                 get_token_conversion_rate(ledger0, decimals0).catch(() => 0),
                 get_token_conversion_rate(ledger1, decimals1).catch(() => 0)
             ]);
             
-            console.log(`%c💵 [CONVERSION RATES] Got rates for ${targetSwapId.substring(0, 10)}...: rate0=${rate0}, rate1=${rate1}, currentSession=${positionsFetchSessionRef.current}, mySession=${sessionId}`, 'background: #9b59b6; color: white; padding: 2px 6px;');
-            
             if (positionsFetchSessionRef.current === sessionId) {
-                setLiquidityPositions(prev => {
-                    const updated = prev.map(p => {
-                        if (normalizeCanisterId(p.swapCanisterId) === targetSwapId) {
-                            console.log(`%c💵 [CONVERSION RATES] Updating ${targetSwapId.substring(0, 10)}...: old rates=(${p.token0_conversion_rate}, ${p.token1_conversion_rate}) → new=(${rate0}, ${rate1})`, 'background: #2ecc71; color: white; padding: 2px 6px;');
-                            return { ...p, token0_conversion_rate: rate0, token1_conversion_rate: rate1 };
-                        }
-                        return p;
-                    });
-                    return updated;
-                });
-            } else {
-                console.warn(`%c💵 [CONVERSION RATES] Skipping stale update for ${targetSwapId.substring(0, 10)}... (session ${sessionId} != current ${positionsFetchSessionRef.current})`, 'background: #e74c3c; color: white; padding: 2px 6px;');
+                setLiquidityPositions(prev => prev.map(p => {
+                    if (normalizeCanisterId(p.swapCanisterId) === targetSwapId) {
+                        return { ...p, token0_conversion_rate: rate0, token1_conversion_rate: rate1 };
+                    }
+                    return p;
+                }));
             }
         } catch (e) {
-            console.warn('Could not fetch conversion rates for position:', e);
+            // Silently ignore conversion rate fetch failures
         }
     }, []);
 
@@ -1055,8 +950,6 @@ export const WalletProvider = ({ children }) => {
     
     // Fetch compact positions for the quick wallet - PROGRESSIVE
     const fetchCompactPositions = useCallback(async (clearFirst = false, showLoading = true) => {
-        console.log(`%c🔄 [POSITIONS FETCH] Called with clearFirst=${clearFirst} showLoading=${showLoading} hasPositionsRef=${hasPositionsRef.current}`, 'background: #f39c12; color: black; padding: 2px 6px;');
-        
         if (!identity || !isAuthenticated) {
             setLiquidityPositions([]);
             setPositionsLoading(false);
@@ -1066,17 +959,13 @@ export const WalletProvider = ({ children }) => {
         const sessionId = ++positionsFetchSessionRef.current;
         
         // Only clear positions if explicitly requested (e.g., on manual refresh)
-        // This preserves cached data during background refresh
         if (clearFirst) {
-            console.log('%c🔄 [POSITIONS FETCH] Clearing positions (clearFirst=true)', 'background: #e74c3c; color: white; padding: 2px 6px;');
             setLiquidityPositions([]);
             hasPositionsRef.current = false;
         }
         
         // Only show loading spinner if requested AND we have no data to show
-        // Use ref to avoid stale closure issue
         const shouldShowLoading = showLoading && (clearFirst || !hasPositionsRef.current);
-        console.log(`%c🔄 [POSITIONS FETCH] shouldShowLoading=${shouldShowLoading}`, 'background: #f39c12; color: black; padding: 2px 6px;');
         if (shouldShowLoading) {
             setPositionsLoading(true);
         }
@@ -1326,7 +1215,6 @@ export const WalletProvider = ({ children }) => {
             setLedgerList('registered', registeredLedgers);
             
             // Start fetching registered tokens immediately (don't wait for RLL/tips)
-            console.log(`[WALLET FETCH] Starting fetch for ${registeredLedgers.length} registered tokens`);
             registeredLedgers.forEach(ledger => {
                 const ledgerId = ledger.toString();
                 if (!knownLedgers.has(ledgerId)) {
@@ -1337,13 +1225,9 @@ export const WalletProvider = ({ children }) => {
                             addTokenProgressively(token, sessionId);
                             // Then fetch USD value and neuron totals in background
                             fetchAndUpdateConversionRate(ledger, token.decimals, sessionId);
-                            // Fetch neuron data for SNS tokens (progressive)
-                            console.log(`[WALLET FETCH] Token ${token.symbol || ledgerId.substring(0, 8)} loaded, fetching neuron totals...`);
                             fetchAndUpdateNeuronTotals(ledger, sessionId);
                         }
-                    }).catch(err => {
-                        console.warn(`[WALLET FETCH] Failed to fetch token ${ledgerId.substring(0, 8)}:`, err);
-                    });
+                    }).catch(() => {});
                 }
             });
 
@@ -1617,34 +1501,26 @@ export const WalletProvider = ({ children }) => {
     useEffect(() => {
         if (isAuthenticated && identity) {
             // Wait for cache check to complete before deciding what to do
-            // This prevents the race condition where we fetch before cache is loaded
-            if (!cacheCheckComplete) {
-                console.log('%c⏳ [WALLET] Waiting for cache check to complete...', 'background: #95a5a6; color: white; padding: 2px 6px;');
-                return;
-            }
+            if (!cacheCheckComplete) return;
             
             // Guard against concurrent fetches
             if (isFetchingRef.current) return;
             
             // If we loaded from cache, we have hasFetchedInitial=true but need fresh data
-            // Use a ref to track if we've fetched fresh data this session
             if (loadedFromCache && !hasFetchedFreshRef.current) {
                 // We have cached data showing, fetch fresh in background
-                console.log('%c✨ [WALLET] Have cache, fetching fresh in background', 'background: #2ecc71; color: white; padding: 2px 6px;');
                 hasFetchedFreshRef.current = true;
                 isFetchingRef.current = true;
                 // Don't show loading state since we have cached data
                 fetchCompactWalletTokens();
-                fetchCompactPositions(false, false); // Don't clear, don't show loading
+                fetchCompactPositions(false, false);
                 fetchNeuronManagers();
-                // Reset fetching flag after a short delay
                 setTimeout(() => { isFetchingRef.current = false; }, 100);
             } else if (!hasFetchedInitial && !loadedFromCache) {
                 // No cached data, need to fetch from scratch
-                console.log('%c🔄 [WALLET] No cache, fetching from scratch', 'background: #e74c3c; color: white; padding: 2px 6px;');
                 isFetchingRef.current = true;
                 fetchCompactWalletTokens();
-                fetchCompactPositions(true); // Clear first since no cache
+                fetchCompactPositions(true);
                 fetchNeuronManagers();
                 setTimeout(() => { isFetchingRef.current = false; }, 100);
             }
@@ -1686,10 +1562,7 @@ export const WalletProvider = ({ children }) => {
             const seenSwapIds = new Set();
             const deduplicatedPositions = positions.filter(pos => {
                 const swapId = normalizeCanisterId(pos.swapCanisterId);
-                if (seenSwapIds.has(swapId)) {
-                    console.warn(`%c⚠️ [POSITIONS UPDATE] Removing duplicate LP ${swapId}`, 'background: #f39c12; color: black;');
-                    return false;
-                }
+                if (seenSwapIds.has(swapId)) return false;
                 seenSwapIds.add(swapId);
                 return true;
             });
@@ -1700,10 +1573,7 @@ export const WalletProvider = ({ children }) => {
                 const seenPositionIds = new Set();
                 const cleanedInnerPositions = lp.positions.filter(pos => {
                     const posId = normalizeCanisterId(pos.positionId);
-                    if (seenPositionIds.has(posId)) {
-                        console.warn(`%c⚠️ [POSITIONS UPDATE] Removing duplicate position ${posId}`, 'background: #f39c12; color: black;');
-                        return false;
-                    }
+                    if (seenPositionIds.has(posId)) return false;
                     seenPositionIds.add(posId);
                     return true;
                 });

@@ -114,7 +114,6 @@ export const getNeuronFromCache = async (snsRoot, neuronIdHex) => {
                                 id: new Uint8Array(idObj.id)
                             }))
                         };
-                        console.log('%c🧠 [NEURON CACHE] Found neuron in cache:', 'background: #2ecc71; color: white; padding: 2px 6px;', neuronIdHex.substring(0, 16) + '...');
                         resolve(reconstructedNeuron);
                     } else {
                         resolve(null);
@@ -186,17 +185,9 @@ const getOrFetchNeuronInternal = async (snsRoot, governanceCanisterId, neuronIdH
     }
     
     // 2. Not in cache - need to fetch from network
-    if (!identity) {
-        console.log('[getOrFetchNeuron] No identity provided, cannot fetch from network');
+    if (!identity || !governanceCanisterId) {
         return null;
     }
-    
-    if (!governanceCanisterId) {
-        console.warn('[getOrFetchNeuron] No governance canister ID available for network fetch');
-        return null;
-    }
-    
-    console.log(`%c🧠 [NEURON CACHE] Cache miss for ${neuronIdHex.substring(0, 16)}..., fetching from network`, 'background: #f39c12; color: black; padding: 2px 6px;');
     
     try {
         // 3. Fetch from network
@@ -205,15 +196,12 @@ const getOrFetchNeuronInternal = async (snsRoot, governanceCanisterId, neuronIdH
         if (neuron) {
             // 4. Cache the result
             await updateNeuronInCache(snsRoot, neuron);
-            console.log(`%c🧠 [NEURON CACHE] Fetched and cached neuron ${neuronIdHex.substring(0, 16)}...`, 'background: #2ecc71; color: white; padding: 2px 6px;');
-            
-            // 5. Return the neuron
             return neuron;
         }
         
         return null;
     } catch (error) {
-        console.error('[getOrFetchNeuron] Error fetching neuron from network:', error);
+        console.warn('[getOrFetchNeuron] Error fetching neuron:', error);
         return null;
     }
 };
@@ -257,23 +245,19 @@ export const fetchNeuronFresh = async ({ snsRoot, governanceCanisterId, neuronId
     }
     
     if (!normalizedGovId) {
-        console.warn('[fetchNeuronFresh] No governance canister ID available');
         return null;
     }
-    
-    console.log(`%c🧠 [NEURON FRESH] Fetching ${neuronIdHex.substring(0, 16)}... from network`, 'background: #3498db; color: white; padding: 2px 6px;');
     
     try {
         const neuron = await getNeuronDetails(identity, normalizedGovId, neuronIdHex);
         
         if (neuron && effectiveRoot) {
             await updateNeuronInCache(effectiveRoot, neuron);
-            console.log(`%c🧠 [NEURON FRESH] Updated cache with fresh neuron ${neuronIdHex.substring(0, 16)}...`, 'background: #2ecc71; color: white; padding: 2px 6px;');
         }
         
         return neuron;
     } catch (error) {
-        console.error('[fetchNeuronFresh] Error fetching neuron:', error);
+        console.warn('[fetchNeuronFresh] Error:', error);
         return null;
     }
 };
@@ -352,17 +336,14 @@ export const updateNeuronInCache = async (snsRoot, neuron) => {
                     timestamp: Date.now()
                 });
                 
-                putRequest.onsuccess = () => {
-                    console.log('%c🧠 [NEURON CACHE] Updated neuron in cache:', 'background: #3498db; color: white; padding: 2px 6px;', neuronIdHex.substring(0, 16) + '...');
-                    resolve();
-                };
+                putRequest.onsuccess = () => resolve();
                 putRequest.onerror = () => reject(putRequest.error);
             };
             
             getRequest.onerror = () => reject(getRequest.error);
         });
     } catch (error) {
-        console.warn('Error updating neuron in cache:', error);
+        // Silently ignore cache update errors
     }
 };
 
@@ -450,17 +431,14 @@ export const saveNeuronsToCache = async (snsRoot, neurons) => {
                     timestamp: Date.now()
                 });
                 
-                putRequest.onsuccess = () => {
-                    console.log(`%c🧠 [NEURON CACHE] Saved ${neurons.length} neurons to shared cache for ${normalizedRoot.substring(0, 8)}...`, 'background: #3498db; color: white; padding: 2px 6px;');
-                    resolve();
-                };
+                putRequest.onsuccess = () => resolve();
                 putRequest.onerror = () => reject(putRequest.error);
             };
             
             getRequest.onerror = () => reject(getRequest.error);
         });
     } catch (error) {
-        console.warn('Error saving neurons to cache:', error);
+        // Silently ignore cache save errors
     }
 };
 
@@ -525,14 +503,12 @@ export const getAllNeuronsForSns = async (snsRoot) => {
                     })) || n.id
                 }));
                 
-                console.log(`%c🧠 [NEURON CACHE] IndexedDB hit for ${normalizedRoot.substring(0, 8)}: ${neurons.length} neurons`, 'background: #27ae60; color: white; padding: 2px 6px;');
                 resolve(neurons);
             };
             
             request.onerror = () => resolve([]);
         });
     } catch (error) {
-        console.warn('Error getting all neurons from cache:', error);
         return [];
     }
 };
@@ -589,18 +565,12 @@ export const getNeuronsFromCacheByIds = async (snsRoot, neuronIdHexArray) => {
                 });
                 
                 const missing = neuronIdHexArray.filter(id => !foundIds.has(id.toLowerCase()));
-                
-                if (found.length > 0) {
-                    console.log(`%c🧠 [NEURON CACHE] Hydrated ${found.length}/${neuronIdHexArray.length} neurons from shared cache`, 'background: #2ecc71; color: white; padding: 2px 6px;');
-                }
-                
                 resolve({ found, missing });
             };
             
             request.onerror = () => reject(request.error);
         });
     } catch (error) {
-        console.warn('Error getting neurons from cache:', error);
         return { found: [], missing: neuronIdHexArray };
     }
 };
@@ -641,30 +611,22 @@ export const getOrFetchNeuronsByIds = async ({ snsRoot, governanceCanisterId, ne
     
     // 3. If no identity, can't fetch missing - return what we have
     if (!identity) {
-        console.log(`[getOrFetchNeuronsByIds] No identity provided, returning ${found.length} cached neurons (${missing.length} missing)`);
         return found;
     }
     
     if (!normalizedGovId) {
-        console.warn('[getOrFetchNeuronsByIds] No governance canister ID available for network fetch');
         return found;
     }
     
-    console.log(`%c🧠 [NEURON CACHE] Fetching ${missing.length} missing neurons from network`, 'background: #f39c12; color: black; padding: 2px 6px;');
-    
     // 4. Fetch missing neurons from network (in parallel, but limit concurrency)
-    const BATCH_SIZE = 5; // Limit concurrent requests
+    const BATCH_SIZE = 5;
     const fetchedNeurons = [];
     
     for (let i = 0; i < missing.length; i += BATCH_SIZE) {
         const batch = missing.slice(i, i + BATCH_SIZE);
         const batchResults = await Promise.all(
             batch.map(neuronIdHex => 
-                getNeuronDetails(identity, normalizedGovId, neuronIdHex)
-                    .catch(err => {
-                        console.warn(`Failed to fetch neuron ${neuronIdHex}:`, err);
-                        return null;
-                    })
+                getNeuronDetails(identity, normalizedGovId, neuronIdHex).catch(() => null)
             )
         );
         
@@ -678,7 +640,6 @@ export const getOrFetchNeuronsByIds = async ({ snsRoot, governanceCanisterId, ne
     // 5. Cache the newly fetched neurons
     if (fetchedNeurons.length > 0) {
         await saveNeuronsToCache(normalizedRoot, fetchedNeurons);
-        console.log(`%c🧠 [NEURON CACHE] Fetched and cached ${fetchedNeurons.length} neurons`, 'background: #2ecc71; color: white; padding: 2px 6px;');
     }
     
     // 6. Return all neurons (cached + freshly fetched)
@@ -700,14 +661,11 @@ export const clearCacheForSns = async (snsRoot) => {
             const store = transaction.objectStore(STORE_NAME);
             const request = store.delete(normalizedRoot);
             
-            request.onsuccess = () => {
-                console.log(`%c🧠 [NEURON CACHE] Cleared cache for ${normalizedRoot.substring(0, 8)}`, 'background: #e74c3c; color: white; padding: 2px 6px;');
-                resolve();
-            };
+            request.onsuccess = () => resolve();
             request.onerror = () => reject(request.error);
         });
     } catch (error) {
-        console.warn('Error clearing neuron cache:', error);
+        // Silently ignore cache clear errors
     }
 };
 
@@ -957,13 +915,11 @@ export default function useNeuronsCache(selectedSnsRoot, identity) {
         
         const cachedData = await getCachedData(normalizedSnsRoot);
         if (cachedData) {
-            console.log('Loading from cache for SNS:', normalizedSnsRoot);
             setLoadingProgress({ count: cachedData.neurons.length, message: 'Loading from cache...', percent: 100 });
             setNeurons(cachedData.neurons);
             setTokenSymbol(cachedData.metadata.symbol);
             setLoading(false);
         } else {
-            console.log('No cache found for SNS:', normalizedSnsRoot);
             await fetchNeurons();
         }
     }, [normalizedSnsRoot, getCachedData, fetchNeurons]);
