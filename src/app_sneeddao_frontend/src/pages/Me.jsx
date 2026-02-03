@@ -379,7 +379,7 @@ export default function Me() {
                 'sneed_wallet_cache',
                 'sneed_logo_cache', 
                 'sneed_token_cache',
-                'sneed_neurons_cache'
+                'NeuronsDB'  // Shared neurons cache from useNeuronsCache.js
             ];
             
             for (const dbName of dbNames) {
@@ -405,7 +405,12 @@ export default function Me() {
             const keysToRemove = [];
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
-                if (key && (key.includes('wallet_cache') || key.includes('sns_cache') || key.includes('sneed_'))) {
+                if (key && (
+                    key.includes('wallet_cache') || 
+                    key.includes('sns_cache') || 
+                    key.includes('sneed_') ||
+                    key.startsWith('neuronsCache_')  // Old NeuronsContext localStorage cache
+                )) {
                     keysToRemove.push(key);
                 }
             }

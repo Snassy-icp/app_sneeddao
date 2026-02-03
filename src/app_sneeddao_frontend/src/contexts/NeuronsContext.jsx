@@ -1,115 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { Principal } from '@dfinity/principal';
 import { useAuth } from '../AuthContext';
 import { useSns } from './SnsContext';
-import { fetchUserNeuronsForSns } from '../utils/NeuronUtils';
+import { fetchUserNeuronsForSns, uint8ArrayToHex } from '../utils/NeuronUtils';
 import { getSnsById } from '../utils/SnsUtils';
+import { getNeuronsFromCacheByIds, saveNeuronsToCache } from '../hooks/useNeuronsCache';
 
 const NeuronsContext = createContext();
-
-// ============================================================================
-// PERSISTENT CACHE HELPERS
-// ============================================================================
-
-const NEURONS_CACHE_KEY_PREFIX = 'neuronsCache_';
-const NEURONS_CACHE_VERSION = 1;
-
-// Custom JSON replacer to handle BigInt, Principal, TypedArrays, Map, Set
-const jsonReplacer = (key, value) => {
-    if (typeof value === 'bigint') {
-        return { __type: 'BigInt', value: value.toString() };
-    }
-    if (value && typeof value === 'object' && value._isPrincipal) {
-        return { __type: 'Principal', value: value.toString() };
-    }
-    if (value instanceof Principal) {
-        return { __type: 'Principal', value: value.toString() };
-    }
-    if (value instanceof Map) {
-        return { __type: 'Map', value: Array.from(value.entries()) };
-    }
-    if (value instanceof Set) {
-        return { __type: 'Set', value: Array.from(value) };
-    }
-    // Handle TypedArrays (Uint8Array, Int32Array, etc.)
-    if (ArrayBuffer.isView(value) && !(value instanceof DataView)) {
-        return { __type: 'TypedArray', arrayType: value.constructor.name, value: Array.from(value) };
-    }
-    return value;
-};
-
-// Custom JSON reviver to restore BigInt, Principal, TypedArrays, Map, Set
-const jsonReviver = (key, value) => {
-    if (value && typeof value === 'object' && value.__type) {
-        switch (value.__type) {
-            case 'BigInt':
-                return BigInt(value.value);
-            case 'Principal':
-                return Principal.fromText(value.value);
-            case 'Map':
-                return new Map(value.value.map(([k, v]) => [k, v]));
-            case 'Set':
-                return new Set(value.value);
-            case 'TypedArray':
-                const TypedArrayConstructor = globalThis[value.arrayType];
-                if (TypedArrayConstructor) {
-                    return new TypedArrayConstructor(value.value);
-                }
-                return value.value;
-            default:
-                return value;
-        }
-    }
-    return value;
-};
-
-// Save neurons cache to localStorage
-const saveNeuronsCache = (principalId, data) => {
-    try {
-        const cacheKey = `${NEURONS_CACHE_KEY_PREFIX}${principalId}`;
-        const cacheData = {
-            version: NEURONS_CACHE_VERSION,
-            timestamp: Date.now(),
-            ...data
-        };
-        const serialized = JSON.stringify(cacheData, jsonReplacer);
-        localStorage.setItem(cacheKey, serialized);
-    } catch (error) {
-        console.warn('[NeuronsContext] Failed to save cache:', error);
-    }
-};
-
-// Load neurons cache from localStorage
-const loadNeuronsCache = (principalId) => {
-    try {
-        const cacheKey = `${NEURONS_CACHE_KEY_PREFIX}${principalId}`;
-        const serialized = localStorage.getItem(cacheKey);
-        if (!serialized) return null;
-        
-        const data = JSON.parse(serialized, jsonReviver);
-        
-        if (data.version !== NEURONS_CACHE_VERSION) {
-            console.log('[NeuronsContext] Cache version mismatch, clearing');
-            localStorage.removeItem(cacheKey);
-            return null;
-        }
-        
-        return data;
-    } catch (error) {
-        console.warn('[NeuronsContext] Failed to load cache:', error);
-        return null;
-    }
-};
-
-// Clear neurons cache
-const clearNeuronsCache = (principalId) => {
-    try {
-        const cacheKey = `${NEURONS_CACHE_KEY_PREFIX}${principalId}`;
-        localStorage.removeItem(cacheKey);
-    } catch (error) {
-        console.warn('[NeuronsContext] Failed to clear cache:', error);
-    }
-};
 
 /**
  * NeuronsContext - For browsing ALL neurons in an SNS
@@ -135,60 +31,12 @@ export function NeuronsProvider({ children }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     
-    // Cache for neurons by SNS to avoid refetching (in-memory)
+    // Cache for neurons by SNS to avoid refetching (in-memory only)
+    // Persistent storage is handled by the shared IndexedDB cache (NeuronsDB)
     const [neuronsBySns, setNeuronsBySns] = useState(new Map());
-    
-    // Track if we've loaded from persistent cache
-    const [loadedFromPersistentCache, setLoadedFromPersistentCache] = useState(false);
-    const hasInitializedFromCacheRef = useRef(false);
-    const saveCacheTimeoutRef = useRef(null);
     
     // Get principal ID for cache key
     const principalId = identity?.getPrincipal()?.toString();
-    
-    // Load from persistent cache on mount/login
-    useEffect(() => {
-        if (!principalId || hasInitializedFromCacheRef.current) return;
-        
-        const cachedData = loadNeuronsCache(principalId);
-        if (cachedData && cachedData.neuronsBySns) {
-            console.log('[NeuronsContext] Loading from persistent cache, age:', 
-                Math.round((Date.now() - cachedData.timestamp) / 1000), 'seconds');
-            
-            // Restore in-memory cache from persistent storage
-            if (cachedData.neuronsBySns instanceof Map) {
-                setNeuronsBySns(cachedData.neuronsBySns);
-            } else if (Array.isArray(cachedData.neuronsBySns)) {
-                setNeuronsBySns(new Map(cachedData.neuronsBySns));
-            }
-            
-            setLoadedFromPersistentCache(true);
-        }
-        
-        hasInitializedFromCacheRef.current = true;
-    }, [principalId]);
-    
-    // Save to persistent cache when in-memory cache changes (debounced)
-    useEffect(() => {
-        if (!principalId || !isAuthenticated) return;
-        if (neuronsBySns.size === 0 && !loadedFromPersistentCache) return;
-        
-        if (saveCacheTimeoutRef.current) {
-            clearTimeout(saveCacheTimeoutRef.current);
-        }
-        
-        saveCacheTimeoutRef.current = setTimeout(() => {
-            saveNeuronsCache(principalId, {
-                neuronsBySns: Array.from(neuronsBySns.entries())
-            });
-        }, 2000);
-        
-        return () => {
-            if (saveCacheTimeoutRef.current) {
-                clearTimeout(saveCacheTimeoutRef.current);
-            }
-        };
-    }, [principalId, isAuthenticated, neuronsBySns, loadedFromPersistentCache]);
 
     // Function to fetch neurons for a specific SNS
     const fetchNeuronsForSns = useCallback(async (snsRoot) => {
@@ -199,6 +47,19 @@ export function NeuronsProvider({ children }) {
         
         return await fetchUserNeuronsForSns(identity, selectedSns.canisters.governance);
     }, [identity]);
+
+    // Helper to extract neuron IDs for cache lookup
+    const extractNeuronIds = useCallback((neurons) => {
+        return neurons.map(n => {
+            const idArray = n.id?.[0]?.id;
+            if (!idArray) return null;
+            return idArray instanceof Uint8Array
+                ? uint8ArrayToHex(idArray)
+                : Array.isArray(idArray)
+                    ? idArray.map(b => b.toString(16).padStart(2, '0')).join('')
+                    : null;
+        }).filter(Boolean);
+    }, []);
 
     // Function to fetch hotkey neurons data with voting power
     const fetchHotkeyNeuronsData = useCallback(async (snsRoot = selectedSnsRoot, forceRefresh = false) => {
@@ -214,7 +75,7 @@ export function NeuronsProvider({ children }) {
             return;
         }
         
-        // Check cache first
+        // Check in-memory cache first
         const cacheKey = `${identity.getPrincipal().toString()}-${snsRoot}`;
         console.log('fetchHotkeyNeuronsData: Checking cache for key:', cacheKey);
         
@@ -225,9 +86,9 @@ export function NeuronsProvider({ children }) {
             return prev;
         });
         
-        // If we have cached data and not forcing refresh, show it immediately
+        // If we have in-memory cached data and not forcing refresh, show it immediately
         if (cachedData && !forceRefresh) {
-            console.log('fetchHotkeyNeuronsData: Found cached data, using it and fetching fresh in background');
+            console.log('fetchHotkeyNeuronsData: Found in-memory cached data, using it and fetching fresh in background');
             setNeuronsData(cachedData);
             
             // Fetch fresh data in background (don't show loading state)
@@ -247,6 +108,14 @@ export function NeuronsProvider({ children }) {
                     
                     setNeuronsBySns(prev => new Map(prev).set(cacheKey, result));
                     setNeuronsData(result);
+                    
+                    // Save to shared IndexedDB cache (fire and forget)
+                    if (neurons.length > 0) {
+                        saveNeuronsToCache(snsRoot, neurons).catch(e => 
+                            console.warn('[NeuronsContext] Failed to save to shared cache:', e)
+                        );
+                    }
+                    
                     console.log('fetchHotkeyNeuronsData: Background refresh complete');
                 } catch (err) {
                     console.error('Background refresh failed:', err);
@@ -256,7 +125,7 @@ export function NeuronsProvider({ children }) {
             return;
         }
         
-        console.log('fetchHotkeyNeuronsData: No cached data or forcing refresh, fetching from network');
+        console.log('fetchHotkeyNeuronsData: No in-memory cached data or forcing refresh, fetching from network');
         setLoading(true);
         setError(null);
         
@@ -281,9 +150,17 @@ export function NeuronsProvider({ children }) {
             
             console.log('fetchHotkeyNeuronsData: Created result structure:', result);
             
-            // Cache the result
+            // Cache the result in-memory
             setNeuronsBySns(prev => new Map(prev).set(cacheKey, result));
             setNeuronsData(result);
+            
+            // Save to shared IndexedDB cache (fire and forget)
+            if (neurons.length > 0) {
+                saveNeuronsToCache(snsRoot, neurons).catch(e => 
+                    console.warn('[NeuronsContext] Failed to save to shared cache:', e)
+                );
+            }
+            
             console.log('fetchHotkeyNeuronsData: Successfully cached and set data');
         } catch (err) {
             console.error('Error fetching hotkey neurons:', err);
@@ -320,8 +197,9 @@ export function NeuronsProvider({ children }) {
         });
     }, [identity, getAllNeurons]);
 
-    // Function to clear cache for a specific SNS or all
-    const clearCache = useCallback((snsRoot = null, clearPersistent = true) => {
+    // Function to clear in-memory cache for a specific SNS or all
+    // Note: Shared IndexedDB cache is not cleared here - use the Clear Cache button in /me for full reset
+    const clearCache = useCallback((snsRoot = null) => {
         if (snsRoot && identity) {
             const cacheKey = `${identity.getPrincipal().toString()}-${snsRoot}`;
             setNeuronsBySns(prev => {
@@ -332,12 +210,7 @@ export function NeuronsProvider({ children }) {
         } else {
             setNeuronsBySns(new Map());
         }
-        
-        // Clear persistent cache too if requested
-        if (clearPersistent && principalId) {
-            clearNeuronsCache(principalId);
-        }
-    }, [identity, principalId]);
+    }, [identity]);
 
     // Function to refresh neurons data
     const refreshNeurons = useCallback(async (snsRoot = selectedSnsRoot) => {
@@ -370,7 +243,7 @@ export function NeuronsProvider({ children }) {
             console.log('NeuronsContext: Proactively fetching neurons for SNS:', selectedSnsRoot);
             fetchHotkeyNeuronsData(selectedSnsRoot);
         } else if (!isAuthenticated) {
-            // Clear everything on logout
+            // Clear in-memory state on logout
             console.log('NeuronsContext: Clearing neurons data on logout');
             setNeuronsData({
                 neurons_by_owner: [],
@@ -378,10 +251,7 @@ export function NeuronsProvider({ children }) {
                 distribution_voting_power: 0
             });
             setNeuronsBySns(new Map());
-            setLoadedFromPersistentCache(false);
-            hasInitializedFromCacheRef.current = false;
             setLoading(false);
-            // Don't clear persistent cache on logout - keep it for next login
         } else {
             console.log('NeuronsContext: Clearing neurons data - missing requirements');
             setNeuronsData({
