@@ -35,6 +35,10 @@ export function NeuronsProvider({ children }) {
     // Persistent storage is handled by the shared IndexedDB cache (NeuronsDB)
     const [neuronsBySns, setNeuronsBySns] = useState(new Map());
     
+    // In-flight request deduplication: Map<cacheKey, Promise>
+    // When a fetch is in progress, subsequent callers await the same promise
+    const fetchPromisesRef = useRef(new Map());
+    
     // Get principal ID for cache key
     const principalId = identity?.getPrincipal()?.toString();
 
@@ -61,7 +65,52 @@ export function NeuronsProvider({ children }) {
         }).filter(Boolean);
     }, []);
 
+    // Background refresh helper (fire and forget, with deduplication)
+    const doFetchNeuronsInBackground = useCallback(async (snsRoot, cacheKey) => {
+        // Don't start background refresh if one is already in-flight
+        if (fetchPromisesRef.current.has(cacheKey)) {
+            console.log('fetchHotkeyNeuronsData: Background refresh already in progress, skipping');
+            return;
+        }
+        
+        const bgPromise = (async () => {
+            try {
+                const neurons = await fetchNeuronsForSns(snsRoot);
+                const neuronsWithSns = neurons.map(neuron => ({
+                    ...neuron,
+                    sns_root_canister_id: snsRoot
+                }));
+                
+                const result = {
+                    neurons_by_owner: [[identity.getPrincipal().toString(), neuronsWithSns]],
+                    total_voting_power: 0,
+                    distribution_voting_power: 0
+                };
+                
+                setNeuronsBySns(prev => new Map(prev).set(cacheKey, result));
+                setNeuronsData(result);
+                
+                // Save to shared IndexedDB cache (fire and forget)
+                if (neurons.length > 0) {
+                    saveNeuronsToCache(snsRoot, neurons).catch(e => 
+                        console.warn('[NeuronsContext] Failed to save to shared cache:', e)
+                    );
+                }
+                
+                console.log('fetchHotkeyNeuronsData: Background refresh complete');
+            } catch (err) {
+                console.error('Background refresh failed:', err);
+                // Don't update state on background error - keep cached data
+            } finally {
+                fetchPromisesRef.current.delete(cacheKey);
+            }
+        })();
+        
+        fetchPromisesRef.current.set(cacheKey, bgPromise);
+    }, [identity, fetchNeuronsForSns]);
+    
     // Function to fetch hotkey neurons data with voting power
+    // Uses request deduplication - if a fetch is in-flight, subsequent callers share the same request
     const fetchHotkeyNeuronsData = useCallback(async (snsRoot = selectedSnsRoot, forceRefresh = false) => {
         console.log('fetchHotkeyNeuronsData called with:', { snsRoot, hasIdentity: !!identity, forceRefresh });
         
@@ -75,11 +124,10 @@ export function NeuronsProvider({ children }) {
             return;
         }
         
-        // Check in-memory cache first
         const cacheKey = `${identity.getPrincipal().toString()}-${snsRoot}`;
         console.log('fetchHotkeyNeuronsData: Checking cache for key:', cacheKey);
         
-        // Use functional update to access current cache state
+        // Check in-memory cache first
         let cachedData = null;
         setNeuronsBySns(prev => {
             cachedData = prev.get(cacheKey);
@@ -92,48 +140,42 @@ export function NeuronsProvider({ children }) {
             setNeuronsData(cachedData);
             
             // Fetch fresh data in background (don't show loading state)
-            (async () => {
-                try {
-                    const neurons = await fetchNeuronsForSns(snsRoot);
-                    const neuronsWithSns = neurons.map(neuron => ({
-                        ...neuron,
-                        sns_root_canister_id: snsRoot
-                    }));
-                    
-                    const result = {
-                        neurons_by_owner: [[identity.getPrincipal().toString(), neuronsWithSns]],
-                        total_voting_power: 0,
-                        distribution_voting_power: 0
-                    };
-                    
-                    setNeuronsBySns(prev => new Map(prev).set(cacheKey, result));
-                    setNeuronsData(result);
-                    
-                    // Save to shared IndexedDB cache (fire and forget)
-                    if (neurons.length > 0) {
-                        saveNeuronsToCache(snsRoot, neurons).catch(e => 
-                            console.warn('[NeuronsContext] Failed to save to shared cache:', e)
-                        );
-                    }
-                    
-                    console.log('fetchHotkeyNeuronsData: Background refresh complete');
-                } catch (err) {
-                    console.error('Background refresh failed:', err);
-                    // Don't update state on background error - keep cached data
-                }
-            })();
+            // Use the deduplication pattern for background refresh too
+            doFetchNeuronsInBackground(snsRoot, cacheKey);
             return;
+        }
+        
+        // Check if there's already an in-flight request (request deduplication)
+        const existingPromise = fetchPromisesRef.current.get(cacheKey);
+        if (existingPromise && !forceRefresh) {
+            console.log('fetchHotkeyNeuronsData: Sharing in-flight request for', cacheKey);
+            return existingPromise;
         }
         
         console.log('fetchHotkeyNeuronsData: No in-memory cached data or forcing refresh, fetching from network');
         setLoading(true);
         setError(null);
         
+        // Create the fetch promise for deduplication
+        const fetchPromise = (async () => {
+            try {
+                // Get neurons from SNS
+                console.log('fetchHotkeyNeuronsData: Fetching neurons from SNS...');
+                const neurons = await fetchNeuronsForSns(snsRoot);
+                console.log('fetchHotkeyNeuronsData: Got neurons from SNS:', neurons.length);
+                
+                return neurons;
+            } finally {
+                // Remove from in-flight promises when done
+                fetchPromisesRef.current.delete(cacheKey);
+            }
+        })();
+        
+        // Store for deduplication
+        fetchPromisesRef.current.set(cacheKey, fetchPromise);
+        
         try {
-            // Get neurons from SNS
-            console.log('fetchHotkeyNeuronsData: Fetching neurons from SNS...');
-            const neurons = await fetchNeuronsForSns(snsRoot);
-            console.log('fetchHotkeyNeuronsData: Got neurons from SNS:', neurons.length);
+            const neurons = await fetchPromise;
             
             // Add SNS root canister ID to each neuron for filtering purposes
             const neuronsWithSns = neurons.map(neuron => ({
@@ -173,7 +215,7 @@ export function NeuronsProvider({ children }) {
         } finally {
             setLoading(false);
         }
-    }, [identity, selectedSnsRoot, fetchNeuronsForSns]);
+    }, [identity, selectedSnsRoot, fetchNeuronsForSns, doFetchNeuronsInBackground]);
 
     // Function to get all neurons from the nested structure
     const getAllNeurons = useCallback(() => {

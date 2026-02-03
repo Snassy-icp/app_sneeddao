@@ -303,19 +303,17 @@ export const WalletProvider = ({ children }) => {
     // - Forum voting
     // - Any component that needs neuron data
     const [neuronCache, setNeuronCache] = useState(new Map()); // Map<governanceCanisterId, neuron[]>
-    const [neuronCacheLoading, setNeuronCacheLoading] = useState(new Set()); // Set of governance IDs currently loading
     const [neuronCacheInitialized, setNeuronCacheInitialized] = useState(false);
     const neuronCacheFetchSessionRef = useRef(0);
     // Refs to always access the latest cache values (avoids stale closure issues in async callbacks)
     const neuronCacheRef = useRef(new Map());
-    const neuronCacheLoadingRef = useRef(new Set());
-    // Keep refs in sync with state
+    // In-flight request deduplication: Map<govId, Promise<neuron[]>>
+    // When a fetch is in progress, subsequent callers await the same promise instead of making duplicate requests
+    const neuronFetchPromisesRef = useRef(new Map());
+    // Keep ref in sync with state
     useEffect(() => {
         neuronCacheRef.current = neuronCache;
     }, [neuronCache]);
-    useEffect(() => {
-        neuronCacheLoadingRef.current = neuronCacheLoading;
-    }, [neuronCacheLoading]);
     
     // ICP Neuron Managers - shared between quick wallet and /wallet page
     const [neuronManagers, setNeuronManagers] = useState([]); // Array of { canisterId, version, isController }
@@ -701,6 +699,7 @@ export const WalletProvider = ({ children }) => {
     }, []);
 
     // Fetch neurons for a governance canister and cache them
+    // Uses promise-based request deduplication - if a fetch is in-flight, subsequent callers share the same promise
     const fetchAndCacheNeurons = useCallback(async (governanceCanisterId) => {
         // Normalize the governance canister ID (accepts Principal or string)
         const govId = normalizeCanisterId(governanceCanisterId);
@@ -718,70 +717,50 @@ export const WalletProvider = ({ children }) => {
             return cached;
         }
         
-        // Check if already loading (use ref to get latest value)
-        if (neuronCacheLoadingRef.current.has(govId)) {
-            console.log(`[fetchAndCacheNeurons] Already loading ${govId.substring(0, 8)}, waiting...`);
-            // Wait for it to load by polling (use ref to check latest loading state)
-            await new Promise(resolve => {
-                const checkInterval = setInterval(() => {
-                    if (!neuronCacheLoadingRef.current.has(govId)) {
-                        clearInterval(checkInterval);
-                        resolve();
-                    }
-                }, 100);
-                // Timeout after 30 seconds
-                setTimeout(() => {
-                    clearInterval(checkInterval);
-                    resolve();
-                }, 30000);
-            });
-            // Use ref to get the LATEST cache value after waiting
-            const cached = neuronCacheRef.current.get(govId) || [];
-            console.log(`[fetchAndCacheNeurons] Wait complete for ${govId.substring(0, 8)}, returning ${cached.length} neurons`);
-            return cached;
+        // Check if there's already an in-flight request for this govId (request deduplication)
+        const existingPromise = neuronFetchPromisesRef.current.get(govId);
+        if (existingPromise) {
+            console.log(`[fetchAndCacheNeurons] Sharing in-flight request for ${govId.substring(0, 8)}...`);
+            return existingPromise;
         }
         
-        // Mark as loading
-        setNeuronCacheLoading(prev => new Set(prev).add(govId));
-        
-        try {
-            // Find the SNS for this governance canister
-            const allSnses = getAllSnses();
-            const sns = allSnses.find(s => normalizeCanisterId(s.canisters?.governance) === govId);
-            
-            // NOTE: We no longer use getAllNeuronsForSns as fallback because it returns ALL neurons
-            // from the shared cache (including from /neurons page visits), not just the user's neurons.
-            // The memory cache (hydrated from wallet cache) already has only the user's neurons.
-            // If memory cache misses, we fetch fresh from network to get only user's neurons.
-            
-            // Fetch from network - this returns only the user's reachable neurons
-            console.log(`[fetchAndCacheNeurons] Fetching from network for ${govId.substring(0, 8)}...`);
-            const neurons = await fetchUserNeuronsForSns(identity, govId);
-            
-            // Cache the neurons in local state
-            setNeuronCache(prev => new Map(prev).set(govId, neurons));
-            
-            // Also save to the shared IndexedDB cache for persistence
-            if (sns?.rootCanisterId && neurons.length > 0) {
-                // Fire and forget - don't await
-                saveNeuronsToCache(sns.rootCanisterId, neurons).catch(e => {
-                    console.warn('Failed to save neurons to shared cache:', e);
-                });
+        // Create the fetch promise and store it for deduplication
+        const fetchPromise = (async () => {
+            try {
+                // Find the SNS for this governance canister
+                const allSnses = getAllSnses();
+                const sns = allSnses.find(s => normalizeCanisterId(s.canisters?.governance) === govId);
+                
+                // Fetch from network - this returns only the user's reachable neurons
+                console.log(`[fetchAndCacheNeurons] Fetching from network for ${govId.substring(0, 8)}...`);
+                const neurons = await fetchUserNeuronsForSns(identity, govId);
+                
+                // Cache the neurons in local state
+                setNeuronCache(prev => new Map(prev).set(govId, neurons));
+                
+                // Also save to the shared IndexedDB cache for persistence
+                if (sns?.rootCanisterId && neurons.length > 0) {
+                    // Fire and forget - don't await
+                    saveNeuronsToCache(sns.rootCanisterId, neurons).catch(e => {
+                        console.warn('Failed to save neurons to shared cache:', e);
+                    });
+                }
+                
+                console.log(`[fetchAndCacheNeurons] Network fetch complete for ${govId.substring(0, 8)}, got ${neurons.length} neurons`);
+                return neurons;
+            } catch (error) {
+                console.warn(`Could not fetch neurons for governance ${govId}:`, error);
+                return [];
+            } finally {
+                // Remove from in-flight promises when done (success or failure)
+                neuronFetchPromisesRef.current.delete(govId);
             }
-            
-            console.log(`[fetchAndCacheNeurons] Network fetch complete for ${govId.substring(0, 8)}, got ${neurons.length} neurons`);
-            return neurons;
-        } catch (error) {
-            console.warn(`Could not fetch neurons for governance ${govId}:`, error);
-            return [];
-        } finally {
-            // Mark as done loading
-            setNeuronCacheLoading(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(govId);
-                return newSet;
-            });
-        }
+        })();
+        
+        // Store the promise for deduplication
+        neuronFetchPromisesRef.current.set(govId, fetchPromise);
+        
+        return fetchPromise;
     }, [identity]); // Using refs for cache access to avoid stale closures
     
     // Get neurons from cache (or fetch if not cached)
