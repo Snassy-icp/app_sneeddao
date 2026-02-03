@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { HttpAgent } from '@dfinity/agent';
-import { getSnsById } from '../utils/SnsUtils';
-import { uint8ArrayToHex } from '../utils/NeuronUtils';
+import { getSnsById, getAllSnses } from '../utils/SnsUtils';
+import { uint8ArrayToHex, getNeuronDetails } from '../utils/NeuronUtils';
 
 // ============================================================================
 // STANDALONE CACHE UTILITIES (for single neuron operations)
@@ -98,6 +98,92 @@ export const getNeuronFromCache = async (snsRoot, neuronIdHex) => {
         });
     } catch (error) {
         console.warn('Error getting neuron from cache:', error);
+        return null;
+    }
+};
+
+/**
+ * Get a single neuron by ID - checks cache first, fetches from network if not cached
+ * This is the main API for getting a neuron - callers don't need to manage the cache flow
+ * 
+ * @param {Object} options - Options object
+ * @param {Principal|string} options.snsRoot - SNS root canister ID (accepts Principal or string)
+ * @param {Principal|string} [options.governanceCanisterId] - Governance canister ID (optional if snsRoot provided)
+ * @param {string} options.neuronIdHex - Neuron ID in hex format
+ * @param {Object} options.identity - User identity for network requests
+ * @returns {Object|null} The neuron object or null if not found
+ */
+export const getOrFetchNeuron = async ({ snsRoot, governanceCanisterId, neuronIdHex, identity }) => {
+    if (!neuronIdHex) return null;
+    
+    // Normalize IDs
+    const normalizedRoot = normalizeCanisterId(snsRoot);
+    let normalizedGovId = normalizeCanisterId(governanceCanisterId);
+    
+    // If we have snsRoot but no governanceCanisterId, look it up
+    if (normalizedRoot && !normalizedGovId) {
+        const sns = getSnsById(normalizedRoot);
+        if (sns?.canisters?.governance) {
+            normalizedGovId = normalizeCanisterId(sns.canisters.governance);
+        }
+    }
+    
+    // If we have governanceCanisterId but no snsRoot, look it up
+    if (normalizedGovId && !normalizedRoot) {
+        const allSnses = getAllSnses();
+        const sns = allSnses.find(s => normalizeCanisterId(s.canisters?.governance) === normalizedGovId);
+        if (sns?.rootCanisterId) {
+            // Use the found root for cache operations
+            const foundRoot = normalizeCanisterId(sns.rootCanisterId);
+            return getOrFetchNeuronInternal(foundRoot, normalizedGovId, neuronIdHex, identity);
+        }
+    }
+    
+    if (!normalizedRoot) {
+        console.warn('[getOrFetchNeuron] Could not determine SNS root canister ID');
+        return null;
+    }
+    
+    return getOrFetchNeuronInternal(normalizedRoot, normalizedGovId, neuronIdHex, identity);
+};
+
+// Internal implementation
+const getOrFetchNeuronInternal = async (snsRoot, governanceCanisterId, neuronIdHex, identity) => {
+    // 1. Check cache first
+    const cached = await getNeuronFromCache(snsRoot, neuronIdHex);
+    if (cached) {
+        return cached;
+    }
+    
+    // 2. Not in cache - need to fetch from network
+    if (!identity) {
+        console.log('[getOrFetchNeuron] No identity provided, cannot fetch from network');
+        return null;
+    }
+    
+    if (!governanceCanisterId) {
+        console.warn('[getOrFetchNeuron] No governance canister ID available for network fetch');
+        return null;
+    }
+    
+    console.log(`%c🧠 [NEURON CACHE] Cache miss for ${neuronIdHex.substring(0, 16)}..., fetching from network`, 'background: #f39c12; color: black; padding: 2px 6px;');
+    
+    try {
+        // 3. Fetch from network
+        const neuron = await getNeuronDetails(identity, governanceCanisterId, neuronIdHex);
+        
+        if (neuron) {
+            // 4. Cache the result
+            await updateNeuronInCache(snsRoot, neuron);
+            console.log(`%c🧠 [NEURON CACHE] Fetched and cached neuron ${neuronIdHex.substring(0, 16)}...`, 'background: #2ecc71; color: white; padding: 2px 6px;');
+            
+            // 5. Return the neuron
+            return neuron;
+        }
+        
+        return null;
+    } catch (error) {
+        console.error('[getOrFetchNeuron] Error fetching neuron from network:', error);
         return null;
     }
 };
