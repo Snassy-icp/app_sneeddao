@@ -1182,7 +1182,9 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                       setShowPopup(false);
                                   }}
                               >
-                                  No tokens with balance. Visit wallet to add tokens.
+                                  {walletTokens.length > 0 
+                                      ? 'All tokens hidden by dust filter.' 
+                                      : 'No tokens with balance. Visit wallet to add tokens.'}
                               </div>
                           ) : (
                               tokensWithBalance.map((token, index) => {

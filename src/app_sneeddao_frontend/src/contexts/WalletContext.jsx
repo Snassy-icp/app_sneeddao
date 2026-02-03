@@ -556,14 +556,15 @@ export const WalletProvider = ({ children }) => {
             })();
 
             setLastUpdated(new Date());
-            setHasFetchedInitial(true);
             
-            // Set loading to false after a short delay to allow first tokens to appear
+            // Set loading to false and hasFetchedInitial to true after tokens have had time to load
+            // This prevents the brief "No tokens" flash during progressive loading
             setTimeout(() => {
                 if (fetchSessionRef.current === sessionId) {
+                    setHasFetchedInitial(true);
                     setWalletLoading(false);
                 }
-            }, 500);
+            }, 800);
             
         } catch (err) {
             console.error('Error fetching compact wallet tokens:', err);
