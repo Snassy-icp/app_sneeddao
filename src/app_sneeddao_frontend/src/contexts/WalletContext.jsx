@@ -814,9 +814,9 @@ export const WalletProvider = ({ children }) => {
                 const governanceCanisterId = sns.canisters?.governance;
                 if (!governanceCanisterId) continue;
                 
-                // Skip if already cached or loading
+                // Skip if already cached or in-flight
                 if (neuronCache.has(governanceCanisterId)) continue;
-                if (neuronCacheLoading.has(governanceCanisterId)) continue;
+                if (neuronFetchPromisesRef.current.has(governanceCanisterId)) continue;
                 
                 // Fire and forget - don't await, let them load in parallel
                 fetchAndCacheNeurons(governanceCanisterId).catch(err => {
@@ -828,7 +828,7 @@ export const WalletProvider = ({ children }) => {
         } catch (error) {
             console.warn('[WalletContext] Error fetching all SNS neurons:', error);
         }
-    }, [identity, isAuthenticated, neuronCache, neuronCacheLoading, fetchAndCacheNeurons]);
+    }, [identity, isAuthenticated, neuronCache, fetchAndCacheNeurons]);
 
     // Proactively fetch neurons for all SNS on login
     useEffect(() => {
