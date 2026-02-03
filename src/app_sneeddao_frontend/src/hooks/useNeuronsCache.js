@@ -512,6 +512,86 @@ export const getNeuronsFromCacheByIds = async (snsRoot, neuronIdHexArray) => {
 };
 
 /**
+ * Get multiple neurons by ID - checks cache first, fetches missing from network
+ * Convenience method that combines getNeuronsFromCacheByIds + getOrFetchNeuron for missing
+ * 
+ * @param {Object} options - Options object
+ * @param {Principal|string} options.snsRoot - SNS root canister ID (accepts Principal or string)
+ * @param {Principal|string} [options.governanceCanisterId] - Governance canister ID (optional if snsRoot provided)
+ * @param {string[]} options.neuronIdHexArray - Array of neuron IDs in hex format
+ * @param {Object} options.identity - User identity for network requests (needed for fetching missing)
+ * @returns {Object[]} Array of neurons (those found in cache + those fetched from network)
+ */
+export const getOrFetchNeuronsByIds = async ({ snsRoot, governanceCanisterId, neuronIdHexArray, identity }) => {
+    const normalizedRoot = normalizeCanisterId(snsRoot);
+    if (!normalizedRoot || !neuronIdHexArray || neuronIdHexArray.length === 0) {
+        return [];
+    }
+    
+    // Resolve governance canister ID if not provided
+    let normalizedGovId = normalizeCanisterId(governanceCanisterId);
+    if (!normalizedGovId) {
+        const sns = getSnsById(normalizedRoot);
+        if (sns?.canisters?.governance) {
+            normalizedGovId = normalizeCanisterId(sns.canisters.governance);
+        }
+    }
+    
+    // 1. Try to get from cache first
+    const { found, missing } = await getNeuronsFromCacheByIds(normalizedRoot, neuronIdHexArray);
+    
+    // 2. If all found in cache, we're done
+    if (missing.length === 0) {
+        return found;
+    }
+    
+    // 3. If no identity, can't fetch missing - return what we have
+    if (!identity) {
+        console.log(`[getOrFetchNeuronsByIds] No identity provided, returning ${found.length} cached neurons (${missing.length} missing)`);
+        return found;
+    }
+    
+    if (!normalizedGovId) {
+        console.warn('[getOrFetchNeuronsByIds] No governance canister ID available for network fetch');
+        return found;
+    }
+    
+    console.log(`%c🧠 [NEURON CACHE] Fetching ${missing.length} missing neurons from network`, 'background: #f39c12; color: black; padding: 2px 6px;');
+    
+    // 4. Fetch missing neurons from network (in parallel, but limit concurrency)
+    const BATCH_SIZE = 5; // Limit concurrent requests
+    const fetchedNeurons = [];
+    
+    for (let i = 0; i < missing.length; i += BATCH_SIZE) {
+        const batch = missing.slice(i, i + BATCH_SIZE);
+        const batchResults = await Promise.all(
+            batch.map(neuronIdHex => 
+                getNeuronDetails(identity, normalizedGovId, neuronIdHex)
+                    .catch(err => {
+                        console.warn(`Failed to fetch neuron ${neuronIdHex}:`, err);
+                        return null;
+                    })
+            )
+        );
+        
+        for (const neuron of batchResults) {
+            if (neuron) {
+                fetchedNeurons.push(neuron);
+            }
+        }
+    }
+    
+    // 5. Cache the newly fetched neurons
+    if (fetchedNeurons.length > 0) {
+        await saveNeuronsToCache(normalizedRoot, fetchedNeurons);
+        console.log(`%c🧠 [NEURON CACHE] Fetched and cached ${fetchedNeurons.length} neurons`, 'background: #2ecc71; color: white; padding: 2px 6px;');
+    }
+    
+    // 6. Return all neurons (cached + freshly fetched)
+    return [...found, ...fetchedNeurons];
+};
+
+/**
  * Clear cache for a specific SNS
  * @param {Principal|string} snsRoot - SNS root canister ID (accepts Principal or string)
  */
