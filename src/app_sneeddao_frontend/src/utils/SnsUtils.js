@@ -10,6 +10,9 @@ const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 1 week in milliseconds
 // Memory fallback when localStorage fails
 let memoryCache = null;
 
+// Prevents multiple simultaneous foreground fetches (race condition fix)
+let foregroundFetchPromise = null;
+
 // Safe localStorage wrapper with memory fallback
 const safeStorage = {
     getItem: (key) => {
@@ -106,6 +109,13 @@ export async function fetchAndCacheSnsData(identity) {
         return cachedData;
     }
 
+    // Prevent multiple simultaneous foreground fetches (race condition fix)
+    if (foregroundFetchPromise) {
+        console.log('Reusing existing foreground fetch promise'); // Debug log
+        return foregroundFetchPromise;
+    }
+
+    foregroundFetchPromise = (async () => {
     try {
         console.log('Creating NNS SNS Wrapper actor...'); // Debug log
         
@@ -253,6 +263,14 @@ export async function fetchAndCacheSnsData(identity) {
         }
         return [];
     }
+    })();
+
+    // Clear the promise when done (success or failure)
+    foregroundFetchPromise.finally(() => {
+        foregroundFetchPromise = null;
+    });
+
+    return foregroundFetchPromise;
 }
 
 function getCachedSnsData() {
@@ -263,14 +281,8 @@ function getCachedSnsData() {
         const { data, timestamp } = JSON.parse(cachedString);
         // Check if cache is still valid and not empty
         if (Date.now() - timestamp < CACHE_DURATION && data && data.length > 0) {
-            // Check if cached data has the new structure with logo field
-            // If not, invalidate cache to fetch fresh data with logos
-            const hasLogoField = data.some(sns => 'logo' in sns);
-            if (!hasLogoField) {
-                console.log('Invalidating SNS cache - missing logo field');
-                safeStorage.removeItem(SNS_CACHE_KEY);
-                return null;
-            }
+            // Note: logos are stored separately in the unified logo cache (IndexedDB)
+            // so we don't check for logo field here - use getLogoSync() to get logos
             return data;
         }
         // Clear invalid or empty cache
@@ -292,6 +304,46 @@ function cacheSnsData(data) {
         safeStorage.setItem(SNS_CACHE_KEY, JSON.stringify(cacheObject));
     } catch (error) {
         console.error('Error caching SNS data:', error);
+    }
+}
+
+// Add a single SNS to the cache (used by fetchSingleSnsData)
+function addSnsToCache(snsData) {
+    try {
+        const cachedString = safeStorage.getItem(SNS_CACHE_KEY);
+        let existingData = [];
+        let timestamp = Date.now();
+        
+        if (cachedString) {
+            try {
+                const parsed = JSON.parse(cachedString);
+                existingData = parsed.data || [];
+                // Preserve original timestamp if cache exists
+                timestamp = parsed.timestamp || timestamp;
+            } catch (e) {
+                // Invalid cache, start fresh
+            }
+        }
+        
+        // Check if this SNS already exists in cache
+        const existingIndex = existingData.findIndex(sns => sns.rootCanisterId === snsData.rootCanisterId);
+        
+        if (existingIndex >= 0) {
+            // Update existing entry
+            existingData[existingIndex] = snsData;
+        } else {
+            // Add new entry
+            existingData.push(snsData);
+        }
+        
+        const cacheObject = {
+            data: existingData,
+            timestamp
+        };
+        safeStorage.setItem(SNS_CACHE_KEY, JSON.stringify(cacheObject));
+        console.log(`Added/updated SNS ${snsData.rootCanisterId} in cache`);
+    } catch (error) {
+        console.error('Error adding SNS to cache:', error);
     }
 }
 
@@ -404,6 +456,9 @@ export async function fetchSingleSnsData(rootCanisterId, identity) {
                 swap: swapId
             }
         };
+        
+        // Add this SNS to the main cache so we don't have to fetch it again
+        addSnsToCache(snsData);
         
         return snsData;
     } catch (error) {
