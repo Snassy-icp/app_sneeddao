@@ -6,7 +6,8 @@ import { PrincipalDisplay } from './utils/PrincipalUtils';
 import { Principal } from '@dfinity/principal';
 import { useTheme } from './contexts/ThemeContext';
 import { useAuth } from './AuthContext';
-import { getSnsById } from './utils/SnsUtils';
+import { getSnsById, getAllSnses } from './utils/SnsUtils';
+import { normalizeCanisterId } from './hooks/useNeuronsCache';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { NeuronDisplay } from './components/NeuronDisplay';
@@ -89,7 +90,9 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     // Get wallet context for neuron cache
     const walletContext = useWalletOptional();
     const getNeuronsForGovernance = walletContext?.getNeuronsForGovernance;
+    const getCachedNeurons = walletContext?.getCachedNeurons;
     const clearNeuronCache = walletContext?.clearNeuronCache;
+    const neuronCacheInitialized = walletContext?.neuronCacheInitialized; // Used as dependency to re-run when cache hydrates
     const [showBalanceBreakdown, setShowBalanceBreakdown] = useState(() => {
         // Auto-expand if there's a backend balance
         return (token.available_backend || 0n) > 0n;
@@ -1088,71 +1091,78 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     };
 
     // Fetch neurons and parameters for SNS tokens
+    // Uses stale-while-revalidate: show cached data instantly, refresh in background
     useEffect(() => {
         if (!isSnsToken || !isAuthenticated || !identity || !token.ledger_canister_id) {
             return;
         }
 
-        async function fetchNeurons() {
+        // STEP 1: Find SNS data
+        const normalizedLedgerId = normalizeCanisterId(token.ledger_canister_id);
+        const allSnses = getAllSnses();
+        const snsData = allSnses.find(sns => normalizeCanisterId(sns.canisters?.ledger) === normalizedLedgerId);
+        
+        if (!snsData || !snsData.canisters?.governance) {
+            return;
+        }
+
+        const govCanisterId = snsData.canisters.governance;
+        const rootId = snsData.rootCanisterId;
+        setSnsRootCanisterId(rootId);
+        setGovernanceCanisterId(govCanisterId);
+
+        // STEP 2: Try to get cached neurons SYNCHRONOUSLY for instant display
+        const cachedNeurons = getCachedNeurons ? getCachedNeurons(govCanisterId) : null;
+        const hasCachedData = cachedNeurons && cachedNeurons.length > 0;
+        
+        if (hasCachedData) {
+            // Show cached neurons instantly - no loading spinner
+            setNeurons(cachedNeurons);
+            setNeuronsLoading(false);
+            if (onNeuronsLoaded) {
+                onNeuronsLoaded(cachedNeurons);
+            }
+        } else {
+            // No cached data yet - show loading
+            setNeuronsLoading(true);
+        }
+
+        // STEP 3: Always fetch (from cache or network) to get latest data
+        // getNeuronsForGovernance handles cache internally - returns from cache if available
+        (async () => {
             try {
-                setNeuronsLoading(true);
-                
-                // Find the SNS by ledger canister ID
-                const ledgerIdString = typeof token.ledger_canister_id === 'string' 
-                    ? token.ledger_canister_id 
-                    : token.ledger_canister_id?.toString();
-                
-                // Get SNS data to find governance canister
-                const { getAllSnses } = await import('./utils/SnsUtils');
-                const allSnses = getAllSnses();
-                const snsData = allSnses.find(sns => sns.canisters?.ledger === ledgerIdString);
-                
-                if (!snsData || !snsData.canisters?.governance) {
-                    setNeuronsLoading(false);
-                    return;
-                }
-
-                const govCanisterId = snsData.canisters.governance;
-                const rootId = snsData.rootCanisterId;
-                setSnsRootCanisterId(rootId);
-                setGovernanceCanisterId(govCanisterId);
-
-                // Fetch neurons from global cache (instant if already loaded by quick wallet)
-                // DON'T block on nervous system parameters - fetch those in background
-                const loadedNeurons = getNeuronsForGovernance 
+                const freshNeurons = getNeuronsForGovernance 
                     ? await getNeuronsForGovernance(govCanisterId)
                     : await fetchUserNeuronsForSns(identity, govCanisterId);
                 
-                // Show neurons immediately
-                setNeurons(loadedNeurons);
+                // Update with fresh data
+                setNeurons(freshNeurons);
+                setNeuronsLoading(false);
                 
-                // Notify parent of loaded neurons (for collect maturity feature)
                 if (onNeuronsLoaded) {
-                    onNeuronsLoaded(loadedNeurons);
+                    onNeuronsLoaded(freshNeurons);
                 }
-                
-                // Fetch nervous system parameters in background (for voting power display)
-                // This is a network call, so don't block neuron display on it
-                const governanceActor = createSnsGovernanceActor(govCanisterId, { agentOptions: { identity } });
-                governanceActor.get_nervous_system_parameters(null)
-                    .then(paramsResponse => {
-                        setNervousSystemParameters(paramsResponse);
-                        const calc = new VotingPowerCalculator();
-                        calc.setParams(paramsResponse);
-                        setVotingPowerCalc(calc);
-                    })
-                    .catch(() => {
-                        // Parameters failed to load - neurons still display fine
-                    });
             } catch (error) {
                 console.error(`[TokenCard] Error fetching neurons for ${token.symbol}:`, error);
-            } finally {
                 setNeuronsLoading(false);
             }
-        }
+        })();
 
-        fetchNeurons();
-    }, [isSnsToken, isAuthenticated, identity, token.ledger_canister_id, token.symbol, getNeuronsForGovernance]);
+        // STEP 4: Fetch nervous system parameters in background (for voting power display)
+        const governanceActor = createSnsGovernanceActor(govCanisterId, { agentOptions: { identity } });
+        governanceActor.get_nervous_system_parameters(null)
+            .then(paramsResponse => {
+                setNervousSystemParameters(paramsResponse);
+                const calc = new VotingPowerCalculator();
+                calc.setParams(paramsResponse);
+                setVotingPowerCalc(calc);
+            })
+            .catch(() => {
+                // Parameters failed to load - neurons still display fine
+            });
+    // Note: onNeuronsLoaded intentionally excluded from deps to prevent infinite loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isSnsToken, isAuthenticated, identity, token.ledger_canister_id, token.symbol, getNeuronsForGovernance, getCachedNeurons, neuronCacheInitialized]);
 
     return (
         <div className="card">

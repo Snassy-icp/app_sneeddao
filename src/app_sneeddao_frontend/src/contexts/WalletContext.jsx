@@ -408,40 +408,47 @@ export const WalletProvider = ({ children }) => {
                             }
                         }
                         
+                        // Normalize governance ID for consistent cache keys
+                        const normalizedGovId = normalizeCanisterId(governanceId);
+                        
                         // For governance IDs with 0 neurons, add empty array to mark as "checked"
                         if (!neuronIds || neuronIds.length === 0) {
-                            hydratedMap.set(governanceId, []);
+                            hydratedMap.set(normalizedGovId, []);
                             continue;
                         }
                         
                         // Find SNS root for this governance canister
                         const allSnses = getAllSnses();
-                        const sns = allSnses.find(s => s.canisters?.governance === governanceId);
+                        const sns = allSnses.find(s => normalizeCanisterId(s.canisters?.governance) === normalizedGovId);
                         const snsRoot = sns?.rootCanisterId;
                         
                         if (snsRoot) {
                             // Try to hydrate from shared IndexedDB cache
                             try {
                                 const { found, missing } = await getNeuronsFromCacheByIds(snsRoot, neuronIds);
-                                // Always add to map, even if empty (marks as checked)
-                                hydratedMap.set(governanceId, found);
+                                // Always add to map with normalized key (marks as checked)
+                                hydratedMap.set(normalizedGovId, found);
                                 // Note: missing neurons will be fetched fresh by fetchAndCacheNeurons
                             } catch (e) {
                                 console.warn('Failed to hydrate neurons from cache:', e);
                             }
                         } else if (Array.isArray(neuronDataOrIds) && neuronDataOrIds[0]?.id) {
                             // No SNS mapping but we have old format full objects - use them directly
-                            hydratedMap.set(governanceId, neuronDataOrIds);
+                            hydratedMap.set(normalizedGovId, neuronDataOrIds);
                         }
                     }
                     
+                    // IMPORTANT: Update ref IMMEDIATELY before state update
+                    // This prevents race conditions where other code checks the ref before the useEffect runs
                     if (hydratedMap.size > 0) {
-                        // IMPORTANT: Update ref IMMEDIATELY before state update
-                        // This prevents race conditions where other code checks the ref before the useEffect runs
                         neuronCacheRef.current = hydratedMap;
                         setNeuronCache(hydratedMap);
-                        setNeuronCacheInitialized(true);
                     }
+                    // Always mark as initialized after hydration attempt so consumers know cache check is done
+                    setNeuronCacheInitialized(true);
+                } else {
+                    // No cached neuron data, but still mark as initialized so consumers don't wait forever
+                    setNeuronCacheInitialized(true);
                 }
                 
                 // Restore neuron managers
@@ -749,10 +756,11 @@ export const WalletProvider = ({ children }) => {
     }, [fetchAndCacheNeurons]);
     
     // Get cached neurons synchronously (returns empty array if not yet loaded)
+    // Uses ref for truly synchronous access - state might be stale due to React's async updates
     const getCachedNeurons = useCallback((governanceCanisterId) => {
         const govId = normalizeCanisterId(governanceCanisterId);
-        return neuronCache.get(govId) || [];
-    }, [neuronCache]);
+        return neuronCacheRef.current.get(govId) || [];
+    }, []);
     
     // Clear neuron cache (e.g., on refresh)
     const clearNeuronCache = useCallback((governanceCanisterId = null) => {
@@ -813,14 +821,16 @@ export const WalletProvider = ({ children }) => {
     // Proactively fetch neurons for all SNS on login
     // Wait for cacheCheckComplete to avoid redundant network fetches when cache has data
     useEffect(() => {
-        if (isAuthenticated && identity && !neuronCacheInitialized && cacheCheckComplete) {
+        // Fetch if: authenticated, cache check done, and cache is empty (no hydrated neurons)
+        if (isAuthenticated && identity && cacheCheckComplete && neuronCacheRef.current.size === 0) {
             fetchAllSnsNeurons();
         }
         if (!isAuthenticated) {
             setNeuronCache(new Map());
+            neuronCacheRef.current = new Map();
             setNeuronCacheInitialized(false);
         }
-    }, [isAuthenticated, identity, neuronCacheInitialized, cacheCheckComplete, fetchAllSnsNeurons]);
+    }, [isAuthenticated, identity, cacheCheckComplete, fetchAllSnsNeurons]);
 
     // Fetch neuron totals for an SNS token and update it in place (uses cache)
     const fetchAndUpdateNeuronTotals = useCallback(async (ledgerCanisterId, sessionId) => {
@@ -1749,6 +1759,7 @@ export const WalletProvider = ({ children }) => {
             // Independent of wallet tokens - fetches for ALL SNS on login
             neuronCache,
             neuronCacheInitialized,
+            cacheCheckComplete, // True after initial cache check completes (with or without data)
             getNeuronsForGovernance,
             getCachedNeurons,
             clearNeuronCache,
