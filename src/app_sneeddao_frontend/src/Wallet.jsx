@@ -538,7 +538,11 @@ function Wallet() {
     const [refreshTrigger, setRefreshTrigger] = useState(0);
     // Derive positions spinner from context (positions are now fetched by WalletContext)
     const showPositionsSpinner = contextPositionsLoading || (!contextHasFetchedPositions && contextLiquidityPositions.length === 0);
-    const [showTokensSpinner, setShowTokensSpinner] = useState(true);
+    // Separate state for manual refresh vs initial loading
+    const [isManuallyRefreshingTokens, setIsManuallyRefreshingTokens] = useState(false);
+    // Derive tokens spinner from context - instant display when context has data
+    // Shows spinner only during manual refresh OR if context hasn't loaded AND we have no tokens
+    const showTokensSpinner = isManuallyRefreshingTokens || (!contextHasFetchedTokens && walletTokens.length === 0);
     const [lockDetailsLoading, setLockDetailsLoading] = useState({});
     const [refreshingTokens, setRefreshingTokens] = useState(new Set());
     const [refreshingPositions, setRefreshingPositions] = useState(new Set());
@@ -824,8 +828,8 @@ function Wallet() {
         if (hasInitializedRef.current) return; // Already initialized
         
         // If context already has tokens, use them (instant load)
+        // Spinner is now derived from context state, so no need to set it
         if (contextHasFetchedTokens && walletTokens && walletTokens.length > 0) {
-            setShowTokensSpinner(false);
             // Populate known_icrc1_ledgers for future incremental updates
             walletTokens.forEach(token => {
                 const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.principal;
@@ -862,13 +866,13 @@ function Wallet() {
 
     // Note: Tokens and positions are now derived FROM WalletContext (shared with quick wallet)
 
-    // Sync loading state to WalletContext (when Wallet.jsx is actively fetching)
+    // Sync loading state to WalletContext (when Wallet.jsx is actively fetching manually)
     useEffect(() => {
-        // Only update context loading if we're doing a wallet-specific fetch
-        if (showTokensSpinner) {
+        // Only update context loading if we're doing a manual wallet refresh
+        if (isManuallyRefreshingTokens) {
             setWalletLoading(true);
         }
-    }, [showTokensSpinner, setWalletLoading]);
+    }, [isManuallyRefreshingTokens, setWalletLoading]);
 
     // Check admin status for debug features
     useEffect(() => {
@@ -1241,7 +1245,7 @@ function Wallet() {
 
     // Fetch the token balances and locks from the backend and update the state
     async function fetchBalancesAndLocks(single_refresh_ledger_canister_id) {
-        setShowTokensSpinner(true);
+        setIsManuallyRefreshingTokens(true);
         try {
             // retrieve all the summed locks from the backend first.
             const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
@@ -1349,7 +1353,7 @@ function Wallet() {
         } catch (error) {
             console.error('Error fetching balances:', error);
         } finally {
-            setShowTokensSpinner(false);
+            setIsManuallyRefreshingTokens(false);
         }
     }
 

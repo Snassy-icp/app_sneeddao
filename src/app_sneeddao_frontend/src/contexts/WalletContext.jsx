@@ -849,15 +849,16 @@ export const WalletProvider = ({ children }) => {
     }, [identity, isAuthenticated, neuronCache, fetchAndCacheNeurons]);
 
     // Proactively fetch neurons for all SNS on login
+    // Wait for cacheCheckComplete to avoid redundant network fetches when cache has data
     useEffect(() => {
-        if (isAuthenticated && identity && !neuronCacheInitialized) {
+        if (isAuthenticated && identity && !neuronCacheInitialized && cacheCheckComplete) {
             fetchAllSnsNeurons();
         }
         if (!isAuthenticated) {
             setNeuronCache(new Map());
             setNeuronCacheInitialized(false);
         }
-    }, [isAuthenticated, identity, neuronCacheInitialized, fetchAllSnsNeurons]);
+    }, [isAuthenticated, identity, neuronCacheInitialized, cacheCheckComplete, fetchAllSnsNeurons]);
 
     // Fetch neuron totals for an SNS token and update it in place (uses cache)
     const fetchAndUpdateNeuronTotals = useCallback(async (ledgerCanisterId, sessionId) => {
