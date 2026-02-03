@@ -596,7 +596,7 @@ export const WalletProvider = ({ children }) => {
     }, []);
 
     // Fetch compact positions for the quick wallet - PROGRESSIVE
-    const fetchCompactPositions = useCallback(async () => {
+    const fetchCompactPositions = useCallback(async (clearFirst = false) => {
         if (!identity || !isAuthenticated) {
             setLiquidityPositions([]);
             setPositionsLoading(false);
@@ -605,8 +605,12 @@ export const WalletProvider = ({ children }) => {
 
         const sessionId = ++positionsFetchSessionRef.current;
         setPositionsLoading(true);
-        // Clear positions before fresh fetch to avoid duplicates
-        setLiquidityPositions([]);
+        
+        // Only clear positions if explicitly requested (e.g., on manual refresh)
+        // This preserves cached data during background refresh
+        if (clearFirst) {
+            setLiquidityPositions([]);
+        }
 
         try {
             const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
@@ -1139,10 +1143,10 @@ export const WalletProvider = ({ children }) => {
                 // Reset fetching flag after a short delay
                 setTimeout(() => { isFetchingRef.current = false; }, 100);
             } else if (!hasFetchedInitial && !loadedFromCache) {
-                // No cached data, need to fetch
+                // No cached data, need to fetch from scratch
                 isFetchingRef.current = true;
                 fetchCompactWalletTokens();
-                fetchCompactPositions();
+                fetchCompactPositions(true); // Clear first since no cache
                 fetchNeuronManagers();
                 setTimeout(() => { isFetchingRef.current = false; }, 100);
             }
@@ -1187,7 +1191,7 @@ export const WalletProvider = ({ children }) => {
     // Refresh positions only (without refreshing tokens)
     const refreshPositions = useCallback(() => {
         setHasFetchedPositions(false);
-        fetchCompactPositions();
+        fetchCompactPositions(true); // Clear first on explicit refresh
     }, [fetchCompactPositions]);
 
     // Set loading state
@@ -1228,7 +1232,7 @@ export const WalletProvider = ({ children }) => {
         setManagerNeurons({});
         // Note: Don't clear persistent cache on refresh - it will be updated with fresh data
         fetchCompactWalletTokens();
-        fetchCompactPositions();
+        fetchCompactPositions(true); // Clear first on explicit refresh
         fetchNeuronManagers();
         // Also refetch all neurons
         fetchAllSnsNeurons();
