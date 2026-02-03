@@ -15,6 +15,7 @@ import {
     uint8ArrayToHex,
     getOwnerPrincipals
 } from '../utils/NeuronUtils';
+import { useWalletOptional } from '../contexts/WalletContext';
 import {
     setNeuronName,
     setNeuronNickname,
@@ -118,6 +119,10 @@ export default function Me() {
     const { identity } = useAuth();
     const { selectedSnsRoot, updateSelectedSns } = useSns();
     const { createForumActor } = useForum();
+    
+    // Use WalletContext's global neuron cache for user neurons
+    const walletContext = useWalletOptional();
+    const getNeuronsForGovernance = walletContext?.getNeuronsForGovernance;
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const [snsList, setSnsList] = useState([]);
@@ -532,7 +537,7 @@ export default function Me() {
         fetchSnsData();
     }, [identity]);
 
-    // Fetch neurons when selected SNS changes
+    // Fetch neurons when selected SNS changes - uses global cache
     useEffect(() => {
         const fetchNeurons = async () => {
             if (!identity || !selectedSnsRoot) return;
@@ -545,7 +550,14 @@ export default function Me() {
                     throw new Error('Selected SNS not found');
                 }
                 
-                const neuronsList = await fetchUserNeuronsForSns(identity, selectedSns.canisters.governance);
+                // Use global cache from WalletContext if available
+                let neuronsList;
+                if (getNeuronsForGovernance) {
+                    neuronsList = await getNeuronsForGovernance(selectedSns.canisters.governance);
+                } else {
+                    // Fallback to direct fetch
+                    neuronsList = await fetchUserNeuronsForSns(identity, selectedSns.canisters.governance);
+                }
                 setNeurons(neuronsList);
 
                 const icrc1Actor = createIcrc1Actor(selectedSns.canisters.ledger, {
@@ -564,7 +576,7 @@ export default function Me() {
             }
         };
         fetchNeurons();
-    }, [identity, selectedSnsRoot]);
+    }, [identity, selectedSnsRoot, getNeuronsForGovernance]);
 
     useEffect(() => {
         if (identity) {

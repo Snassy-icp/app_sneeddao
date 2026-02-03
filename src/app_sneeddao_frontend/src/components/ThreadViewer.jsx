@@ -4,7 +4,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
-import { useNeurons } from '../contexts/NeuronsContext';
+import { useWalletOptional } from '../contexts/WalletContext';
 import { useAdminCheck } from '../hooks/useAdminCheck';
 import { useTextLimits } from '../hooks/useTextLimits';
 import { calculateVotingPower } from '../utils/VotingPowerUtils';
@@ -455,8 +455,51 @@ function ThreadViewer({
     // Tokens hook for tipping
     const { tokens: availableTokens, loading: tokensLoading, refreshTokenBalance } = useTokens(identity);
     
-    // Get neurons from global context
-    const { getHotkeyNeurons, getAllNeurons, loading: neuronsLoading, neuronsData } = useNeurons();
+    // Get user neurons from WalletContext's global cache
+    const walletContext = useWalletOptional();
+    const getCachedNeurons = walletContext?.getCachedNeurons;
+    const neuronCacheInitialized = walletContext?.neuronCacheInitialized;
+    
+    // Get neurons for the selected SNS from the global cache
+    const [userNeurons, setUserNeurons] = useState([]);
+    const [neuronsLoading, setNeuronsLoading] = useState(true);
+    
+    useEffect(() => {
+        if (!isAuthenticated || !identity || !selectedSnsRoot) {
+            setUserNeurons([]);
+            setNeuronsLoading(false);
+            return;
+        }
+        
+        const selectedSns = getSnsById(selectedSnsRoot);
+        if (!selectedSns?.canisters?.governance) {
+            setUserNeurons([]);
+            setNeuronsLoading(false);
+            return;
+        }
+        
+        if (getCachedNeurons) {
+            const neurons = getCachedNeurons(selectedSns.canisters.governance);
+            setUserNeurons(neurons || []);
+            setNeuronsLoading(!neuronCacheInitialized);
+        } else {
+            setUserNeurons([]);
+            setNeuronsLoading(false);
+        }
+    }, [isAuthenticated, identity, selectedSnsRoot, getCachedNeurons, neuronCacheInitialized]);
+    
+    // Helper functions matching the old NeuronsContext API
+    const getAllNeurons = useCallback(() => userNeurons, [userNeurons]);
+    const getHotkeyNeurons = useCallback(() => {
+        if (!identity) return [];
+        return userNeurons.filter(neuron => 
+            neuron.permissions?.some(p => 
+                p.principal?.toString() === identity.getPrincipal().toString() &&
+                p.permission_type?.includes(4) // Hotkey permission
+            )
+        );
+    }, [identity, userNeurons]);
+    
     const hotkeyNeurons = getHotkeyNeurons() || [];
     const allNeurons = getAllNeurons() || [];
     

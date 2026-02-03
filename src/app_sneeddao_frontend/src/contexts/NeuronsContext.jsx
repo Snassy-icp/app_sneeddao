@@ -6,6 +6,17 @@ import { getSnsById } from '../utils/SnsUtils';
 
 const NeuronsContext = createContext();
 
+/**
+ * NeuronsContext - For browsing ALL neurons in an SNS
+ * 
+ * This context is for viewing/indexing all neurons in a selected SNS,
+ * not just the user's neurons. Works for non-logged-in users too.
+ * 
+ * For the logged-in user's reachable neurons (for voting, VP bar, wallet, etc.),
+ * use WalletContext's neuron cache instead:
+ *   - getNeuronsForGovernance(governanceCanisterId)
+ *   - getCachedNeurons(governanceCanisterId)
+ */
 export function NeuronsProvider({ children }) {
     const { isAuthenticated, identity } = useAuth();
     const { selectedSnsRoot } = useSns();
@@ -251,4 +262,4 @@ export function useNeurons() {
         throw new Error('useNeurons must be used within a NeuronsProvider');
     }
     return context;
-} 
+}

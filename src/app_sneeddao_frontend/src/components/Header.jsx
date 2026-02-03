@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars, FaComments, FaUnlock, FaCrown, FaGift, FaBrain, FaKey, FaHandPaper, FaBell, FaEnvelope, FaCoins } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
@@ -9,7 +9,7 @@ import SnsDropdown from './SnsDropdown';
 import ThemeToggle from './ThemeToggle';
 import { useAdminCheck } from '../hooks/useAdminCheck';
 import usePremiumStatus from '../hooks/usePremiumStatus';
-import { useNeurons } from '../contexts/NeuronsContext';
+import { useWalletOptional } from '../contexts/WalletContext';
 import { useSns } from '../contexts/SnsContext';
 import { useTipNotifications } from '../hooks/useTipNotifications';
 import { useReplyNotifications } from '../hooks/useReplyNotifications';
@@ -27,7 +27,51 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const { isAuthenticated, identity, login, logout } = useAuth();
     const { theme } = useTheme();
     const { selectedSnsRoot, SNEED_SNS_ROOT } = useSns();
-    const { getAllNeurons, getHotkeyNeurons, loading: neuronsLoading } = useNeurons();
+    
+    // Use WalletContext's global neuron cache for user neurons
+    const walletContext = useWalletOptional();
+    const getCachedNeurons = walletContext?.getCachedNeurons;
+    const neuronCacheInitialized = walletContext?.neuronCacheInitialized;
+    
+    // Get neurons for the selected SNS from the global cache
+    const [userNeurons, setUserNeurons] = useState([]);
+    const [neuronsLoading, setNeuronsLoading] = useState(true);
+    
+    useEffect(() => {
+        if (!isAuthenticated || !identity || !selectedSnsRoot) {
+            setUserNeurons([]);
+            setNeuronsLoading(false);
+            return;
+        }
+        
+        const selectedSns = getSnsById(selectedSnsRoot);
+        if (!selectedSns?.canisters?.governance) {
+            setUserNeurons([]);
+            setNeuronsLoading(false);
+            return;
+        }
+        
+        if (getCachedNeurons) {
+            const neurons = getCachedNeurons(selectedSns.canisters.governance);
+            setUserNeurons(neurons || []);
+            setNeuronsLoading(!neuronCacheInitialized);
+        } else {
+            setUserNeurons([]);
+            setNeuronsLoading(false);
+        }
+    }, [isAuthenticated, identity, selectedSnsRoot, getCachedNeurons, neuronCacheInitialized]);
+    
+    // Helper functions matching the old NeuronsContext API
+    const getAllNeurons = () => userNeurons;
+    const getHotkeyNeurons = () => {
+        if (!identity) return [];
+        return userNeurons.filter(neuron => 
+            neuron.permissions?.some(p => 
+                p.principal?.toString() === identity.getPrincipal().toString() &&
+                p.permission_type?.includes(4) // Hotkey permission
+            )
+        );
+    };
     const { newTipCount } = useTipNotifications();
     const { newReplyCount } = useReplyNotifications();
     const { newMessageCount } = useSmsNotifications();
