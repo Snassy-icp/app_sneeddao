@@ -69,6 +69,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     // Get liquidity positions from context
     const liquidityPositions = walletContext?.liquidityPositions || [];
     const positionsLoading = walletContext?.positionsLoading || false;
+    const hasFetchedPositions = walletContext?.hasFetchedPositions || false;
     
     // Get neuron managers from context
     const neuronManagers = walletContext?.neuronManagers || [];
@@ -1239,7 +1240,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                               overflowX: 'hidden'
                           }}
                       >
-                          {(walletLoading || !hasFetchedInitial) ? (
+                          {/* Show loading only when no tokens yet AND still loading/not fetched */}
+                          {(walletLoading || !hasFetchedInitial) && tokensWithBalance.length === 0 ? (
                               <div style={{ 
                                   padding: '12px', 
                                   textAlign: 'center',
@@ -1415,6 +1417,24 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                       </div>
                                   );
                               })
+                          )}
+                          {/* Show subtle loading indicator while more tokens are loading */}
+                          {(walletLoading || !hasFetchedInitial) && tokensWithBalance.length > 0 && (
+                              <div style={{ 
+                                  padding: '6px 12px',
+                                  textAlign: 'center',
+                                  color: theme.colors.mutedText,
+                                  fontSize: '10px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '6px',
+                                  borderTop: `1px solid ${theme.colors.border}`,
+                                  opacity: 0.7
+                              }}>
+                                  <FaSync size={8} style={{ animation: 'spin 1s linear infinite' }} />
+                                  Loading more tokens...
+                              </div>
                           )}
                       </div>
                       {tokensWithBalance.length > 0 && (
@@ -1758,6 +1778,24 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                   );
                               })
                           )}
+                          {/* Show subtle loading indicator while more positions are loading */}
+                          {(positionsLoading || !hasFetchedPositions) && flattenedPositions.length > 0 && (
+                              <div style={{ 
+                                  padding: '6px 12px',
+                                  textAlign: 'center',
+                                  color: theme.colors.mutedText,
+                                  fontSize: '10px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '6px',
+                                  borderTop: `1px solid ${theme.colors.border}`,
+                                  opacity: 0.7
+                              }}>
+                                  <FaSync size={8} style={{ animation: 'spin 1s linear infinite' }} />
+                                  Loading more positions...
+                              </div>
+                          )}
                       </div>
                       {flattenedPositions.length > 0 && (
                           <button
@@ -1985,6 +2023,24 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                       </div>
                                   );
                               })
+                          )}
+                          {/* Show subtle loading indicator while more managers are loading */}
+                          {(neuronManagersLoading || !hasFetchedManagers) && neuronManagers.length > 0 && (
+                              <div style={{ 
+                                  padding: '6px 12px',
+                                  textAlign: 'center',
+                                  color: theme.colors.mutedText,
+                                  fontSize: '10px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '6px',
+                                  borderTop: `1px solid ${theme.colors.border}`,
+                                  opacity: 0.7
+                              }}>
+                                  <FaSync size={8} style={{ animation: 'spin 1s linear infinite' }} />
+                                  Loading more managers...
+                              </div>
                           )}
                       </div>
                       {neuronManagers.length > 0 && (
