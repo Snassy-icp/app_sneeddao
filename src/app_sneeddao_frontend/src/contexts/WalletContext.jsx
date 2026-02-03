@@ -15,6 +15,105 @@ import { fetchAndCacheSnsData, getAllSnses } from '../utils/SnsUtils';
 
 const WalletContext = createContext(null);
 
+// ============================================================================
+// PERSISTENT CACHE HELPERS
+// ============================================================================
+
+const WALLET_CACHE_KEY_PREFIX = 'walletCache_';
+const CACHE_VERSION = 1; // Increment if cache structure changes
+
+// Custom JSON replacer to handle BigInt and Principal
+const jsonReplacer = (key, value) => {
+    if (typeof value === 'bigint') {
+        return { __type: 'BigInt', value: value.toString() };
+    }
+    if (value && typeof value === 'object' && value._isPrincipal) {
+        return { __type: 'Principal', value: value.toString() };
+    }
+    if (value instanceof Principal) {
+        return { __type: 'Principal', value: value.toString() };
+    }
+    if (value instanceof Map) {
+        return { __type: 'Map', value: Array.from(value.entries()) };
+    }
+    if (value instanceof Set) {
+        return { __type: 'Set', value: Array.from(value) };
+    }
+    return value;
+};
+
+// Custom JSON reviver to restore BigInt and Principal
+const jsonReviver = (key, value) => {
+    if (value && typeof value === 'object' && value.__type) {
+        switch (value.__type) {
+            case 'BigInt':
+                return BigInt(value.value);
+            case 'Principal':
+                return Principal.fromText(value.value);
+            case 'Map':
+                return new Map(value.value.map(([k, v]) => [k, v]));
+            case 'Set':
+                return new Set(value.value);
+            default:
+                return value;
+        }
+    }
+    return value;
+};
+
+// Save wallet cache to localStorage
+const saveWalletCache = (principalId, data) => {
+    try {
+        const cacheKey = `${WALLET_CACHE_KEY_PREFIX}${principalId}`;
+        const cacheData = {
+            version: CACHE_VERSION,
+            timestamp: Date.now(),
+            ...data
+        };
+        const serialized = JSON.stringify(cacheData, jsonReplacer);
+        localStorage.setItem(cacheKey, serialized);
+    } catch (error) {
+        console.warn('[WalletContext] Failed to save cache:', error);
+    }
+};
+
+// Load wallet cache from localStorage
+const loadWalletCache = (principalId) => {
+    try {
+        const cacheKey = `${WALLET_CACHE_KEY_PREFIX}${principalId}`;
+        const serialized = localStorage.getItem(cacheKey);
+        if (!serialized) return null;
+        
+        const data = JSON.parse(serialized, jsonReviver);
+        
+        // Check cache version
+        if (data.version !== CACHE_VERSION) {
+            console.log('[WalletContext] Cache version mismatch, clearing');
+            localStorage.removeItem(cacheKey);
+            return null;
+        }
+        
+        return data;
+    } catch (error) {
+        console.warn('[WalletContext] Failed to load cache:', error);
+        return null;
+    }
+};
+
+// Clear wallet cache for a principal
+const clearWalletCache = (principalId) => {
+    try {
+        const cacheKey = `${WALLET_CACHE_KEY_PREFIX}${principalId}`;
+        localStorage.removeItem(cacheKey);
+    } catch (error) {
+        console.warn('[WalletContext] Failed to clear cache:', error);
+    }
+};
+
+// ============================================================================
+// WALLET PROVIDER
+// ============================================================================
+
 export const WalletProvider = ({ children }) => {
     const { identity, isAuthenticated } = useAuth();
     
@@ -47,6 +146,85 @@ export const WalletProvider = ({ children }) => {
     const [neuronCacheLoading, setNeuronCacheLoading] = useState(new Set()); // Set of governance IDs currently loading
     const [neuronCacheInitialized, setNeuronCacheInitialized] = useState(false);
     const neuronCacheFetchSessionRef = useRef(0);
+    
+    // Track if we loaded from persistent cache (for instant display)
+    const [loadedFromCache, setLoadedFromCache] = useState(false);
+    const hasInitializedFromCacheRef = useRef(false);
+    
+    // Get principal ID for cache key
+    const principalId = identity?.getPrincipal()?.toString();
+    
+    // Load from persistent cache on mount/login
+    useEffect(() => {
+        if (!principalId || hasInitializedFromCacheRef.current) return;
+        
+        const cachedData = loadWalletCache(principalId);
+        if (cachedData) {
+            console.log('[WalletContext] Loading from persistent cache, age:', 
+                Math.round((Date.now() - cachedData.timestamp) / 1000), 'seconds');
+            
+            // Restore tokens
+            if (cachedData.walletTokens && cachedData.walletTokens.length > 0) {
+                setWalletTokens(cachedData.walletTokens);
+                setHasFetchedInitial(true);
+            }
+            
+            // Restore positions
+            if (cachedData.liquidityPositions && cachedData.liquidityPositions.length > 0) {
+                setLiquidityPositions(cachedData.liquidityPositions);
+                setHasFetchedPositions(true);
+            }
+            
+            // Restore neuron cache (Map)
+            if (cachedData.neuronCache) {
+                // Cache stores it as an object with entries, convert back to Map if needed
+                if (cachedData.neuronCache instanceof Map) {
+                    setNeuronCache(cachedData.neuronCache);
+                } else if (Array.isArray(cachedData.neuronCache)) {
+                    setNeuronCache(new Map(cachedData.neuronCache));
+                }
+                setNeuronCacheInitialized(true);
+            }
+            
+            // Restore last updated
+            if (cachedData.lastUpdated) {
+                setLastUpdated(new Date(cachedData.lastUpdated));
+            }
+            
+            setLoadedFromCache(true);
+        }
+        
+        hasInitializedFromCacheRef.current = true;
+    }, [principalId]);
+    
+    // Save to persistent cache when data changes (debounced)
+    const saveCacheTimeoutRef = useRef(null);
+    useEffect(() => {
+        if (!principalId || !isAuthenticated) return;
+        
+        // Don't save if we haven't fetched anything yet
+        if (!hasFetchedInitial && !loadedFromCache) return;
+        
+        // Debounce saves to avoid excessive writes during progressive loading
+        if (saveCacheTimeoutRef.current) {
+            clearTimeout(saveCacheTimeoutRef.current);
+        }
+        
+        saveCacheTimeoutRef.current = setTimeout(() => {
+            saveWalletCache(principalId, {
+                walletTokens,
+                liquidityPositions,
+                neuronCache: Array.from(neuronCache.entries()), // Convert Map to array for storage
+                lastUpdated: lastUpdated?.getTime() || Date.now()
+            });
+        }, 2000); // Save 2 seconds after last change
+        
+        return () => {
+            if (saveCacheTimeoutRef.current) {
+                clearTimeout(saveCacheTimeoutRef.current);
+            }
+        };
+    }, [principalId, isAuthenticated, walletTokens, liquidityPositions, neuronCache, lastUpdated, hasFetchedInitial, loadedFromCache]);
 
     // Load SNS data to know which tokens are SNS tokens
     useEffect(() => {
@@ -715,12 +893,26 @@ export const WalletProvider = ({ children }) => {
     }, [identity, isAuthenticated, fetchTokenDetailsFast, addTokenProgressively, fetchAndUpdateConversionRate, fetchAndUpdateNeuronTotals]);
 
     // Fetch tokens and positions when user authenticates
+    // Always fetch fresh data in background, even if we loaded from persistent cache
+    const hasFetchedFreshRef = useRef(false);
     useEffect(() => {
-        if (isAuthenticated && identity && !hasFetchedInitial) {
-            fetchCompactWalletTokens();
-        }
-        if (isAuthenticated && identity && !hasFetchedPositions) {
-            fetchCompactPositions();
+        if (isAuthenticated && identity) {
+            // If we loaded from cache, we have hasFetchedInitial=true but need fresh data
+            // Use a ref to track if we've fetched fresh data this session
+            if (loadedFromCache && !hasFetchedFreshRef.current) {
+                // We have cached data showing, fetch fresh in background
+                hasFetchedFreshRef.current = true;
+                // Don't show loading state since we have cached data
+                fetchCompactWalletTokens();
+                fetchCompactPositions();
+            } else if (!hasFetchedInitial) {
+                // No cached data, need to fetch
+                fetchCompactWalletTokens();
+            }
+            
+            if (!hasFetchedPositions && !loadedFromCache) {
+                fetchCompactPositions();
+            }
         }
         if (!isAuthenticated) {
             // Clear wallet on logout
@@ -731,8 +923,11 @@ export const WalletProvider = ({ children }) => {
             setHasFetchedPositions(false);
             setHasDetailedData(false);
             setLastUpdated(null);
+            setLoadedFromCache(false);
+            hasFetchedFreshRef.current = false;
+            hasInitializedFromCacheRef.current = false;
         }
-    }, [isAuthenticated, identity, hasFetchedInitial, hasFetchedPositions, fetchCompactWalletTokens, fetchCompactPositions]);
+    }, [isAuthenticated, identity, hasFetchedInitial, hasFetchedPositions, loadedFromCache, fetchCompactWalletTokens, fetchCompactPositions]);
 
     // Update tokens from Wallet.jsx (more detailed data including locks, staked, etc.)
     const updateWalletTokens = useCallback((tokens) => {
@@ -763,17 +958,28 @@ export const WalletProvider = ({ children }) => {
         setHasFetchedInitial(false);
         setHasFetchedPositions(false);
         setHasDetailedData(false);
-    }, []);
+        setLoadedFromCache(false);
+        
+        // Clear persistent cache too
+        if (principalId) {
+            clearWalletCache(principalId);
+        }
+    }, [principalId]);
 
     // Refresh tokens manually
     const refreshWallet = useCallback(() => {
         setHasFetchedInitial(false);
         setHasFetchedPositions(false);
+        setLoadedFromCache(false);
         // Clear neuron cache so neurons are refetched
         setNeuronCache(new Map());
+        setNeuronCacheInitialized(false);
+        // Note: Don't clear persistent cache on refresh - it will be updated with fresh data
         fetchCompactWalletTokens();
         fetchCompactPositions();
-    }, [fetchCompactWalletTokens, fetchCompactPositions]);
+        // Also refetch all neurons
+        fetchAllSnsNeurons();
+    }, [fetchCompactWalletTokens, fetchCompactPositions, fetchAllSnsNeurons]);
 
     // Helper to calculate send amounts (frontend vs backend balance)
     const calcSendAmounts = useCallback((token, bigintAmount) => {
@@ -858,6 +1064,7 @@ export const WalletProvider = ({ children }) => {
             lastUpdated,
             hasDetailedData,
             hasFetchedInitial,
+            loadedFromCache, // True if initial data came from browser cache
             updateWalletTokens,
             setLoading,
             clearWallet,
