@@ -306,6 +306,16 @@ export const WalletProvider = ({ children }) => {
     const [neuronCacheLoading, setNeuronCacheLoading] = useState(new Set()); // Set of governance IDs currently loading
     const [neuronCacheInitialized, setNeuronCacheInitialized] = useState(false);
     const neuronCacheFetchSessionRef = useRef(0);
+    // Refs to always access the latest cache values (avoids stale closure issues in async callbacks)
+    const neuronCacheRef = useRef(new Map());
+    const neuronCacheLoadingRef = useRef(new Set());
+    // Keep refs in sync with state
+    useEffect(() => {
+        neuronCacheRef.current = neuronCache;
+    }, [neuronCache]);
+    useEffect(() => {
+        neuronCacheLoadingRef.current = neuronCacheLoading;
+    }, [neuronCacheLoading]);
     
     // ICP Neuron Managers - shared between quick wallet and /wallet page
     const [neuronManagers, setNeuronManagers] = useState([]); // Array of { canisterId, version, isController }
@@ -655,19 +665,25 @@ export const WalletProvider = ({ children }) => {
 
     // Fetch neurons for a governance canister and cache them
     const fetchAndCacheNeurons = useCallback(async (governanceCanisterId) => {
-        if (!identity) return [];
-        
-        // Check if already in cache
-        if (neuronCache.has(governanceCanisterId)) {
-            return neuronCache.get(governanceCanisterId);
+        if (!identity) {
+            console.log(`[fetchAndCacheNeurons] No identity, returning []`);
+            return [];
         }
         
-        // Check if already loading
-        if (neuronCacheLoading.has(governanceCanisterId)) {
-            // Wait for it to load by polling
+        // Check if already in cache (use ref to get latest value, avoid stale closure)
+        if (neuronCacheRef.current.has(governanceCanisterId)) {
+            const cached = neuronCacheRef.current.get(governanceCanisterId);
+            console.log(`[fetchAndCacheNeurons] Cache hit for ${governanceCanisterId.substring(0, 8)}, returning ${cached.length} neurons`);
+            return cached;
+        }
+        
+        // Check if already loading (use ref to get latest value)
+        if (neuronCacheLoadingRef.current.has(governanceCanisterId)) {
+            console.log(`[fetchAndCacheNeurons] Already loading ${governanceCanisterId.substring(0, 8)}, waiting...`);
+            // Wait for it to load by polling (use ref to check latest loading state)
             await new Promise(resolve => {
                 const checkInterval = setInterval(() => {
-                    if (!neuronCacheLoading.has(governanceCanisterId)) {
+                    if (!neuronCacheLoadingRef.current.has(governanceCanisterId)) {
                         clearInterval(checkInterval);
                         resolve();
                     }
@@ -678,7 +694,10 @@ export const WalletProvider = ({ children }) => {
                     resolve();
                 }, 30000);
             });
-            return neuronCache.get(governanceCanisterId) || [];
+            // Use ref to get the LATEST cache value after waiting
+            const cached = neuronCacheRef.current.get(governanceCanisterId) || [];
+            console.log(`[fetchAndCacheNeurons] Wait complete for ${governanceCanisterId.substring(0, 8)}, returning ${cached.length} neurons`);
+            return cached;
         }
         
         // Mark as loading
@@ -713,7 +732,7 @@ export const WalletProvider = ({ children }) => {
                 return newSet;
             });
         }
-    }, [identity, neuronCache, neuronCacheLoading]);
+    }, [identity]); // Using refs for cache access to avoid stale closures
     
     // Get neurons from cache (or fetch if not cached)
     const getNeuronsForGovernance = useCallback(async (governanceCanisterId) => {
@@ -798,20 +817,49 @@ export const WalletProvider = ({ children }) => {
         try {
             // Find the governance canister for this SNS
             // Use getAllSnses() directly instead of snsTokenLedgers state to avoid race condition
-            const allSnses = getAllSnses();
+            let allSnses = getAllSnses();
+            
+            console.log(`[NeuronTotals] Called for ${ledgerId.substring(0, 8)}..., SNS count: ${allSnses.length}`);
+            
+            // If SNS data isn't loaded yet (cache was cleared), wait for it to load
+            // This can happen when the user clears cache - SNS data fetch is async
+            if (allSnses.length === 0) {
+                console.log(`[NeuronTotals] Waiting for SNS data to load for ${ledgerId.substring(0, 8)}...`);
+                // Wait up to 10 seconds for SNS data to load, checking every 200ms
+                for (let i = 0; i < 50; i++) {
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    if (fetchSessionRef.current !== sessionId) return; // Session changed, abort
+                    allSnses = getAllSnses();
+                    if (allSnses.length > 0) {
+                        console.log(`[NeuronTotals] SNS data loaded (${allSnses.length} SNSes)`);
+                        break;
+                    }
+                }
+            }
+            
             const snsData = allSnses.find(sns => sns.canisters?.ledger === ledgerId);
             
-            // Not an SNS token - skip
-            if (!snsData) return;
+            // Not an SNS token - skip silently (this is expected for non-SNS tokens)
+            if (!snsData) {
+                // Only log for debugging if we expected this to be an SNS token
+                return;
+            }
+            
+            console.log(`[NeuronTotals] Found SNS: ${snsData.name || ledgerId.substring(0, 8)}, governance: ${snsData.canisters?.governance?.substring(0, 8)}...`);
             
             if (!snsData || !snsData.canisters?.governance) return;
             
             const governanceCanisterId = snsData.canisters.governance;
             
             // Fetch neurons (uses cache)
+            console.log(`[NeuronTotals] Fetching neurons for ${snsData.name}, session=${sessionId}...`);
             const neurons = await fetchAndCacheNeurons(governanceCanisterId);
+            console.log(`[NeuronTotals] Got ${neurons.length} neurons for ${snsData.name}, checking session...`);
             
-            if (fetchSessionRef.current !== sessionId) return;
+            if (fetchSessionRef.current !== sessionId) {
+                console.log(`[NeuronTotals] Session changed (${sessionId} vs ${fetchSessionRef.current}), aborting for ${snsData.name}`);
+                return;
+            }
             
             // Calculate totals
             const neuronStake = neurons.reduce((total, neuron) => {
@@ -823,6 +871,10 @@ export const WalletProvider = ({ children }) => {
             }, 0n);
             
             // Update token with neuron data
+            if (neurons.length > 0) {
+                console.log(`%c🧠 [NEURON TOTALS] ${snsData.name || ledgerId.substring(0, 8)}: ${neurons.length} neurons, stake=${neuronStake}, maturity=${neuronMaturity}`, 'background: #9b59b6; color: white; padding: 2px 6px;');
+            }
+            
             setWalletTokens(prev => prev.map(token => {
                 if (token.principal === ledgerId) {
                     return { 
@@ -1171,6 +1223,7 @@ export const WalletProvider = ({ children }) => {
             setLedgerList('registered', registeredLedgers);
             
             // Start fetching registered tokens immediately (don't wait for RLL/tips)
+            console.log(`[WALLET FETCH] Starting fetch for ${registeredLedgers.length} registered tokens`);
             registeredLedgers.forEach(ledger => {
                 const ledgerId = ledger.toString();
                 if (!knownLedgers.has(ledgerId)) {
@@ -1182,8 +1235,11 @@ export const WalletProvider = ({ children }) => {
                             // Then fetch USD value and neuron totals in background
                             fetchAndUpdateConversionRate(ledger, token.decimals, sessionId);
                             // Fetch neuron data for SNS tokens (progressive)
+                            console.log(`[WALLET FETCH] Token ${token.symbol || ledgerId.substring(0, 8)} loaded, fetching neuron totals...`);
                             fetchAndUpdateNeuronTotals(ledger, sessionId);
                         }
+                    }).catch(err => {
+                        console.warn(`[WALLET FETCH] Failed to fetch token ${ledgerId.substring(0, 8)}:`, err);
                     });
                 }
             });
