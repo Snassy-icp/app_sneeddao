@@ -44,6 +44,7 @@ import TokenIcon from './components/TokenIcon';
 import { fetchUserNeurons, fetchUserNeuronsForSns } from './utils/NeuronUtils';
 import { getTipTokensReceivedByUser } from './utils/BackendUtils';
 import { normalizeId } from './hooks/useNeuronsCache';
+import { getCachedRewards, setCachedRewards } from './hooks/useRewardsCache';
 import priceService from './services/PriceService';
 import ConsolidateModal from './ConsolidateModal';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
@@ -844,16 +845,28 @@ function Wallet() {
     }, [isAuthenticated, contextHasFetchedTokens, walletTokens]);
     
     // Fetch rewards when tokens are loaded (either from context or fresh fetch)
-    // Rewards are not cached, so we need to fetch them each time
+    // Instant load from cache, then silent background validation
     const hasInitializedRewardsRef = useRef(false);
     useEffect(() => {
         if (!isAuthenticated || !identity) return;
         if (hasInitializedRewardsRef.current) return;
         if (!tokens || tokens.length === 0) return;
         
-        // Fetch rewards once tokens are available
         hasInitializedRewardsRef.current = true;
-        fetchRewardDetails();
+        
+        // Load cached rewards instantly, then fetch fresh in background
+        const userPrincipal = identity.getPrincipal();
+        (async () => {
+            // First, load cached rewards for instant display
+            const cachedRewards = await getCachedRewards(userPrincipal);
+            if (cachedRewards && Object.keys(cachedRewards).length > 0) {
+                // Show cached rewards immediately
+                setRewardDetailsLoading(cachedRewards);
+            }
+            
+            // Then fetch fresh rewards in background (will update cache)
+            fetchRewardDetails();
+        })();
     }, [isAuthenticated, identity, tokens]);
     
     // Fetch wallet-specific data on mount
@@ -1128,14 +1141,15 @@ function Wallet() {
     async function fetchRewardDetails(for_ledger_id) {
         const normalizedForLedgerId = for_ledger_id ? normalizeId(for_ledger_id) : null;
         
+        // For single token refresh, show loading state
+        // For full refresh, don't clear existing rewards (cached data shows instantly)
         if (normalizedForLedgerId) {
             setRewardDetailsLoading(prevState => ({
                 ...prevState,
                 [normalizedForLedgerId]: BigInt(-1)
             }));
-        } else {
-            setRewardDetailsLoading({});
         }
+        // Note: For full refresh, we keep existing rewards visible (from cache) while fetching fresh data
         
         try {
             // fetch rewards from RLL canister
@@ -1163,15 +1177,19 @@ function Wallet() {
             if (normalizedForLedgerId) {
                 // Set to 0 if no rewards for this token (clear the loading state)
                 const rewardValue = new_reward_balances[normalizedForLedgerId] ?? 0n;
-                setRewardDetailsLoading(prevState => ({
-                    ...prevState,
-                    [normalizedForLedgerId]: rewardValue
-                }));
+                setRewardDetailsLoading(prevState => {
+                    // Merge into existing state and save to cache
+                    const updated = { ...prevState, [normalizedForLedgerId]: rewardValue };
+                    setCachedRewards(identity.getPrincipal(), updated);
+                    return updated;
+                });
             } else {
                 if (Object.keys(new_reward_balances).length === 0) {
-                    setRewardDetailsLoading({ "aaaa-aa" : 0 }); // make non-empty with 0 to indicate loaded
+                    setRewardDetailsLoading({ "aaaa-aa" : 0n }); // make non-empty with 0n to indicate loaded
+                    setCachedRewards(identity.getPrincipal(), { "aaaa-aa" : 0n });
                 } else {
                     setRewardDetailsLoading(new_reward_balances);
+                    setCachedRewards(identity.getPrincipal(), new_reward_balances);
                 }
             }
 
@@ -1209,14 +1227,20 @@ function Wallet() {
             }
         } catch (error) {
             console.error('Error fetching reward details:', error);
-            // Clear loading state on error
+            // Clear loading state on error - keep cached rewards visible if available
             if (normalizedForLedgerId) {
                 setRewardDetailsLoading(prevState => ({
                     ...prevState,
-                    [normalizedForLedgerId]: 0n // Set to 0 to clear loading
+                    [normalizedForLedgerId]: prevState[normalizedForLedgerId] >= 0n ? prevState[normalizedForLedgerId] : 0n
                 }));
             } else {
-                setRewardDetailsLoading({ "aaaa-aa" : 0 }); // make non-empty with 0 to indicate loaded (with error)
+                // On full refresh error, keep existing cached rewards if we have them
+                setRewardDetailsLoading(prevState => {
+                    if (Object.keys(prevState).length > 0 && !prevState["aaaa-aa"]) {
+                        return prevState; // Keep cached rewards
+                    }
+                    return { "aaaa-aa" : 0n }; // make non-empty with 0n to indicate loaded (with error)
+                });
             }
         }
     }
