@@ -459,7 +459,7 @@ function Wallet() {
     const tokens = useMemo(() => {
         if (!walletTokens || walletTokens.length === 0) return [];
         return walletTokens.map(token => {
-            const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.principal;
+            const ledgerId = normalizeId(token.ledger_canister_id) || normalizeId(token.principal);
             if (localTokenOverrides[ledgerId]) {
                 return { ...token, ...localTokenOverrides[ledgerId] };
             }
@@ -509,7 +509,7 @@ function Wallet() {
     const liquidityPositions = useMemo(() => {
         if (!contextLiquidityPositions || contextLiquidityPositions.length === 0) return [];
         return contextLiquidityPositions.map(pos => {
-            const swapId = pos.swapCanisterId?.toString?.() || pos.swapCanisterId?.toText?.() || pos.swapCanisterId;
+            const swapId = normalizeId(pos.swapCanisterId);
             if (localPositionOverrides[swapId]) {
                 return { ...pos, ...localPositionOverrides[swapId] };
             }
@@ -519,7 +519,7 @@ function Wallet() {
     
     // Helper to update a single position (for immediate UI feedback)
     const updateSinglePosition = useCallback((swapId, updates) => {
-        const swapIdStr = swapId?.toString?.() || swapId?.toText?.() || swapId;
+        const swapIdStr = normalizeId(swapId);
         setLocalPositionOverrides(prev => ({
             ...prev,
             [swapIdStr]: { ...prev[swapIdStr], ...updates }
@@ -833,7 +833,7 @@ function Wallet() {
         if (contextHasFetchedTokens && walletTokens && walletTokens.length > 0) {
             // Populate known_icrc1_ledgers for future incremental updates
             walletTokens.forEach(token => {
-                const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.principal;
+                const ledgerId = normalizeId(token.ledger_canister_id) || normalizeId(token.principal);
                 if (ledgerId) known_icrc1_ledgers[ledgerId] = true;
             });
             hasInitializedRef.current = true;
@@ -928,7 +928,7 @@ function Wallet() {
         // Token details
         lines.push('--- TOKEN DETAILS ---');
         for (const token of tokens) {
-            const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
+            const ledgerId = normalizeId(token.ledger_canister_id);
             const divisor = 10 ** (token.decimals || 8);
             const rate = token.conversion_rate || 0;
             
@@ -1115,7 +1115,7 @@ function Wallet() {
         if (for_ledger_id) {
             setRewardDetailsLoading(prevState => ({
                 ...prevState,
-                [for_ledger_id.toText()]: BigInt(-1)
+                [normalizeId(for_ledger_id)]: BigInt(-1)
             }));
         } else {
             setRewardDetailsLoading({});
@@ -1134,7 +1134,7 @@ function Wallet() {
         var new_icrc1_ledgers = [];
 
         for (const balance of arr_balances) {
-            const ledger_id = balance[0].toText();
+            const ledger_id = normalizeId(balance[0]);
             new_reward_balances[ledger_id] = BigInt(balance[1]);
             if (!known_icrc1_ledgers[ledger_id]) {
                 known_icrc1_ledgers[ledger_id] = true;
@@ -1143,9 +1143,10 @@ function Wallet() {
         };
 
         if (for_ledger_id) {
+            const normalizedForLedgerId = normalizeId(for_ledger_id);
             setRewardDetailsLoading(prevState => ({
                 ...prevState,
-                [for_ledger_id.toText()]: new_reward_balances[for_ledger_id.toText()]
+                [normalizedForLedgerId]: new_reward_balances[normalizedForLedgerId]
             }));
         } else {
             if (Object.keys(new_reward_balances).length === 0) {
@@ -1180,7 +1181,7 @@ function Wallet() {
                 const updatedToken = await fetchTokenDetails(icrc1_ledger, summed_locks);
                 // Update the specific token by matching ledger_canister_id
                 setTokens(prevTokens => prevTokens.map(token => 
-                    token.ledger_canister_id?.toText?.() === icrc1_ledger.toText() ? updatedToken : token
+                    normalizeId(token.ledger_canister_id) === normalizeId(icrc1_ledger) ? updatedToken : token
                 ));
                 return updatedToken;
             }));
@@ -1236,7 +1237,7 @@ function Wallet() {
                     const updatedToken = await fetchTokenDetails(icrc1_ledger, summed_locks);
                     // Update the specific token by matching ledger_canister_id
                     setTokens(prevTokens => prevTokens.map(token => 
-                        token.ledger_canister_id?.toText?.() === icrc1_ledger.toText() ? updatedToken : token
+                        normalizeId(token.ledger_canister_id) === normalizeId(icrc1_ledger) ? updatedToken : token
                     ));
                     return updatedToken;
                 }));
@@ -1301,14 +1302,15 @@ function Wallet() {
                 const updatedToken = await fetchTokenDetails(single_refresh_ledger_canister_id, summed_locks);
                 setTokens(prevTokens => {
                     // Check if token already exists
+                    const normalizedSingleRefreshId = normalizeId(single_refresh_ledger_canister_id);
                     const existingIndex = prevTokens.findIndex(token => 
-                        token.ledger_canister_id?.toText?.() === single_refresh_ledger_canister_id?.toText?.()
+                        normalizeId(token.ledger_canister_id) === normalizedSingleRefreshId
                     );
                     
                     if (existingIndex >= 0) {
                         // Update existing token
                         return prevTokens.map(token => 
-                            token.ledger_canister_id?.toText?.() === single_refresh_ledger_canister_id?.toText?.() ? updatedToken : token
+                            normalizeId(token.ledger_canister_id) === normalizedSingleRefreshId ? updatedToken : token
                         );
                     } else {
                         // Add new token to the end
@@ -1613,7 +1615,7 @@ function Wallet() {
             
             await Promise.all(neuronManagers.map(async (manager) => {
                 const canisterIdPrincipal = manager.canisterId;
-                const canisterId = canisterIdPrincipal?.toString?.() || canisterIdPrincipal?.toText?.() || canisterIdPrincipal;
+                const canisterId = normalizeId(canisterIdPrincipal);
                 
                 counts[canisterId] = manager.neuronCount || 0;
                 
@@ -1796,7 +1798,7 @@ function Wallet() {
                 
                 // Update version in managers array
                 setNeuronManagers(prev => prev.map(m => 
-                    m.canisterId.toText() === canisterId 
+                    normalizeId(m.canisterId) === canisterId 
                         ? { ...m, version } 
                         : m
                 ));
@@ -2238,7 +2240,7 @@ function Wallet() {
     
     // Toggle manager card expansion
     const toggleManagerCard = (canisterId) => {
-        const canisterIdStr = typeof canisterId === 'string' ? canisterId : canisterId.toText();
+        const canisterIdStr = normalizeId(canisterId);
         const isExpanding = !expandedManagerCards[canisterIdStr];
         
         setExpandedManagerCards(prev => ({
@@ -2418,10 +2420,9 @@ function Wallet() {
 
             // Get claimed positions for this swap canister
             const claimed_positions = await sneedLockActor.get_claimed_positions_for_principal(identity.getPrincipal());
+            const normalizedSwapCanisterId = normalizeId(swapCanisterId);
             const claimed_positions_for_swap = claimed_positions.filter(cp => 
-                cp.swap_canister_id === swapCanisterId || 
-                (typeof swapCanisterId === 'string' && cp.swap_canister_id === swapCanisterId) ||
-                (cp.swap_canister_id?.toText?.() === swapCanisterId?.toText?.())
+                normalizeId(cp.swap_canister_id) === normalizedSwapCanisterId
             );
             const claimed_position_ids_for_swap = claimed_positions_for_swap.map(cp => cp.position_id);
             const claimed_positions_for_swap_by_id = {};
@@ -2521,11 +2522,9 @@ function Wallet() {
             };
 
             // Update only this position in state
-            setLiquidityPositions(prevPositions => prevPositions.map(pos => {
-                const posSwapId = pos.swapCanisterId?.toText?.() || pos.swapCanisterId?.toString?.() || pos.swapCanisterId;
-                const targetSwapId = swapCanisterId?.toText?.() || swapCanisterId?.toString?.() || swapCanisterId;
-                return posSwapId === targetSwapId ? liquidityPosition : pos;
-            }));
+            setLiquidityPositions(prevPositions => prevPositions.map(pos => 
+                normalizeId(pos.swapCanisterId) === normalizedSwapCanisterId ? liquidityPosition : pos
+            ));
 
             return {
                 token0Ledger: Principal.fromText(icrc1_ledger0),
@@ -2542,7 +2541,8 @@ function Wallet() {
         // Initialize lockDetailsLoading state
         const initialLoadingState = {};
         currentTokens.forEach(token => {
-            initialLoadingState[token.ledger_canister_id] = true;
+            const ledgerId = normalizeId(token.ledger_canister_id);
+            initialLoadingState[ledgerId] = true;
         });
         setLockDetailsLoading(prevState => ({...prevState, ...initialLoadingState}))
 
@@ -2554,13 +2554,14 @@ function Wallet() {
 
         // Fetch lock details for each token in parallel
         await Promise.all(currentTokens.map(async (token) => {
+            const ledgerId = normalizeId(token.ledger_canister_id);
             const ledgerActor = createLedgerActor(token.ledger_canister_id);
             try {
 
                 const tokenLocks = [];
     
                 for (const lock of locks_from_backend) {
-                    if (lock[1]?.toText?.() == token.ledger_canister_id?.toText?.()) {
+                    if (normalizeId(lock[1]) === ledgerId) {
                         const readableDateFromHugeInt = new Date(Number(lock[3] / (10n ** 6n)));
                         tokenLocks.push({
                             lock_id: lock[0],
@@ -2573,13 +2574,13 @@ function Wallet() {
                 // Update locks state for this token
                 setLocks(prevLocks => ({
                     ...prevLocks,
-                    [token.ledger_canister_id]: tokenLocks
+                    [ledgerId]: tokenLocks
                 }));
     
                 // Update loading state for this token
                 setLockDetailsLoading(prevState => ({
                     ...prevState,
-                    [token.ledger_canister_id]: false
+                    [ledgerId]: false
                 }));
     
             } catch (err) {
@@ -2588,7 +2589,7 @@ function Wallet() {
                 //console.error(er);
                 setLockDetailsLoading(prevState => ({
                     ...prevState,
-                    [token.ledger_canister_id]: false
+                    [ledgerId]: false
                 }));
 
             }
@@ -2620,10 +2621,10 @@ function Wallet() {
             lockedTotal += lockedAmount;
             
             // Calculate rewards
-            const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
-            if (rewardDetailsLoading && rewardDetailsLoading[token.ledger_canister_id] != null && BigInt(rewardDetailsLoading[token.ledger_canister_id]) > 0) {
+            const ledgerId = normalizeId(token.ledger_canister_id);
+            if (rewardDetailsLoading && rewardDetailsLoading[ledgerId] != null && BigInt(rewardDetailsLoading[ledgerId]) > 0) {
                 hasAnyRewards = true;
-                const rewardAmount = Number(BigInt(rewardDetailsLoading[token.ledger_canister_id])) / divisor * rate;
+                const rewardAmount = Number(BigInt(rewardDetailsLoading[ledgerId])) / divisor * rate;
                 rewardsTotal += rewardAmount;
             }
             
@@ -3704,22 +3705,18 @@ function Wallet() {
             const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
             
             // Check if tokens exist in wallet, if not add them
-            const token0Exists = tokens.some(t => 
-                t.ledger_canister_id?.toText?.() === token0Ledger.toText() || 
-                t.ledger_canister_id?.toString?.() === token0Ledger.toString()
-            );
-            const token1Exists = tokens.some(t => 
-                t.ledger_canister_id?.toText?.() === token1Ledger.toText() || 
-                t.ledger_canister_id?.toString?.() === token1Ledger.toString()
-            );
+            const normalizedToken0Ledger = normalizeId(token0Ledger);
+            const normalizedToken1Ledger = normalizeId(token1Ledger);
+            const token0Exists = tokens.some(t => normalizeId(t.ledger_canister_id) === normalizedToken0Ledger);
+            const token1Exists = tokens.some(t => normalizeId(t.ledger_canister_id) === normalizedToken1Ledger);
             
             // Auto-add tokens if not in wallet
             if (!token0Exists) {
-                console.log('Auto-adding token0 to wallet:', token0Ledger.toText());
+                console.log('Auto-adding token0 to wallet:', normalizedToken0Ledger);
                 await backendActor.register_ledger_canister_id(token0Ledger);
             }
             if (!token1Exists) {
-                console.log('Auto-adding token1 to wallet:', token1Ledger.toText());
+                console.log('Auto-adding token1 to wallet:', normalizedToken1Ledger);
                 await backendActor.register_ledger_canister_id(token1Ledger);
             }
             
@@ -3790,22 +3787,18 @@ function Wallet() {
             const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
             
             // Check if tokens exist in wallet, if not add them
-            const token0Exists = tokens.some(t => 
-                t.ledger_canister_id?.toText?.() === token0Ledger.toText() || 
-                t.ledger_canister_id?.toString?.() === token0Ledger.toString()
-            );
-            const token1Exists = tokens.some(t => 
-                t.ledger_canister_id?.toText?.() === token1Ledger.toText() || 
-                t.ledger_canister_id?.toString?.() === token1Ledger.toString()
-            );
+            const normalizedToken0Ledger = normalizeId(token0Ledger);
+            const normalizedToken1Ledger = normalizeId(token1Ledger);
+            const token0Exists = tokens.some(t => normalizeId(t.ledger_canister_id) === normalizedToken0Ledger);
+            const token1Exists = tokens.some(t => normalizeId(t.ledger_canister_id) === normalizedToken1Ledger);
             
             // Auto-add tokens if not in wallet
             if (!token0Exists) {
-                console.log('Auto-adding token0 to wallet:', token0Ledger.toText());
+                console.log('Auto-adding token0 to wallet:', normalizedToken0Ledger);
                 await backendActor.register_ledger_canister_id(token0Ledger);
             }
             if (!token1Exists) {
-                console.log('Auto-adding token1 to wallet:', token1Ledger.toText());
+                console.log('Auto-adding token1 to wallet:', normalizedToken1Ledger);
                 await backendActor.register_ledger_canister_id(token1Ledger);
             }
             
@@ -3953,22 +3946,18 @@ function Wallet() {
             const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
             
             // Check if tokens exist in wallet, if not add them
-            const token0Exists = tokens.some(t => 
-                t.ledger_canister_id?.toText?.() === token0Ledger.toText() || 
-                t.ledger_canister_id?.toString?.() === token0Ledger.toString()
-            );
-            const token1Exists = tokens.some(t => 
-                t.ledger_canister_id?.toText?.() === token1Ledger.toText() || 
-                t.ledger_canister_id?.toString?.() === token1Ledger.toString()
-            );
+            const normalizedToken0Ledger = normalizeId(token0Ledger);
+            const normalizedToken1Ledger = normalizeId(token1Ledger);
+            const token0Exists = tokens.some(t => normalizeId(t.ledger_canister_id) === normalizedToken0Ledger);
+            const token1Exists = tokens.some(t => normalizeId(t.ledger_canister_id) === normalizedToken1Ledger);
             
             // Auto-add tokens if not in wallet
             if (!token0Exists) {
-                console.log('Auto-adding token0 to wallet:', token0Ledger.toText());
+                console.log('Auto-adding token0 to wallet:', normalizedToken0Ledger);
                 await backendActor.register_ledger_canister_id(token0Ledger);
             }
             if (!token1Exists) {
-                console.log('Auto-adding token1 to wallet:', token1Ledger.toText());
+                console.log('Auto-adding token1 to wallet:', normalizedToken1Ledger);
                 await backendActor.register_ledger_canister_id(token1Ledger);
             }
             
@@ -4007,11 +3996,11 @@ function Wallet() {
             await backendActor.unregister_ledger_canister_id(ledgerCanisterId);
             
             // Remove the token from state and mark as unknown
-            const ledger_id = ledgerCanisterId.toText();
+            const ledger_id = normalizeId(ledgerCanisterId);
             delete known_icrc1_ledgers[ledger_id];
             
             setTokens(prevTokens => prevTokens.filter(token => 
-                token.ledger_canister_id?.toText?.() !== ledger_id
+                normalizeId(token.ledger_canister_id) !== ledger_id
             ));
         });
         setConfirmMessage(`You are about to unregister ledger canister ${ledgerCanisterId}?`);
@@ -4043,7 +4032,7 @@ function Wallet() {
     };
 
     const handleRefreshToken = async (token) => {
-        const ledgerId = token.ledger_canister_id;
+        const ledgerId = normalizeId(token.ledger_canister_id);
         // Mark as refreshing
         setRefreshingTokens(prev => new Set(prev).add(ledgerId));
         try {
@@ -4064,9 +4053,10 @@ function Wallet() {
     const handleRefreshPosition = async (position) => {
         // Refresh just this specific liquidity position
         const swap_canister = position.swapCanisterId;
+        const normalizedSwapCanister = normalizeId(swap_canister);
         
         // Mark as refreshing
-        setRefreshingPositions(prev => new Set(prev).add(swap_canister));
+        setRefreshingPositions(prev => new Set(prev).add(normalizedSwapCanister));
         
         try {
             const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
@@ -4074,7 +4064,7 @@ function Wallet() {
 
             // Get claimed positions for this swap
             const claimed_positions = await sneedLockActor.get_claimed_positions_for_principal(identity.getPrincipal());
-            const claimed_positions_for_swap = claimed_positions.filter(cp => cp.swap_canister_id === swap_canister);
+            const claimed_positions_for_swap = claimed_positions.filter(cp => normalizeId(cp.swap_canister_id) === normalizedSwapCanister);
             const claimed_position_ids_for_swap = claimed_positions_for_swap.map(claimed_position => claimed_position.position_id);
             const claimed_positions_for_swap_by_id = {};
             for (const claimed_position of claimed_positions_for_swap) {
@@ -4176,7 +4166,7 @@ function Wallet() {
 
             // Update the specific position in state
             setLiquidityPositions(prevPositions => prevPositions.map(p => 
-                p.swapCanisterId === swap_canister ? updatedPosition : p
+                normalizeId(p.swapCanisterId) === normalizedSwapCanister ? updatedPosition : p
             ));
         } catch (error) {
             console.error('Error refreshing position:', error);
@@ -4184,7 +4174,7 @@ function Wallet() {
             // Clear refreshing state
             setRefreshingPositions(prev => {
                 const next = new Set(prev);
-                next.delete(swap_canister);
+                next.delete(normalizedSwapCanister);
                 return next;
             });
         }
@@ -4325,9 +4315,9 @@ function Wallet() {
     // Helper to check if user has a specific permission on a neuron
     const userHasNeuronPermission = (neuron, permissionType) => {
         if (!identity || !neuron.permissions) return false;
-        const userPrincipal = identity.getPrincipal().toString();
+        const userPrincipal = normalizeId(identity.getPrincipal());
         const userPerms = neuron.permissions.find(p => 
-            p.principal?.[0]?.toString() === userPrincipal
+            normalizeId(p.principal?.[0]) === userPrincipal
         );
         return userPerms?.permission_type?.includes(permissionType) || false;
     };
@@ -4336,7 +4326,7 @@ function Wallet() {
         const items = [];
         // Only SNS tokens have neurons with maturity
         tokens.forEach(token => {
-            const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
+            const ledgerId = normalizeId(token.ledger_canister_id);
             if (!snsTokens.has(ledgerId)) return;
             
             // Use the neurons stored from TokenCard callback
@@ -4444,7 +4434,7 @@ function Wallet() {
     };
 
     const handleDisburseMaturity = async (token, neuronIdHex) => {
-        const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
+        const ledgerId = normalizeId(token.ledger_canister_id);
         const snsInfo = getSnsByLedgerId(ledgerId);
         if (!snsInfo) {
             throw new Error('SNS information not found for ledger: ' + ledgerId);
@@ -5177,7 +5167,7 @@ function Wallet() {
                         .filter(token => {
                             // If hideDust is enabled, filter by USD value
                             if (hideDust) {
-                                const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
+                                const ledgerId = normalizeId(token.ledger_canister_id);
                                 
                                 // Calculate base token USD value (including neuron stake/maturity like PrincipalBox)
                                 let usdValue = 0;
@@ -5201,10 +5191,8 @@ function Wallet() {
                         })
                         .map((token, index) => {
                         // Convert Principal to string for comparison
-                        const ledgerIdString = typeof token.ledger_canister_id === 'string' 
-                            ? token.ledger_canister_id 
-                            : token.ledger_canister_id?.toString();
-                        const isSns = snsTokens.has(ledgerIdString);
+                        const ledgerId = normalizeId(token.ledger_canister_id);
+                        const isSns = snsTokens.has(ledgerId);
                         
                         return (
                             <TokenCard
@@ -5223,17 +5211,15 @@ function Wallet() {
                                 handleWithdrawFromBackend={handleWithdrawFromBackend}
                                 handleDepositToBackend={handleDepositToBackend}
                                 handleRefreshToken={handleRefreshToken}
-                                isRefreshing={refreshingTokens.has(token.ledger_canister_id)}
+                                isRefreshing={refreshingTokens.has(ledgerId)}
                                 isSnsToken={isSns}
                                 onNeuronTotalsChange={(breakdown) => {
-                                    const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
                                     setNeuronTotals(prev => ({
                                         ...prev,
                                         [ledgerId]: breakdown
                                     }));
                                 }}
                                 onNeuronsLoaded={(neurons) => {
-                                    const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
                                     setSnsNeuronsByToken(prev => ({
                                         ...prev,
                                         [ledgerId]: neurons
@@ -5324,14 +5310,16 @@ function Wallet() {
                         </div>
                     </div>
                     <div className="card-grid">                
-                    {liquidityPositions.map((position, index) => (
+                    {liquidityPositions.map((position, index) => {
+                        const normalizedSwapId = normalizeId(position.swapCanisterId);
+                        return (
                         position.positions.length < 1 
                         ? <EmptyPositionCard 
                             key={index} 
                             position={position} 
                             onRemove={() => handleUnregisterSwapCanister(position.swapCanisterId)}
                             handleRefreshPosition={handleRefreshPosition}
-                            isRefreshing={refreshingPositions.has(position.swapCanisterId)}
+                            isRefreshing={refreshingPositions.has(normalizedSwapId)}
                             theme={theme}
                           />
 
@@ -5349,7 +5337,7 @@ function Wallet() {
                                 handleWithdrawSwapBalance={handleWithdrawSwapBalance}
                                 handleTransferPositionOwnership={handleSendLiquidityPosition}
                                 handleRefreshPosition={handleRefreshPosition}
-                                isRefreshing={refreshingPositions.has(position.swapCanisterId)}
+                                isRefreshing={refreshingPositions.has(normalizedSwapId)}
                                 swapCanisterBalance0={position.swapCanisterBalance0}
                                 swapCanisterBalance1={position.swapCanisterBalance1}
                                 token0Fee={position.token0Fee}
@@ -5358,7 +5346,7 @@ function Wallet() {
                                 hideUnclaimedFees={false}
                             />
                         ))
-                    ))}
+                    );})}
                     {showPositionsSpinner ? (
                         <div className="card">
                             <div className="spinner"></div>
@@ -5587,7 +5575,7 @@ function Wallet() {
                         ) : (
                             <div className="card-grid">
                                 {neuronManagers.map((manager) => {
-                                    const canisterId = manager.canisterId.toText();
+                                    const canisterId = normalizeId(manager.canisterId);
                                     const neuronCount = neuronManagerCounts[canisterId];
                                     const isExpanded = expandedManagerCards[canisterId];
                                     const neuronsData = managerNeurons[canisterId];
@@ -7622,8 +7610,8 @@ function Wallet() {
                     handleWithdrawFromBackend={handleWithdrawFromBackend}
                     handleDepositToBackend={handleDepositToBackend}
                     handleRefreshToken={handleRefreshToken}
-                    isRefreshing={detailToken ? refreshingTokens.has(detailToken.ledger_canister_id) : false}
-                    isSnsToken={detailToken ? snsTokens.has(detailToken.ledger_canister_id?.toString?.() || detailToken.ledger_canister_id) : false}
+                    isRefreshing={detailToken ? refreshingTokens.has(normalizeId(detailToken.ledger_canister_id)) : false}
+                    isSnsToken={detailToken ? snsTokens.has(normalizeId(detailToken.ledger_canister_id)) : false}
                 />
                     </>
                 )}
