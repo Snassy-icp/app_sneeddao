@@ -127,10 +127,14 @@ export function NeuronsProvider({ children }) {
         
         const allNeurons = getAllNeurons();
         return allNeurons.filter(neuron => {
-            return neuron.permissions.some(p => 
-                p.principal?.toString() === identity.getPrincipal().toString() &&
-                p.permission_type.includes(4) // Hotkey permission
-            );
+            return neuron.permissions?.some(p => {
+                if (p.principal?.toString() !== identity.getPrincipal().toString()) return false;
+                // Safe array check for cached data
+                const pt = p.permission_type;
+                if (!pt) return false;
+                const arr = Array.isArray(pt) ? pt : (pt.length !== undefined ? Array.from(pt) : []);
+                return arr.includes(4); // Hotkey permission
+            });
         });
     }, [identity, getAllNeurons]);
 

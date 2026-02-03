@@ -28,6 +28,24 @@ export const getNeuronId = (neuron) => {
     return uint8ArrayToHex(neuron.id[0].id);
 };
 
+// Helper function to safely get permission_type as an array
+// Handles cases where cache serialization/deserialization might corrupt the type
+export const safePermissionType = (permission) => {
+    if (!permission?.permission_type) return [];
+    const pt = permission.permission_type;
+    if (Array.isArray(pt)) return pt;
+    // Handle array-like objects (TypedArrays, objects with length)
+    if (pt.length !== undefined) return Array.from(pt);
+    // Handle plain objects that should have been arrays
+    if (typeof pt === 'object') {
+        const keys = Object.keys(pt).filter(k => !isNaN(parseInt(k)));
+        if (keys.length > 0) {
+            return keys.sort((a, b) => parseInt(a) - parseInt(b)).map(k => pt[k]);
+        }
+    }
+    return [];
+};
+
 // Helper function to find owner principals from neuron permissions
 export const getOwnerPrincipals = (neuron) => {
     // Treat principals with MANAGE_PRINCIPALS (aka "ManagePermissions") as owners.
@@ -40,7 +58,16 @@ export const getOwnerPrincipals = (neuron) => {
     const perms = neuron?.permissions || [];
     perms.forEach(permission => {
         if (!permission?.principal) return;
-        const permArray = permission.permission_type || [];
+        // Ensure permArray is an array (may be corrupted from cache serialization)
+        let permArray = permission.permission_type || [];
+        if (!Array.isArray(permArray)) {
+            // If it's array-like (has length), convert to array
+            if (permArray.length !== undefined) {
+                permArray = Array.from(permArray);
+            } else {
+                permArray = [];
+            }
+        }
         if (permArray.includes(MANAGE_PRINCIPALS)) {
             owners.add(permission.principal.toString());
         }
@@ -51,7 +78,11 @@ export const getOwnerPrincipals = (neuron) => {
         let maxPermissions = 0;
         perms.forEach(permission => {
             if (!permission?.principal) return;
-            const permCount = (permission.permission_type || []).length;
+            let permType = permission.permission_type || [];
+            if (!Array.isArray(permType)) {
+                permType = permType.length !== undefined ? Array.from(permType) : [];
+            }
+            const permCount = permType.length;
             if (permCount > maxPermissions) {
                 maxPermissions = permCount;
                 owners.clear();

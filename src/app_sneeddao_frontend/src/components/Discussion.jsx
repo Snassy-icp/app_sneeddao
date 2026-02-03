@@ -316,10 +316,14 @@ function Discussion({
     const getHotkeyNeurons = useCallback(() => {
         if (!identity) return [];
         return userNeurons.filter(neuron => 
-            neuron.permissions?.some(p => 
-                p.principal?.toString() === identity.getPrincipal().toString() &&
-                p.permission_type?.includes(4) // Hotkey permission
-            )
+            neuron.permissions?.some(p => {
+                if (p.principal?.toString() !== identity.getPrincipal().toString()) return false;
+                // Safe array check for cached data
+                const pt = p.permission_type;
+                if (!pt) return false;
+                const arr = Array.isArray(pt) ? pt : (pt.length !== undefined ? Array.from(pt) : []);
+                return arr.includes(4); // Hotkey permission
+            })
         );
     }, [identity, userNeurons]);
     

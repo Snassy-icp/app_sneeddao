@@ -471,10 +471,13 @@ export default function Me() {
         const neuronsByOwner = new Map();
         neurons.forEach(neuron => {
             // Check if user has MANAGE_PRINCIPALS permission on this neuron
-            const userHasManagePermissions = neuron.permissions?.some(p => 
-                p.principal?.toString() === userPrincipal && 
-                (p.permission_type || []).includes(MANAGE_PRINCIPALS)
-            );
+            const userHasManagePermissions = neuron.permissions?.some(p => {
+                if (p.principal?.toString() !== userPrincipal) return false;
+                // Safe array check for cached data
+                const pt = p.permission_type || [];
+                const arr = Array.isArray(pt) ? pt : (pt.length !== undefined ? Array.from(pt) : []);
+                return arr.includes(MANAGE_PRINCIPALS);
+            });
 
             let effectiveOwner;
             if (userHasManagePermissions) {
@@ -2174,10 +2177,12 @@ export default function Me() {
                                                             const neuronId = uint8ArrayToHex(neuron.id[0]?.id);
                                                             if (!neuronId) return null;
 
-                                                            const hasHotkeyAccess = neuron.permissions.some(p => 
-                                                                p.principal?.toString() === identity.getPrincipal().toString() &&
-                                                                p.permission_type.includes(4)
-                                                            );
+                                                            const hasHotkeyAccess = neuron.permissions?.some(p => {
+                                                                if (p.principal?.toString() !== identity.getPrincipal().toString()) return false;
+                                                                const pt = p.permission_type;
+                                                                const arr = Array.isArray(pt) ? pt : (pt?.length !== undefined ? Array.from(pt) : []);
+                                                                return arr.includes(4);
+                                                            });
 
                                                             const { name, nickname, isVerified } = getDisplayName(neuronId);
 
@@ -2649,10 +2654,12 @@ function NeuronGroup({
                             const neuronId = uint8ArrayToHex(neuron.id[0]?.id);
                             if (!neuronId) return null;
 
-                            const hasHotkeyAccess = neuron.permissions.some(p => 
-                                p.principal?.toString() === identity.getPrincipal().toString() &&
-                                p.permission_type.includes(4)
-                            );
+                            const hasHotkeyAccess = neuron.permissions?.some(p => {
+                                if (p.principal?.toString() !== identity.getPrincipal().toString()) return false;
+                                const pt = p.permission_type;
+                                const arr = Array.isArray(pt) ? pt : (pt?.length !== undefined ? Array.from(pt) : []);
+                                return arr.includes(4);
+                            });
 
                             const { name, nickname, isVerified } = getDisplayName(neuronId);
 

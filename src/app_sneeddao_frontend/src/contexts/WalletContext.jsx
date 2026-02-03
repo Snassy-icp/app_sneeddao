@@ -22,7 +22,7 @@ const WalletContext = createContext(null);
 const WALLET_CACHE_KEY_PREFIX = 'walletCache_';
 const CACHE_VERSION = 1; // Increment if cache structure changes
 
-// Custom JSON replacer to handle BigInt and Principal
+// Custom JSON replacer to handle BigInt, Principal, TypedArrays, Map, Set
 const jsonReplacer = (key, value) => {
     if (typeof value === 'bigint') {
         return { __type: 'BigInt', value: value.toString() };
@@ -39,10 +39,14 @@ const jsonReplacer = (key, value) => {
     if (value instanceof Set) {
         return { __type: 'Set', value: Array.from(value) };
     }
+    // Handle TypedArrays (Uint8Array, Int32Array, etc.) - common in candid data
+    if (ArrayBuffer.isView(value) && !(value instanceof DataView)) {
+        return { __type: 'TypedArray', arrayType: value.constructor.name, value: Array.from(value) };
+    }
     return value;
 };
 
-// Custom JSON reviver to restore BigInt and Principal
+// Custom JSON reviver to restore BigInt, Principal, TypedArrays, Map, Set
 const jsonReviver = (key, value) => {
     if (value && typeof value === 'object' && value.__type) {
         switch (value.__type) {
@@ -54,6 +58,13 @@ const jsonReviver = (key, value) => {
                 return new Map(value.value.map(([k, v]) => [k, v]));
             case 'Set':
                 return new Set(value.value);
+            case 'TypedArray':
+                // Restore typed arrays
+                const TypedArrayConstructor = globalThis[value.arrayType];
+                if (TypedArrayConstructor) {
+                    return new TypedArrayConstructor(value.value);
+                }
+                return value.value; // Fallback to regular array
             default:
                 return value;
         }
@@ -568,7 +579,8 @@ export const WalletProvider = ({ children }) => {
 
         const sessionId = ++positionsFetchSessionRef.current;
         setPositionsLoading(true);
-        // Don't clear positions - keep showing existing while refreshing
+        // Clear positions before fresh fetch to avoid duplicates
+        setLiquidityPositions([]);
 
         try {
             const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
@@ -895,23 +907,30 @@ export const WalletProvider = ({ children }) => {
     // Fetch tokens and positions when user authenticates
     // Always fetch fresh data in background, even if we loaded from persistent cache
     const hasFetchedFreshRef = useRef(false);
+    const isFetchingRef = useRef(false); // Prevent double fetches
+    
     useEffect(() => {
         if (isAuthenticated && identity) {
+            // Guard against concurrent fetches
+            if (isFetchingRef.current) return;
+            
             // If we loaded from cache, we have hasFetchedInitial=true but need fresh data
             // Use a ref to track if we've fetched fresh data this session
             if (loadedFromCache && !hasFetchedFreshRef.current) {
                 // We have cached data showing, fetch fresh in background
                 hasFetchedFreshRef.current = true;
+                isFetchingRef.current = true;
                 // Don't show loading state since we have cached data
                 fetchCompactWalletTokens();
                 fetchCompactPositions();
-            } else if (!hasFetchedInitial) {
+                // Reset fetching flag after a short delay
+                setTimeout(() => { isFetchingRef.current = false; }, 100);
+            } else if (!hasFetchedInitial && !loadedFromCache) {
                 // No cached data, need to fetch
+                isFetchingRef.current = true;
                 fetchCompactWalletTokens();
-            }
-            
-            if (!hasFetchedPositions && !loadedFromCache) {
                 fetchCompactPositions();
+                setTimeout(() => { isFetchingRef.current = false; }, 100);
             }
         }
         if (!isAuthenticated) {
@@ -926,8 +945,9 @@ export const WalletProvider = ({ children }) => {
             setLoadedFromCache(false);
             hasFetchedFreshRef.current = false;
             hasInitializedFromCacheRef.current = false;
+            isFetchingRef.current = false;
         }
-    }, [isAuthenticated, identity, hasFetchedInitial, hasFetchedPositions, loadedFromCache, fetchCompactWalletTokens, fetchCompactPositions]);
+    }, [isAuthenticated, identity, hasFetchedInitial, loadedFromCache, fetchCompactWalletTokens, fetchCompactPositions]);
 
     // Update tokens from Wallet.jsx (more detailed data including locks, staked, etc.)
     const updateWalletTokens = useCallback((tokens) => {
