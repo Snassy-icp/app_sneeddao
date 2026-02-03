@@ -282,6 +282,49 @@ export const hasCacheForSns = async (snsRoot) => {
 };
 
 /**
+ * Get ALL neurons for an SNS from the shared cache
+ * @param {string} snsRoot - SNS root canister ID
+ * @returns {Object[]} Array of neuron objects, or empty array if not found
+ */
+export const getAllNeuronsForSns = async (snsRoot) => {
+    if (!snsRoot) return [];
+    
+    try {
+        const db = await initializeNeuronsDB();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction([STORE_NAME], 'readonly');
+            const store = transaction.objectStore(STORE_NAME);
+            const request = store.get(snsRoot);
+            
+            request.onsuccess = () => {
+                const data = request.result;
+                if (!data || !data.neurons || data.neurons.length === 0) {
+                    resolve([]);
+                    return;
+                }
+                
+                // Reconstruct Uint8Arrays for neuron IDs
+                const neurons = data.neurons.map(n => ({
+                    ...n,
+                    id: n.id?.map(idObj => ({
+                        ...idObj,
+                        id: new Uint8Array(idObj.id)
+                    })) || n.id
+                }));
+                
+                console.log(`%c🧠 [NEURON CACHE] IndexedDB hit for ${snsRoot.substring(0, 8)}: ${neurons.length} neurons`, 'background: #27ae60; color: white; padding: 2px 6px;');
+                resolve(neurons);
+            };
+            
+            request.onerror = () => resolve([]);
+        });
+    } catch (error) {
+        console.warn('Error getting all neurons from cache:', error);
+        return [];
+    }
+};
+
+/**
  * Get multiple neurons from cache by their hex IDs
  * @param {string} snsRoot - SNS root canister ID
  * @param {string[]} neuronIdHexArray - Array of neuron IDs in hex format

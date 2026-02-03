@@ -360,10 +360,39 @@ export const WalletProvider = ({ children }) => {
                     setHasFetchedInitial(true);
                 }
                 
-                // Restore positions
+                // Restore positions (with deduplication)
                 if (cachedData.liquidityPositions && cachedData.liquidityPositions.length > 0) {
                     console.log(`%c💾 [POSITIONS CACHE] Restoring ${cachedData.liquidityPositions.length} positions from cache`, 'background: #9b59b6; color: white; padding: 2px 6px;');
-                    setLiquidityPositions(cachedData.liquidityPositions);
+                    
+                    // Deduplicate by swapCanisterId
+                    const seenSwapIds = new Set();
+                    const deduplicatedPositions = cachedData.liquidityPositions.filter(pos => {
+                        const swapId = pos.swapCanisterId?.toString?.() || pos.swapCanisterId;
+                        if (seenSwapIds.has(swapId)) {
+                            console.warn(`%c⚠️ [POSITIONS CACHE] Removing duplicate LP ${swapId}`, 'background: #f39c12; color: black;');
+                            return false;
+                        }
+                        seenSwapIds.add(swapId);
+                        return true;
+                    });
+                    
+                    // Also deduplicate inner positions arrays
+                    const cleanedPositions = deduplicatedPositions.map(lp => {
+                        if (!lp.positions || lp.positions.length === 0) return lp;
+                        const seenPositionIds = new Set();
+                        const cleanedInnerPositions = lp.positions.filter(pos => {
+                            const posId = pos.positionId?.toString?.() || pos.positionId;
+                            if (seenPositionIds.has(posId)) {
+                                console.warn(`%c⚠️ [POSITIONS CACHE] Removing duplicate position ${posId} in LP`, 'background: #f39c12; color: black;');
+                                return false;
+                            }
+                            seenPositionIds.add(posId);
+                            return true;
+                        });
+                        return { ...lp, positions: cleanedInnerPositions };
+                    });
+                    
+                    setLiquidityPositions(cleanedPositions);
                     setHasFetchedPositions(true);
                     hasPositionsRef.current = true;
                 } else {
@@ -426,6 +455,9 @@ export const WalletProvider = ({ children }) => {
                     }
                     
                     if (hydratedMap.size > 0) {
+                        // IMPORTANT: Update ref IMMEDIATELY before state update
+                        // This prevents race conditions where other code checks the ref before the useEffect runs
+                        neuronCacheRef.current = hydratedMap;
                         setNeuronCache(hydratedMap);
                         setNeuronCacheInitialized(true);
                         console.log(`%c💾 [NEURON CACHE] Hydrated ${hydratedMap.size} governance caches from IndexedDB`, 'background: #9b59b6; color: white; padding: 2px 6px;');
@@ -670,10 +702,10 @@ export const WalletProvider = ({ children }) => {
             return [];
         }
         
-        // Check if already in cache (use ref to get latest value, avoid stale closure)
+        // Check if already in memory cache (use ref to get latest value, avoid stale closure)
         if (neuronCacheRef.current.has(governanceCanisterId)) {
             const cached = neuronCacheRef.current.get(governanceCanisterId);
-            console.log(`[fetchAndCacheNeurons] Cache hit for ${governanceCanisterId.substring(0, 8)}, returning ${cached.length} neurons`);
+            console.log(`[fetchAndCacheNeurons] Memory cache hit for ${governanceCanisterId.substring(0, 8)}, returning ${cached.length} neurons`);
             return cached;
         }
         
@@ -704,15 +736,23 @@ export const WalletProvider = ({ children }) => {
         setNeuronCacheLoading(prev => new Set(prev).add(governanceCanisterId));
         
         try {
+            // Find the SNS for this governance canister
+            const allSnses = getAllSnses();
+            const sns = allSnses.find(s => s.canisters?.governance === governanceCanisterId);
+            
+            // NOTE: We no longer use getAllNeuronsForSns as fallback because it returns ALL neurons
+            // from the shared cache (including from /neurons page visits), not just the user's neurons.
+            // The memory cache (hydrated from wallet cache) already has only the user's neurons.
+            // If memory cache misses, we fetch fresh from network to get only user's neurons.
+            
+            // Fetch from network - this returns only the user's reachable neurons
+            console.log(`[fetchAndCacheNeurons] Fetching from network for ${governanceCanisterId.substring(0, 8)}...`);
             const neurons = await fetchUserNeuronsForSns(identity, governanceCanisterId);
             
             // Cache the neurons in local state
             setNeuronCache(prev => new Map(prev).set(governanceCanisterId, neurons));
             
             // Also save to the shared IndexedDB cache for persistence
-            // Find the SNS root for this governance canister
-            const allSnses = getAllSnses();
-            const sns = allSnses.find(s => s.canisters?.governance === governanceCanisterId);
             if (sns?.rootCanisterId && neurons.length > 0) {
                 // Fire and forget - don't await
                 saveNeuronsToCache(sns.rootCanisterId, neurons).catch(e => {
@@ -720,6 +760,7 @@ export const WalletProvider = ({ children }) => {
                 });
             }
             
+            console.log(`[fetchAndCacheNeurons] Network fetch complete for ${governanceCanisterId.substring(0, 8)}, got ${neurons.length} neurons`);
             return neurons;
         } catch (error) {
             console.warn(`Could not fetch neurons for governance ${governanceCanisterId}:`, error);
@@ -899,24 +940,62 @@ export const WalletProvider = ({ children }) => {
             // Normalize swapCanisterId for comparison (ensure string)
             const newSwapId = positionData.swapCanisterId?.toString?.() || positionData.swapCanisterId;
             
-            // Check if position already exists (normalize comparison)
+            // Debug: Check for pre-existing duplicates in prev array
+            const prevSwapIds = prev.map(p => p.swapCanisterId?.toString?.() || p.swapCanisterId);
+            const prevDuplicates = prevSwapIds.filter((id, idx) => prevSwapIds.indexOf(id) !== idx);
+            if (prevDuplicates.length > 0) {
+                console.error('%c🚨 [POSITIONS] PRE-EXISTING DUPLICATES in positions!', 'background: #e74c3c; color: white;', prevDuplicates);
+            }
+            
+            // Check if LP already exists (normalize comparison)
             const existingIndex = prev.findIndex(p => {
                 const existingId = p.swapCanisterId?.toString?.() || p.swapCanisterId;
                 return existingId === newSwapId;
             });
             
             if (existingIndex >= 0) {
-                // Update existing position, preserving conversion rates if new data doesn't have them
+                // Update existing LP, preserving conversion rates if new data doesn't have them
                 const existing = prev[existingIndex];
+                
+                // Deduplicate inner positions array by positionId
+                let mergedPositions = positionData.positions || [];
+                if (existing.positions && existing.positions.length > 0 && mergedPositions.length > 0) {
+                    const seenPositionIds = new Set();
+                    mergedPositions = mergedPositions.filter(pos => {
+                        const posId = pos.positionId?.toString?.() || pos.positionId;
+                        if (seenPositionIds.has(posId)) {
+                            console.warn(`%c⚠️ [POSITIONS] Duplicate positionId ${posId} in LP ${newSwapId}`, 'background: #f39c12; color: black;');
+                            return false;
+                        }
+                        seenPositionIds.add(posId);
+                        return true;
+                    });
+                }
+                
                 const merged = {
                     ...existing,
                     ...positionData,
+                    positions: mergedPositions,
                     token0_conversion_rate: positionData.token0_conversion_rate ?? existing.token0_conversion_rate,
                     token1_conversion_rate: positionData.token1_conversion_rate ?? existing.token1_conversion_rate
                 };
                 return prev.map((p, i) => i === existingIndex ? merged : p);
             }
-            return [...prev, positionData];
+            
+            // New LP - also deduplicate inner positions
+            let newPositions = positionData.positions || [];
+            const seenPositionIds = new Set();
+            newPositions = newPositions.filter(pos => {
+                const posId = pos.positionId?.toString?.() || pos.positionId;
+                if (seenPositionIds.has(posId)) {
+                    console.warn(`%c⚠️ [POSITIONS] Duplicate positionId ${posId} in new LP ${newSwapId}`, 'background: #f39c12; color: black;');
+                    return false;
+                }
+                seenPositionIds.add(posId);
+                return true;
+            });
+            
+            return [...prev, { ...positionData, positions: newPositions }];
         });
     }, []);
 
@@ -1579,7 +1658,35 @@ export const WalletProvider = ({ children }) => {
     // Update liquidity positions (for local overrides from Wallet.jsx)
     const updateLiquidityPositions = useCallback((positions, loading = false) => {
         if (positions && positions.length > 0) {
-            setLiquidityPositions(positions);
+            // Deduplicate by swapCanisterId
+            const seenSwapIds = new Set();
+            const deduplicatedPositions = positions.filter(pos => {
+                const swapId = pos.swapCanisterId?.toString?.() || pos.swapCanisterId;
+                if (seenSwapIds.has(swapId)) {
+                    console.warn(`%c⚠️ [POSITIONS UPDATE] Removing duplicate LP ${swapId}`, 'background: #f39c12; color: black;');
+                    return false;
+                }
+                seenSwapIds.add(swapId);
+                return true;
+            });
+            
+            // Also deduplicate inner positions arrays
+            const cleanedPositions = deduplicatedPositions.map(lp => {
+                if (!lp.positions || lp.positions.length === 0) return lp;
+                const seenPositionIds = new Set();
+                const cleanedInnerPositions = lp.positions.filter(pos => {
+                    const posId = pos.positionId?.toString?.() || pos.positionId;
+                    if (seenPositionIds.has(posId)) {
+                        console.warn(`%c⚠️ [POSITIONS UPDATE] Removing duplicate position ${posId}`, 'background: #f39c12; color: black;');
+                        return false;
+                    }
+                    seenPositionIds.add(posId);
+                    return true;
+                });
+                return { ...lp, positions: cleanedInnerPositions };
+            });
+            
+            setLiquidityPositions(cleanedPositions);
         }
         setPositionsLoading(loading);
     }, []);
