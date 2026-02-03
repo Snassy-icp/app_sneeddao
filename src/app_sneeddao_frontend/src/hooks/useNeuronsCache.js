@@ -16,14 +16,25 @@ const STORE_NAME = 'neurons';
 /**
  * Normalize a canister ID to string format
  * Accepts Principal objects, strings, or anything with toString()/toText()
+ * Also handles objects that were serialized/deserialized (e.g., from IndexedDB)
  * @param {Principal|string|object} canisterId - The canister ID in any format
  * @returns {string} The canister ID as a string
  */
 export const normalizeCanisterId = (canisterId) => {
     if (!canisterId) return '';
     if (typeof canisterId === 'string') return canisterId;
+    // Handle Principal objects
     if (typeof canisterId.toText === 'function') return canisterId.toText();
-    if (typeof canisterId.toString === 'function') return canisterId.toString();
+    // Handle BigInt (for position IDs)
+    if (typeof canisterId === 'bigint') return canisterId.toString();
+    // Handle objects with toString (but not plain objects which return "[object Object]")
+    if (typeof canisterId.toString === 'function') {
+        const str = canisterId.toString();
+        if (str !== '[object Object]') return str;
+    }
+    // Handle serialized Principal objects that might have a value property
+    if (canisterId.value && typeof canisterId.value === 'string') return canisterId.value;
+    // Fallback
     return String(canisterId);
 };
 

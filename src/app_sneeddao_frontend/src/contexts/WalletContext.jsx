@@ -64,11 +64,15 @@ const serializeForDB = (obj) => {
         if (typeof value === 'bigint') {
             return { __type: 'BigInt', value: value.toString() };
         }
-        if (value && typeof value === 'object' && value._isPrincipal) {
-            return { __type: 'Principal', value: value.toString() };
-        }
-        if (value instanceof Principal) {
-            return { __type: 'Principal', value: value.toString() };
+        // Detect Principal objects by various methods
+        if (value && typeof value === 'object') {
+            // Check for Principal-like objects (has toText method or _isPrincipal flag)
+            if (value._isPrincipal || (typeof value.toText === 'function' && typeof value._arr !== 'undefined')) {
+                return { __type: 'Principal', value: value.toText?.() || value.toString() };
+            }
+            if (value instanceof Principal) {
+                return { __type: 'Principal', value: value.toText() };
+            }
         }
         if (value instanceof Map) {
             return { __type: 'Map', value: Array.from(value.entries()) };
@@ -361,16 +365,23 @@ export const WalletProvider = ({ children }) => {
                 // Restore positions (with deduplication)
                 if (cachedData.liquidityPositions && cachedData.liquidityPositions.length > 0) {
                     console.log(`%c💾 [POSITIONS CACHE] Restoring ${cachedData.liquidityPositions.length} positions from cache`, 'background: #9b59b6; color: white; padding: 2px 6px;');
-                    // Debug: Log conversion rates from cache
-                    cachedData.liquidityPositions.forEach(p => {
-                        const swapId = normalizeCanisterId(p.swapCanisterId);
-                        console.log(`%c💾 [POSITIONS CACHE] Position ${swapId?.substring(0, 10)}... rates: token0=${p.token0_conversion_rate}, token1=${p.token1_conversion_rate}`, 'background: #9b59b6; color: white; padding: 2px 6px;');
+                    
+                    // Debug: Log each position in detail
+                    cachedData.liquidityPositions.forEach((p, idx) => {
+                        const swapIdRaw = p.swapCanisterId;
+                        const swapIdNormalized = normalizeCanisterId(p.swapCanisterId);
+                        const swapIdType = swapIdRaw ? (typeof swapIdRaw === 'object' ? (swapIdRaw._isPrincipal ? 'Principal' : JSON.stringify(swapIdRaw).substring(0, 50)) : typeof swapIdRaw) : 'null';
+                        console.log(`%c💾 [POSITIONS CACHE] Position ${idx}: swapId=${swapIdNormalized?.substring(0, 15)}... type=${swapIdType}, rates=(${p.token0_conversion_rate}, ${p.token1_conversion_rate}), innerPositions=${p.positions?.length || 0}`, 'background: #9b59b6; color: white; padding: 2px 6px;');
                     });
                     
                     // Deduplicate by swapCanisterId (using normalizeCanisterId for Principal/string insensitivity)
                     const seenSwapIds = new Set();
                     const deduplicatedPositions = cachedData.liquidityPositions.filter(pos => {
                         const swapId = normalizeCanisterId(pos.swapCanisterId);
+                        if (!swapId) {
+                            console.error(`%c🚨 [POSITIONS CACHE] Position has invalid swapCanisterId:`, 'background: #e74c3c; color: white;', pos.swapCanisterId);
+                            return false;
+                        }
                         if (seenSwapIds.has(swapId)) {
                             console.warn(`%c⚠️ [POSITIONS CACHE] Removing duplicate LP ${swapId}`, 'background: #f39c12; color: black;');
                             return false;
@@ -378,6 +389,7 @@ export const WalletProvider = ({ children }) => {
                         seenSwapIds.add(swapId);
                         return true;
                     });
+                    console.log(`%c💾 [POSITIONS CACHE] After dedup: ${deduplicatedPositions.length} positions`, 'background: #9b59b6; color: white; padding: 2px 6px;');
                     
                     // Also deduplicate inner positions arrays
                     const cleanedPositions = deduplicatedPositions.map(lp => {
@@ -527,6 +539,12 @@ export const WalletProvider = ({ children }) => {
             });
             
             console.log(`%c💾 [POSITIONS CACHE] Saving ${liquidityPositions.length} positions to cache`, 'background: #3498db; color: white; padding: 2px 6px;');
+            // Debug: Log what we're saving
+            liquidityPositions.forEach((p, idx) => {
+                const swapIdNormalized = normalizeCanisterId(p.swapCanisterId);
+                const swapIdType = typeof p.swapCanisterId;
+                console.log(`%c💾 [POSITIONS SAVE] Position ${idx}: swapId=${swapIdNormalized?.substring(0, 15)}... type=${swapIdType}, innerPositions=${p.positions?.length || 0}`, 'background: #3498db; color: white; padding: 2px 6px;');
+            });
             saveWalletCache(principalId, {
                 walletTokens,
                 liquidityPositions,
