@@ -10,6 +10,7 @@ import { getSnsById } from './utils/SnsUtils';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { NeuronDisplay } from './components/NeuronDisplay';
+import { fetchUserNeuronsForSns } from './utils/NeuronUtils';
 import { useNaming } from './NamingContext';
 import { VotingPowerCalculator } from './utils/VotingPowerUtils';
 import { getUserPermissionIcons, getStateIcon, PERM } from './utils/NeuronPermissionUtils.jsx';
@@ -546,16 +547,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         if (!governanceCanisterId || !identity) return;
         
         try {
-            const governanceActor = createSnsGovernanceActor(governanceCanisterId, {
-                agentOptions: { identity }
-            });
-            const principal = identity.getPrincipal();
-            const response = await governanceActor.list_neurons({
-                of_principal: [principal],
-                limit: 100,
-                start_page_at: []
-            });
-            const loadedNeurons = response.neurons || [];
+            // Use the reachable neurons function (finds neurons through ownership chain)
+            const loadedNeurons = await fetchUserNeuronsForSns(identity, governanceCanisterId);
             setNeurons(loadedNeurons);
             
             // Notify parent of loaded neurons (for collect maturity feature)
@@ -1101,17 +1094,12 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
 
                 const governanceActor = createSnsGovernanceActor(govCanisterId, { agentOptions: { identity } });
                 
-                // Fetch both neurons and nervous system parameters
-                const principal = identity.getPrincipal();
-                const [neuronsResponse, paramsResponse] = await Promise.all([
-                    governanceActor.list_neurons({
-                        of_principal: [principal],
-                        limit: 100,
-                        start_page_at: []
-                    }),
+                // Fetch neurons using the reachable neurons function (finds neurons through ownership chain)
+                // and nervous system parameters in parallel
+                const [loadedNeurons, paramsResponse] = await Promise.all([
+                    fetchUserNeuronsForSns(identity, govCanisterId),
                     governanceActor.get_nervous_system_parameters(null)
                 ]);
-                const loadedNeurons = neuronsResponse.neurons || [];
                 setNeurons(loadedNeurons);
                 setNervousSystemParameters(paramsResponse);
                 
