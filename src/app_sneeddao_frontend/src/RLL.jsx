@@ -17,6 +17,7 @@ import { headerStyles } from './styles/HeaderStyles';
 import Header from './components/Header';
 import { fetchUserNeurons, fetchUserNeuronsForSns } from './utils/NeuronUtils';
 import { useTheme } from './contexts/ThemeContext';
+import { normalizeId } from './hooks/useNeuronsCache';
 import { FaCoins, FaChartBar, FaBalanceScale, FaClock, FaDatabase, FaCog, FaHistory, FaCheckCircle, FaExclamationTriangle, FaArrowRight, FaSpinner } from 'react-icons/fa';
 
 // Custom CSS for animations
@@ -868,12 +869,14 @@ function RLL() {
     };
 
     const getTokenSymbolByPrincipal = (principalId) => {
-        const token = tokens.find(t => t.ledger_id.toText() === principalId);
+        const normalizedId = normalizeId(principalId);
+        const token = tokens.find(t => normalizeId(t.ledger_id) === normalizedId);
         return token ? token.symbol : 'Unknown';
     };
 
     const getTokenDecimalsByPrincipal = (principalId) => {
-        const token = tokens.find(t => t.ledger_id.toText() === principalId);
+        const normalizedId = normalizeId(principalId);
+        const token = tokens.find(t => normalizeId(t.ledger_id) === normalizedId);
         return token ? token.decimals : 8; // fallback to 8 decimals
     };
 

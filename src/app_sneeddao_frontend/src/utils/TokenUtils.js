@@ -2,6 +2,7 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { Principal } from "@dfinity/principal";
 import { formatAmountWithConversion } from './StringUtils';
 import priceService from '../services/PriceService';
+import { normalizeId } from '../hooks/useNeuronsCache';
 
 const get_available_backend = (token) => {
     return BigInt(Math.max(0, Number(BigInt(token.balance_backend) - BigInt(token.locked))));
@@ -150,8 +151,9 @@ const get_token_conversion_rates = async () => {
 };
 
 function rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable) {
-    if(!hideAvailable && rewardDetailsLoading && rewardDetailsLoading[token.ledger_canister_id] != null && BigInt(rewardDetailsLoading[token.ledger_canister_id]) > 0) {
-        return BigInt(rewardDetailsLoading[token.ledger_canister_id]);
+    const ledgerId = normalizeId(token.ledger_canister_id);
+    if(!hideAvailable && rewardDetailsLoading && rewardDetailsLoading[ledgerId] != null && BigInt(rewardDetailsLoading[ledgerId]) > 0) {
+        return BigInt(rewardDetailsLoading[ledgerId]);
     }
     return 0n;
 }
@@ -170,7 +172,7 @@ function getTokenTVL(token, rewardDetailsLoading, hideAvailable) {
 // Calculate total ICP value including all sources
 export const calculateTotalIcpValue = (reconciliationData) => {
     const icpReconciliation = reconciliationData.find(item => 
-        item.token_id.toString() === 'ryjl3-tyaaa-aaaaa-aaaba-cai'
+        normalizeId(item.token_id) === 'ryjl3-tyaaa-aaaaa-aaaba-cai'
     );
     return icpReconciliation ? icpReconciliation.server_balance : 0n;
 };
@@ -178,7 +180,7 @@ export const calculateTotalIcpValue = (reconciliationData) => {
 // Calculate total SNEED value including all sources
 export const calculateTotalSneedValue = (reconciliationData) => {
     const sneedReconciliation = reconciliationData.find(item => 
-        item.token_id.toString() === 'hvgxa-wqaaa-aaaaq-aacia-cai'
+        normalizeId(item.token_id) === 'hvgxa-wqaaa-aaaaq-aacia-cai'
     );
     return sneedReconciliation ? sneedReconciliation.server_balance : 0n;
 };

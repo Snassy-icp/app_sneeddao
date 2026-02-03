@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useSns } from '../contexts/SnsContext';
 import { useAuth } from '../AuthContext';
+import { normalizeId } from './useNeuronsCache';
 import { 
     fetchSingleSnsData, 
     startBackgroundSnsFetch,
@@ -66,7 +67,8 @@ export function useOptimizedSnsLoading() {
                 setSnsList(cachedData);
                 
                 // Find current SNS in cache
-                const currentFromCache = cachedData.find(sns => sns.rootCanisterId === targetSnsRoot);
+                const normalizedTargetRoot = normalizeId(targetSnsRoot);
+                const currentFromCache = cachedData.find(sns => sns.rootCanisterId === normalizedTargetRoot);
                 if (currentFromCache) {
                     setCurrentSns(currentFromCache);
                     setLoadingCurrent(false);
@@ -136,7 +138,7 @@ export function useOptimizedSnsLoading() {
                 setLoadingAll(false);
                 
                 // Update current SNS if we got better data
-                const updatedCurrent = allSnsData.find(sns => sns.rootCanisterId === targetSnsRoot);
+                const updatedCurrent = allSnsData.find(sns => sns.rootCanisterId === normalizeId(targetSnsRoot));
                 if (updatedCurrent) {
                     setCurrentSns(updatedCurrent);
                 }

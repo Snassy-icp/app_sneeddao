@@ -10,6 +10,27 @@ const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 1 week in milliseconds
 // Memory fallback when localStorage fails
 let memoryCache = null;
 
+// Local normalizeId function to handle Principal/string conversion
+function normalizeId(id) {
+    if (!id) return null;
+    
+    // If it's a string, return as-is
+    if (typeof id === 'string') return id;
+    
+    // If it has toText method (Principal object)
+    if (typeof id.toText === 'function') return id.toText();
+    
+    // If it has toString method
+    if (typeof id.toString === 'function') return id.toString();
+    
+    // If it's a serialized Principal object {__type: 'Principal', value: '...'}
+    if (typeof id === 'object' && id.__type === 'Principal' && id.value) {
+        return id.value;
+    }
+    
+    return String(id);
+}
+
 // Prevents multiple simultaneous foreground fetches (race condition fix)
 let foregroundFetchPromise = null;
 
@@ -349,10 +370,11 @@ function addSnsToCache(snsData) {
 
 export function getSnsById(rootCanisterId) {
     const cachedData = getCachedSnsData();
-    const sns = cachedData?.find(sns => sns.rootCanisterId === rootCanisterId);
+    const normalizedRootId = normalizeId(rootCanisterId);
+    const sns = cachedData?.find(sns => sns.rootCanisterId === normalizedRootId);
     if (sns) {
         // Add logo from unified logo cache for backwards compatibility
-        const logo = getLogoSync(rootCanisterId) || getLogoSync(sns.canisters?.governance);
+        const logo = getLogoSync(normalizedRootId) || getLogoSync(sns.canisters?.governance);
         return { ...sns, logo };
     }
     return sns;
@@ -360,7 +382,8 @@ export function getSnsById(rootCanisterId) {
 
 export function getSnsByLedgerId(ledgerCanisterId) {
     const cachedData = getCachedSnsData();
-    const sns = cachedData?.find(sns => sns.canisters?.ledger === ledgerCanisterId);
+    const normalizedLedgerId = normalizeId(ledgerCanisterId);
+    const sns = cachedData?.find(sns => sns.canisters?.ledger === normalizedLedgerId);
     if (sns) {
         // Add logo from unified logo cache for backwards compatibility
         const logo = getLogoSync(sns.rootCanisterId) || getLogoSync(sns.canisters?.governance);
@@ -380,11 +403,12 @@ export function getAllSnses() {
 
 // New function to fetch a single SNS data immediately
 export async function fetchSingleSnsData(rootCanisterId, identity) {
-    console.log(`Fetching single SNS data for: ${rootCanisterId}`); // Debug log
+    const normalizedRootId = normalizeId(rootCanisterId);
+    console.log(`Fetching single SNS data for: ${normalizedRootId}`); // Debug log
     
     // Check if this SNS is already in cache
     const cachedData = getCachedSnsData();
-    const existingSnS = cachedData?.find(sns => sns.rootCanisterId === rootCanisterId);
+    const existingSnS = cachedData?.find(sns => sns.rootCanisterId === normalizedRootId);
     if (existingSnS) {
         console.log('Found SNS in cache:', existingSnS); // Debug log
         return existingSnS;
@@ -413,7 +437,7 @@ export async function fetchSingleSnsData(rootCanisterId, identity) {
         // Find the SNS with matching root canister
         const targetSns = deployedSnses.find(sns => {
             const snsRootId = safeGetCanisterId(sns.root_canister_id);
-            return snsRootId === rootCanisterId;
+            return snsRootId === normalizedRootId;
         });
 
         if (!targetSns) {

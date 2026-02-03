@@ -1,6 +1,7 @@
 // Neuron permission utilities - shared across components
 import React from 'react';
 import { FaCrown, FaKey, FaVoteYea, FaBolt, FaBriefcase, FaWrench, FaLock, FaHourglassHalf, FaUnlock, FaQuestion } from 'react-icons/fa';
+import { normalizeId } from '../hooks/useNeuronsCache';
 
 // SNS Neuron Permission Types
 // Official source: https://github.com/dfinity/ic/blob/master/rs/sns/governance/proto/ic_sns_governance.proto
@@ -75,8 +76,9 @@ export function getUserPermissionIcons(neuron, userPrincipalString) {
     }
     
     // Find the user's permissions
+    const normalizedUserPrincipal = normalizeId(userPrincipalString);
     const userPerms = neuron.permissions.find(p => 
-        p.principal?.[0]?.toString() === userPrincipalString
+        normalizeId(p.principal?.[0]) === normalizedUserPrincipal
     );
     
     if (!userPerms) {

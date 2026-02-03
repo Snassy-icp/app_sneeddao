@@ -1059,7 +1059,8 @@ export const WalletProvider = ({ children }) => {
                     
                     // Get claimed positions (from the parallel promise)
                     const claimed_positions = await claimedPositionsPromise;
-                    const claimed_positions_for_swap = claimed_positions.filter(cp => cp.swap_canister_id === swap_canister);
+                    const normalizedSwapCanister = normalizeId(swap_canister);
+                    const claimed_positions_for_swap = claimed_positions.filter(cp => normalizeId(cp.swap_canister_id) === normalizedSwapCanister);
                     const claimed_position_ids_for_swap = claimed_positions_for_swap.map(cp => cp.position_id);
                     
                     // If no positions for this user in this swap, skip

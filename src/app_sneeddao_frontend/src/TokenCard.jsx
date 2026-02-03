@@ -252,7 +252,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     };
 
     const getTotalLockedAmount = () => {
-        const tokenLocks = locks[token.ledger_canister_id] || [];
+        const ledgerId = normalizeId(token.ledger_canister_id);
+        const tokenLocks = locks[ledgerId] || [];
         return tokenLocks.reduce((total, lock) => {
             return total + BigInt(lock.amount || 0n);
         }, 0n);
@@ -261,11 +262,11 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     // Get collectable maturity (only from neurons where user has DISBURSE_MATURITY permission)
     const getCollectableMaturity = () => {
         if (!identity) return 0n;
-        const userPrincipal = identity.getPrincipal().toString();
+        const userPrincipal = normalizeId(identity.getPrincipal());
         return neurons.reduce((total, neuron) => {
             // Check if user has DISBURSE_MATURITY permission (permission 8)
             const userPerms = neuron.permissions?.find(p => 
-                p.principal?.[0]?.toString() === userPrincipal
+                normalizeId(p.principal?.[0]) === userPrincipal
             );
             const canDisburseMaturity = userPerms?.permission_type?.includes(PERM.DISBURSE_MATURITY) || false;
             
@@ -367,9 +368,9 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     // Check if user has a specific permission on a neuron
     const userHasPermission = (neuron, permissionType) => {
         if (!identity || !neuron.permissions) return false;
-        const userPrincipal = identity.getPrincipal().toString();
+        const userPrincipal = normalizeId(identity.getPrincipal());
         const userPerms = neuron.permissions.find(p => 
-            p.principal?.[0]?.toString() === userPrincipal
+            normalizeId(p.principal?.[0]) === userPrincipal
         );
         return userPerms?.permission_type?.includes(permissionType) || false;
     };
@@ -949,7 +950,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             
             // Check if trying to send to self
             const userPrincipal = identity.getPrincipal();
-            if (recipientPrincipal.toString() === userPrincipal.toString()) {
+            if (normalizeId(recipientPrincipal) === normalizeId(userPrincipal)) {
                 alert('You cannot send a neuron to yourself.');
                 setNeuronActionBusy(false);
                 setSendNeuronProgress('');
@@ -975,9 +976,10 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 return;
             }
             
+            const normalizedRecipient = normalizeId(recipientPrincipal);
             const currentNeuron = currentNeuronResult.result[0].Neuron || currentNeuronResult.result[0];
             const recipientPerms = currentNeuron.permissions.find(p => 
-                p.principal?.[0]?.toString() === recipientPrincipal.toString()
+                normalizeId(p.principal?.[0]) === normalizedRecipient
             );
             
             // All 11 permissions (including UNSPECIFIED which is 0)
@@ -1019,7 +1021,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 
                 const verifiedNeuron = verifyResult.result[0].Neuron || verifyResult.result[0];
                 const verifiedRecipientPerms = verifiedNeuron.permissions.find(p => 
-                    p.principal?.[0]?.toString() === recipientPrincipal.toString()
+                    normalizeId(p.principal?.[0]) === normalizedRecipient
                 );
                 
                 if (!verifiedRecipientPerms || verifiedRecipientPerms.permission_type.length !== 11) {
@@ -1049,7 +1051,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             
             const updatedNeuron = finalNeuronResult.result[0].Neuron || finalNeuronResult.result[0];
             const principalsToRemove = updatedNeuron.permissions
-                .filter(p => p.principal?.[0]?.toString() !== recipientPrincipal.toString());
+                .filter(p => normalizeId(p.principal?.[0]) !== normalizedRecipient);
             
             if (principalsToRemove.length > 0) {
                 // Remove each principal individually, using their actual permissions
@@ -1365,7 +1367,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     <div className="header-row-3" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         {/* Locks icon with count */}
                         {(() => {
-                            const tokenLocks = locks && locks[token.ledger_canister_id] ? locks[token.ledger_canister_id] : [];
+                            const ledgerId = normalizeId(token.ledger_canister_id);
+                            const tokenLocks = locks && locks[ledgerId] ? locks[ledgerId] : [];
                             const lockCount = tokenLocks.length;
                             return lockCount > 0 && (
                                 <span 
@@ -1592,10 +1595,10 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     }}
                 >
                     <FaLock size={12} />
-                    {lockDetailsLoading[token.ledger_canister_id] ? (
+                    {lockDetailsLoading[normalizeId(token.ledger_canister_id)] ? (
                         <span style={{ color: theme.colors.mutedText }}>...</span>
                     ) : (
-                        <>{locks[token.ledger_canister_id]?.length || 0}</>
+                        <>{locks[normalizeId(token.ledger_canister_id)]?.length || 0}</>
                     )}
                 </button>
 
@@ -1904,7 +1907,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                             <div className="balance-value">{formatAmount(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)}{getUSD(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate)}</div>
                                         </div>
                                     ) : (
-                                        ((Object.keys(rewardDetailsLoading).length === 0 || (rewardDetailsLoading[token.ledger_canister_id] != null && rewardDetailsLoading[token.ledger_canister_id] < 0))) && (
+                                        ((Object.keys(rewardDetailsLoading).length === 0 || (rewardDetailsLoading[normalizeId(token.ledger_canister_id)] != null && rewardDetailsLoading[normalizeId(token.ledger_canister_id)] < 0))) && (
                                             <div className="spinner-container">
                                                 <div className="spinner"></div>
                                             </div>
@@ -1970,7 +1973,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             }}>
                                 {/* Link Button */}
                                 <a 
-                                    href={getTokenLockUrl(token.ledger_canister_id, locks[token.ledger_canister_id])} 
+                                    href={getTokenLockUrl(token.ledger_canister_id, locks[normalizeId(token.ledger_canister_id)])} 
                                     target="_blank"
                                     style={{
                                         background: theme.colors.accent,
@@ -2037,14 +2040,14 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 )}
                             </div>
                         )}
-                        {lockDetailsLoading[token.ledger_canister_id] ? (
+                        {lockDetailsLoading[normalizeId(token.ledger_canister_id)] ? (
                             <div className="spinner-container">
                                 <div className="spinner"></div>
                             </div>
                         ) : (
                             <>
-                                {locks[token.ledger_canister_id] && locks[token.ledger_canister_id].length > 0 ? (
-                                    locks[token.ledger_canister_id].map((lock, lockIndex) => (
+                                {locks[normalizeId(token.ledger_canister_id)] && locks[normalizeId(token.ledger_canister_id)].length > 0 ? (
+                                    locks[normalizeId(token.ledger_canister_id)].map((lock, lockIndex) => (
                                         <div key={lockIndex} className="lock-item">
                                             <div className="lock-details">
                                                 <span className="lock-label">Lock ID:</span>

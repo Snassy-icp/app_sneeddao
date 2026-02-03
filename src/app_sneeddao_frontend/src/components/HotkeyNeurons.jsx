@@ -9,6 +9,7 @@ import { useSns } from '../contexts/SnsContext';
 import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
 import { useTheme } from '../contexts/ThemeContext';
 import { isProposalAcceptingVotes } from '../utils/ProposalUtils';
+import { normalizeId } from '../hooks/useNeuronsCache';
 import { FaKey, FaCheckCircle, FaTimesCircle, FaVoteYea, FaChevronDown, FaChevronUp, FaInfoCircle, FaCopy, FaSync } from 'react-icons/fa';
 
 // Accent colors - matching Proposal page
@@ -80,9 +81,10 @@ const HotkeyNeurons = ({
         if (!proposalData || !currentProposalId) return false;
         
         const allNeurons = getAllNeurons();
+        const userPrincipal = normalizeId(identity.getPrincipal());
         return allNeurons.some(neuron => {
             const hasHotkeyAccess = neuron.permissions.some(p => 
-                p.principal?.toString() === identity.getPrincipal().toString() &&
+                normalizeId(p.principal) === userPrincipal &&
                 p.permission_type.includes(4)
             );
             if (!hasHotkeyAccess) return false;
@@ -186,9 +188,10 @@ const HotkeyNeurons = ({
         }
 
         try {
+            const userPrincipal = normalizeId(identity.getPrincipal());
             const eligibleNeurons = allNeurons.filter(neuron => {
                 const hasHotkeyAccess = neuron.permissions.some(p => 
-                    p.principal?.toString() === identity.getPrincipal().toString() &&
+                    normalizeId(p.principal) === userPrincipal &&
                     p.permission_type.includes(4)
                 );
                 if (!hasHotkeyAccess) return false;
@@ -208,7 +211,7 @@ const HotkeyNeurons = ({
             if (eligibleNeurons.length === 0) {
                 const neuronsWithHotkey = allNeurons.filter(neuron => 
                     neuron.permissions.some(p => 
-                        p.principal?.toString() === identity.getPrincipal().toString() &&
+                        normalizeId(p.principal) === userPrincipal &&
                         p.permission_type.includes(4)
                     )
                 ).length;
@@ -690,9 +693,10 @@ const HotkeyNeurons = ({
                         {/* Hotkeyed Voting Power Total */}
                         {(() => {
                             const allNeurons = getAllNeurons();
+                            const userPrincipal = normalizeId(identity?.getPrincipal());
                             const hotkeyedNeurons = allNeurons.filter(neuron => 
                                 neuron.permissions.some(p => 
-                                    p.principal?.toString() === identity?.getPrincipal()?.toString() &&
+                                    normalizeId(p.principal) === userPrincipal &&
                                     p.permission_type.includes(4)
                                 )
                             );
@@ -839,7 +843,7 @@ const HotkeyNeurons = ({
                                                         </div>
                                                     </div>
                                                     {neuron.permissions.some(p => 
-                                                        p.principal?.toString() === identity.getPrincipal().toString() &&
+                                                        normalizeId(p.principal) === normalizeId(identity.getPrincipal()) &&
                                                         p.permission_type.includes(4)
                                                     ) && (
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
@@ -851,7 +855,7 @@ const HotkeyNeurons = ({
                                                 
                                                 {/* Voting Section for Proposals */}
                                                 {neuron.permissions.some(p => 
-                                                    p.principal?.toString() === identity.getPrincipal().toString() &&
+                                                    normalizeId(p.principal) === normalizeId(identity.getPrincipal()) &&
                                                     p.permission_type.includes(4)
                                                 ) && proposalData && currentProposalId && (
                                                     <div style={{ marginTop: '1rem' }}>
