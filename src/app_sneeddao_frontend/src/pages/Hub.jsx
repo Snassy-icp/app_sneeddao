@@ -1,17 +1,18 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../AuthContext';
 import Header from '../components/Header';
 import { Link } from 'react-router-dom';
 import { FaExchangeAlt, FaCoins, FaLock, FaComments, FaWallet, FaServer, FaNewspaper, FaUsers, FaVoteYea, FaRss, FaArrowRight, FaHistory, FaStar, FaUnlock, FaShieldAlt, FaGlobe, FaBrain, FaGavel, FaNetworkWired, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 import { HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
-import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { createSneedexActor } from '../utils/SneedexUtils';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { getSnsById, getAllSnses, fetchAndCacheSnsData } from '../utils/SnsUtils';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
+import useNeuronsCache from '../hooks/useNeuronsCache';
 import OfferCard from '../components/OfferCard';
 import FeedItemCard from '../components/FeedItemCard';
 import priceService from '../services/PriceService';
@@ -363,20 +364,24 @@ const hubAccent = '#06b6d4'; // Cyan
 
 function Hub() {
     const { theme } = useTheme();
+    const { identity } = useAuth();
     const [hoveredCard, setHoveredCard] = useState(null);
     
     // Use global token metadata cache
     const { getTokenMetadata, fetchTokenMetadata, metadata: tokenMetadataState } = useTokenMetadata();
     
+    // Use shared neurons cache for Sneed neurons (same cache as /users page)
+    const {
+        neurons: sneedNeurons,
+        loading: neuronsLoading,
+        error: neuronsError,
+        loadingProgress: neuronsProgress,
+        refreshData: refreshNeurons
+    } = useNeuronsCache(SNEED_SNS_ROOT, identity);
+    
     // SNS data for other features (not needed for Sneed neuron count)
     const [snsList, setSnsList] = useState([]);
     const [snsLogosMap, setSnsLogosMap] = useState(new Map());
-    
-    // Direct Sneed neuron state (no SNS list dependency - uses hardcoded governance canister)
-    const [sneedNeurons, setSneedNeurons] = useState([]);
-    const [neuronsLoading, setNeuronsLoading] = useState(true);
-    const [neuronsProgress, setNeuronsProgress] = useState({ count: 0, message: 'Loading...', percent: 0 });
-    const [neuronsError, setNeuronsError] = useState('');
     
     // Dynamic data state
     const [prices, setPrices] = useState({
@@ -403,72 +408,7 @@ function Hub() {
         loading: true
     });
     
-    // Fetch Sneed neurons directly using hardcoded governance canister (no SNS list needed)
-    useEffect(() => {
-        const fetchSneedNeurons = async () => {
-            console.log('Hub: Starting direct Sneed neuron fetch...');
-            setNeuronsLoading(true);
-            setNeuronsError('');
-            setNeuronsProgress({ count: 0, message: 'Connecting to Sneed governance...', percent: 5 });
-            
-            try {
-                const agent = new HttpAgent({ host: 'https://ic0.app' });
-                const snsGovActor = createSnsGovernanceActor(SNEED_GOVERNANCE_ID, { agent });
-                
-                // Fetch all neurons using pagination
-                let allNeurons = [];
-                let hasMore = true;
-                let lastNeuron = [];
-                let pageCount = 0;
-                
-                while (hasMore) {
-                    pageCount++;
-                    setNeuronsProgress({ 
-                        count: allNeurons.length, 
-                        message: `Loading page ${pageCount}...`, 
-                        percent: Math.min(90, 5 + (pageCount * 5))
-                    });
-                    
-                    const response = await snsGovActor.list_neurons({
-                        of_principal: [],
-                        limit: 100,
-                        start_page_at: lastNeuron
-                    });
-                    
-                    const neurons = response?.neurons || [];
-                    console.log(`Hub: Fetched page ${pageCount} with ${neurons.length} neurons`);
-                    
-                    if (neurons.length === 0) {
-                        hasMore = false;
-                    } else {
-                        allNeurons = [...allNeurons, ...neurons];
-                        // Store the neuron id object directly for pagination
-                        lastNeuron = neurons[neurons.length - 1].id;
-                        
-                        // Update progress
-                        setNeuronsProgress({ 
-                            count: allNeurons.length, 
-                            message: `Loaded ${allNeurons.length} neurons...`, 
-                            percent: Math.min(90, 5 + (pageCount * 5))
-                        });
-                        
-                        hasMore = neurons.length === 100;
-                    }
-                }
-                
-                console.log(`Hub: Total neurons fetched: ${allNeurons.length}`);
-                setSneedNeurons(allNeurons);
-                setNeuronsProgress({ count: allNeurons.length, message: 'Complete', percent: 100 });
-            } catch (error) {
-                console.error('Hub: Error fetching Sneed neurons:', error);
-                setNeuronsError(error.message || 'Failed to fetch neurons');
-            } finally {
-                setNeuronsLoading(false);
-            }
-        };
-        
-        fetchSneedNeurons();
-    }, []);
+    // Sneed neurons are now fetched by useNeuronsCache hook (shared with /users page)
     
     // Calculate active members from neurons (same logic as /users page)
     const daoStats = useMemo(() => {
