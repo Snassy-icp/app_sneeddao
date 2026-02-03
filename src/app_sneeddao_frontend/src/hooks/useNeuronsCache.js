@@ -189,6 +189,66 @@ const getOrFetchNeuronInternal = async (snsRoot, governanceCanisterId, neuronIdH
 };
 
 /**
+ * Fetch a single neuron from network and update cache - ALWAYS goes to network
+ * Use this for the "stale-while-revalidate" pattern:
+ *   1. Call getNeuronFromCache() → show cached data immediately
+ *   2. Call fetchNeuronFresh() → get fresh data, update cache, update UI
+ * 
+ * @param {Object} options - Options object
+ * @param {Principal|string} options.snsRoot - SNS root canister ID (accepts Principal or string)
+ * @param {Principal|string} [options.governanceCanisterId] - Governance canister ID (optional if snsRoot provided)
+ * @param {string} options.neuronIdHex - Neuron ID in hex format
+ * @param {Object} options.identity - User identity for network requests
+ * @returns {Object|null} The fresh neuron object or null if fetch failed
+ */
+export const fetchNeuronFresh = async ({ snsRoot, governanceCanisterId, neuronIdHex, identity }) => {
+    if (!neuronIdHex || !identity) return null;
+    
+    // Normalize and resolve IDs
+    const normalizedRoot = normalizeCanisterId(snsRoot);
+    let normalizedGovId = normalizeCanisterId(governanceCanisterId);
+    
+    // If we have snsRoot but no governanceCanisterId, look it up
+    if (normalizedRoot && !normalizedGovId) {
+        const sns = getSnsById(normalizedRoot);
+        if (sns?.canisters?.governance) {
+            normalizedGovId = normalizeCanisterId(sns.canisters.governance);
+        }
+    }
+    
+    // If we have governanceCanisterId but no snsRoot, look it up
+    let effectiveRoot = normalizedRoot;
+    if (normalizedGovId && !effectiveRoot) {
+        const allSnses = getAllSnses();
+        const sns = allSnses.find(s => normalizeCanisterId(s.canisters?.governance) === normalizedGovId);
+        if (sns?.rootCanisterId) {
+            effectiveRoot = normalizeCanisterId(sns.rootCanisterId);
+        }
+    }
+    
+    if (!normalizedGovId) {
+        console.warn('[fetchNeuronFresh] No governance canister ID available');
+        return null;
+    }
+    
+    console.log(`%c🧠 [NEURON FRESH] Fetching ${neuronIdHex.substring(0, 16)}... from network`, 'background: #3498db; color: white; padding: 2px 6px;');
+    
+    try {
+        const neuron = await getNeuronDetails(identity, normalizedGovId, neuronIdHex);
+        
+        if (neuron && effectiveRoot) {
+            await updateNeuronInCache(effectiveRoot, neuron);
+            console.log(`%c🧠 [NEURON FRESH] Updated cache with fresh neuron ${neuronIdHex.substring(0, 16)}...`, 'background: #2ecc71; color: white; padding: 2px 6px;');
+        }
+        
+        return neuron;
+    } catch (error) {
+        console.error('[fetchNeuronFresh] Error fetching neuron:', error);
+        return null;
+    }
+};
+
+/**
  * Update a single neuron in the cache (or add if not exists)
  * Creates the cache entry if it doesn't exist - does NOT require loading all neurons first
  * @param {Principal|string} snsRoot - SNS root canister ID (accepts Principal or string)
