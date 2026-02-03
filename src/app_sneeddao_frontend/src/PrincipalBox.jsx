@@ -120,6 +120,16 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
 
     // Filter tokens based on hideDust setting
     const tokensWithBalance = useMemo(() => {
+        // Debug: Check for duplicates in source array
+        const principalCounts = {};
+        walletTokens.forEach(t => {
+            principalCounts[t.principal] = (principalCounts[t.principal] || 0) + 1;
+        });
+        const duplicatePrincipals = Object.entries(principalCounts).filter(([, count]) => count > 1);
+        if (duplicatePrincipals.length > 0) {
+            console.error('%c🚨 [TOKENS] DUPLICATES in walletTokens!', 'background: #e74c3c; color: white; font-size: 14px;', duplicatePrincipals);
+        }
+        
         return walletTokens.filter(token => {
             const available = BigInt(token.available || token.balance || 0n);
             const locked = BigInt(token.locked || 0n);

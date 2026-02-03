@@ -76,19 +76,98 @@ const jsonReviver = (key, value) => {
     return value;
 };
 
+// Strip large fields from tokens to reduce cache size
+const stripTokensForCache = (tokens) => {
+    if (!tokens) return tokens;
+    return tokens.map(token => {
+        const stripped = { ...token };
+        // Remove logo if it's a large base64 string (keep small URLs)
+        if (stripped.logo && stripped.logo.length > 200) {
+            delete stripped.logo;
+        }
+        return stripped;
+    });
+};
+
+// Strip large fields from positions to reduce cache size
+const stripPositionsForCache = (positions) => {
+    if (!positions) return positions;
+    return positions.map(pos => {
+        const stripped = { ...pos };
+        // Remove logos if they're large base64 strings
+        if (stripped.token0Logo && stripped.token0Logo.length > 200) {
+            delete stripped.token0Logo;
+        }
+        if (stripped.token1Logo && stripped.token1Logo.length > 200) {
+            delete stripped.token1Logo;
+        }
+        return stripped;
+    });
+};
+
+// Clear all wallet caches (for quota management)
+const clearAllWalletCaches = () => {
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(WALLET_CACHE_KEY_PREFIX)) {
+            keysToRemove.push(key);
+        }
+    }
+    keysToRemove.forEach(key => localStorage.removeItem(key));
+    console.log(`[WalletContext] Cleared ${keysToRemove.length} wallet caches to free space`);
+};
+
 // Save wallet cache to localStorage
 const saveWalletCache = (principalId, data) => {
     try {
         const cacheKey = `${WALLET_CACHE_KEY_PREFIX}${principalId}`;
+        
+        // Strip large fields to reduce cache size
+        const compactData = {
+            ...data,
+            walletTokens: stripTokensForCache(data.walletTokens),
+            liquidityPositions: stripPositionsForCache(data.liquidityPositions)
+        };
+        
         const cacheData = {
             version: CACHE_VERSION,
             timestamp: Date.now(),
-            ...data
+            ...compactData
         };
         const serialized = JSON.stringify(cacheData, jsonReplacer);
+        
+        // Check if serialized data is too large (warn if > 2MB)
+        if (serialized.length > 2 * 1024 * 1024) {
+            console.warn(`[WalletContext] Cache is large: ${(serialized.length / 1024 / 1024).toFixed(2)}MB`);
+        }
+        
         localStorage.setItem(cacheKey, serialized);
     } catch (error) {
-        console.warn('[WalletContext] Failed to save cache:', error);
+        if (error.name === 'QuotaExceededError') {
+            console.warn('[WalletContext] localStorage quota exceeded, clearing old caches...');
+            // Try to free up space by clearing all wallet caches
+            clearAllWalletCaches();
+            // Try one more time with stripped data
+            try {
+                const cacheKey = `${WALLET_CACHE_KEY_PREFIX}${principalId}`;
+                const minimalData = {
+                    version: CACHE_VERSION,
+                    timestamp: Date.now(),
+                    walletTokens: stripTokensForCache(data.walletTokens),
+                    // Skip positions and other large data on retry
+                    neuronCacheIds: data.neuronCacheIds,
+                    lastUpdated: data.lastUpdated
+                };
+                const serialized = JSON.stringify(minimalData, jsonReplacer);
+                localStorage.setItem(cacheKey, serialized);
+                console.log('[WalletContext] Saved minimal cache after quota error');
+            } catch (retryError) {
+                console.error('[WalletContext] Failed to save even minimal cache:', retryError);
+            }
+        } else {
+            console.warn('[WalletContext] Failed to save cache:', error);
+        }
     }
 };
 
@@ -183,37 +262,42 @@ export const WalletProvider = ({ children }) => {
     useEffect(() => {
         if (!principalId || hasInitializedFromCacheRef.current) return;
         
-        const cachedData = loadWalletCache(principalId);
-        if (cachedData) {
-            console.log('[WalletContext] Loading from persistent cache, age:', 
-                Math.round((Date.now() - cachedData.timestamp) / 1000), 'seconds');
-            
-            // Restore tokens
-            if (cachedData.walletTokens && cachedData.walletTokens.length > 0) {
-                setWalletTokens(cachedData.walletTokens);
-                setHasFetchedInitial(true);
-            }
-            
-            // Restore positions
-            if (cachedData.liquidityPositions && cachedData.liquidityPositions.length > 0) {
-                console.log('%c💾 [POSITIONS CACHE] Restoring', cachedData.liquidityPositions.length, 'positions from cache', 'background: #9b59b6; color: white; padding: 2px 6px;');
-                setLiquidityPositions(cachedData.liquidityPositions);
-                setHasFetchedPositions(true);
-                hasPositionsRef.current = true;
-            } else {
-                console.log('%c💾 [POSITIONS CACHE] No cached positions found', 'background: #e74c3c; color: white; padding: 2px 6px;');
-            }
-            
-            // Restore neuron cache from IDs (hydrate from shared IndexedDB cache)
-            // We now store only neuron IDs in localStorage and hydrate from shared cache
-            if (cachedData.neuronCacheIds || cachedData.neuronCache) {
-                // Handle both old format (neuronCache with full objects) and new format (neuronCacheIds)
-                const cacheData = cachedData.neuronCacheIds || cachedData.neuronCache;
-                const entries = cacheData instanceof Map ? Array.from(cacheData.entries()) : 
-                               Array.isArray(cacheData) ? cacheData : [];
+        // Mark as initializing immediately to prevent re-entry
+        hasInitializedFromCacheRef.current = true;
+        
+        const loadCache = async () => {
+            const cachedData = loadWalletCache(principalId);
+            if (cachedData) {
+                console.log('%c💾 [WALLET CACHE] Loading from persistent cache, age:', 'background: #3498db; color: white; padding: 2px 6px;',
+                    Math.round((Date.now() - cachedData.timestamp) / 1000), 'seconds');
                 
-                // For each governance, try to hydrate neurons from shared IndexedDB cache
-                (async () => {
+                // Restore tokens
+                if (cachedData.walletTokens && cachedData.walletTokens.length > 0) {
+                    console.log('%c💾 [WALLET CACHE] Restoring', cachedData.walletTokens.length, 'tokens', 'background: #2ecc71; color: white; padding: 2px 6px;');
+                    setWalletTokens(cachedData.walletTokens);
+                    setHasFetchedInitial(true);
+                }
+                
+                // Restore positions
+                if (cachedData.liquidityPositions && cachedData.liquidityPositions.length > 0) {
+                    console.log('%c💾 [POSITIONS CACHE] Restoring', cachedData.liquidityPositions.length, 'positions from cache', 'background: #9b59b6; color: white; padding: 2px 6px;');
+                    setLiquidityPositions(cachedData.liquidityPositions);
+                    setHasFetchedPositions(true);
+                    hasPositionsRef.current = true;
+                } else {
+                    console.log('%c💾 [POSITIONS CACHE] No cached positions found', 'background: #e74c3c; color: white; padding: 2px 6px;');
+                }
+                
+                // Restore neuron cache from IDs (hydrate from shared IndexedDB cache)
+                // We now store only neuron IDs in localStorage and hydrate from shared cache
+                // IMPORTANT: This is async but we MUST wait for it before marking cache complete
+                if (cachedData.neuronCacheIds || cachedData.neuronCache) {
+                    // Handle both old format (neuronCache with full objects) and new format (neuronCacheIds)
+                    const cacheData = cachedData.neuronCacheIds || cachedData.neuronCache;
+                    const entries = cacheData instanceof Map ? Array.from(cacheData.entries()) : 
+                                   Array.isArray(cacheData) ? cacheData : [];
+                    
+                    // For each governance, try to hydrate neurons from shared IndexedDB cache
                     const hydratedMap = new Map();
                     
                     for (const [governanceId, neuronDataOrIds] of entries) {
@@ -244,11 +328,15 @@ export const WalletProvider = ({ children }) => {
                         
                         if (snsRoot) {
                             // Try to hydrate from shared IndexedDB cache
-                            const { found, missing } = await getNeuronsFromCacheByIds(snsRoot, neuronIds);
-                            if (found.length > 0) {
-                                hydratedMap.set(governanceId, found);
+                            try {
+                                const { found, missing } = await getNeuronsFromCacheByIds(snsRoot, neuronIds);
+                                if (found.length > 0) {
+                                    hydratedMap.set(governanceId, found);
+                                }
+                                // Note: missing neurons will be fetched fresh by fetchAndCacheNeurons
+                            } catch (e) {
+                                console.warn('Failed to hydrate neurons from cache:', e);
                             }
-                            // Note: missing neurons will be fetched fresh by fetchAndCacheNeurons
                         } else if (Array.isArray(neuronDataOrIds) && neuronDataOrIds[0]?.id) {
                             // No SNS mapping but we have old format full objects - use them directly
                             hydratedMap.set(governanceId, neuronDataOrIds);
@@ -258,34 +346,38 @@ export const WalletProvider = ({ children }) => {
                     if (hydratedMap.size > 0) {
                         setNeuronCache(hydratedMap);
                         setNeuronCacheInitialized(true);
-                        console.log(`[WalletContext] Hydrated ${hydratedMap.size} governance caches from shared neuron cache`);
+                        console.log('%c💾 [NEURON CACHE] Hydrated', hydratedMap.size, 'governance caches from IndexedDB', 'background: #9b59b6; color: white; padding: 2px 6px;');
                     }
-                })();
+                }
+                
+                // Restore neuron managers
+                if (cachedData.neuronManagers && cachedData.neuronManagers.length > 0) {
+                    setNeuronManagers(cachedData.neuronManagers);
+                    setHasFetchedManagers(true);
+                }
+                if (cachedData.managerNeurons) {
+                    setManagerNeurons(cachedData.managerNeurons);
+                }
+                if (cachedData.managerNeuronsTotal !== undefined) {
+                    setManagerNeuronsTotal(cachedData.managerNeuronsTotal);
+                }
+                
+                // Restore last updated
+                if (cachedData.lastUpdated) {
+                    setLastUpdated(new Date(cachedData.lastUpdated));
+                }
+                
+                setLoadedFromCache(true);
+                console.log('%c✅ [WALLET CACHE] Restore complete', 'background: #2ecc71; color: white; padding: 2px 6px;');
+            } else {
+                console.log('%c💾 [WALLET CACHE] No cache found', 'background: #e74c3c; color: white; padding: 2px 6px;');
             }
             
-            // Restore neuron managers
-            if (cachedData.neuronManagers && cachedData.neuronManagers.length > 0) {
-                setNeuronManagers(cachedData.neuronManagers);
-                setHasFetchedManagers(true);
-            }
-            if (cachedData.managerNeurons) {
-                setManagerNeurons(cachedData.managerNeurons);
-            }
-            if (cachedData.managerNeuronsTotal !== undefined) {
-                setManagerNeuronsTotal(cachedData.managerNeuronsTotal);
-            }
-            
-            // Restore last updated
-            if (cachedData.lastUpdated) {
-                setLastUpdated(new Date(cachedData.lastUpdated));
-            }
-            
-            setLoadedFromCache(true);
-        }
+            // Mark cache check as complete AFTER all async operations (including neuron hydration)
+            setCacheCheckComplete(true);
+        };
         
-        // Mark cache check as complete (whether we found data or not)
-        setCacheCheckComplete(true);
-        hasInitializedFromCacheRef.current = true;
+        loadCache();
     }, [principalId]);
     
     // Save to persistent cache when data changes (debounced)
@@ -884,7 +976,13 @@ export const WalletProvider = ({ children }) => {
             // Check if token already exists
             const exists = prev.some(t => t.principal === token.principal);
             if (exists) {
+                // Update existing token
                 return prev.map(t => t.principal === token.principal ? token : t);
+            }
+            // Check for duplicates in existing array (shouldn't happen, but debug)
+            const duplicates = prev.filter(t => t.principal === token.principal);
+            if (duplicates.length > 0) {
+                console.warn('%c⚠️ [TOKENS] Duplicate found!', 'background: #e74c3c; color: white;', token.principal, 'already in array', duplicates.length, 'times');
             }
             return [...prev, token];
         });
