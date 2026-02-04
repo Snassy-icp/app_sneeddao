@@ -1878,19 +1878,21 @@ function Wallet() {
                     cycles: existingStatus?.cycles,
                     memory: existingStatus?.memory,
                     isController: existingStatus?.isController,
+                    isValid: true,
                 }
             }));
         } catch (err) {
             console.warn(`[NM Detection] Failed to fetch manager info for ${canisterId}:`, err.message || err);
-            // Still mark as detected but with fallback values
+            // Mark as detected but invalid - WASM matches but interface doesn't work
             setDetectedNeuronManagers(prev => ({
                 ...prev,
                 [canisterId]: {
-                    version: { major: 0n, minor: 0n, patch: 0n },
+                    version: null,
                     neuronCount: 0,
                     cycles: existingStatus?.cycles,
                     memory: existingStatus?.memory,
                     isController: existingStatus?.isController,
+                    isValid: false,
                 }
             }));
         }
@@ -6781,8 +6783,8 @@ function Wallet() {
                                     
                                     // Check if this canister is a detected neuron manager
                                     const detectedManager = detectedNeuronManagers[canisterId];
-                                    if (detectedManager) {
-                                        // Render as neuron manager card
+                                    if (detectedManager && detectedManager.isValid) {
+                                        // Render as valid neuron manager card
                                         const managerVersion = detectedManager.version;
                                         const managerNeuronCount = detectedManager.neuronCount || 0;
                                         const managerCycles = detectedManager.cycles;
@@ -6936,6 +6938,227 @@ function Wallet() {
                                                                 <FaBrain size={12} />
                                                                 Manage Neurons
                                                             </Link>
+                                                            <Link
+                                                                to={`/canister?id=${canisterId}`}
+                                                                style={{
+                                                                    padding: '8px 16px',
+                                                                    borderRadius: '8px',
+                                                                    backgroundColor: theme.colors.accent,
+                                                                    color: '#fff',
+                                                                    fontSize: '13px',
+                                                                    textDecoration: 'none',
+                                                                    fontWeight: '600',
+                                                                }}
+                                                            >
+                                                                View Details
+                                                            </Link>
+                                                            {isConfirming ? (
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                    <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Remove?</span>
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); handleRemoveTrackedCanister(canisterId); }}
+                                                                        disabled={isRemoving}
+                                                                        style={{
+                                                                            backgroundColor: '#ef4444',
+                                                                            color: '#fff',
+                                                                            border: 'none',
+                                                                            borderRadius: '6px',
+                                                                            padding: '8px 12px',
+                                                                            cursor: isRemoving ? 'not-allowed' : 'pointer',
+                                                                            fontSize: '13px',
+                                                                            opacity: isRemoving ? 0.6 : 1,
+                                                                        }}
+                                                                    >
+                                                                        {isRemoving ? '...' : 'Yes'}
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); setConfirmRemoveTrackedCanister(null); }}
+                                                                        style={{
+                                                                            backgroundColor: theme.colors.secondaryBg,
+                                                                            color: theme.colors.primaryText,
+                                                                            border: `1px solid ${theme.colors.border}`,
+                                                                            borderRadius: '6px',
+                                                                            padding: '8px 12px',
+                                                                            cursor: 'pointer',
+                                                                            fontSize: '13px',
+                                                                        }}
+                                                                    >
+                                                                        No
+                                                                    </button>
+                                                                </div>
+                                                            ) : (
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); setConfirmRemoveTrackedCanister(canisterId); }}
+                                                                    style={{
+                                                                        padding: '8px 16px',
+                                                                        borderRadius: '8px',
+                                                                        border: `1px solid ${theme.colors.border}`,
+                                                                        backgroundColor: 'transparent',
+                                                                        color: theme.colors.mutedText,
+                                                                        fontSize: '13px',
+                                                                        cursor: 'pointer',
+                                                                    }}
+                                                                    title="Remove from wallet"
+                                                                >
+                                                                    Remove
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    }
+                                    
+                                    // Invalid detected manager - WASM matches but interface doesn't work
+                                    if (detectedManager && !detectedManager.isValid) {
+                                        const managerCycles = detectedManager.cycles;
+                                        const managerIsController = detectedManager.isController;
+                                        
+                                        return (
+                                            <div 
+                                                key={canisterId}
+                                                className="card"
+                                            >
+                                                {/* Card Header - Warning style */}
+                                                <div 
+                                                    className="card-header"
+                                                    onClick={() => setExpandedCanisterCards(prev => ({ ...prev, [canisterId]: !prev[canisterId] }))}
+                                                >
+                                                    <div className="header-logo-column" style={{ alignSelf: 'flex-start', minWidth: '48px', minHeight: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                                                        <FaBrain size={36} style={{ color: '#f59e0b' }} />
+                                                        {managerIsController && (
+                                                            <span 
+                                                                style={{ 
+                                                                    position: 'absolute', 
+                                                                    top: 0, 
+                                                                    right: 0,
+                                                                    color: '#f59e0b'
+                                                                }}
+                                                                title="You are a controller"
+                                                            >
+                                                                <FaCrown size={14} />
+                                                            </span>
+                                                        )}
+                                                        <span 
+                                                            style={{ 
+                                                                position: 'absolute', 
+                                                                bottom: 0, 
+                                                                right: 0,
+                                                                color: '#ef4444'
+                                                            }}
+                                                            title="Canister WASM matches neuron manager but interface is not working"
+                                                        >
+                                                            <FaExclamationTriangle size={14} />
+                                                        </span>
+                                                    </div>
+                                                    <div className="header-content-column">
+                                                        {/* Row 1: Name and Refresh */}
+                                                        <div className="header-row-1" style={{ minWidth: 0 }}>
+                                                            <span className="token-name">
+                                                                <PrincipalDisplay
+                                                                    principal={canisterId}
+                                                                    displayInfo={displayInfo}
+                                                                    showCopyButton={false}
+                                                                    isAuthenticated={isAuthenticated}
+                                                                    noLink={true}
+                                                                />
+                                                            </span>
+                                                            <button
+                                                                onClick={async (e) => {
+                                                                    e.stopPropagation();
+                                                                    // Clear detection to allow re-detection on refresh
+                                                                    setDetectedNeuronManagers(prev => {
+                                                                        const newState = { ...prev };
+                                                                        delete newState[canisterId];
+                                                                        return newState;
+                                                                    });
+                                                                    await handleRefreshCanisterCard(canisterId);
+                                                                }}
+                                                                disabled={refreshingCanisterCard === canisterId}
+                                                                style={{
+                                                                    background: 'none',
+                                                                    border: 'none',
+                                                                    cursor: refreshingCanisterCard === canisterId ? 'default' : 'pointer',
+                                                                    padding: '4px',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    color: theme.colors.mutedText,
+                                                                    fontSize: '1.2rem',
+                                                                    transition: 'color 0.2s ease',
+                                                                    opacity: refreshingCanisterCard === canisterId ? 0.6 : 1
+                                                                }}
+                                                                title="Refresh data"
+                                                            >
+                                                                <FaSync size={12} style={{ animation: refreshingCanisterCard === canisterId ? 'spin 1s linear infinite' : 'none' }} />
+                                                            </button>
+                                                        </div>
+                                                        {/* Row 2: Warning label */}
+                                                        <div className="header-row-2">
+                                                            <div className="amount-symbol">
+                                                                <span className="token-amount" style={{ color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                    <FaExclamationTriangle size={12} />
+                                                                    Incompatible Manager
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                        {/* Row 3: Cycles badge only */}
+                                                        <div className="header-row-3" style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                            {/* Cycles badge */}
+                                                            {managerCycles !== undefined && managerCycles !== null && (
+                                                                <span 
+                                                                    style={{
+                                                                        background: `${getCyclesColor(managerCycles, neuronManagerCycleSettings)}20`,
+                                                                        color: getCyclesColor(managerCycles, neuronManagerCycleSettings),
+                                                                        padding: '2px 8px',
+                                                                        borderRadius: '12px',
+                                                                        fontSize: '0.7rem',
+                                                                        fontWeight: '500',
+                                                                    }}
+                                                                    title={`${managerCycles.toLocaleString()} cycles`}
+                                                                >
+                                                                    ⚡ {formatCyclesCompact(managerCycles)}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                {/* Expanded Section */}
+                                                {isExpanded && (
+                                                    <div className="card-content">
+                                                        {/* Warning message */}
+                                                        <div style={{
+                                                            padding: '12px',
+                                                            backgroundColor: '#f59e0b15',
+                                                            borderRadius: '8px',
+                                                            marginBottom: '12px',
+                                                            border: '1px solid #f59e0b30',
+                                                        }}>
+                                                            <p style={{ 
+                                                                color: '#f59e0b', 
+                                                                fontSize: '12px', 
+                                                                margin: 0,
+                                                                display: 'flex',
+                                                                alignItems: 'flex-start',
+                                                                gap: '8px',
+                                                            }}>
+                                                                <FaExclamationTriangle size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
+                                                                <span>
+                                                                    This canister's WASM matches a neuron manager version, but its interface is not responding correctly. 
+                                                                    It may have been upgraded to different code or is not fully deployed.
+                                                                </span>
+                                                            </p>
+                                                        </div>
+                                                        
+                                                        {/* Actions */}
+                                                        <div style={{ 
+                                                            display: 'flex', 
+                                                            gap: '8px', 
+                                                            flexWrap: 'wrap',
+                                                            justifyContent: 'flex-end',
+                                                            alignItems: 'center',
+                                                        }}>
                                                             <Link
                                                                 to={`/canister?id=${canisterId}`}
                                                                 style={{
