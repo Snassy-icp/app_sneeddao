@@ -125,6 +125,7 @@ export default function Me() {
     // Use WalletContext's global neuron cache for user neurons
     const walletContext = useWalletOptional();
     const getNeuronsForGovernance = walletContext?.getNeuronsForGovernance;
+    const cacheCheckComplete = walletContext?.cacheCheckComplete;
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const [snsList, setSnsList] = useState([]);
@@ -608,9 +609,14 @@ export default function Me() {
     }, [identity]);
 
     // Fetch neurons when selected SNS changes - uses global cache
+    // Wait for cacheCheckComplete to ensure cache has been hydrated first
     useEffect(() => {
         const fetchNeurons = async () => {
             if (!identity || !selectedSnsRoot) return;
+            
+            // Wait for cache check to complete before fetching
+            // This ensures we use cached neurons if available instead of always hitting network
+            if (cacheCheckComplete === false) return;
             
             setLoading(true);
             setError(null);
@@ -646,7 +652,7 @@ export default function Me() {
             }
         };
         fetchNeurons();
-    }, [identity, selectedSnsRoot, getNeuronsForGovernance]);
+    }, [identity, selectedSnsRoot, getNeuronsForGovernance, cacheCheckComplete]);
 
     useEffect(() => {
         if (identity) {
