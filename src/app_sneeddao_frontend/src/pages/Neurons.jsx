@@ -106,6 +106,28 @@ function Neurons() {
             return null;
         }
     };
+
+    // Check if a principal has a name or nickname
+    const principalHasName = (principalStr) => {
+        if (!principalStr) return false;
+        const displayInfo = getPrincipalDisplayInfo(principalStr);
+        return displayInfo && (displayInfo.name || displayInfo.nickname);
+    };
+
+    // State to track which neurons have expanded principals
+    const [expandedPrincipals, setExpandedPrincipals] = useState(new Set());
+
+    const togglePrincipalsExpanded = (neuronId) => {
+        setExpandedPrincipals(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(neuronId)) {
+                newSet.delete(neuronId);
+            } else {
+                newSet.add(neuronId);
+            }
+            return newSet;
+        });
+    };
     
     // Pagination state
     const [itemsPerPage, setItemsPerPage] = useState(20);
@@ -1288,64 +1310,98 @@ function Neurons() {
                                                         />
                                                     </div>
                                                     {/* Compact Principals */}
-                                                    {neuron.permissions?.length > 0 && (
-                                                        <div 
-                                                            style={{
-                                                                marginTop: '0.5rem',
-                                                                display: 'flex',
-                                                                flexWrap: 'wrap',
-                                                                gap: '0.35rem'
-                                                            }}
-                                                            onClick={(e) => e.stopPropagation()}
-                                                        >
-                                                            {neuron.permissions.slice(0, 4).map((perm, idx) => {
-                                                                const symbolInfo = getPrincipalSymbol(perm);
-                                                                const principalStr = extractPrincipalString(perm.principal);
-                                                                if (!principalStr) return null;
-                                                                
-                                                                return (
-                                                                    <div
-                                                                        key={idx}
+                                                    {neuron.permissions?.length > 0 && (() => {
+                                                        const isExpanded = expandedPrincipals.has(neuronId);
+                                                        
+                                                        // Separate named and unnamed principals
+                                                        const namedPrincipals = neuron.permissions.filter(perm => {
+                                                            const principalStr = extractPrincipalString(perm.principal);
+                                                            return principalStr && principalHasName(principalStr);
+                                                        });
+                                                        const unnamedPrincipals = neuron.permissions.filter(perm => {
+                                                            const principalStr = extractPrincipalString(perm.principal);
+                                                            return principalStr && !principalHasName(principalStr);
+                                                        });
+                                                        
+                                                        // What to show: named principals first, then unnamed if expanded
+                                                        const principalsToShow = isExpanded 
+                                                            ? [...namedPrincipals, ...unnamedPrincipals]
+                                                            : namedPrincipals;
+                                                        
+                                                        const hasHiddenPrincipals = unnamedPrincipals.length > 0;
+                                                        
+                                                        return (
+                                                            <div 
+                                                                style={{
+                                                                    marginTop: '0.5rem',
+                                                                    display: 'flex',
+                                                                    flexWrap: 'wrap',
+                                                                    gap: '0.35rem',
+                                                                    alignItems: 'center'
+                                                                }}
+                                                                onClick={(e) => e.stopPropagation()}
+                                                            >
+                                                                {principalsToShow.map((perm, idx) => {
+                                                                    const symbolInfo = getPrincipalSymbol(perm);
+                                                                    const principalStr = extractPrincipalString(perm.principal);
+                                                                    if (!principalStr) return null;
+                                                                    
+                                                                    return (
+                                                                        <div
+                                                                            key={idx}
+                                                                            style={{
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                gap: '0.25rem',
+                                                                                padding: '0.2rem 0.4rem',
+                                                                                background: `${symbolInfo.color}15`,
+                                                                                borderRadius: '4px',
+                                                                                border: `1px solid ${symbolInfo.color}25`
+                                                                            }}
+                                                                            title={symbolInfo.title}
+                                                                        >
+                                                                            <span style={{ color: symbolInfo.color, display: 'flex', alignItems: 'center' }}>
+                                                                                {symbolInfo.icon}
+                                                                            </span>
+                                                                            <PrincipalDisplay
+                                                                                principal={Principal.fromText(principalStr)}
+                                                                                displayInfo={getPrincipalDisplayInfo(principalStr)}
+                                                                                showCopyButton={false}
+                                                                                short={true}
+                                                                                isAuthenticated={!!identity}
+                                                                                style={{ fontSize: '0.7rem' }}
+                                                                            />
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                                {/* Show expand/collapse button if there are unnamed principals */}
+                                                                {hasHiddenPrincipals && (
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            togglePrincipalsExpanded(neuronId);
+                                                                        }}
                                                                         style={{
                                                                             display: 'flex',
                                                                             alignItems: 'center',
-                                                                            gap: '0.25rem',
-                                                                            padding: '0.2rem 0.4rem',
-                                                                            background: `${symbolInfo.color}15`,
+                                                                            justifyContent: 'center',
+                                                                            padding: '0.2rem 0.5rem',
+                                                                            background: `${theme.colors.mutedText}15`,
                                                                             borderRadius: '4px',
-                                                                            border: `1px solid ${symbolInfo.color}25`
+                                                                            fontSize: '0.7rem',
+                                                                            color: theme.colors.mutedText,
+                                                                            border: 'none',
+                                                                            cursor: 'pointer',
+                                                                            fontWeight: '500'
                                                                         }}
-                                                                        title={symbolInfo.title}
+                                                                        title={isExpanded ? 'Show less' : `Show ${unnamedPrincipals.length} more`}
                                                                     >
-                                                                        <span style={{ color: symbolInfo.color, display: 'flex', alignItems: 'center' }}>
-                                                                            {symbolInfo.icon}
-                                                                        </span>
-                                                                        <PrincipalDisplay
-                                                                            principal={Principal.fromText(principalStr)}
-                                                                            displayInfo={getPrincipalDisplayInfo(principalStr)}
-                                                                            showCopyButton={false}
-                                                                            short={true}
-                                                                            isAuthenticated={!!identity}
-                                                                            style={{ fontSize: '0.7rem' }}
-                                                                        />
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                            {neuron.permissions.length > 4 && (
-                                                                <div style={{
-                                                                    display: 'flex',
-                                                                    alignItems: 'center',
-                                                                    padding: '0.2rem 0.4rem',
-                                                                    background: `${theme.colors.mutedText}15`,
-                                                                    borderRadius: '4px',
-                                                                    fontSize: '0.7rem',
-                                                                    color: theme.colors.mutedText
-                                                                }}>
-                                                                    +{neuron.permissions.length - 4}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )}
+                                                                        {isExpanded ? '−' : `...${unnamedPrincipals.length}`}
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </div>
 
                                                 {/* Stake */}
