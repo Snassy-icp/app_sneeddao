@@ -1222,6 +1222,51 @@ function Neuron() {
                                             </a>
                                         </div>
                                         
+                                        {/* Compact Principals Display */}
+                                        {neuronData?.permissions?.length > 0 && (
+                                            <div style={{
+                                                marginTop: '0.75rem',
+                                                display: 'flex',
+                                                flexWrap: 'wrap',
+                                                gap: '0.5rem',
+                                                alignItems: 'center'
+                                            }}>
+                                                {neuronData.permissions.map((perm, idx) => {
+                                                    const symbolInfo = getPrincipalSymbol(perm);
+                                                    const principalStr = extractPrincipalString(perm.principal);
+                                                    if (!principalStr) return null;
+                                                    
+                                                    return (
+                                                        <div
+                                                            key={idx}
+                                                            style={{
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '0.35rem',
+                                                                padding: '0.35rem 0.6rem',
+                                                                background: `${symbolInfo.color}15`,
+                                                                borderRadius: '6px',
+                                                                border: `1px solid ${symbolInfo.color}30`
+                                                            }}
+                                                            title={symbolInfo.title}
+                                                        >
+                                                            <span style={{ color: symbolInfo.color, display: 'flex', alignItems: 'center' }}>
+                                                                {React.cloneElement(symbolInfo.icon, { size: 12 })}
+                                                            </span>
+                                                            <PrincipalDisplay
+                                                                principal={Principal.fromText(principalStr)}
+                                                                displayInfo={principalDisplayInfo.get(principalStr)}
+                                                                showCopyButton={false}
+                                                                short={true}
+                                                                isAuthenticated={isAuthenticated}
+                                                                style={{ fontSize: '0.8rem' }}
+                                                            />
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                        
                                         {/* Neuron Subaccount - Account to send funds to when increasing stake */}
                                         {(() => {
                                             const selectedSns = getSnsById(selectedSnsRoot);
