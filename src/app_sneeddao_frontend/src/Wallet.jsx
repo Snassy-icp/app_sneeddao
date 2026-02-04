@@ -31,7 +31,7 @@ import TokenCard from './TokenCard';
 import TokenCardModal from './components/TokenCardModal';
 import PositionCard from './PositionCard';
 import { get_available, get_available_backend, getTokenLogo, get_token_conversion_rate, get_token_icp_rate, getTokenTVL, getTokenMetaForSwap, rewardAmountOrZero, availableOrZero } from './utils/TokenUtils';
-import { getTrackedCanisters, registerTrackedCanister, unregisterTrackedCanister } from './utils/BackendUtils';
+import { getTrackedCanisters, registerTrackedCanister, unregisterTrackedCanister, getCanisterInfo } from './utils/BackendUtils';
 import { getPositionTVL, isLockedPosition } from "./utils/PositionUtils";
 import { headerStyles } from './styles/HeaderStyles';
 import { usePremiumStatus } from './hooks/usePremiumStatus';
@@ -41,7 +41,7 @@ import { createActor as createForumActor, canisterId as forumCanisterId } from '
 import Header from './components/Header';
 import PrincipalInput from './components/PrincipalInput';
 import TokenIcon from './components/TokenIcon';
-import { fetchUserNeurons, fetchUserNeuronsForSns } from './utils/NeuronUtils';
+import { fetchUserNeurons, fetchUserNeuronsForSns, uint8ArrayToHex } from './utils/NeuronUtils';
 import { getTipTokensReceivedByUser } from './utils/BackendUtils';
 import { normalizeId } from './hooks/useNeuronsCache';
 import { getCachedRewards, setCachedRewards } from './hooks/useRewardsCache';
@@ -627,6 +627,7 @@ function Wallet() {
     const [neuronManagerCounts, setNeuronManagerCounts] = useState({}); // canisterId -> neuron count
     const [neuronManagerCycles, setNeuronManagerCycles] = useState({}); // canisterId -> cycles
     const [neuronManagerIsController, setNeuronManagerIsController] = useState({}); // canisterId -> boolean
+    const [neuronManagerModuleHash, setNeuronManagerModuleHash] = useState({}); // canisterId -> moduleHash string
     const [latestOfficialVersion, setLatestOfficialVersion] = useState(null);
     const [neuronManagerCycleSettings] = useState(() => getNeuronManagerSettings());
     const [canisterCycleSettings] = useState(() => getCanisterManagerSettings());
@@ -687,8 +688,12 @@ function Wallet() {
     const [confirmRemoveTrackedCanister, setConfirmRemoveTrackedCanister] = useState(null);
     const [removingTrackedCanister, setRemovingTrackedCanister] = useState(null);
     // Tracked canister status (cycles, memory, isController)
-    const [trackedCanisterStatus, setTrackedCanisterStatus] = useState({}); // canisterId -> { cycles, memory, isController }
+    const [trackedCanisterStatus, setTrackedCanisterStatus] = useState({}); // canisterId -> { cycles, memory, isController, moduleHash }
     const [expandedCanisterCards, setExpandedCanisterCards] = useState({}); // canisterId -> boolean
+    
+    // Neuron manager detection for tracked canisters
+    const [officialVersions, setOfficialVersions] = useState([]); // Known neuron manager WASM hashes
+    const [detectedNeuronManagers, setDetectedNeuronManagers] = useState({}); // canisterId -> { version, neuronCount, cycles, memory, isController }
     // Canister top-up and transfer state
     const [topUpCanisterId, setTopUpCanisterId] = useState(null); // Which canister is showing top-up UI
     const [canisterTopUpAmount, setCanisterTopUpAmount] = useState('');
@@ -1657,6 +1662,39 @@ function Wallet() {
         return compareVersions(version, latestOfficialVersion) < 0;
     };
 
+    // Fetch official versions for neuron manager detection
+    async function fetchOfficialVersions() {
+        if (!identity) return;
+        
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const factory = createFactoryActor(factoryCanisterId, { agent });
+            const fetchedOfficialVersions = await factory.getOfficialVersions();
+            console.log(`[NM Detection] Loaded ${fetchedOfficialVersions?.length || 0} official versions`);
+            setOfficialVersions(fetchedOfficialVersions || []);
+            if (fetchedOfficialVersions && fetchedOfficialVersions.length > 0) {
+                const sorted = [...fetchedOfficialVersions].sort((a, b) => compareVersions(b, a));
+                setLatestOfficialVersion(sorted[0]);
+            }
+        } catch (err) {
+            console.error('Error fetching official versions:', err);
+        }
+    }
+    
+    // Fetch official versions on auth
+    useEffect(() => {
+        if (isAuthenticated) {
+            fetchOfficialVersions();
+        }
+    }, [isAuthenticated]);
+    
     // Fetch additional manager data (cycles, controller status) - supplements context data
     // Main manager fetching is done by WalletContext
     async function fetchManagerSupplementalData() {
@@ -1671,19 +1709,11 @@ function Wallet() {
                 await agent.fetchRootKey();
             }
             
-            const factory = createFactoryActor(factoryCanisterId, { agent });
-            
-            // Fetch official versions
-            const officialVersions = await factory.getOfficialVersions();
-            if (officialVersions && officialVersions.length > 0) {
-                const sorted = [...officialVersions].sort((a, b) => compareVersions(b, a));
-                setLatestOfficialVersion(sorted[0]);
-            }
-            
-            // Fetch cycles and controller status for all managers
+            // Fetch cycles, controller status, and module hash for all managers
             const counts = {};
             const cycles = {};
             const controllerStatus = {};
+            const moduleHashes = {};
             
             await Promise.all(neuronManagers.map(async (manager) => {
                 const canisterIdPrincipal = manager.canisterId;
@@ -1691,8 +1721,9 @@ function Wallet() {
                 
                 counts[canisterId] = manager.neuronCount || 0;
                 
-                // Try to fetch cycles (may fail if not controller)
+                // Try to fetch cycles and module hash (may fail if not controller)
                 let isController = false;
+                let moduleHash = null;
                 try {
                     const mgmtActor = Actor.createActor(managementCanisterIdlFactory, {
                         agent,
@@ -1709,18 +1740,29 @@ function Wallet() {
                         : canisterIdPrincipal;
                     const status = await mgmtActor.canister_status({ canister_id: principalObj });
                     cycles[canisterId] = Number(status.cycles);
+                    moduleHash = status.module_hash[0] ? uint8ArrayToHex(status.module_hash[0]) : null;
                     isController = true;
                 } catch (cyclesErr) {
-                    // Not a controller, can't get cycles
+                    // Not a controller - try backend fallback for module_hash
                     cycles[canisterId] = null;
+                    try {
+                        const result = await getCanisterInfo(identity, canisterId);
+                        if (result && 'ok' in result) {
+                            moduleHash = result.ok.module_hash[0] ? uint8ArrayToHex(result.ok.module_hash[0]) : null;
+                        }
+                    } catch (fallbackErr) {
+                        console.log(`Backend fallback error for manager ${canisterId}:`, fallbackErr.message || fallbackErr);
+                    }
                 }
                 
                 controllerStatus[canisterId] = isController;
+                moduleHashes[canisterId] = moduleHash;
             }));
             
             setNeuronManagerCounts(counts);
             setNeuronManagerCycles(cycles);
             setNeuronManagerIsController(controllerStatus);
+            setNeuronManagerModuleHash(moduleHashes);
         } catch (err) {
             console.error('Error fetching manager supplemental data:', err);
         }
@@ -1758,6 +1800,11 @@ function Wallet() {
             
             const statusMap = {};
             await Promise.all(canisterIds.map(async (canisterId) => {
+                let cycles = null;
+                let memory = null;
+                let isController = false;
+                let moduleHash = null;
+                
                 try {
                     const canisterIdPrincipal = Principal.fromText(canisterId);
                     const mgmtActor = Actor.createActor(managementCanisterIdlFactory, {
@@ -1769,19 +1816,23 @@ function Wallet() {
                         }),
                     });
                     const status = await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
-                    statusMap[canisterId] = {
-                        cycles: Number(status.cycles),
-                        memory: Number(status.memory_size),
-                        isController: true,
-                    };
+                    cycles = Number(status.cycles);
+                    memory = Number(status.memory_size);
+                    moduleHash = status.module_hash[0] ? uint8ArrayToHex(status.module_hash[0]) : null;
+                    isController = true;
                 } catch (err) {
-                    // Not a controller, can't get status
-                    statusMap[canisterId] = {
-                        cycles: null,
-                        memory: null,
-                        isController: false,
-                    };
+                    // Not a controller - try backend fallback to get module_hash
+                    try {
+                        const result = await getCanisterInfo(identity, canisterId);
+                        if (result && 'ok' in result) {
+                            moduleHash = result.ok.module_hash[0] ? uint8ArrayToHex(result.ok.module_hash[0]) : null;
+                        }
+                    } catch (fallbackErr) {
+                        console.log(`Backend fallback error for ${canisterId}:`, fallbackErr.message || fallbackErr);
+                    }
                 }
+                
+                statusMap[canisterId] = { cycles, memory, isController, moduleHash };
             }));
             setTrackedCanisterStatus(statusMap);
         } catch (err) {
@@ -1790,6 +1841,76 @@ function Wallet() {
             setTrackedCanistersLoading(false);
         }
     }
+    
+    // Check if a module hash matches any known neuron manager version
+    const isKnownNeuronManagerHash = useCallback((moduleHash) => {
+        if (!moduleHash || officialVersions.length === 0) return null;
+        const hashLower = moduleHash.toLowerCase();
+        return officialVersions.find(v => v.wasmHash.toLowerCase() === hashLower) || null;
+    }, [officialVersions]);
+    
+    // Fetch neuron manager info for a detected canister
+    const fetchDetectedManagerInfo = useCallback(async (canisterId, existingStatus) => {
+        if (!identity) return;
+        
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const managerActor = createManagerActor(canisterId, { agent });
+            const [version, neuronIds] = await Promise.all([
+                managerActor.getVersion(),
+                managerActor.getNeuronIds(),
+            ]);
+            
+            console.log(`[NM Detection] Fetched manager info for ${canisterId}: v${version.major}.${version.minor}.${version.patch}, ${neuronIds?.length || 0} neurons`);
+            
+            setDetectedNeuronManagers(prev => ({
+                ...prev,
+                [canisterId]: {
+                    version,
+                    neuronCount: neuronIds?.length || 0,
+                    cycles: existingStatus?.cycles,
+                    memory: existingStatus?.memory,
+                    isController: existingStatus?.isController,
+                }
+            }));
+        } catch (err) {
+            console.warn(`[NM Detection] Failed to fetch manager info for ${canisterId}:`, err.message || err);
+            // Still mark as detected but with fallback values
+            setDetectedNeuronManagers(prev => ({
+                ...prev,
+                [canisterId]: {
+                    version: { major: 0n, minor: 0n, patch: 0n },
+                    neuronCount: 0,
+                    cycles: existingStatus?.cycles,
+                    memory: existingStatus?.memory,
+                    isController: existingStatus?.isController,
+                }
+            }));
+        }
+    }, [identity]);
+    
+    // Detect neuron managers from tracked canisters based on module hash
+    useEffect(() => {
+        if (officialVersions.length === 0) return;
+        
+        for (const [canisterId, status] of Object.entries(trackedCanisterStatus)) {
+            if (!status?.moduleHash) continue;
+            if (detectedNeuronManagers[canisterId]) continue; // Already detected
+            
+            const matchedVersion = isKnownNeuronManagerHash(status.moduleHash);
+            if (matchedVersion) {
+                console.log(`[NM Detection] Detected neuron manager ${canisterId} (v${matchedVersion.major}.${matchedVersion.minor}.${matchedVersion.patch})`);
+                fetchDetectedManagerInfo(canisterId, status);
+            }
+        }
+    }, [officialVersions, trackedCanisterStatus, detectedNeuronManagers, isKnownNeuronManagerHash, fetchDetectedManagerInfo]);
 
     // Refresh a single tracked canister's status
     async function handleRefreshCanisterCard(canisterId) {
@@ -1805,6 +1926,11 @@ function Wallet() {
                 await agent.fetchRootKey();
             }
             
+            let cycles = null;
+            let memory = null;
+            let isController = false;
+            let moduleHash = null;
+            
             try {
                 const canisterIdPrincipal = Principal.fromText(canisterId);
                 const mgmtActor = Actor.createActor(managementCanisterIdlFactory, {
@@ -1816,24 +1942,34 @@ function Wallet() {
                     }),
                 });
                 const status = await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
-                setTrackedCanisterStatus(prev => ({
-                    ...prev,
-                    [canisterId]: {
-                        cycles: Number(status.cycles),
-                        memory: Number(status.memory_size),
-                        isController: true,
-                    }
-                }));
+                cycles = Number(status.cycles);
+                memory = Number(status.memory_size);
+                moduleHash = status.module_hash[0] ? uint8ArrayToHex(status.module_hash[0]) : null;
+                isController = true;
             } catch (err) {
-                // Not a controller, can't get status
-                setTrackedCanisterStatus(prev => ({
-                    ...prev,
-                    [canisterId]: {
-                        cycles: null,
-                        memory: null,
-                        isController: false,
+                // Not a controller - try backend fallback to get module_hash
+                try {
+                    const result = await getCanisterInfo(identity, canisterId);
+                    if (result && 'ok' in result) {
+                        moduleHash = result.ok.module_hash[0] ? uint8ArrayToHex(result.ok.module_hash[0]) : null;
                     }
-                }));
+                } catch (fallbackErr) {
+                    console.log(`Backend fallback error for ${canisterId}:`, fallbackErr.message || fallbackErr);
+                }
+            }
+            
+            const newStatus = { cycles, memory, isController, moduleHash };
+            setTrackedCanisterStatus(prev => ({
+                ...prev,
+                [canisterId]: newStatus
+            }));
+            
+            // If this is a detected neuron manager, refresh its info too
+            if (detectedNeuronManagers[canisterId] && moduleHash) {
+                const matchedVersion = isKnownNeuronManagerHash(moduleHash);
+                if (matchedVersion) {
+                    fetchDetectedManagerInfo(canisterId, newStatus);
+                }
             }
         } catch (err) {
             console.error('Error refreshing canister card:', err);
@@ -5669,6 +5805,11 @@ function Wallet() {
                                     const neuronsData = managerNeurons[canisterId];
                                     const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
                                     
+                                    // Check if this manager has a valid WASM hash
+                                    const managerModuleHash = neuronManagerModuleHash[canisterId];
+                                    const hasMatchingWasm = managerModuleHash && isKnownNeuronManagerHash(managerModuleHash);
+                                    const isValidManager = manager.version && hasMatchingWasm;
+                                    
                                     // Calculate total ICP value for this manager (stake + maturity)
                                     let managerTotalIcp = 0;
                                     let managerTotalMaturity = 0;
@@ -5698,7 +5839,7 @@ function Wallet() {
                                                 onClick={() => toggleManagerCard(canisterId)}
                                             >
                                                 <div className="header-logo-column" style={{ alignSelf: 'flex-start', minWidth: '48px', minHeight: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-                                                    <FaBrain size={36} style={{ color: theme.colors.mutedText }} />
+                                                    <FaBrain size={36} style={{ color: isValidManager === false ? '#ef4444' : theme.colors.mutedText }} />
                                                     {neuronManagerIsController[canisterId] && (
                                                         <span 
                                                             style={{ 
@@ -5710,6 +5851,19 @@ function Wallet() {
                                                             title="You are a controller"
                                                         >
                                                             <FaCrown size={14} />
+                                                        </span>
+                                                    )}
+                                                    {officialVersions.length > 0 && !isValidManager && (
+                                                        <span 
+                                                            style={{ 
+                                                                position: 'absolute', 
+                                                                bottom: 0, 
+                                                                right: 0,
+                                                                color: '#ef4444'
+                                                            }}
+                                                            title="WASM hash doesn't match any official neuron manager version"
+                                                        >
+                                                            <FaExclamationTriangle size={14} />
                                                         </span>
                                                     )}
                                                 </div>
@@ -6625,6 +6779,236 @@ function Wallet() {
                                         return `${(bytes / 1024).toFixed(0)} KB`;
                                     };
                                     
+                                    // Check if this canister is a detected neuron manager
+                                    const detectedManager = detectedNeuronManagers[canisterId];
+                                    if (detectedManager) {
+                                        // Render as neuron manager card
+                                        const managerVersion = detectedManager.version;
+                                        const managerNeuronCount = detectedManager.neuronCount || 0;
+                                        const managerCycles = detectedManager.cycles;
+                                        const managerIsController = detectedManager.isController;
+                                        
+                                        return (
+                                            <div 
+                                                key={canisterId}
+                                                className="card"
+                                            >
+                                                {/* Card Header - Neuron Manager style */}
+                                                <div 
+                                                    className="card-header"
+                                                    onClick={() => setExpandedCanisterCards(prev => ({ ...prev, [canisterId]: !prev[canisterId] }))}
+                                                >
+                                                    <div className="header-logo-column" style={{ alignSelf: 'flex-start', minWidth: '48px', minHeight: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                                                        <FaBrain size={36} style={{ color: '#8b5cf6' }} />
+                                                        {managerIsController && (
+                                                            <span 
+                                                                style={{ 
+                                                                    position: 'absolute', 
+                                                                    top: 0, 
+                                                                    right: 0,
+                                                                    color: '#f59e0b'
+                                                                }}
+                                                                title="You are a controller"
+                                                            >
+                                                                <FaCrown size={14} />
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="header-content-column">
+                                                        {/* Row 1: Name and Refresh */}
+                                                        <div className="header-row-1" style={{ minWidth: 0 }}>
+                                                            <span className="token-name">
+                                                                <PrincipalDisplay
+                                                                    principal={canisterId}
+                                                                    displayInfo={displayInfo}
+                                                                    showCopyButton={false}
+                                                                    isAuthenticated={isAuthenticated}
+                                                                    noLink={true}
+                                                                />
+                                                            </span>
+                                                            <button
+                                                                onClick={async (e) => {
+                                                                    e.stopPropagation();
+                                                                    await handleRefreshCanisterCard(canisterId);
+                                                                }}
+                                                                disabled={refreshingCanisterCard === canisterId}
+                                                                style={{
+                                                                    background: 'none',
+                                                                    border: 'none',
+                                                                    cursor: refreshingCanisterCard === canisterId ? 'default' : 'pointer',
+                                                                    padding: '4px',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    color: theme.colors.mutedText,
+                                                                    fontSize: '1.2rem',
+                                                                    transition: 'color 0.2s ease',
+                                                                    opacity: refreshingCanisterCard === canisterId ? 0.6 : 1
+                                                                }}
+                                                                title="Refresh data"
+                                                            >
+                                                                <FaSync size={12} style={{ animation: refreshingCanisterCard === canisterId ? 'spin 1s linear infinite' : 'none' }} />
+                                                            </button>
+                                                        </div>
+                                                        {/* Row 2: ICP Neuron Manager label */}
+                                                        <div className="header-row-2">
+                                                            <div className="amount-symbol">
+                                                                <span className="token-amount" style={{ color: '#8b5cf6' }}>
+                                                                    ICP Neuron Manager
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                        {/* Row 3: Version, Neurons, Cycles badges */}
+                                                        <div className="header-row-3" style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                            {/* Version badge */}
+                                                            {managerVersion && (
+                                                                <span 
+                                                                    style={{
+                                                                        background: `#8b5cf620`,
+                                                                        color: '#8b5cf6',
+                                                                        padding: '2px 8px',
+                                                                        borderRadius: '12px',
+                                                                        fontSize: '0.7rem',
+                                                                        fontWeight: '500',
+                                                                    }}
+                                                                >
+                                                                    v{Number(managerVersion.major)}.{Number(managerVersion.minor)}.{Number(managerVersion.patch)}
+                                                                </span>
+                                                            )}
+                                                            {/* Neurons badge */}
+                                                            <span 
+                                                                style={{
+                                                                    background: managerNeuronCount > 0 ? `#8b5cf620` : theme.colors.tertiaryBg,
+                                                                    color: managerNeuronCount > 0 ? '#8b5cf6' : theme.colors.mutedText,
+                                                                    padding: '2px 8px',
+                                                                    borderRadius: '12px',
+                                                                    fontSize: '0.7rem',
+                                                                    fontWeight: '500',
+                                                                }}
+                                                            >
+                                                                🧠 {managerNeuronCount} neuron{managerNeuronCount !== 1 ? 's' : ''}
+                                                            </span>
+                                                            {/* Cycles badge */}
+                                                            {managerCycles !== undefined && managerCycles !== null && (
+                                                                <span 
+                                                                    style={{
+                                                                        background: `${getCyclesColor(managerCycles, neuronManagerCycleSettings)}20`,
+                                                                        color: getCyclesColor(managerCycles, neuronManagerCycleSettings),
+                                                                        padding: '2px 8px',
+                                                                        borderRadius: '12px',
+                                                                        fontSize: '0.7rem',
+                                                                        fontWeight: '500',
+                                                                    }}
+                                                                    title={`${managerCycles.toLocaleString()} cycles`}
+                                                                >
+                                                                    ⚡ {formatCyclesCompact(managerCycles)}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                {/* Expanded Section */}
+                                                {isExpanded && (
+                                                    <div className="card-content">
+                                                        {/* Actions */}
+                                                        <div style={{ 
+                                                            display: 'flex', 
+                                                            gap: '8px', 
+                                                            flexWrap: 'wrap',
+                                                            justifyContent: 'flex-end',
+                                                            alignItems: 'center',
+                                                        }}>
+                                                            <Link
+                                                                to={`/icp_neuron_manager/${canisterId}`}
+                                                                style={{
+                                                                    padding: '8px 16px',
+                                                                    borderRadius: '8px',
+                                                                    backgroundColor: '#8b5cf6',
+                                                                    color: '#fff',
+                                                                    fontSize: '13px',
+                                                                    textDecoration: 'none',
+                                                                    fontWeight: '600',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '6px',
+                                                                }}
+                                                            >
+                                                                <FaBrain size={12} />
+                                                                Manage Neurons
+                                                            </Link>
+                                                            <Link
+                                                                to={`/canister?id=${canisterId}`}
+                                                                style={{
+                                                                    padding: '8px 16px',
+                                                                    borderRadius: '8px',
+                                                                    backgroundColor: theme.colors.accent,
+                                                                    color: '#fff',
+                                                                    fontSize: '13px',
+                                                                    textDecoration: 'none',
+                                                                    fontWeight: '600',
+                                                                }}
+                                                            >
+                                                                View Details
+                                                            </Link>
+                                                            {isConfirming ? (
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                    <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Remove?</span>
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); handleRemoveTrackedCanister(canisterId); }}
+                                                                        disabled={isRemoving}
+                                                                        style={{
+                                                                            backgroundColor: '#ef4444',
+                                                                            color: '#fff',
+                                                                            border: 'none',
+                                                                            borderRadius: '6px',
+                                                                            padding: '8px 12px',
+                                                                            cursor: isRemoving ? 'not-allowed' : 'pointer',
+                                                                            fontSize: '13px',
+                                                                            opacity: isRemoving ? 0.6 : 1,
+                                                                        }}
+                                                                    >
+                                                                        {isRemoving ? '...' : 'Yes'}
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); setConfirmRemoveTrackedCanister(null); }}
+                                                                        style={{
+                                                                            backgroundColor: theme.colors.secondaryBg,
+                                                                            color: theme.colors.primaryText,
+                                                                            border: `1px solid ${theme.colors.border}`,
+                                                                            borderRadius: '6px',
+                                                                            padding: '8px 12px',
+                                                                            cursor: 'pointer',
+                                                                            fontSize: '13px',
+                                                                        }}
+                                                                    >
+                                                                        No
+                                                                    </button>
+                                                                </div>
+                                                            ) : (
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); setConfirmRemoveTrackedCanister(canisterId); }}
+                                                                    style={{
+                                                                        padding: '8px 16px',
+                                                                        borderRadius: '8px',
+                                                                        border: `1px solid ${theme.colors.border}`,
+                                                                        backgroundColor: 'transparent',
+                                                                        color: theme.colors.mutedText,
+                                                                        fontSize: '13px',
+                                                                        cursor: 'pointer',
+                                                                    }}
+                                                                    title="Remove from wallet"
+                                                                >
+                                                                    Remove
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    }
+                                    
+                                    // Regular canister card
                                     return (
                                         <div 
                                             key={canisterId}
