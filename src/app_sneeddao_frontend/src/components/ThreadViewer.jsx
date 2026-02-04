@@ -1020,26 +1020,13 @@ function ThreadViewer({
         }
     };
 
-    // Calculate total reachable voting power from selected SNS-specific neurons (for forum voting)
+    // Calculate total reachable voting power from selected neurons (for forum voting)
+    // Neurons are already filtered for the correct SNS since they come from getCachedNeurons(governanceCanisterId)
     const totalVotingPower = React.useMemo(() => {
         const selectedNeurons = getSelectedNeurons();
-        if (!selectedNeurons || selectedNeurons.length === 0 || !snsRootCanisterId) return 0;
+        if (!selectedNeurons || selectedNeurons.length === 0) return 0;
         
-        // Filter selected neurons for the specific SNS
-        const snsNeurons = selectedNeurons.filter(neuron => {
-            try {
-                // Check if neuron belongs to this SNS by comparing root canister ID
-                const neuronSnsRoot = neuron.sns_root_canister_id;
-                return neuronSnsRoot && neuronSnsRoot.toString() === snsRootCanisterId.toString();
-            } catch (error) {
-                console.warn('Error checking neuron SNS:', neuron.id, error);
-                return false;
-            }
-        });
-
-        console.log(`Found ${snsNeurons.length} neurons for SNS ${snsRootCanisterId}`);
-        
-        return snsNeurons.reduce((total, neuron) => {
+        return selectedNeurons.reduce((total, neuron) => {
             try {
                 const votingPower = calculateVotingPower(neuron);
                 return total + votingPower;
@@ -1048,7 +1035,7 @@ function ThreadViewer({
                 return total;
             }
         }, 0);
-    }, [getSelectedNeurons, snsRootCanisterId]);
+    }, [getSelectedNeurons]);
 
     // Fetch thread details and posts
     const fetchThreadData = useCallback(async () => {
