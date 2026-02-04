@@ -1342,12 +1342,14 @@ export const WalletProvider = ({ children }) => {
             setLedgerList('registered', registeredLedgers);
             
             // Start fetching registered tokens immediately (don't wait for RLL/tips)
+            // Collect promises so we know when initial fetch is done
+            const registeredTokenPromises = [];
             registeredLedgers.forEach(ledger => {
                 const ledgerId = ledger.toString();
                 if (!knownLedgers.has(ledgerId)) {
                     knownLedgers.add(ledgerId);
                     // Fire and forget - will add progressively
-                    fetchTokenDetailsFast(ledger, summedLocks).then(token => {
+                    const promise = fetchTokenDetailsFast(ledger, summedLocks).then(token => {
                         if (token && fetchSessionRef.current === sessionId) {
                             addTokenProgressively(token, sessionId);
                             // Then fetch USD value and neuron totals in background
@@ -1355,6 +1357,16 @@ export const WalletProvider = ({ children }) => {
                             fetchAndUpdateNeuronTotals(ledger, sessionId);
                         }
                     }).catch(() => {});
+                    registeredTokenPromises.push(promise);
+                }
+            });
+            
+            // Wait for all registered token fetches to complete before marking as fetched
+            // This prevents the "No tokens" flash when network is slow
+            Promise.allSettled(registeredTokenPromises).then(() => {
+                if (fetchSessionRef.current === sessionId) {
+                    setHasFetchedInitial(true);
+                    setWalletLoading(false);
                 }
             });
 
@@ -1424,14 +1436,8 @@ export const WalletProvider = ({ children }) => {
 
             setLastUpdated(new Date());
             
-            // Set loading to false and hasFetchedInitial to true after tokens have had time to load
-            // This prevents the brief "No tokens" flash during progressive loading
-            setTimeout(() => {
-                if (fetchSessionRef.current === sessionId) {
-                    setHasFetchedInitial(true);
-                    setWalletLoading(false);
-                }
-            }, 800);
+            // Note: hasFetchedInitial and walletLoading are now set by Promise.allSettled
+            // above when all registered token fetches complete
             
         } catch (err) {
             console.error('Error fetching compact wallet tokens:', err);
