@@ -54,7 +54,7 @@ import ThemeToggle from '../components/ThemeToggle';
 import TokenIcon from '../components/TokenIcon';
 import { Principal } from '@dfinity/principal';
 import { createSneedexActor } from '../utils/SneedexUtils';
-import { FaUser, FaCrown, FaWallet, FaComments, FaCoins, FaEnvelope, FaGift, FaLock, FaServer, FaAddressBook, FaCog, FaChevronRight, FaChevronDown, FaBrain, FaExchangeAlt, FaCheckCircle, FaBell, FaPalette, FaGavel, FaShareAlt, FaExternalLinkAlt } from 'react-icons/fa';
+import { FaUser, FaCrown, FaKey, FaWallet, FaComments, FaCoins, FaEnvelope, FaGift, FaLock, FaServer, FaAddressBook, FaCog, FaChevronRight, FaChevronDown, FaBrain, FaExchangeAlt, FaCheckCircle, FaBell, FaPalette, FaGavel, FaShareAlt, FaExternalLinkAlt } from 'react-icons/fa';
 
 // Custom CSS for animations
 const customStyles = `
@@ -2388,7 +2388,7 @@ export default function Me() {
                                                                 boxShadow: isActive ? `0 2px 8px ${mePrimary}30` : 'none'
                                                             }}
                                                         >
-                                                            <span>{isMyNeurons ? '👑' : '🔑'}</span>
+                                                            <span>{isMyNeurons ? <FaCrown size={12} /> : <FaKey size={12} />}</span>
                                                             <span style={{ 
                                                                 overflow: 'hidden', 
                                                                 textOverflow: 'ellipsis',
@@ -2923,7 +2923,7 @@ function NeuronGroup({
                             fontWeight: '600',
                             fontSize: '0.95rem',
                         }}>
-                            👑 Owned Neurons ({group.neurons.length})
+                            <FaCrown size={14} style={{ marginRight: '4px' }} /> Owned Neurons ({group.neurons.length})
                         </span>
                     ) : (
                         <span style={{
@@ -2935,7 +2935,7 @@ function NeuronGroup({
                             gap: '0.5rem',
                             flexWrap: 'wrap'
                         }}>
-                            <span>🔑 Hotkey access to</span>
+                            <span><FaKey size={14} style={{ marginRight: '4px' }} /> Hotkey access to</span>
                             {group.ownerPrincipal && group.ownerPrincipal.includes('-') ? (
                                 <PrincipalDisplay
                                     principal={Principal.fromText(group.ownerPrincipal)}
@@ -3292,7 +3292,7 @@ function NeuronCard({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                     {getOwnerPrincipals(neuron).filter(ownerStr => ownerStr && ownerStr.includes('-')).map((ownerStr) => (
                         <div key={ownerStr} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
-                            <span title="Owner">👑</span>
+                            <FaCrown size={12} title="Owner" />
                             <PrincipalDisplay
                                 principal={Principal.fromText(ownerStr)}
                                 displayInfo={principalDisplayInfo.get(ownerStr)}
@@ -3306,7 +3306,7 @@ function NeuronCard({
                             const principalStr = safePrincipalString(p.principal);
                             return (
                                 <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
-                                    <span title="Hotkey">🔑</span>
+                                    <FaKey size={12} title="Hotkey" />
                                     <PrincipalDisplay 
                                         principal={p.principal}
                                         displayInfo={principalDisplayInfo.get(principalStr)}
