@@ -1219,14 +1219,10 @@ export default function CanistersPage() {
     };
 
     // Move canister from wallet to groups or neuron managers
+    // IMPORTANT: Add to destination FIRST, then remove from source (prevents data loss on network failure)
     const handleMoveFromWallet = async (canisterId, destination) => {
         try {
-            // Remove from wallet
-            await unregisterTrackedCanister(identity, canisterId);
-            const canisters = await getTrackedCanisters(identity);
-            setTrackedCanisters(canisters.map(p => p.toText()));
-            
-            // Add to destination
+            // Add to destination FIRST
             if (destination === 'neuron_managers') {
                 // Register as neuron manager
                 const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
@@ -1242,7 +1238,6 @@ export default function CanistersPage() {
                     throw new Error(result.Err);
                 }
                 await fetchNeuronManagers();
-                setSuccessMessage('Canister moved to Neuron Managers');
             } else {
                 // Add to a canister group
                 let newGroups = canisterGroups;
@@ -1255,8 +1250,14 @@ export default function CanistersPage() {
                     newGroups = addCanisterToGroup(newGroups, canisterId, destination);
                 }
                 await saveCanisterGroups(newGroups);
-                setSuccessMessage('Canister moved to groups');
             }
+            
+            // THEN remove from wallet (if this fails, canister exists in both places - better than nowhere)
+            await unregisterTrackedCanister(identity, canisterId);
+            const canisters = await getTrackedCanisters(identity);
+            setTrackedCanisters(canisters.map(p => p.toText()));
+            
+            setSuccessMessage(destination === 'neuron_managers' ? 'Canister moved to Neuron Managers' : 'Canister moved to groups');
         } catch (err) {
             console.error('Error moving canister from wallet:', err);
             setError('Failed to move canister: ' + (err.message || 'Unknown error'));
@@ -1264,26 +1265,14 @@ export default function CanistersPage() {
     };
 
     // Move canister from groups to wallet or neuron managers
+    // IMPORTANT: Add to destination FIRST, then remove from source (prevents data loss on network failure)
     const handleMoveFromGroups = async (canisterId, fromGroupId, destination) => {
         try {
-            // Remove from current group
-            let newGroups = canisterGroups;
-            if (fromGroupId === 'ungrouped') {
-                newGroups = {
-                    ...newGroups,
-                    ungrouped: newGroups.ungrouped.filter(c => c !== canisterId),
-                };
-            } else {
-                newGroups = removeCanisterFromGroup(newGroups, canisterId, fromGroupId);
-            }
-            await saveCanisterGroups(newGroups);
-            
-            // Add to destination
+            // Add to destination FIRST
             if (destination === 'wallet') {
                 await registerTrackedCanister(identity, canisterId);
                 const canisters = await getTrackedCanisters(identity);
                 setTrackedCanisters(canisters.map(p => p.toText()));
-                setSuccessMessage('Canister moved to Wallet');
             } else if (destination === 'neuron_managers') {
                 const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
                     ? 'https://ic0.app' 
@@ -1298,8 +1287,21 @@ export default function CanistersPage() {
                     throw new Error(result.Err);
                 }
                 await fetchNeuronManagers();
-                setSuccessMessage('Canister moved to Neuron Managers');
             }
+            
+            // THEN remove from current group (if this fails, canister exists in both places - better than nowhere)
+            let newGroups = canisterGroups;
+            if (fromGroupId === 'ungrouped') {
+                newGroups = {
+                    ...newGroups,
+                    ungrouped: newGroups.ungrouped.filter(c => c !== canisterId),
+                };
+            } else {
+                newGroups = removeCanisterFromGroup(newGroups, canisterId, fromGroupId);
+            }
+            await saveCanisterGroups(newGroups);
+            
+            setSuccessMessage(destination === 'wallet' ? 'Canister moved to Wallet' : 'Canister moved to Neuron Managers');
         } catch (err) {
             console.error('Error moving canister from groups:', err);
             setError('Failed to move canister: ' + (err.message || 'Unknown error'));
@@ -1307,9 +1309,31 @@ export default function CanistersPage() {
     };
 
     // Move neuron manager to wallet or groups
+    // IMPORTANT: Add to destination FIRST, then remove from source (prevents data loss on network failure)
     const handleMoveFromNeuronManagers = async (canisterId, destination) => {
         try {
-            // Remove from neuron managers
+            const canisterIdStr = typeof canisterId === 'string' ? canisterId : canisterId.toText();
+            
+            // Add to destination FIRST
+            if (destination === 'wallet') {
+                await registerTrackedCanister(identity, canisterIdStr);
+                const canisters = await getTrackedCanisters(identity);
+                setTrackedCanisters(canisters.map(p => p.toText()));
+            } else if (destination === 'ungrouped' || destination !== 'neuron_managers') {
+                // Add to a canister group
+                let newGroups = canisterGroups;
+                if (destination === 'ungrouped') {
+                    newGroups = {
+                        ...newGroups,
+                        ungrouped: [canisterIdStr, ...newGroups.ungrouped],
+                    };
+                } else {
+                    newGroups = addCanisterToGroup(newGroups, canisterIdStr, destination);
+                }
+                await saveCanisterGroups(newGroups);
+            }
+            
+            // THEN remove from neuron managers (if this fails, canister exists in both places - better than nowhere)
             const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
                 ? 'https://ic0.app' 
                 : 'http://localhost:4943';
@@ -1324,28 +1348,7 @@ export default function CanistersPage() {
             }
             await fetchNeuronManagers();
             
-            const canisterIdStr = typeof canisterId === 'string' ? canisterId : canisterId.toText();
-            
-            // Add to destination
-            if (destination === 'wallet') {
-                await registerTrackedCanister(identity, canisterIdStr);
-                const canisters = await getTrackedCanisters(identity);
-                setTrackedCanisters(canisters.map(p => p.toText()));
-                setSuccessMessage('Canister moved to Wallet');
-            } else if (destination === 'ungrouped' || destination !== 'neuron_managers') {
-                // Add to a canister group
-                let newGroups = canisterGroups;
-                if (destination === 'ungrouped') {
-                    newGroups = {
-                        ...newGroups,
-                        ungrouped: [canisterIdStr, ...newGroups.ungrouped],
-                    };
-                } else {
-                    newGroups = addCanisterToGroup(newGroups, canisterIdStr, destination);
-                }
-                await saveCanisterGroups(newGroups);
-                setSuccessMessage('Canister moved to groups');
-            }
+            setSuccessMessage(destination === 'wallet' ? 'Canister moved to Wallet' : 'Canister moved to groups');
         } catch (err) {
             console.error('Error moving canister from neuron managers:', err);
             setError('Failed to move canister: ' + (err.message || 'Unknown error'));
