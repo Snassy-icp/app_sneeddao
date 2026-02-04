@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaTimes, FaSync, FaBrain, FaBox, FaCrown, FaExternalLinkAlt, FaTrash, FaCoins, FaMicrochip, FaChevronDown, FaChevronRight, FaLock, FaHourglassHalf, FaCheck, FaQuestionCircle, FaSeedling } from 'react-icons/fa';
+import { FaTimes, FaSync, FaBrain, FaBox, FaCrown, FaExternalLinkAlt, FaTrash, FaCoins, FaMicrochip, FaChevronDown, FaChevronRight, FaLock, FaHourglassHalf, FaCheck, FaQuestionCircle, FaSeedling, FaPaperPlane } from 'react-icons/fa';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
 
@@ -25,6 +25,7 @@ const DappCardModal = ({
     // Optional handlers
     handleRefresh,
     handleRemove,
+    handleSend, // Opens the transfer/send modal
     isRefreshing = false,
     isRemoving = false,
 }) => {
@@ -657,6 +658,35 @@ const DappCardModal = ({
                         flexDirection: 'column',
                         gap: '10px',
                     }}>
+                        {/* Send button - for controllers */}
+                        {isController && handleSend && (
+                            <button
+                                onClick={() => {
+                                    handleSend(canisterId);
+                                    onClose();
+                                }}
+                                style={{
+                                    width: '100%',
+                                    padding: '12px 16px',
+                                    backgroundColor: theme.colors.accent,
+                                    color: '#fff',
+                                    border: 'none',
+                                    borderRadius: '10px',
+                                    fontSize: '14px',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '8px',
+                                    transition: 'all 0.2s ease',
+                                }}
+                            >
+                                <FaPaperPlane size={12} />
+                                Send
+                            </button>
+                        )}
+
                         {/* Primary action: Manage Neurons (for neuron managers) */}
                         {isNeuronManager && (
                             <button

@@ -8566,6 +8566,17 @@ function Wallet() {
                     handleRefresh={handleRefreshDappModal}
                     isRefreshing={isRefreshingDapp}
                     neuronsData={detailDapp?.neuronsData}
+                    handleSend={(canisterId) => {
+                        // Close the dapp modal first
+                        setShowDappDetailModal(false);
+                        setDetailDapp(null);
+                        // Open the transfer canister modal
+                        setTransferTargetCanister(canisterId);
+                        setTransferCanisterRecipient('');
+                        setTransferCanisterError('');
+                        setTransferCanisterSuccess('');
+                        setTransferCanisterModalOpen(true);
+                    }}
                 />
                     </>
                 )}

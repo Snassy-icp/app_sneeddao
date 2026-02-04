@@ -15,7 +15,7 @@ import { getTokenLogo, get_token_conversion_rate, get_available, get_available_b
 import { fetchUserNeuronsForSns, uint8ArrayToHex } from '../utils/NeuronUtils';
 import { getTipTokensReceivedByUser, getTrackedCanisters } from '../utils/BackendUtils';
 import { fetchAndCacheSnsData, getAllSnses, getSnsById } from '../utils/SnsUtils';
-import { getNeuronsFromCacheByIds, saveNeuronsToCache, normalizeId } from '../hooks/useNeuronsCache';
+import { getNeuronsFromCacheByIds, saveNeuronsToCache, getAllNeuronsForSns, normalizeId } from '../hooks/useNeuronsCache';
 import { initializeLogoCache, getLogo, setLogo, getLogoSync } from '../hooks/useLogoCache';
 import { initializeTokenCache, setLedgerList, getTokenMetadataSync } from '../hooks/useTokenCache';
 import { getCachedRewards, setCachedRewards } from '../hooks/useRewardsCache';
@@ -768,10 +768,10 @@ export const WalletProvider = ({ children }) => {
                 const allSnses = getAllSnses();
                 const sns = allSnses.find(s => normalizeId(s.canisters?.governance) === govId);
                 
-                // IMPORTANT: Always fetch from network for user neurons - the IndexedDB cache
-                // stores ALL neurons for an SNS (from various sources like /neurons page browsing)
-                // which may include neurons that don't belong to the current user.
-                // fetchUserNeuronsForSns correctly filters by user principal.
+                // IMPORTANT: Always fetch user's neurons from network first.
+                // This is the user-specific call that returns only neurons where the user
+                // is a hotkey/controller. The IndexedDB cache stores ALL neurons for an SNS
+                // (global data), but we need the user-specific list from the network.
                 const neurons = await fetchUserNeuronsForSns(identity, govId);
                 
                 // Cache the neurons in memory

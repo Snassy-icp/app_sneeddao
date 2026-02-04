@@ -20,6 +20,7 @@ import { HttpAgent, Actor } from '@dfinity/agent';
 import { uint8ArrayToHex } from './utils/NeuronUtils';
 import { getCanisterInfo } from './utils/BackendUtils';
 import SendTokenModal from './SendTokenModal';
+import SendLiquidityPositionModal from './SendLiquidityPositionModal';
 
 // Management canister constants
 const MANAGEMENT_CANISTER_ID = 'aaaaa-aa';
@@ -46,6 +47,7 @@ const managementCanisterIdlFactory = ({ IDL }) => {
 import TokenCardModal from './components/TokenCardModal';
 import PositionCardModal from './components/PositionCardModal';
 import DappCardModal from './components/DappCardModal';
+import TransferCanisterModal from './components/TransferCanisterModal';
 import LockModal from './LockModal';
 import { usePremiumStatus } from './hooks/usePremiumStatus';
 import './PrincipalBox.css';
@@ -76,9 +78,14 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const [detailPosition, setDetailPosition] = useState(null);
     const [detailPositionDetails, setDetailPositionDetails] = useState(null);
     const [isRefreshingPosition, setIsRefreshingPosition] = useState(false);
+    const [showSendLiquidityPositionModal, setShowSendLiquidityPositionModal] = useState(false);
+    const [selectedLiquidityPosition, setSelectedLiquidityPosition] = useState(null);
     const [showDappDetailModal, setShowDappDetailModal] = useState(false);
     const [detailDapp, setDetailDapp] = useState(null); // { canisterId, isNeuronManager, ... }
     const [isRefreshingDapp, setIsRefreshingDapp] = useState(false);
+    const [showTransferCanisterModal, setShowTransferCanisterModal] = useState(false);
+    const [transferCanisterId, setTransferCanisterId] = useState(null);
+    const [transferIsNeuronManager, setTransferIsNeuronManager] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
     const [showDebugReportModal, setShowDebugReportModal] = useState(false);
     const [debugReportCopied, setDebugReportCopied] = useState(false);
@@ -864,6 +871,57 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
             setIsRefreshingDapp(false);
         }
     }, [identity]);
+
+    // Handle send canister (opens transfer modal)
+    const handleSendCanister = useCallback((canisterId, isNeuronManager = false) => {
+        // Close dapp detail modal first
+        setShowDappDetailModal(false);
+        setDetailDapp(null);
+        // Open transfer canister modal
+        setTransferCanisterId(canisterId);
+        setTransferIsNeuronManager(isNeuronManager);
+        setShowTransferCanisterModal(true);
+    }, []);
+
+    // Handle transfer complete
+    const handleTransferCanisterComplete = useCallback((canisterId, recipientPrincipal) => {
+        // Refresh wallet data after transfer
+        if (walletContext?.refreshWallet) {
+            walletContext.refreshWallet();
+        }
+    }, [walletContext]);
+
+    // Handle open send liquidity position modal from detail modal
+    const handleOpenSendLiquidityPositionFromDetail = useCallback((position) => {
+        // Close the detail modal first
+        setShowPositionDetailModal(false);
+        setDetailPosition(null);
+        setDetailPositionDetails(null);
+        // Open the send modal
+        setSelectedLiquidityPosition(position);
+        setShowSendLiquidityPositionModal(true);
+    }, []);
+
+    // Handle sending liquidity position
+    const handleSendLiquidityPosition = useCallback(async (positionId, recipientPrincipal) => {
+        if (!walletContext?.sendLiquidityPosition) {
+            console.error('sendLiquidityPosition function not available');
+            return;
+        }
+        
+        try {
+            await walletContext.sendLiquidityPosition(positionId, recipientPrincipal);
+            setShowSendLiquidityPositionModal(false);
+            setSelectedLiquidityPosition(null);
+            // Refresh wallet data
+            if (walletContext?.refreshWallet) {
+                walletContext.refreshWallet();
+            }
+        } catch (error) {
+            console.error('Error sending liquidity position:', error);
+            throw error;
+        }
+    }, [walletContext]);
 
     // Handle refresh position in detail modal
     const handleRefreshPosition = useCallback(async () => {
@@ -2665,6 +2723,17 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
           swapCanisterBalance1={detailPosition?.swapCanisterBalance1}
           token0Fee={detailPosition?.token0Fee}
           token1Fee={detailPosition?.token1Fee}
+          openSendLiquidityPositionModal={(position) => handleOpenSendLiquidityPositionFromDetail(position || detailPosition)}
+      />
+      
+      <SendLiquidityPositionModal
+          show={showSendLiquidityPositionModal}
+          onClose={() => {
+              setShowSendLiquidityPositionModal(false);
+              setSelectedLiquidityPosition(null);
+          }}
+          onSend={handleSendLiquidityPosition}
+          liquidityPosition={selectedLiquidityPosition}
       />
       
       {/* Dapp Detail Modal */}
@@ -2683,6 +2752,19 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
           neuronCount={detailDapp?.neuronCount}
           handleRefresh={handleRefreshDapp}
           isRefreshing={isRefreshingDapp}
+          handleSend={(canisterId) => handleSendCanister(canisterId, detailDapp?.isNeuronManager)}
+      />
+      
+      <TransferCanisterModal
+          show={showTransferCanisterModal}
+          onClose={() => {
+              setShowTransferCanisterModal(false);
+              setTransferCanisterId(null);
+          }}
+          canisterId={transferCanisterId}
+          identity={identity}
+          onTransferComplete={handleTransferCanisterComplete}
+          isNeuronManager={transferIsNeuronManager}
       />
       
       {/* Debug Report Modal (Admin only) */}
