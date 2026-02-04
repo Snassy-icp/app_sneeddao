@@ -2119,15 +2119,33 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                               </span>
                                           </div>
                                           
-                                          {/* Position ID */}
-                                          <div style={{
-                                              color: theme.colors.mutedText,
-                                              fontSize: '10px',
-                                              opacity: 0.7,
-                                              flexShrink: 0
-                                          }}>
-                                              #{positionDetails.positionId?.toString() || '?'}
-                                          </div>
+                                          {/* Send Button */}
+                                          <button
+                                              onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  handleOpenSendLiquidityPositionFromDetail({ ...position, ...positionDetails });
+                                              }}
+                                              style={{
+                                                  background: 'none',
+                                                  border: 'none',
+                                                  padding: '4px 8px',
+                                                  cursor: 'pointer',
+                                                  color: theme.colors.accent,
+                                                  fontSize: '11px',
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  gap: '4px',
+                                                  borderRadius: '4px',
+                                                  transition: 'background-color 0.15s ease',
+                                                  flexShrink: 0
+                                              }}
+                                              onMouseOver={(e) => e.currentTarget.style.backgroundColor = `${theme.colors.accent}20`}
+                                              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                              title="Send position"
+                                          >
+                                              <FaPaperPlane size={10} />
+                                              <span>Send</span>
+                                          </button>
                                       </div>
                                   );
                               })
@@ -2491,6 +2509,34 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                                   }
                                               </span>
                                           </div>
+                                          
+                                          {/* Send Button */}
+                                          <button
+                                              onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  handleSendCanister(canisterIdStr, true);
+                                              }}
+                                              style={{
+                                                  background: 'none',
+                                                  border: 'none',
+                                                  padding: '4px 8px',
+                                                  cursor: 'pointer',
+                                                  color: theme.colors.accent,
+                                                  fontSize: '11px',
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  gap: '4px',
+                                                  borderRadius: '4px',
+                                                  transition: 'background-color 0.15s ease',
+                                                  flexShrink: 0
+                                              }}
+                                              onMouseOver={(e) => e.currentTarget.style.backgroundColor = `${theme.colors.accent}20`}
+                                              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                              title="Transfer control"
+                                          >
+                                              <FaPaperPlane size={10} />
+                                              <span>Send</span>
+                                          </button>
                                       </div>
                                   );
                               })}
@@ -2642,6 +2688,36 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                                   )}
                                               </span>
                                           </div>
+                                          
+                                          {/* Send Button - only show if controller */}
+                                          {isController && (
+                                              <button
+                                                  onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      handleSendCanister(canisterId, isNeuronManager);
+                                                  }}
+                                                  style={{
+                                                      background: 'none',
+                                                      border: 'none',
+                                                      padding: '4px 8px',
+                                                      cursor: 'pointer',
+                                                      color: theme.colors.accent,
+                                                      fontSize: '11px',
+                                                      display: 'flex',
+                                                      alignItems: 'center',
+                                                      gap: '4px',
+                                                      borderRadius: '4px',
+                                                      transition: 'background-color 0.15s ease',
+                                                      flexShrink: 0
+                                                  }}
+                                                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = `${theme.colors.accent}20`}
+                                                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                                  title="Transfer control"
+                                              >
+                                                  <FaPaperPlane size={10} />
+                                                  <span>Send</span>
+                                              </button>
+                                          )}
                                       </div>
                                   );
                               })}

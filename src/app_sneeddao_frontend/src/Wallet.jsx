@@ -3199,23 +3199,62 @@ function Wallet() {
         setShowDappDetailModal(true);
     };
 
-    // Refresh dapp in detail modal
+    // Refresh dapp in detail modal - fetches fresh data directly
     const handleRefreshDappModal = async (canisterId) => {
         if (!identity || !canisterId) return;
         
         setIsRefreshingDapp(true);
         try {
-            await handleRefreshCanisterCard(canisterId);
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
             
-            // Update modal with fresh data
-            const status = trackedCanisterStatus[canisterId];
+            let cycles = null;
+            let memory = null;
+            let isController = false;
+            
+            try {
+                const canisterIdPrincipal = Principal.fromText(canisterId);
+                const mgmtActor = Actor.createActor(managementCanisterIdlFactory, {
+                    agent,
+                    canisterId: MANAGEMENT_CANISTER_ID,
+                    callTransform: (methodName, args, callConfig) => ({
+                        ...callConfig,
+                        effectiveCanisterId: canisterIdPrincipal,
+                    }),
+                });
+                const status = await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
+                cycles = Number(status.cycles);
+                memory = Number(status.memory_size);
+                isController = true;
+            } catch (err) {
+                // Not a controller - can't get cycles/memory
+                console.warn('Unable to get canister status (not a controller):', err.message);
+            }
+            
+            // Update tracked canister status (for the main page)
+            setTrackedCanisterStatus(prev => ({
+                ...prev,
+                [canisterId]: { ...prev[canisterId], cycles, memory, isController }
+            }));
+            
+            // Also update neuron manager cycles/memory if this is a registered manager
+            const normalizedId = normalizeId(canisterId);
+            setNeuronManagerCycles(prev => ({ ...prev, [normalizedId]: cycles }));
+            setNeuronManagerMemory(prev => ({ ...prev, [normalizedId]: memory }));
+            setNeuronManagerIsController(prev => ({ ...prev, [normalizedId]: isController }));
+            
+            // Update modal with fresh data directly using local variables
             const detectedManager = detectedNeuronManagers[canisterId];
-            
             setDetailDapp(prev => prev ? {
                 ...prev,
-                cycles: status?.cycles,
-                memory: status?.memory,
-                isController: status?.isController,
+                cycles,
+                memory,
+                isController,
                 neuronCount: detectedManager?.neuronCount || prev?.neuronCount,
             } : null);
         } finally {
@@ -5993,7 +6032,7 @@ function Wallet() {
                                                                     neuronCount: neuronCount || 0,
                                                                     cycles: neuronManagerCycles[canisterId],
                                                                     memory: neuronManagerMemory[canisterId],
-                                                                    isController: neuronManagerControllers[canisterId],
+                                                                    isController: neuronManagerIsController[canisterId] ?? true,
                                                                     neuronsData: neuronsData,
                                                                 });
                                                             }}
