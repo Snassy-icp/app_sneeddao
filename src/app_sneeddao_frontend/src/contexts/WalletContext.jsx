@@ -1560,18 +1560,27 @@ export const WalletProvider = ({ children }) => {
             
             const factory = createFactoryActor(factoryCanisterId, { agent });
             
-            // Fetch managers
+            // Step 1: Quick query to get manager IDs
             const canisterIds = await factory.getMyManagers();
             
             if (managersFetchSessionRef.current !== sessionId) return;
             
             if (canisterIds.length > 0) {
-                const updatedManagers = [];
+                // Step 2: Immediately show the list with loading placeholders
+                const initialManagers = canisterIds.map(canisterIdPrincipal => ({
+                    canisterId: canisterIdPrincipal,
+                    version: null, // Will be loaded progressively
+                    neuronCount: null, // Will be loaded progressively
+                    loading: true,
+                }));
                 
-                await Promise.all(canisterIds.map(async (canisterIdPrincipal) => {
+                setNeuronManagers(initialManagers);
+                setHasFetchedManagers(true);
+                setNeuronManagersLoading(false); // List is ready, details loading
+                
+                // Step 3: Progressively fetch version and neuronCount for each manager
+                canisterIds.forEach(async (canisterIdPrincipal) => {
                     const canisterId = canisterIdPrincipal.toString();
-                    let currentVersion = { major: 0, minor: 0, patch: 0 };
-                    let neuronCount = 0;
                     
                     try {
                         const managerActor = createManagerActor(canisterIdPrincipal, { agent });
@@ -1579,39 +1588,40 @@ export const WalletProvider = ({ children }) => {
                             managerActor.getNeuronCount(),
                             managerActor.getVersion(),
                         ]);
-                        neuronCount = Number(count);
-                        currentVersion = version;
+                        
+                        if (managersFetchSessionRef.current !== sessionId) return;
+                        
+                        // Update this specific manager with fetched data
+                        setNeuronManagers(prev => prev.map(m => 
+                            m.canisterId.toString() === canisterId 
+                                ? { ...m, version, neuronCount: Number(count), loading: false }
+                                : m
+                        ));
                     } catch (err) {
                         console.error(`Error fetching data for ${canisterId}:`, err);
+                        
+                        if (managersFetchSessionRef.current !== sessionId) return;
+                        
+                        // Mark as loaded even on error, with default values
+                        setNeuronManagers(prev => prev.map(m => 
+                            m.canisterId.toString() === canisterId 
+                                ? { ...m, version: { major: 0, minor: 0, patch: 0 }, neuronCount: 0, loading: false }
+                                : m
+                        ));
                     }
                     
-                    updatedManagers.push({ 
-                        canisterId: canisterIdPrincipal, 
-                        version: currentVersion, 
-                        neuronCount 
-                    });
-                }));
-                
-                if (managersFetchSessionRef.current !== sessionId) return;
-                
-                setNeuronManagers(updatedManagers);
-                setHasFetchedManagers(true);
-                
-                // Fetch neurons for all managers in parallel (for total calculation)
-                updatedManagers.forEach(manager => {
-                    fetchManagerNeuronsData(manager.canisterId.toString());
+                    // Fetch neurons for this manager (for total calculation)
+                    fetchManagerNeuronsData(canisterId);
                 });
             } else {
                 setNeuronManagers([]);
                 setHasFetchedManagers(true);
+                setNeuronManagersLoading(false);
             }
         } catch (err) {
             console.error('Error fetching neuron managers:', err);
             if (managersFetchSessionRef.current === sessionId) {
                 setHasFetchedManagers(true);
-            }
-        } finally {
-            if (managersFetchSessionRef.current === sessionId) {
                 setNeuronManagersLoading(false);
             }
         }

@@ -5969,7 +5969,7 @@ function Wallet() {
                                                             }
                                                         >
                                                             {isVersionOutdated(manager.version) && <FaExclamationTriangle size={10} style={{ marginRight: '4px', color: '#f59e0b' }} />}
-                                                            v{Number(manager.version.major)}.{Number(manager.version.minor)}.{Number(manager.version.patch)}
+                                                            {manager.version ? `v${Number(manager.version.major)}.${Number(manager.version.minor)}.${Number(manager.version.patch)}` : '...'}
                                                         </span>
                                                         {/* Cycles badge */}
                                                         {neuronManagerCycles[canisterId] !== undefined && neuronManagerCycles[canisterId] !== null && (

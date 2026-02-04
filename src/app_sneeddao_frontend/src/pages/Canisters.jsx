@@ -4635,14 +4635,14 @@ export default function CanistersPage() {
                                                                     }
                                                                 >
                                                                     {isVersionOutdated(manager.version) && '⚠️ '}
-                                                                    v{Number(manager.version.major)}.{Number(manager.version.minor)}.{Number(manager.version.patch)}
+                                                                    {manager.version ? `v${Number(manager.version.major)}.${Number(manager.version.minor)}.${Number(manager.version.patch)}` : '...'}
                                                                 </span>
                                                                 <span style={{
                                                                     ...styles.managerVersion,
-                                                                    backgroundColor: manager.neuronCount > 0 ? '#8b5cf620' : theme.colors.tertiaryBg,
-                                                                    color: manager.neuronCount > 0 ? '#8b5cf6' : theme.colors.secondaryText,
+                                                                    backgroundColor: manager.neuronCount != null && manager.neuronCount > 0 ? '#8b5cf620' : theme.colors.tertiaryBg,
+                                                                    color: manager.neuronCount != null && manager.neuronCount > 0 ? '#8b5cf6' : theme.colors.secondaryText,
                                                                 }}>
-                                                                    🧠 {manager.neuronCount} neuron{manager.neuronCount !== 1 ? 's' : ''}
+                                                                    🧠 {manager.neuronCount != null ? `${manager.neuronCount} neuron${manager.neuronCount !== 1 ? 's' : ''}` : '...'}
                                                                 </span>
                                                                 {manager.cycles !== null && (
                                                                     <span 
