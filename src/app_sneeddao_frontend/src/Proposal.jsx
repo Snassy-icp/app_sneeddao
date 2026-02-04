@@ -1639,19 +1639,31 @@ function Proposal() {
                                                                 <div 
                                                                     key={index}
                                                                     style={{
-                                                                        padding: '0.75rem',
+                                                                        padding: '0.4rem 0.6rem',
                                                                         background: theme.colors.secondaryBg,
-                                                                        marginBottom: '0.5rem',
-                                                                        borderRadius: '8px',
-                                                                        border: `1px solid ${theme.colors.border}`
+                                                                        marginBottom: '0.25rem',
+                                                                        borderRadius: '6px',
+                                                                        border: `1px solid ${theme.colors.border}`,
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '0.75rem',
+                                                                        fontSize: '0.8rem'
                                                                     }}
                                                                 >
+                                                                    {/* Vote indicator */}
+                                                                    <span style={{ 
+                                                                        color: ballot.vote === 1 ? theme.colors.success : ballot.vote === 2 ? theme.colors.error : theme.colors.mutedText,
+                                                                        fontWeight: '600',
+                                                                        minWidth: '55px'
+                                                                    }}>
+                                                                        {formatVote(ballot.vote)}
+                                                                    </span>
+                                                                    
+                                                                    {/* Neuron ID */}
                                                                     <div style={{ 
-                                                                        fontSize: '0.8rem',
-                                                                        color: theme.colors.mutedText,
-                                                                        marginBottom: '0.5rem',
-                                                                        fontFamily: 'monospace',
-                                                                        wordBreak: 'break-all'
+                                                                        flex: 1,
+                                                                        minWidth: 0,
+                                                                        overflow: 'hidden'
                                                                     }}>
                                                                         {formatNeuronDisplayWithContext(
                                                                             neuronId, 
@@ -1663,27 +1675,26 @@ function Proposal() {
                                                                             }
                                                                         )}
                                                                     </div>
-                                                                    <div style={{ 
-                                                                        display: 'flex',
-                                                                        justifyContent: 'space-between',
-                                                                        alignItems: 'center',
-                                                                        fontSize: '0.85rem'
+                                                                    
+                                                                    {/* Voting power */}
+                                                                    <span style={{ 
+                                                                        color: theme.colors.secondaryText,
+                                                                        whiteSpace: 'nowrap',
+                                                                        fontSize: '0.75rem'
                                                                     }}>
+                                                                        {formatE8s(ballot.voting_power)} VP
+                                                                    </span>
+                                                                    
+                                                                    {/* Timestamp */}
+                                                                    {ballot.vote !== 0 && ballot.cast_timestamp_seconds && (
                                                                         <span style={{ 
-                                                                            color: ballot.vote === 1 ? theme.colors.success : ballot.vote === 2 ? theme.colors.error : theme.colors.mutedText,
-                                                                            fontWeight: '600'
+                                                                            color: theme.colors.mutedText,
+                                                                            whiteSpace: 'nowrap',
+                                                                            fontSize: '0.7rem'
                                                                         }}>
-                                                                            {formatVote(ballot.vote)}
+                                                                            {getRelativeTime(Number(ballot.cast_timestamp_seconds) * 1000)}
                                                                         </span>
-                                                                        {ballot.vote !== 0 && ballot.cast_timestamp_seconds && (
-                                                                            <span style={{ color: theme.colors.mutedText }}>
-                                                                                {new Date(Number(ballot.cast_timestamp_seconds) * 1000).toLocaleString()}
-                                                                            </span>
-                                                                        )}
-                                                                        <span style={{ color: theme.colors.secondaryText }}>
-                                                                            {formatE8s(ballot.voting_power)} VP
-                                                                        </span>
-                                                                    </div>
+                                                                    )}
                                                                 </div>
                                                             ))}
                                                         </div>

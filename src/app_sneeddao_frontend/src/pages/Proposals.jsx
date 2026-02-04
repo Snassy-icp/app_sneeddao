@@ -1771,7 +1771,7 @@ function Proposals() {
                                             fontSize: '0.85rem',
                                             color: theme.colors.secondaryText
                                         }}>
-                                            <span>Proposed by:</span>
+                                            <span>Proposer:</span>
                                             {proposal.proposer?.[0]?.id ? 
                                                 formatNeuronDisplayWithContext(
                                                     proposal.proposer[0].id, 
