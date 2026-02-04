@@ -119,6 +119,10 @@ function Proposal() {
 
     // Proposer permissions state
     const [proposerPermissions, setProposerPermissions] = useState(null);
+    
+    // Voting history permissions state
+    const [voterPermissions, setVoterPermissions] = useState({}); // { neuronIdHex: permissions[] }
+    const [expandedVoterPrincipals, setExpandedVoterPrincipals] = useState(new Set());
 
     // Permission constants
     const PERM = {
@@ -148,6 +152,26 @@ function Proposal() {
         } catch {
             return null;
         }
+    };
+
+    // Check if a principal has a name or nickname
+    const principalHasName = (principalStr) => {
+        if (!principalStr) return false;
+        const displayInfo = getPrincipalDisplayInfoLocal(principalStr);
+        return displayInfo && (displayInfo.name || displayInfo.nickname);
+    };
+
+    // Toggle voter principals expanded state
+    const toggleVoterPrincipalsExpanded = (neuronIdHex) => {
+        setExpandedVoterPrincipals(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(neuronIdHex)) {
+                newSet.delete(neuronIdHex);
+            } else {
+                newSet.add(neuronIdHex);
+            }
+            return newSet;
+        });
     };
 
     const getNeuronDisplayInfo = (neuronId) => {
@@ -213,6 +237,32 @@ function Proposal() {
         
         fetchProposerPermissions();
     }, [proposalData, selectedSnsRoot]);
+
+    // Fetch voter neuron permissions progressively
+    useEffect(() => {
+        if (!votingHistory?.length || !selectedSnsRoot || !isVotingHistoryExpanded) return;
+        
+        const fetchVoterPermissions = async () => {
+            for (const [neuronId, ballot] of votingHistory) {
+                const neuronIdHex = typeof neuronId === 'string' ? neuronId : uint8ArrayToHex(neuronId);
+                if (!neuronIdHex || voterPermissions[neuronIdHex]) continue;
+                
+                try {
+                    const neuron = await getNeuronFromCache(selectedSnsRoot, neuronIdHex);
+                    if (neuron?.permissions?.length > 0) {
+                        setVoterPermissions(prev => ({
+                            ...prev,
+                            [neuronIdHex]: neuron.permissions
+                        }));
+                    }
+                } catch (err) {
+                    // Silently skip - permission loading is progressive
+                }
+            }
+        };
+        
+        fetchVoterPermissions();
+    }, [votingHistory, selectedSnsRoot, isVotingHistoryExpanded]);
 
     useEffect(() => {
         if (forumActor && currentProposalId && selectedSnsRoot) {
@@ -1635,68 +1685,165 @@ function Proposal() {
                                                         
                                                         {/* Votes List */}
                                                         <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                                                            {filterAndSortVotes(votingHistory).map(([neuronId, ballot], index) => (
-                                                                <div 
-                                                                    key={index}
-                                                                    style={{
-                                                                        padding: '0.4rem 0.6rem',
-                                                                        background: theme.colors.secondaryBg,
-                                                                        marginBottom: '0.25rem',
-                                                                        borderRadius: '6px',
-                                                                        border: `1px solid ${theme.colors.border}`,
-                                                                        display: 'flex',
-                                                                        alignItems: 'center',
-                                                                        gap: '0.75rem',
-                                                                        fontSize: '0.8rem'
-                                                                    }}
-                                                                >
-                                                                    {/* Vote indicator */}
-                                                                    <span style={{ 
-                                                                        color: ballot.vote === 1 ? theme.colors.success : ballot.vote === 2 ? theme.colors.error : theme.colors.mutedText,
-                                                                        fontWeight: '600',
-                                                                        minWidth: '55px'
-                                                                    }}>
-                                                                        {formatVote(ballot.vote)}
-                                                                    </span>
-                                                                    
-                                                                    {/* Neuron ID */}
-                                                                    <div style={{ 
-                                                                        flex: 1,
-                                                                        minWidth: 0,
-                                                                        overflow: 'hidden'
-                                                                    }}>
-                                                                        {formatNeuronDisplayWithContext(
-                                                                            neuronId, 
-                                                                            selectedSnsRoot, 
-                                                                            getNeuronDisplayInfo(neuronId),
-                                                                            { 
-                                                                                onNicknameUpdate: handleNicknameUpdate,
-                                                                                isAuthenticated: isAuthenticated
-                                                                            }
+                                                            {filterAndSortVotes(votingHistory).map(([neuronId, ballot], index) => {
+                                                                const neuronIdHex = typeof neuronId === 'string' ? neuronId : uint8ArrayToHex(neuronId);
+                                                                const permissions = voterPermissions[neuronIdHex];
+                                                                const isExpanded = expandedVoterPrincipals.has(neuronIdHex);
+                                                                
+                                                                // Separate named and unnamed principals
+                                                                const namedPrincipals = permissions?.filter(perm => {
+                                                                    const principalStr = extractPrincipalString(perm.principal);
+                                                                    return principalStr && principalHasName(principalStr);
+                                                                }) || [];
+                                                                const unnamedPrincipals = permissions?.filter(perm => {
+                                                                    const principalStr = extractPrincipalString(perm.principal);
+                                                                    return principalStr && !principalHasName(principalStr);
+                                                                }) || [];
+                                                                
+                                                                const principalsToShow = isExpanded 
+                                                                    ? [...namedPrincipals, ...unnamedPrincipals]
+                                                                    : namedPrincipals;
+                                                                const hasHiddenPrincipals = unnamedPrincipals.length > 0;
+                                                                
+                                                                return (
+                                                                    <div 
+                                                                        key={index}
+                                                                        style={{
+                                                                            padding: '0.4rem 0.6rem',
+                                                                            background: theme.colors.secondaryBg,
+                                                                            marginBottom: '0.25rem',
+                                                                            borderRadius: '6px',
+                                                                            border: `1px solid ${theme.colors.border}`,
+                                                                            fontSize: '0.8rem'
+                                                                        }}
+                                                                    >
+                                                                        {/* Main row */}
+                                                                        <div style={{
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '0.75rem'
+                                                                        }}>
+                                                                            {/* Vote indicator */}
+                                                                            <span style={{ 
+                                                                                color: ballot.vote === 1 ? theme.colors.success : ballot.vote === 2 ? theme.colors.error : theme.colors.mutedText,
+                                                                                fontWeight: '600',
+                                                                                minWidth: '55px'
+                                                                            }}>
+                                                                                {formatVote(ballot.vote)}
+                                                                            </span>
+                                                                            
+                                                                            {/* Neuron ID */}
+                                                                            <div style={{ 
+                                                                                flex: 1,
+                                                                                minWidth: 0,
+                                                                                overflow: 'hidden'
+                                                                            }}>
+                                                                                {formatNeuronDisplayWithContext(
+                                                                                    neuronId, 
+                                                                                    selectedSnsRoot, 
+                                                                                    getNeuronDisplayInfo(neuronId),
+                                                                                    { 
+                                                                                        onNicknameUpdate: handleNicknameUpdate,
+                                                                                        isAuthenticated: isAuthenticated
+                                                                                    }
+                                                                                )}
+                                                                            </div>
+                                                                            
+                                                                            {/* Voting power */}
+                                                                            <span style={{ 
+                                                                                color: theme.colors.secondaryText,
+                                                                                whiteSpace: 'nowrap',
+                                                                                fontSize: '0.75rem'
+                                                                            }}>
+                                                                                {formatE8s(ballot.voting_power)} VP
+                                                                            </span>
+                                                                            
+                                                                            {/* Timestamp */}
+                                                                            {ballot.vote !== 0 && ballot.cast_timestamp_seconds && (
+                                                                                <span style={{ 
+                                                                                    color: theme.colors.mutedText,
+                                                                                    whiteSpace: 'nowrap',
+                                                                                    fontSize: '0.7rem'
+                                                                                }}>
+                                                                                    {getRelativeTime(Number(ballot.cast_timestamp_seconds) * 1000)}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                        
+                                                                        {/* Compact Principals */}
+                                                                        {(principalsToShow.length > 0 || hasHiddenPrincipals) && (
+                                                                            <div 
+                                                                                style={{
+                                                                                    marginTop: '0.3rem',
+                                                                                    display: 'flex',
+                                                                                    flexWrap: 'wrap',
+                                                                                    gap: '0.25rem',
+                                                                                    alignItems: 'center'
+                                                                                }}
+                                                                            >
+                                                                                {principalsToShow.map((perm, idx) => {
+                                                                                    const symbolInfo = getPrincipalSymbol(perm);
+                                                                                    const principalStr = extractPrincipalString(perm.principal);
+                                                                                    if (!principalStr) return null;
+                                                                                    
+                                                                                    return (
+                                                                                        <div
+                                                                                            key={idx}
+                                                                                            style={{
+                                                                                                display: 'flex',
+                                                                                                alignItems: 'center',
+                                                                                                gap: '0.2rem',
+                                                                                                padding: '0.15rem 0.35rem',
+                                                                                                background: `${symbolInfo.color}15`,
+                                                                                                borderRadius: '3px',
+                                                                                                border: `1px solid ${symbolInfo.color}25`
+                                                                                            }}
+                                                                                            title={symbolInfo.title}
+                                                                                        >
+                                                                                            <span style={{ color: symbolInfo.color, display: 'flex', alignItems: 'center' }}>
+                                                                                                {symbolInfo.icon}
+                                                                                            </span>
+                                                                                            <PrincipalDisplay
+                                                                                                principal={Principal.fromText(principalStr)}
+                                                                                                displayInfo={getPrincipalDisplayInfoLocal(principalStr)}
+                                                                                                showCopyButton={false}
+                                                                                                short={true}
+                                                                                                isAuthenticated={isAuthenticated}
+                                                                                                style={{ fontSize: '0.65rem' }}
+                                                                                            />
+                                                                                        </div>
+                                                                                    );
+                                                                                })}
+                                                                                {/* Show expand/collapse button if there are unnamed principals */}
+                                                                                {hasHiddenPrincipals && (
+                                                                                    <button
+                                                                                        onClick={(e) => {
+                                                                                            e.stopPropagation();
+                                                                                            toggleVoterPrincipalsExpanded(neuronIdHex);
+                                                                                        }}
+                                                                                        style={{
+                                                                                            display: 'flex',
+                                                                                            alignItems: 'center',
+                                                                                            justifyContent: 'center',
+                                                                                            padding: '0.15rem 0.4rem',
+                                                                                            background: `${theme.colors.mutedText}15`,
+                                                                                            borderRadius: '3px',
+                                                                                            fontSize: '0.65rem',
+                                                                                            color: theme.colors.mutedText,
+                                                                                            border: 'none',
+                                                                                            cursor: 'pointer',
+                                                                                            fontWeight: '500'
+                                                                                        }}
+                                                                                        title={isExpanded ? 'Show less' : `Show ${unnamedPrincipals.length} more`}
+                                                                                    >
+                                                                                        {isExpanded ? '−' : `...${unnamedPrincipals.length}`}
+                                                                                    </button>
+                                                                                )}
+                                                                            </div>
                                                                         )}
                                                                     </div>
-                                                                    
-                                                                    {/* Voting power */}
-                                                                    <span style={{ 
-                                                                        color: theme.colors.secondaryText,
-                                                                        whiteSpace: 'nowrap',
-                                                                        fontSize: '0.75rem'
-                                                                    }}>
-                                                                        {formatE8s(ballot.voting_power)} VP
-                                                                    </span>
-                                                                    
-                                                                    {/* Timestamp */}
-                                                                    {ballot.vote !== 0 && ballot.cast_timestamp_seconds && (
-                                                                        <span style={{ 
-                                                                            color: theme.colors.mutedText,
-                                                                            whiteSpace: 'nowrap',
-                                                                            fontSize: '0.7rem'
-                                                                        }}>
-                                                                            {getRelativeTime(Number(ballot.cast_timestamp_seconds) * 1000)}
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            ))}
+                                                                );
+                                                            })}
                                                         </div>
                                                     </div>
                                                 )}
