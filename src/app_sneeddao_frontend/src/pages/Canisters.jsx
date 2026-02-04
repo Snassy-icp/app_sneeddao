@@ -7,7 +7,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { Principal } from '@dfinity/principal';
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
-import { getCanisterGroups, setCanisterGroups, convertGroupsFromBackend, getTrackedCanisters, registerTrackedCanister, unregisterTrackedCanister } from '../utils/BackendUtils';
+import { getCanisterGroups, setCanisterGroups, convertGroupsFromBackend, getTrackedCanisters, registerTrackedCanister, unregisterTrackedCanister, getCanisterInfo } from '../utils/BackendUtils';
 import { createActor as createBackendActor, canisterId as BACKEND_CANISTER_ID } from 'declarations/app_sneeddao_backend';
 import { usePremiumStatus } from '../hooks/usePremiumStatus';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
@@ -260,28 +260,14 @@ export default function CanistersPage() {
     
     // Check if a module hash matches any known neuron manager version
     const isKnownNeuronManagerHash = useCallback((moduleHash) => {
-        if (!moduleHash || officialVersions.length === 0) {
-            console.log('[NM Detection] isKnownNeuronManagerHash early return', { moduleHash: !!moduleHash, officialVersionsCount: officialVersions.length });
-            return null;
-        }
+        if (!moduleHash || officialVersions.length === 0) return null;
         const hashLower = moduleHash.toLowerCase();
-        console.log('[NM Detection] Comparing hash:', hashLower.substring(0, 16) + '...');
-        console.log('[NM Detection] Against official versions:', officialVersions.map(v => ({
-            version: `${v.major}.${v.minor}.${v.patch}`,
-            wasmHash: v.wasmHash?.substring(0, 16) + '...',
-        })));
-        const match = officialVersions.find(v => v.wasmHash.toLowerCase() === hashLower);
-        console.log('[NM Detection] Match result:', match ? `v${match.major}.${match.minor}.${match.patch}` : 'no match');
-        return match || null;
+        return officialVersions.find(v => v.wasmHash.toLowerCase() === hashLower) || null;
     }, [officialVersions]);
     
     // Fetch neuron manager info for a detected canister
     const fetchDetectedManagerInfo = useCallback(async (canisterId, existingStatus) => {
-        console.log(`[NM Detection] fetchDetectedManagerInfo called for ${canisterId}`);
-        if (!identity) {
-            console.log(`[NM Detection] No identity, skipping ${canisterId}`);
-            return;
-        }
+        if (!identity) return;
         
         try {
             const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
@@ -293,29 +279,23 @@ export default function CanistersPage() {
             }
             
             const managerActor = createManagerActor(canisterId, { agent });
-            console.log(`[NM Detection] Calling getVersion and getNeuronIds for ${canisterId}`);
             const [version, neuronIds] = await Promise.all([
                 managerActor.getVersion(),
                 managerActor.getNeuronIds(),
             ]);
-            console.log(`[NM Detection] Got manager info for ${canisterId}:`, {
-                version: `${version.major}.${version.minor}.${version.patch}`,
-                neuronCount: neuronIds?.length || 0,
-            });
             
-            setDetectedNeuronManagers(prev => {
-                console.log(`[NM Detection] Setting detectedNeuronManagers for ${canisterId}`);
-                return {
-                    ...prev,
-                    [canisterId]: {
-                        version,
-                        neuronCount: neuronIds?.length || 0,
-                        cycles: existingStatus?.cycles,
-                        memory: existingStatus?.memory,
-                        isController: existingStatus?.isController,
-                    }
-                };
-            });
+            console.log(`[NM Detection] Fetched manager info for ${canisterId}: v${version.major}.${version.minor}.${version.patch}, ${neuronIds?.length || 0} neurons`);
+            
+            setDetectedNeuronManagers(prev => ({
+                ...prev,
+                [canisterId]: {
+                    version,
+                    neuronCount: neuronIds?.length || 0,
+                    cycles: existingStatus?.cycles,
+                    memory: existingStatus?.memory,
+                    isController: existingStatus?.isController,
+                }
+            }));
         } catch (err) {
             console.warn(`[NM Detection] Failed to fetch manager info for ${canisterId}:`, err.message || err);
             // Still mark as detected but with fallback values
@@ -334,54 +314,28 @@ export default function CanistersPage() {
     
     // Detect neuron managers from custom canisters based on module hash
     useEffect(() => {
-        console.log('[NM Detection] Running detection effect', {
-            officialVersionsCount: officialVersions.length,
-            canisterStatusCount: Object.keys(canisterStatus).length,
-            trackedCanisterStatusCount: Object.keys(trackedCanisterStatus).length,
-            detectedNeuronManagersCount: Object.keys(detectedNeuronManagers).length,
-        });
-        
-        if (officialVersions.length === 0) {
-            console.log('[NM Detection] No official versions yet, skipping');
-            return;
-        }
+        if (officialVersions.length === 0) return;
         
         // Check custom canister statuses
         for (const [canisterId, status] of Object.entries(canisterStatus)) {
-            console.log(`[NM Detection] Checking custom canister ${canisterId}`, {
-                hasModuleHash: !!status?.moduleHash,
-                moduleHash: status?.moduleHash?.substring(0, 16) + '...',
-                alreadyDetected: !!detectedNeuronManagers[canisterId],
-            });
-            
             if (!status?.moduleHash) continue;
             if (detectedNeuronManagers[canisterId]) continue; // Already detected
             
             const matchedVersion = isKnownNeuronManagerHash(status.moduleHash);
-            console.log(`[NM Detection] Hash match result for ${canisterId}:`, matchedVersion);
             if (matchedVersion) {
-                // Fetch neuron manager info
-                console.log(`[NM Detection] Fetching manager info for ${canisterId}`);
+                console.log(`[NM Detection] Detected neuron manager ${canisterId} (v${matchedVersion.major}.${matchedVersion.minor}.${matchedVersion.patch})`);
                 fetchDetectedManagerInfo(canisterId, status);
             }
         }
         
         // Check tracked (wallet) canister statuses
         for (const [canisterId, status] of Object.entries(trackedCanisterStatus)) {
-            console.log(`[NM Detection] Checking wallet canister ${canisterId}`, {
-                hasModuleHash: !!status?.moduleHash,
-                moduleHash: status?.moduleHash?.substring(0, 16) + '...',
-                alreadyDetected: !!detectedNeuronManagers[canisterId],
-            });
-            
             if (!status?.moduleHash) continue;
             if (detectedNeuronManagers[canisterId]) continue; // Already detected
             
             const matchedVersion = isKnownNeuronManagerHash(status.moduleHash);
-            console.log(`[NM Detection] Hash match result for ${canisterId}:`, matchedVersion);
             if (matchedVersion) {
-                // Fetch neuron manager info
-                console.log(`[NM Detection] Fetching manager info for ${canisterId}`);
+                console.log(`[NM Detection] Detected neuron manager ${canisterId} (v${matchedVersion.major}.${matchedVersion.minor}.${matchedVersion.patch})`);
                 fetchDetectedManagerInfo(canisterId, status);
             }
         }
@@ -414,13 +368,7 @@ export default function CanistersPage() {
             ]);
             
             // Store official versions for use in detecting neuron managers
-            console.log('[NM Detection] Setting officialVersions:', fetchedOfficialVersions?.length || 0, 'versions');
-            if (fetchedOfficialVersions?.length > 0) {
-                console.log('[NM Detection] Official versions:', fetchedOfficialVersions.map(v => ({
-                    version: `${v.major}.${v.minor}.${v.patch}`,
-                    wasmHash: v.wasmHash?.substring(0, 16) + '...',
-                })));
-            }
+            console.log('[NM Detection] Loaded', fetchedOfficialVersions?.length || 0, 'official versions');
             setOfficialVersions(fetchedOfficialVersions || []);
             
             // Find latest official version
@@ -500,6 +448,12 @@ export default function CanistersPage() {
     const fetchCanisterStatus = useCallback(async (canisterId) => {
         if (!identity) return;
         
+        let cycles = null;
+        let memory = null;
+        let isController = false;
+        let moduleHash = null;
+        
+        // First try canister_status (works if user is controller)
         try {
             const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
                 ? 'https://icp0.io' 
@@ -521,23 +475,28 @@ export default function CanistersPage() {
             });
             
             const status = await mgmtActor.canister_status({ canister_id: canisterPrincipal });
-            const cycles = Number(status.cycles);
-            const memory = Number(status.memory_size);
-            const moduleHash = status.module_hash[0] ? uint8ArrayToHex(status.module_hash[0]) : null;
+            cycles = Number(status.cycles);
+            memory = Number(status.memory_size);
+            moduleHash = status.module_hash[0] ? uint8ArrayToHex(status.module_hash[0]) : null;
+            isController = true;
             
-            console.log(`[NM Detection] fetchCanisterStatus for ${canisterId}:`, {
-                cycles,
-                memory,
-                moduleHash: moduleHash?.substring(0, 16) + '...',
-                hasModuleHash: !!moduleHash,
-            });
-            
-            setCanisterStatus(prev => ({ ...prev, [canisterId]: { cycles, memory, isController: true, moduleHash } }));
+            console.log(`[NM Detection] Fetched status (controller) for ${canisterId}, moduleHash: ${moduleHash ? 'yes' : 'no'}`);
         } catch (err) {
-            // Not a controller or other error - mark isController as false
-            console.log(`Cannot fetch status for ${canisterId}:`, err.message || err);
-            setCanisterStatus(prev => ({ ...prev, [canisterId]: { cycles: null, memory: null, isController: false, moduleHash: null } }));
+            // Not a controller - try fallback to get module_hash via backend
+            console.log(`[NM Detection] Not controller for ${canisterId}, trying backend fallback...`);
+            
+            try {
+                const result = await getCanisterInfo(identity, canisterId);
+                if (result && 'ok' in result) {
+                    moduleHash = result.ok.module_hash[0] ? uint8ArrayToHex(result.ok.module_hash[0]) : null;
+                    console.log(`[NM Detection] Fetched status (fallback) for ${canisterId}, moduleHash: ${moduleHash ? 'yes' : 'no'}`);
+                }
+            } catch (fallbackErr) {
+                console.log(`[NM Detection] Backend fallback error for ${canisterId}:`, fallbackErr.message || fallbackErr);
+            }
         }
+        
+        setCanisterStatus(prev => ({ ...prev, [canisterId]: { cycles, memory, isController, moduleHash } }));
     }, [identity]);
 
     // Helper to get all canister IDs from groups (for cycles fetching)
@@ -691,10 +650,7 @@ export default function CanistersPage() {
                             });
                             const status = await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
                             const moduleHash = status.module_hash[0] ? uint8ArrayToHex(status.module_hash[0]) : null;
-                            console.log(`[NM Detection] Tracked canister status for ${canisterId}:`, {
-                                moduleHash: moduleHash?.substring(0, 16) + '...',
-                                hasModuleHash: !!moduleHash,
-                            });
+                            console.log(`[NM Detection] Tracked status (controller) for ${canisterId}, moduleHash: ${moduleHash ? 'yes' : 'no'}`);
                             statusMap[canisterId] = {
                                 cycles: Number(status.cycles),
                                 memory: Number(status.memory_size),
@@ -702,9 +658,18 @@ export default function CanistersPage() {
                                 moduleHash,
                             };
                         } catch (err) {
-                            // Can't get status - not a controller
-                            console.log(`[NM Detection] Cannot fetch tracked canister status for ${canisterId}:`, err.message || err);
-                            statusMap[canisterId] = { cycles: null, memory: null, isController: false, moduleHash: null };
+                            // Can't get status - not a controller, try backend fallback for module_hash
+                            let moduleHash = null;
+                            try {
+                                const result = await getCanisterInfo(identity, canisterId);
+                                if (result && 'ok' in result) {
+                                    moduleHash = result.ok.module_hash[0] ? uint8ArrayToHex(result.ok.module_hash[0]) : null;
+                                    console.log(`[NM Detection] Tracked status (fallback) for ${canisterId}, moduleHash: ${moduleHash ? 'yes' : 'no'}`);
+                                }
+                            } catch (fallbackErr) {
+                                console.log(`[NM Detection] Backend fallback error for tracked ${canisterId}:`, fallbackErr.message || fallbackErr);
+                            }
+                            statusMap[canisterId] = { cycles: null, memory: null, isController: false, moduleHash };
                         }
                     }));
                     setTrackedCanisterStatus(statusMap);
@@ -3686,7 +3651,6 @@ export default function CanistersPage() {
                                                             {canisterGroups.ungrouped.map((canisterId) => {
                                                                 // Check if this canister is a detected neuron manager
                                                                 const detectedManager = detectedNeuronManagers[canisterId];
-                                                                console.log(`[NM Render] Ungrouped ${canisterId}: detectedManager =`, !!detectedManager);
                                                                 if (detectedManager) {
                                                                     return (
                                                                         <NeuronManagerCardItem
