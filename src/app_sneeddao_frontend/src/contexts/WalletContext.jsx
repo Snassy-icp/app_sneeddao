@@ -433,9 +433,9 @@ export const WalletProvider = ({ children }) => {
                         // Normalize governance ID for consistent cache keys
                         const normalizedGovId = normalizeId(governanceId);
                         
-                        // For governance IDs with 0 neurons, add empty array to mark as "checked"
+                        // Skip governance IDs with 0 neuron IDs - don't add empty arrays
+                        // (empty arrays would block fresh fetches later)
                         if (!neuronIds || neuronIds.length === 0) {
-                            hydratedMap.set(normalizedGovId, []);
                             continue;
                         }
                         
@@ -448,8 +448,10 @@ export const WalletProvider = ({ children }) => {
                             // Try to hydrate from shared IndexedDB cache
                             try {
                                 const { found, missing } = await getNeuronsFromCacheByIds(snsRoot, neuronIds);
-                                // Always add to map with normalized key (marks as checked)
-                                hydratedMap.set(normalizedGovId, found);
+                                // Only add to map if we found actual neurons
+                                if (found && found.length > 0) {
+                                    hydratedMap.set(normalizedGovId, found);
+                                }
                                 // Note: missing neurons will be fetched fresh by fetchAndCacheNeurons
                             } catch (e) {
                                 console.warn('Failed to hydrate neurons from cache:', e);
@@ -713,9 +715,11 @@ export const WalletProvider = ({ children }) => {
             return [];
         }
         
-        // Check if already in memory cache (use ref to get latest value, avoid stale closure)
-        if (neuronCacheRef.current.has(govId)) {
-            return neuronCacheRef.current.get(govId);
+        // Check if already in memory cache with actual neurons (use ref to get latest value, avoid stale closure)
+        // Don't return empty arrays - those might be from failed hydration
+        const cachedNeurons = neuronCacheRef.current.get(govId);
+        if (cachedNeurons && cachedNeurons.length > 0) {
+            return cachedNeurons;
         }
         
         // Check if there's already an in-flight request for this govId (request deduplication)
@@ -826,12 +830,15 @@ export const WalletProvider = ({ children }) => {
                 const governanceCanisterId = sns.canisters?.governance;
                 if (!governanceCanisterId) continue;
                 
-                // Skip if already cached or in-flight
-                if (neuronCache.has(governanceCanisterId)) continue;
-                if (neuronFetchPromisesRef.current.has(governanceCanisterId)) continue;
+                const normalizedGovId = normalizeId(governanceCanisterId);
+                
+                // Skip if already cached with actual neurons (not just empty array) or in-flight
+                const existingNeurons = neuronCacheRef.current.get(normalizedGovId);
+                if (existingNeurons && existingNeurons.length > 0) continue;
+                if (neuronFetchPromisesRef.current.has(normalizedGovId)) continue;
                 
                 // Fire and forget - don't await, let them load in parallel
-                fetchAndCacheNeurons(governanceCanisterId).catch(err => {
+                fetchAndCacheNeurons(normalizedGovId).catch(err => {
                     console.warn(`[WalletContext] Failed to fetch neurons for ${sns.name || governanceCanisterId}:`, err);
                 });
             }
@@ -845,8 +852,11 @@ export const WalletProvider = ({ children }) => {
     // Proactively fetch neurons for all SNS on login
     // Wait for cacheCheckComplete to avoid redundant network fetches when cache has data
     useEffect(() => {
-        // Fetch if: authenticated, cache check done, and cache is empty (no hydrated neurons)
-        if (isAuthenticated && identity && cacheCheckComplete && neuronCacheRef.current.size === 0) {
+        // Check if cache has any ACTUAL neurons (not just empty arrays from failed hydration)
+        const hasActualNeurons = Array.from(neuronCacheRef.current.values()).some(neurons => neurons && neurons.length > 0);
+        
+        // Fetch if: authenticated, cache check done, and no actual neurons in cache
+        if (isAuthenticated && identity && cacheCheckComplete && !hasActualNeurons) {
             fetchAllSnsNeurons();
         }
         if (!isAuthenticated) {
