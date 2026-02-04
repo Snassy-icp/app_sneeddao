@@ -15,7 +15,7 @@ import { getTokenLogo, get_token_conversion_rate, get_available, get_available_b
 import { fetchUserNeuronsForSns, uint8ArrayToHex } from '../utils/NeuronUtils';
 import { getTipTokensReceivedByUser, getTrackedCanisters } from '../utils/BackendUtils';
 import { fetchAndCacheSnsData, getAllSnses, getSnsById } from '../utils/SnsUtils';
-import { getNeuronsFromCacheByIds, saveNeuronsToCache, getAllNeuronsForSns, normalizeId } from '../hooks/useNeuronsCache';
+import { getNeuronsFromCacheByIds, saveNeuronsToCache, normalizeId } from '../hooks/useNeuronsCache';
 import { initializeLogoCache, getLogo, setLogo, getLogoSync } from '../hooks/useLogoCache';
 import { initializeTokenCache, setLedgerList, getTokenMetadataSync } from '../hooks/useTokenCache';
 import { getCachedRewards, setCachedRewards } from '../hooks/useRewardsCache';
@@ -768,22 +768,10 @@ export const WalletProvider = ({ children }) => {
                 const allSnses = getAllSnses();
                 const sns = allSnses.find(s => normalizeId(s.canisters?.governance) === govId);
                 
-                // Check IndexedDB cache BEFORE going to network
-                if (sns?.rootCanisterId) {
-                    try {
-                        const cachedNeurons = await getAllNeuronsForSns(sns.rootCanisterId);
-                        if (cachedNeurons && cachedNeurons.length > 0) {
-                            // Found in IndexedDB - update memory cache and return
-                            neuronCacheRef.current.set(govId, cachedNeurons);
-                            setNeuronCache(prev => new Map(prev).set(govId, cachedNeurons));
-                            return cachedNeurons;
-                        }
-                    } catch (e) {
-                        // IndexedDB check failed, continue to network fetch
-                    }
-                }
-                
-                // Not in cache - fetch from network
+                // IMPORTANT: Always fetch from network for user neurons - the IndexedDB cache
+                // stores ALL neurons for an SNS (from various sources like /neurons page browsing)
+                // which may include neurons that don't belong to the current user.
+                // fetchUserNeuronsForSns correctly filters by user principal.
                 const neurons = await fetchUserNeuronsForSns(identity, govId);
                 
                 // Cache the neurons in memory

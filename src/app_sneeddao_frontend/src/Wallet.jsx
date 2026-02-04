@@ -7096,6 +7096,39 @@ function Wallet() {
                                                             justifyContent: 'flex-end',
                                                             alignItems: 'center',
                                                         }}>
+                                                            {/* Send button - for canisters you control */}
+                                                            {managerIsController && (
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setTransferTargetCanister(canisterId);
+                                                                        setTransferCanisterRecipient('');
+                                                                        setTransferCanisterError('');
+                                                                        setTransferCanisterSuccess('');
+                                                                        setTransferCanisterModalOpen(true);
+                                                                    }}
+                                                                    style={{
+                                                                        padding: '8px 16px',
+                                                                        borderRadius: '8px',
+                                                                        backgroundColor: theme.colors.accent,
+                                                                        color: '#fff',
+                                                                        fontSize: '13px',
+                                                                        border: 'none',
+                                                                        cursor: 'pointer',
+                                                                        fontWeight: '600',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '6px',
+                                                                    }}
+                                                                >
+                                                                    <img 
+                                                                        src="send-inverted.png" 
+                                                                        alt="Send" 
+                                                                        style={{ width: '14px', height: '14px' }}
+                                                                    />
+                                                                    Send
+                                                                </button>
+                                                            )}
                                                             <Link
                                                                 to={`/icp_neuron_manager/${canisterId}`}
                                                                 style={{
@@ -7119,8 +7152,9 @@ function Wallet() {
                                                                 style={{
                                                                     padding: '8px 16px',
                                                                     borderRadius: '8px',
-                                                                    backgroundColor: theme.colors.accent,
-                                                                    color: '#fff',
+                                                                    backgroundColor: theme.colors.secondaryBg,
+                                                                    color: theme.colors.primaryText,
+                                                                    border: `1px solid ${theme.colors.border}`,
                                                                     fontSize: '13px',
                                                                     textDecoration: 'none',
                                                                     fontWeight: '600',
