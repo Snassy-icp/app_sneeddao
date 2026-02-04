@@ -444,7 +444,10 @@ function Wallet() {
         neuronManagersLoading: contextNeuronManagersLoading,
         hasFetchedManagers: contextHasFetchedManagers,
         refreshNeuronManagers: contextRefreshNeuronManagers,
-        fetchManagerNeuronsData: contextFetchManagerNeuronsData
+        fetchManagerNeuronsData: contextFetchManagerNeuronsData,
+        // Shared ICP price (same as quick wallet)
+        icpPrice: contextIcpPrice,
+        fetchIcpPrice: contextFetchIcpPrice
     } = useWallet();
     const navigate = useNavigate();
     
@@ -586,7 +589,8 @@ function Wallet() {
     });
     const [tokensTotal, setTokensTotal] = useState(0.0);
     const [lpPositionsTotal, setLpPositionsTotal] = useState(0.0);
-    const [icpPrice, setIcpPrice] = useState(null);
+    // icpPrice now comes from WalletContext (contextIcpPrice) - shared with quick wallet
+    const icpPrice = contextIcpPrice;
     const [showTokenDetailModal, setShowTokenDetailModal] = useState(false);
     const [detailToken, setDetailToken] = useState(null);
     const [showConsolidateModal, setShowConsolidateModal] = useState(false);
@@ -1057,16 +1061,8 @@ function Wallet() {
         return lines.join('\n');
     };
 
-    // Fetch ICP price
-    const fetchIcpPrice = async () => {
-        try {
-            const price = await priceService.getICPUSDPrice();
-            setIcpPrice(price);
-        } catch (error) {
-            console.error('Error fetching ICP price:', error);
-            setIcpPrice(null);
-        }
-    };
+    // fetchIcpPrice now comes from WalletContext (contextFetchIcpPrice) - shared with quick wallet
+    const fetchIcpPrice = contextFetchIcpPrice;
 
     async function fetchTokenDetails(icrc1_ledger, summed_locks) {
         try {

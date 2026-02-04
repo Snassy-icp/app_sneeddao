@@ -19,6 +19,7 @@ import { getNeuronsFromCacheByIds, saveNeuronsToCache, getAllNeuronsForSns, norm
 import { initializeLogoCache, getLogo, setLogo, getLogoSync } from '../hooks/useLogoCache';
 import { initializeTokenCache, setLedgerList, getTokenMetadataSync } from '../hooks/useTokenCache';
 import { getCachedRewards, setCachedRewards } from '../hooks/useRewardsCache';
+import priceService from '../services/PriceService';
 
 const WalletContext = createContext(null);
 
@@ -288,6 +289,21 @@ export const WalletProvider = ({ children }) => {
     const [hasFetchedPositions, setHasFetchedPositions] = useState(false);
     const positionsFetchSessionRef = useRef(0);
     const hasPositionsRef = useRef(false); // Track if we have positions (for stale closure safety)
+    
+    // Shared ICP price - ensures Wallet and Quick Wallet use the same price
+    const [icpPrice, setIcpPrice] = useState(null);
+    
+    // Fetch ICP price (shared between all consumers)
+    const fetchIcpPrice = useCallback(async () => {
+        try {
+            const price = await priceService.getICPUSDPrice();
+            setIcpPrice(price);
+            return price;
+        } catch (error) {
+            console.error('Error fetching ICP price:', error);
+            return null;
+        }
+    }, []);
     
     // Global neuron cache - stores all reachable neurons by governance canister ID
     // This cache is independent of wallet tokens and used by:
@@ -1629,6 +1645,8 @@ export const WalletProvider = ({ children }) => {
                 // We have cached data showing, fetch fresh in background
                 hasFetchedFreshRef.current = true;
                 isFetchingRef.current = true;
+                // Fetch ICP price for all consumers
+                fetchIcpPrice();
                 // Small delay to ensure React has committed cache state before validation starts
                 setTimeout(() => {
                     fetchCompactWalletTokens();
@@ -1639,6 +1657,8 @@ export const WalletProvider = ({ children }) => {
             } else if (!hasFetchedInitial && !loadedFromCache) {
                 // No cached data, need to fetch from scratch
                 isFetchingRef.current = true;
+                // Fetch ICP price for all consumers
+                fetchIcpPrice();
                 fetchCompactWalletTokens();
                 fetchCompactPositions(true);
                 fetchNeuronManagers();
@@ -1771,12 +1791,13 @@ export const WalletProvider = ({ children }) => {
         setNeuronCacheInitialized(false);
         setManagerNeurons({});
         // Note: Don't clear persistent cache on refresh - it will be updated with fresh data
+        fetchIcpPrice(); // Refresh ICP price
         fetchCompactWalletTokens();
         fetchCompactPositions(true); // Clear first on explicit refresh
         fetchNeuronManagers();
         // Also refetch all neurons
         fetchAllSnsNeurons();
-    }, [fetchCompactWalletTokens, fetchCompactPositions, fetchNeuronManagers, fetchAllSnsNeurons]);
+    }, [fetchIcpPrice, fetchCompactWalletTokens, fetchCompactPositions, fetchNeuronManagers, fetchAllSnsNeurons]);
 
     // Helper to calculate send amounts (frontend vs backend balance)
     const calcSendAmounts = useCallback((token, bigintAmount) => {
@@ -1891,7 +1912,10 @@ export const WalletProvider = ({ children }) => {
             neuronManagersLoading,
             hasFetchedManagers,
             refreshNeuronManagers,
-            fetchManagerNeuronsData
+            fetchManagerNeuronsData,
+            // Shared ICP price - ensures consistent values across components
+            icpPrice,
+            fetchIcpPrice
         }}>
             {children}
         </WalletContext.Provider>

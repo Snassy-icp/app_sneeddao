@@ -79,6 +79,9 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const neuronManagersLoading = walletContext?.neuronManagersLoading || false;
     const hasFetchedManagers = walletContext?.hasFetchedManagers || false;
     
+    // Get shared ICP price from context (ensures same value as Wallet page)
+    const icpPrice = walletContext?.icpPrice;
+    
     // Sync hideDust with localStorage and listen for changes from other components
     useEffect(() => {
         localStorage.setItem('hideDust_Wallet', JSON.stringify(hideDust));
@@ -241,19 +244,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         
         return hasAnyValue ? total : null;
     }, [tokensWithBalance]);
-
-    // Get ICP price from token conversion rate
-    const icpPrice = useMemo(() => {
-        const icpLedger = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
-        const icpToken = walletTokens.find(t => 
-            t.symbol === 'ICP' || 
-            normalizeId(t.principal) === icpLedger ||
-            normalizeId(t.ledger_canister_id) === icpLedger
-        );
-        return icpToken?.conversion_rate || 0;
-    }, [walletTokens]);
     
-    // Calculate managers USD value (ICP neurons total * ICP price)
+    // Calculate managers USD value (ICP neurons total * ICP price from context)
     const totalManagersUSD = useMemo(() => {
         if (!managerNeuronsTotal || !icpPrice) return null;
         return managerNeuronsTotal * icpPrice;
