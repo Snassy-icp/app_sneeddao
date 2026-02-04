@@ -4770,10 +4770,10 @@ export default function CanistersPage() {
                                             const canisterId = manager.canisterId.toText();
                                             const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
                                             
-                                            // Check if this is actually a valid neuron manager
-                                            // If manager methods failed AND no matching WASM hash, show as regular canister
+                                            // Check if this is actually a valid neuron manager via WASM hash
+                                            // Only show as NeuronManagerCard if WASM matches known versions
                                             const hasMatchingWasm = manager.moduleHash && isKnownNeuronManagerHash(manager.moduleHash);
-                                            const shouldShowAsManager = manager.isValidManager || hasMatchingWasm;
+                                            const shouldShowAsManager = hasMatchingWasm;
                                             
                                             if (!shouldShowAsManager) {
                                                 // Show as regular canister card
@@ -4801,38 +4801,38 @@ export default function CanistersPage() {
                                                                     boxShadow: canisterHealth !== 'unknown' ? `0 0 6px ${canisterLampColor}` : 'none',
                                                                     flexShrink: 0,
                                                                 }}
-                                                                title={`Health: ${canisterHealth} (Not a valid neuron manager)`}
-                                                            />
-                                                            <div style={{ ...styles.canisterIcon, position: 'relative' }}>
-                                                                <FaCube size={18} />
-                                                                {manager.isController && (
-                                                                    <FaCrown 
-                                                                        size={10} 
-                                                                        style={{ 
-                                                                            position: 'absolute', 
-                                                                            top: -4, 
-                                                                            right: -4, 
-                                                                            color: '#f59e0b',
-                                                                        }} 
-                                                                        title="You are a controller"
-                                                                    />
-                                                                )}
-                                                            </div>
-                                                            <div>
-                                                                <PrincipalDisplay
-                                                                    principal={canisterId}
-                                                                    displayInfo={displayInfo}
-                                                                    showCopyButton={true}
-                                                                    isAuthenticated={isAuthenticated}
-                                                                    noLink={true}
-                                                                    style={{ fontSize: '14px' }}
-                                                                    showSendMessage={false}
-                                                                    showViewProfile={false}
+                                                            title={`Health: ${canisterHealth}${!manager.moduleHash ? ' (WASM unknown - not controller)' : ' (WASM mismatch)'}`}
+                                                        />
+                                                        <div style={{ ...styles.canisterIcon, position: 'relative' }}>
+                                                            <FaCube size={18} />
+                                                            {manager.isController && (
+                                                                <FaCrown 
+                                                                    size={10} 
+                                                                    style={{ 
+                                                                        position: 'absolute', 
+                                                                        top: -4, 
+                                                                        right: -4, 
+                                                                        color: '#f59e0b',
+                                                                    }} 
+                                                                    title="You are a controller"
                                                                 />
-                                                                <div style={{ fontSize: '11px', color: '#f59e0b', marginTop: '2px' }}>
-                                                                    ⚠️ Not a valid neuron manager
-                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <div>
+                                                            <PrincipalDisplay
+                                                                principal={canisterId}
+                                                                displayInfo={displayInfo}
+                                                                showCopyButton={true}
+                                                                isAuthenticated={isAuthenticated}
+                                                                noLink={true}
+                                                                style={{ fontSize: '14px' }}
+                                                                showSendMessage={false}
+                                                                showViewProfile={false}
+                                                            />
+                                                            <div style={{ fontSize: '11px', color: manager.moduleHash ? '#ef4444' : theme.colors.secondaryText, marginTop: '2px' }}>
+                                                                {manager.moduleHash ? '⚠️ WASM mismatch - not a known neuron manager' : '🔒 WASM unknown - need controller access to verify'}
                                                             </div>
+                                                        </div>
                                                         </div>
                                                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
                                                             {manager.cycles !== null && (

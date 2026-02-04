@@ -60,7 +60,7 @@ import { getCyclesColor, formatCyclesCompact, formatMemory, getNeuronManagerSett
 import { PERM } from './utils/NeuronPermissionUtils.jsx';
 import { Actor } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
-import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle, FaTint, FaSeedling, FaGift, FaHourglassHalf, FaWater, FaUnlock, FaCheck, FaExclamationTriangle, FaCrown, FaBox, FaDatabase, FaCog, FaExternalLinkAlt, FaTimes, FaLightbulb, FaArrowRight, FaDollarSign, FaChartBar, FaBullseye, FaMoneyBillWave, FaBug, FaCopy, FaExpandAlt } from 'react-icons/fa';
+import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle, FaTint, FaSeedling, FaGift, FaHourglassHalf, FaWater, FaUnlock, FaCheck, FaExclamationTriangle, FaCrown, FaBox, FaDatabase, FaCog, FaExternalLinkAlt, FaTimes, FaLightbulb, FaArrowRight, FaDollarSign, FaChartBar, FaBullseye, FaMoneyBillWave, FaBug, FaCopy, FaExpandAlt, FaSearch } from 'react-icons/fa';
 
 // Custom CSS for Wallet page animations
 const walletCustomStyles = `
@@ -574,6 +574,8 @@ function Wallet() {
     const [refreshingAllWallet, setRefreshingAllWallet] = useState(false);
     const [refreshingTokensSection, setRefreshingTokensSection] = useState(false);
     const [refreshingPositionsSection, setRefreshingPositionsSection] = useState(false);
+    const [scanningTokens, setScanningTokens] = useState(false);
+    const [scanProgress, setScanProgress] = useState({ current: 0, total: 0, found: 0 });
     const [tokensExpanded, setTokensExpanded] = useState(true);
     const [positionsExpanded, setPositionsExpanded] = useState(true);
     const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -4573,6 +4575,90 @@ function Wallet() {
         }
     };
 
+    // Scan for tokens - check all known SNS ledgers for balances
+    const handleScanForTokens = async () => {
+        if (!identity || scanningTokens) return;
+        
+        setScanningTokens(true);
+        setScanProgress({ current: 0, total: 0, found: 0 });
+        
+        try {
+            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
+            
+            // Get all SNS ledgers
+            const allSnses = getAllSnses();
+            const snsLedgers = allSnses
+                .map(sns => sns.canisters?.ledger)
+                .filter(Boolean);
+            
+            // Get already registered ledgers
+            const registeredLedgers = await backendActor.get_ledger_canister_ids();
+            const registeredSet = new Set(registeredLedgers.map(l => l.toString()));
+            
+            // Filter to only unregistered ledgers
+            const ledgersToScan = snsLedgers.filter(ledger => !registeredSet.has(ledger));
+            
+            if (ledgersToScan.length === 0) {
+                console.log('[Scan] All known SNS tokens are already in wallet');
+                setScanningTokens(false);
+                return;
+            }
+            
+            setScanProgress({ current: 0, total: ledgersToScan.length, found: 0 });
+            
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://icp0.io' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            let foundCount = 0;
+            const newLedgers = [];
+            
+            // Check balance on each ledger
+            for (let i = 0; i < ledgersToScan.length; i++) {
+                const ledgerId = ledgersToScan[i];
+                setScanProgress(prev => ({ ...prev, current: i + 1 }));
+                
+                try {
+                    const ledgerActor = createLedgerActor(ledgerId, { agent });
+                    const balance = await ledgerActor.icrc1_balance_of({ 
+                        owner: identity.getPrincipal(), 
+                        subaccount: [] 
+                    });
+                    
+                    // If balance > 0, register this token
+                    if (BigInt(balance) > 0n) {
+                        console.log(`[Scan] Found balance on ${ledgerId}: ${balance}`);
+                        await backendActor.register_ledger_canister_id(Principal.fromText(ledgerId));
+                        newLedgers.push(ledgerId);
+                        foundCount++;
+                        setScanProgress(prev => ({ ...prev, found: foundCount }));
+                    }
+                } catch (err) {
+                    // Skip ledgers that fail (might be unavailable)
+                    console.warn(`[Scan] Failed to check ${ledgerId}:`, err.message || err);
+                }
+            }
+            
+            // Refresh tokens to show newly added ones
+            if (newLedgers.length > 0) {
+                console.log(`[Scan] Found ${newLedgers.length} new tokens with balance`);
+                // Refresh to load the new tokens
+                for (const ledgerId of newLedgers) {
+                    fetchBalancesAndLocks(Principal.fromText(ledgerId));
+                }
+            }
+            
+        } catch (error) {
+            console.error('Error scanning for tokens:', error);
+        } finally {
+            setScanningTokens(false);
+        }
+    };
+
     const handleRefreshPositionsSection = async () => {
         setRefreshingPositionsSection(true);
         setLocalPositionOverrides({}); // Clear local overrides
@@ -5507,6 +5593,32 @@ function Wallet() {
                             >
                                 <FaSync size={12} style={{ animation: refreshingTokensSection ? 'walletSpin 1s linear infinite' : 'none' }} />
                                 Refresh
+                            </button>
+                            <button
+                                onClick={handleScanForTokens}
+                                disabled={scanningTokens}
+                                style={{
+                                    background: `${walletPrimary}15`,
+                                    color: walletPrimary,
+                                    border: `1px solid ${walletPrimary}30`,
+                                    borderRadius: '8px',
+                                    padding: '0.5rem 0.75rem',
+                                    cursor: scanningTokens ? 'not-allowed' : 'pointer',
+                                    fontSize: '0.85rem',
+                                    fontWeight: '500',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.4rem',
+                                    transition: 'all 0.2s ease',
+                                    opacity: scanningTokens ? 0.6 : 1
+                                }}
+                                title="Scan all known SNS tokens to find tokens with balance"
+                            >
+                                <FaSearch size={12} style={{ animation: scanningTokens ? 'walletPulse 1s ease-in-out infinite' : 'none' }} />
+                                {scanningTokens 
+                                    ? `Scanning ${scanProgress.current}/${scanProgress.total}${scanProgress.found > 0 ? ` (${scanProgress.found} found)` : ''}`
+                                    : 'Scan'
+                                }
                             </button>
                             <button
                                 onClick={() => setShowAddLedgerModal(true)}
