@@ -260,14 +260,28 @@ export default function CanistersPage() {
     
     // Check if a module hash matches any known neuron manager version
     const isKnownNeuronManagerHash = useCallback((moduleHash) => {
-        if (!moduleHash || officialVersions.length === 0) return null;
+        if (!moduleHash || officialVersions.length === 0) {
+            console.log('[NM Detection] isKnownNeuronManagerHash early return', { moduleHash: !!moduleHash, officialVersionsCount: officialVersions.length });
+            return null;
+        }
         const hashLower = moduleHash.toLowerCase();
-        return officialVersions.find(v => v.wasmHash.toLowerCase() === hashLower) || null;
+        console.log('[NM Detection] Comparing hash:', hashLower.substring(0, 16) + '...');
+        console.log('[NM Detection] Against official versions:', officialVersions.map(v => ({
+            version: `${v.major}.${v.minor}.${v.patch}`,
+            wasmHash: v.wasmHash?.substring(0, 16) + '...',
+        })));
+        const match = officialVersions.find(v => v.wasmHash.toLowerCase() === hashLower);
+        console.log('[NM Detection] Match result:', match ? `v${match.major}.${match.minor}.${match.patch}` : 'no match');
+        return match || null;
     }, [officialVersions]);
     
     // Fetch neuron manager info for a detected canister
-    const fetchDetectedManagerInfo = useCallback(async (canisterId) => {
-        if (!identity) return;
+    const fetchDetectedManagerInfo = useCallback(async (canisterId, existingStatus) => {
+        console.log(`[NM Detection] fetchDetectedManagerInfo called for ${canisterId}`);
+        if (!identity) {
+            console.log(`[NM Detection] No identity, skipping ${canisterId}`);
+            return;
+        }
         
         try {
             const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
@@ -279,66 +293,96 @@ export default function CanistersPage() {
             }
             
             const managerActor = createManagerActor(canisterId, { agent });
+            console.log(`[NM Detection] Calling getVersion and getNeuronIds for ${canisterId}`);
             const [version, neuronIds] = await Promise.all([
                 managerActor.getVersion(),
                 managerActor.getNeuronIds(),
             ]);
+            console.log(`[NM Detection] Got manager info for ${canisterId}:`, {
+                version: `${version.major}.${version.minor}.${version.patch}`,
+                neuronCount: neuronIds?.length || 0,
+            });
             
-            // Get the existing status info (cycles, memory, isController)
-            const existingStatus = canisterStatus[canisterId] || trackedCanisterStatus[canisterId] || {};
-            
-            setDetectedNeuronManagers(prev => ({
-                ...prev,
-                [canisterId]: {
-                    version,
-                    neuronCount: neuronIds?.length || 0,
-                    cycles: existingStatus.cycles,
-                    memory: existingStatus.memory,
-                    isController: existingStatus.isController,
-                }
-            }));
+            setDetectedNeuronManagers(prev => {
+                console.log(`[NM Detection] Setting detectedNeuronManagers for ${canisterId}`);
+                return {
+                    ...prev,
+                    [canisterId]: {
+                        version,
+                        neuronCount: neuronIds?.length || 0,
+                        cycles: existingStatus?.cycles,
+                        memory: existingStatus?.memory,
+                        isController: existingStatus?.isController,
+                    }
+                };
+            });
         } catch (err) {
-            console.warn(`Failed to fetch manager info for ${canisterId}:`, err.message || err);
+            console.warn(`[NM Detection] Failed to fetch manager info for ${canisterId}:`, err.message || err);
             // Still mark as detected but with fallback values
-            const existingStatus = canisterStatus[canisterId] || trackedCanisterStatus[canisterId] || {};
             setDetectedNeuronManagers(prev => ({
                 ...prev,
                 [canisterId]: {
                     version: { major: 0n, minor: 0n, patch: 0n },
                     neuronCount: 0,
-                    cycles: existingStatus.cycles,
-                    memory: existingStatus.memory,
-                    isController: existingStatus.isController,
+                    cycles: existingStatus?.cycles,
+                    memory: existingStatus?.memory,
+                    isController: existingStatus?.isController,
                 }
             }));
         }
-    }, [identity, canisterStatus, trackedCanisterStatus]);
+    }, [identity]);
     
     // Detect neuron managers from custom canisters based on module hash
     useEffect(() => {
-        if (officialVersions.length === 0) return;
+        console.log('[NM Detection] Running detection effect', {
+            officialVersionsCount: officialVersions.length,
+            canisterStatusCount: Object.keys(canisterStatus).length,
+            trackedCanisterStatusCount: Object.keys(trackedCanisterStatus).length,
+            detectedNeuronManagersCount: Object.keys(detectedNeuronManagers).length,
+        });
+        
+        if (officialVersions.length === 0) {
+            console.log('[NM Detection] No official versions yet, skipping');
+            return;
+        }
         
         // Check custom canister statuses
         for (const [canisterId, status] of Object.entries(canisterStatus)) {
+            console.log(`[NM Detection] Checking custom canister ${canisterId}`, {
+                hasModuleHash: !!status?.moduleHash,
+                moduleHash: status?.moduleHash?.substring(0, 16) + '...',
+                alreadyDetected: !!detectedNeuronManagers[canisterId],
+            });
+            
             if (!status?.moduleHash) continue;
             if (detectedNeuronManagers[canisterId]) continue; // Already detected
             
             const matchedVersion = isKnownNeuronManagerHash(status.moduleHash);
+            console.log(`[NM Detection] Hash match result for ${canisterId}:`, matchedVersion);
             if (matchedVersion) {
                 // Fetch neuron manager info
-                fetchDetectedManagerInfo(canisterId);
+                console.log(`[NM Detection] Fetching manager info for ${canisterId}`);
+                fetchDetectedManagerInfo(canisterId, status);
             }
         }
         
         // Check tracked (wallet) canister statuses
         for (const [canisterId, status] of Object.entries(trackedCanisterStatus)) {
+            console.log(`[NM Detection] Checking wallet canister ${canisterId}`, {
+                hasModuleHash: !!status?.moduleHash,
+                moduleHash: status?.moduleHash?.substring(0, 16) + '...',
+                alreadyDetected: !!detectedNeuronManagers[canisterId],
+            });
+            
             if (!status?.moduleHash) continue;
             if (detectedNeuronManagers[canisterId]) continue; // Already detected
             
             const matchedVersion = isKnownNeuronManagerHash(status.moduleHash);
+            console.log(`[NM Detection] Hash match result for ${canisterId}:`, matchedVersion);
             if (matchedVersion) {
                 // Fetch neuron manager info
-                fetchDetectedManagerInfo(canisterId);
+                console.log(`[NM Detection] Fetching manager info for ${canisterId}`);
+                fetchDetectedManagerInfo(canisterId, status);
             }
         }
     }, [officialVersions, canisterStatus, trackedCanisterStatus, detectedNeuronManagers, isKnownNeuronManagerHash, fetchDetectedManagerInfo]);
@@ -370,6 +414,13 @@ export default function CanistersPage() {
             ]);
             
             // Store official versions for use in detecting neuron managers
+            console.log('[NM Detection] Setting officialVersions:', fetchedOfficialVersions?.length || 0, 'versions');
+            if (fetchedOfficialVersions?.length > 0) {
+                console.log('[NM Detection] Official versions:', fetchedOfficialVersions.map(v => ({
+                    version: `${v.major}.${v.minor}.${v.patch}`,
+                    wasmHash: v.wasmHash?.substring(0, 16) + '...',
+                })));
+            }
             setOfficialVersions(fetchedOfficialVersions || []);
             
             // Find latest official version
@@ -473,6 +524,13 @@ export default function CanistersPage() {
             const cycles = Number(status.cycles);
             const memory = Number(status.memory_size);
             const moduleHash = status.module_hash[0] ? uint8ArrayToHex(status.module_hash[0]) : null;
+            
+            console.log(`[NM Detection] fetchCanisterStatus for ${canisterId}:`, {
+                cycles,
+                memory,
+                moduleHash: moduleHash?.substring(0, 16) + '...',
+                hasModuleHash: !!moduleHash,
+            });
             
             setCanisterStatus(prev => ({ ...prev, [canisterId]: { cycles, memory, isController: true, moduleHash } }));
         } catch (err) {
@@ -632,14 +690,20 @@ export default function CanistersPage() {
                                 }),
                             });
                             const status = await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
+                            const moduleHash = status.module_hash[0] ? uint8ArrayToHex(status.module_hash[0]) : null;
+                            console.log(`[NM Detection] Tracked canister status for ${canisterId}:`, {
+                                moduleHash: moduleHash?.substring(0, 16) + '...',
+                                hasModuleHash: !!moduleHash,
+                            });
                             statusMap[canisterId] = {
                                 cycles: Number(status.cycles),
                                 memory: Number(status.memory_size),
                                 isController: true,
-                                moduleHash: status.module_hash[0] ? uint8ArrayToHex(status.module_hash[0]) : null,
+                                moduleHash,
                             };
-                        } catch {
+                        } catch (err) {
                             // Can't get status - not a controller
+                            console.log(`[NM Detection] Cannot fetch tracked canister status for ${canisterId}:`, err.message || err);
                             statusMap[canisterId] = { cycles: null, memory: null, isController: false, moduleHash: null };
                         }
                     }));
@@ -3622,6 +3686,7 @@ export default function CanistersPage() {
                                                             {canisterGroups.ungrouped.map((canisterId) => {
                                                                 // Check if this canister is a detected neuron manager
                                                                 const detectedManager = detectedNeuronManagers[canisterId];
+                                                                console.log(`[NM Render] Ungrouped ${canisterId}: detectedManager =`, !!detectedManager);
                                                                 if (detectedManager) {
                                                                     return (
                                                                         <NeuronManagerCardItem
