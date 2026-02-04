@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
+import { FaCopy } from 'react-icons/fa';
 
 const NeuronContextMenu = ({ 
     isOpen, 
@@ -176,7 +177,7 @@ const NeuronContextMenu = ({
                 onMouseEnter={(e) => e.target.style.backgroundColor = '#3a3a3a'}
                 onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
             >
-                <span>📋</span>
+                <FaCopy size={14} />
                 <span>Copy Neuron ID</span>
             </div>
         </div>,

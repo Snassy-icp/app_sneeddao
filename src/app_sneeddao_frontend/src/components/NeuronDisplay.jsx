@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useContext, useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import { FaCopy, FaCheck } from 'react-icons/fa';
 import { getNeuronColor, uint8ArrayToHex } from '../utils/NeuronUtils';
 import { useTheme } from '../contexts/ThemeContext';
 import NeuronContextMenu from './NeuronContextMenu';
@@ -23,6 +24,7 @@ export const NeuronDisplay = React.memo(({
     const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
     const [nicknameDialogOpen, setNicknameDialogOpen] = useState(false);
     const [longPressTimer, setLongPressTimer] = useState(null);
+    const [copied, setCopied] = useState(false);
     
     // Get naming context for automatic name lookup
     const namingContext = useContext(NamingContext);
@@ -223,19 +225,22 @@ export const NeuronDisplay = React.memo(({
                 onClick: (e) => {
                     e.preventDefault();
                     navigator.clipboard.writeText(displayId);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
                 },
                 style: {
                     background: 'none',
                     border: 'none',
                     padding: '4px',
                     cursor: 'pointer',
-                    color: theme.colors.mutedText,
+                    color: copied ? theme.colors.success : theme.colors.mutedText,
                     display: 'flex',
                     alignItems: 'center',
-                    flexShrink: 0
+                    flexShrink: 0,
+                    transition: 'color 0.2s ease'
                 },
-                title: 'Copy neuron ID to clipboard'
-            }, '📋')
+                title: copied ? 'Copied!' : 'Copy neuron ID to clipboard'
+            }, React.createElement(copied ? FaCheck : FaCopy, { size: 14 }))
         ]),
 
         // Context menu

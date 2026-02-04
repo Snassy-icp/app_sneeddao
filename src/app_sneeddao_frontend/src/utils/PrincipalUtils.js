@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useContext, useMemo, useRef, useEffect } from 'react';
 import { sha224 } from '@dfinity/principal/lib/esm/utils/sha224';
 import { encodeIcrcAccount } from '@dfinity/ledger-icrc';
+import { FaCopy, FaCheck } from 'react-icons/fa';
 import { getPrincipalName, getPrincipalNickname } from './BackendUtils';
 import PrincipalContextMenu from '../components/PrincipalContextMenu';
 import MessageDialog from '../components/MessageDialog';
@@ -263,6 +264,7 @@ export const PrincipalDisplay = React.memo(({
     const [messageDialogOpen, setMessageDialogOpen] = useState(false);
     const [nicknameDialogOpen, setNicknameDialogOpen] = useState(false);
     const [longPressTimer, setLongPressTimer] = useState(null);
+    const [copied, setCopied] = useState(false);
     
     // Get premium status from context
     const premiumContext = useContext(PremiumContext);
@@ -457,19 +459,24 @@ export const PrincipalDisplay = React.memo(({
                 ),
                 showCopyButton && React.createElement('button',
                     {
-                        onClick: () => navigator.clipboard.writeText(principalId),
+                        onClick: () => {
+                            navigator.clipboard.writeText(principalId);
+                            setCopied(true);
+                            setTimeout(() => setCopied(false), 2000);
+                        },
                         style: {
                             background: 'none',
                             border: 'none',
                             padding: '4px',
                             cursor: 'pointer',
-                            color: '#888',
+                            color: copied ? '#10b981' : '#888',
                             display: 'flex',
-                            alignItems: 'center'
+                            alignItems: 'center',
+                            transition: 'color 0.2s ease'
                         },
-                        title: "Copy principal ID to clipboard"
+                        title: copied ? "Copied!" : "Copy principal ID to clipboard"
                     },
-                    "📋"
+                    React.createElement(copied ? FaCheck : FaCopy, { size: 14 })
                 )
             ),
             // Context menu
@@ -485,7 +492,7 @@ export const PrincipalDisplay = React.memo(({
                 showSendMessage: showSendMessage,
                 showViewProfile: showViewProfile,
                 extraMenuItems: subaccount && principal ? [{
-                    icon: '📋',
+                    icon: React.createElement(FaCopy, { size: 14 }),
                     label: 'Copy ICRC-1 Account',
                     onClick: () => {
                         try {
@@ -589,19 +596,24 @@ export const PrincipalDisplay = React.memo(({
                 { style: { display: 'inline-flex', alignItems: 'center', verticalAlign: 'middle', marginLeft: '4px' } },
                 React.createElement('button',
                     {
-                        onClick: () => navigator.clipboard.writeText(formatted.fullId),
+                        onClick: () => {
+                            navigator.clipboard.writeText(formatted.fullId);
+                            setCopied(true);
+                            setTimeout(() => setCopied(false), 2000);
+                        },
                         style: {
                             background: 'none',
                             border: 'none',
                             padding: '4px',
                             cursor: 'pointer',
-                            color: '#888',
+                            color: copied ? '#10b981' : '#888',
                             display: 'flex',
-                            alignItems: 'center'
+                            alignItems: 'center',
+                            transition: 'color 0.2s ease'
                         },
-                        title: "Copy principal ID to clipboard"
+                        title: copied ? "Copied!" : "Copy principal ID to clipboard"
                     },
-                    "📋"
+                    React.createElement(copied ? FaCheck : FaCopy, { size: 14 })
                 )
             )
         ),
@@ -618,7 +630,7 @@ export const PrincipalDisplay = React.memo(({
             showSendMessage: showSendMessage,
             showViewProfile: showViewProfile,
             extraMenuItems: subaccount && principal ? [{
-                icon: '📋',
+                icon: React.createElement(FaCopy, { size: 14 }),
                 label: 'Copy ICRC-1 Account',
                 onClick: () => {
                     try {
