@@ -12,7 +12,7 @@ import { createActor as createBackendActor, canisterId as BACKEND_CANISTER_ID } 
 import { usePremiumStatus } from '../hooks/usePremiumStatus';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
-import { FaPlus, FaTrash, FaCube, FaSpinner, FaChevronDown, FaChevronRight, FaBrain, FaFolder, FaFolderOpen, FaEdit, FaCheck, FaTimes, FaCrown, FaLock, FaStar, FaArrowRight, FaWallet, FaQuestionCircle } from 'react-icons/fa';
+import { FaPlus, FaTrash, FaCube, FaSpinner, FaChevronDown, FaChevronRight, FaBrain, FaFolder, FaFolderOpen, FaEdit, FaCheck, FaTimes, FaCrown, FaLock, FaStar, FaArrowRight, FaWallet, FaQuestionCircle, FaBox } from 'react-icons/fa';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
 import { useNavigate } from 'react-router-dom';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
@@ -225,6 +225,12 @@ export default function CanistersPage() {
     const [walletExpanded, setWalletExpanded] = useState(() => {
         try {
             const saved = localStorage.getItem('canisters_walletExpanded');
+            return saved !== null ? JSON.parse(saved) : true;
+        } catch { return true; }
+    });
+    const [walletCanistersExpanded, setWalletCanistersExpanded] = useState(() => {
+        try {
+            const saved = localStorage.getItem('canisters_walletCanistersExpanded');
             return saved !== null ? JSON.parse(saved) : true;
         } catch { return true; }
     });
@@ -610,6 +616,10 @@ export default function CanistersPage() {
     useEffect(() => {
         try { localStorage.setItem('canisters_walletExpanded', JSON.stringify(walletExpanded)); } catch {}
     }, [walletExpanded]);
+
+    useEffect(() => {
+        try { localStorage.setItem('canisters_walletCanistersExpanded', JSON.stringify(walletCanistersExpanded)); } catch {}
+    }, [walletCanistersExpanded]);
 
     // Fetch tracked canisters
     useEffect(() => {
@@ -3706,23 +3716,7 @@ export default function CanistersPage() {
                             </>
                         )}
 
-                        {/* Wallet Section (Tracked Canisters) - Drop Zone */}
-                        <DroppableSection
-                            targetType="wallet"
-                            onDrop={handleDndDrop}
-                            canDropItem={canDropItem}
-                        >
-                            {({ isOver: isWalletDropTarget }) => (
-                        <div
-                            style={{
-                                backgroundColor: isWalletDropTarget ? `${theme.colors.accent}10` : 'transparent',
-                                border: isWalletDropTarget ? `2px dashed ${theme.colors.accent}` : '2px dashed transparent',
-                                borderRadius: '12px',
-                                transition: 'all 0.2s ease',
-                                padding: isWalletDropTarget ? '8px' : '0',
-                                margin: isWalletDropTarget ? '-8px' : '0',
-                            }}
-                        >
+                        {/* Wallet Section - Contains Canisters and Neuron Managers */}
                         <div 
                             style={styles.sectionHeader}
                             onClick={() => setWalletExpanded(!walletExpanded)}
@@ -3731,13 +3725,8 @@ export default function CanistersPage() {
                                 {walletExpanded ? <FaChevronDown /> : <FaChevronRight />}
                                 <span style={{ fontSize: '18px' }}>💼</span>
                                 Wallet
-                                {trackedCanisters.length > 0 && (
-                                    <span style={styles.sectionCount}>{trackedCanisters.length}</span>
-                                )}
-                                {isWalletDropTarget && (
-                                    <span style={{ marginLeft: '8px', color: theme.colors.accent, fontSize: '12px' }}>
-                                        Drop here to add to wallet
-                                    </span>
+                                {(trackedCanisters.length + neuronManagers.length) > 0 && (
+                                    <span style={styles.sectionCount}>{trackedCanisters.length + neuronManagers.length}</span>
                                 )}
                             </div>
                             <Link 
@@ -3763,6 +3752,50 @@ export default function CanistersPage() {
                         </div>
                         
                         {walletExpanded && (
+                            <>
+                                {/* Canisters Subsection - Drop Zone */}
+                                <DroppableSection
+                                    targetType="wallet"
+                                    onDrop={handleDndDrop}
+                                    canDropItem={canDropItem}
+                                >
+                                    {({ isOver: isWalletDropTarget }) => (
+                                <div
+                                    style={{
+                                        backgroundColor: isWalletDropTarget ? `${theme.colors.accent}10` : theme.colors.secondaryBg,
+                                        border: isWalletDropTarget ? `2px dashed ${theme.colors.accent}` : `1px solid ${theme.colors.border}`,
+                                        borderRadius: '12px',
+                                        transition: 'all 0.2s ease',
+                                        padding: '12px',
+                                        marginBottom: '12px',
+                                    }}
+                                >
+                                <div 
+                                    style={{ 
+                                        display: 'flex', 
+                                        justifyContent: 'space-between', 
+                                        alignItems: 'center',
+                                        cursor: 'pointer',
+                                        marginBottom: walletCanistersExpanded ? '12px' : 0
+                                    }}
+                                    onClick={() => setWalletCanistersExpanded(!walletCanistersExpanded)}
+                                >
+                                    <div style={{ ...styles.sectionTitle, fontSize: '14px' }}>
+                                        {walletCanistersExpanded ? <FaChevronDown size={12} /> : <FaChevronRight size={12} />}
+                                        <FaBox style={{ color: theme.colors.accent }} />
+                                        Canisters
+                                        {trackedCanisters.length > 0 && (
+                                            <span style={{ ...styles.sectionCount, fontSize: '11px' }}>{trackedCanisters.length}</span>
+                                        )}
+                                        {isWalletDropTarget && (
+                                            <span style={{ marginLeft: '8px', color: theme.colors.accent, fontSize: '11px' }}>
+                                                Drop here to add
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                        
+                                {walletCanistersExpanded && (
                             <>
                                 {/* Add canister input */}
                                 <div style={{ ...styles.addSection, marginBottom: '16px' }}>
@@ -4118,66 +4151,72 @@ export default function CanistersPage() {
                                     </div>
                                 )}
                             </>
-                        )}
-                        </div>
-                            )}
-                        </DroppableSection>
+                                )}
+                                </div>
+                                    )}
+                                </DroppableSection>
 
-                        {/* ICP Neuron Managers Section - Drop Zone */}
-                        <DroppableSection
-                            targetType="neuron_managers"
-                            onDrop={handleDndDrop}
-                            canDropItem={canDropItem}
-                        >
-                            {({ isOver: isNeuronManagersDropTarget }) => (
-                        <div
-                            style={{
-                                backgroundColor: isNeuronManagersDropTarget ? `${theme.colors.accent}10` : 'transparent',
-                                border: isNeuronManagersDropTarget ? `2px dashed ${theme.colors.accent}` : '2px dashed transparent',
-                                borderRadius: '12px',
-                                transition: 'all 0.2s ease',
-                                padding: isNeuronManagersDropTarget ? '8px' : '0',
-                                margin: isNeuronManagersDropTarget ? '-8px' : '0',
-                            }}
-                        >
-                        <div 
-                            style={styles.sectionHeader}
-                            onClick={() => setNeuronManagersExpanded(!neuronManagersExpanded)}
-                        >
-                            <div style={styles.sectionTitle}>
-                                {neuronManagersExpanded ? <FaChevronDown /> : <FaChevronRight />}
-                                <FaBrain style={{ color: '#8b5cf6' }} />
-                                ICP Neuron Managers
-                                {neuronManagers.length > 0 && (
-                                    <span style={styles.sectionCount}>{neuronManagers.length}</span>
-                                )}
-                                {isNeuronManagersDropTarget && (
-                                    <span style={{ marginLeft: '8px', color: theme.colors.accent, fontSize: '12px' }}>
-                                        Drop here to add as manager
-                                    </span>
-                                )}
-                            </div>
-                            <Link 
-                                to="/create_icp_neuron"
-                                onClick={(e) => e.stopPropagation()}
-                                style={{
-                                    padding: '6px 12px',
-                                    borderRadius: '8px',
-                                    border: 'none',
-                                    backgroundColor: '#8b5cf6',
-                                    color: '#fff',
-                                    fontSize: '12px',
-                                    fontWeight: 600,
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    textDecoration: 'none',
-                                }}
-                            >
-                                <FaPlus size={10} /> Create
-                            </Link>
-                        </div>
+                                {/* ICP Neuron Managers Subsection - Drop Zone */}
+                                <DroppableSection
+                                    targetType="neuron_managers"
+                                    onDrop={handleDndDrop}
+                                    canDropItem={canDropItem}
+                                >
+                                    {({ isOver: isNeuronManagersDropTarget }) => (
+                                <div
+                                    style={{
+                                        backgroundColor: isNeuronManagersDropTarget ? `${theme.colors.accent}10` : theme.colors.secondaryBg,
+                                        border: isNeuronManagersDropTarget ? `2px dashed ${theme.colors.accent}` : `1px solid ${theme.colors.border}`,
+                                        borderRadius: '12px',
+                                        transition: 'all 0.2s ease',
+                                        padding: '12px',
+                                        marginBottom: '12px',
+                                    }}
+                                >
+                                <div 
+                                    style={{ 
+                                        display: 'flex', 
+                                        justifyContent: 'space-between', 
+                                        alignItems: 'center',
+                                        cursor: 'pointer',
+                                        marginBottom: neuronManagersExpanded ? '12px' : 0
+                                    }}
+                                    onClick={() => setNeuronManagersExpanded(!neuronManagersExpanded)}
+                                >
+                                    <div style={{ ...styles.sectionTitle, fontSize: '14px' }}>
+                                        {neuronManagersExpanded ? <FaChevronDown size={12} /> : <FaChevronRight size={12} />}
+                                        <FaBrain style={{ color: '#8b5cf6' }} />
+                                        ICP Neuron Managers
+                                        {neuronManagers.length > 0 && (
+                                            <span style={{ ...styles.sectionCount, fontSize: '11px' }}>{neuronManagers.length}</span>
+                                        )}
+                                        {isNeuronManagersDropTarget && (
+                                            <span style={{ marginLeft: '8px', color: theme.colors.accent, fontSize: '11px' }}>
+                                                Drop here to add
+                                            </span>
+                                        )}
+                                    </div>
+                                    <Link 
+                                        to="/create_icp_neuron"
+                                        onClick={(e) => e.stopPropagation()}
+                                        style={{
+                                            padding: '4px 10px',
+                                            borderRadius: '6px',
+                                            border: 'none',
+                                            backgroundColor: '#8b5cf6',
+                                            color: '#fff',
+                                            fontSize: '11px',
+                                            fontWeight: 600,
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                            textDecoration: 'none',
+                                        }}
+                                    >
+                                        <FaPlus size={8} /> Create
+                                    </Link>
+                                </div>
                         
                         {neuronManagersExpanded && (
                             <>
@@ -4734,10 +4773,12 @@ export default function CanistersPage() {
                                     </>
                                 )}
                             </>
+                                )}
+                                </div>
+                                    )}
+                                </DroppableSection>
+                            </>
                         )}
-                        </div>
-                            )}
-                        </DroppableSection>
                     </>
                 )}
             </div>

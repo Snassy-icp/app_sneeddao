@@ -5248,8 +5248,7 @@ function Wallet() {
                     {[
                         { id: 'tokens', label: 'Tokens', icon: <FaCoins size={14} />, subtitle: tokensTotal > 0 ? `$${tokensTotal.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : null },
                         { id: 'positions', label: 'Liquidity', icon: <FaExchangeAlt size={14} />, subtitle: lpPositionsTotal > 0 ? `$${lpPositionsTotal.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : null },
-                        { id: 'neuronManagers', label: 'ICP Neurons', icon: <FaBrain size={14} />, subtitle: neuronManagers.length > 0 ? `${neuronManagers.length}` : null },
-                        { id: 'canisters', label: 'Canisters', icon: <FaLock size={14} />, subtitle: trackedCanisters.length > 0 ? `${trackedCanisters.length}` : null }
+                        { id: 'dapps', label: 'Dapps', icon: <FaBox size={14} />, subtitle: (neuronManagers.length + trackedCanisters.length) > 0 ? `${neuronManagers.length + trackedCanisters.length}` : null }
                     ].map(tab => (
                         <button
                             key={tab.id}
@@ -5584,80 +5583,104 @@ function Wallet() {
                 </>
                 )}
 
-                {/* ICP Neuron Managers Tab Content */}
-                {activeWalletTab === 'neuronManagers' && (
+                {/* Dapps Tab Content - Neuron Managers and Canisters combined */}
+                {activeWalletTab === 'dapps' && (
                     <div style={{ marginBottom: '20px' }}>
-                        <div style={{ 
-                            display: 'flex', 
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            marginBottom: '1rem',
-                            gap: '1rem',
-                            flexWrap: 'wrap'
-                        }}>
-                            <h3 style={{ 
-                                color: theme.colors.primaryText, 
-                                fontSize: '1.1rem', 
-                                fontWeight: '600',
-                                margin: 0,
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.5rem'
-                            }}>
-                                <FaBrain size={16} color={walletPrimary} />
-                                ICP Neuron Managers
-                                {neuronManagers.length > 0 && (
-                                    <span style={{ color: walletPrimary, fontWeight: '500' }}>
-                                        ({neuronManagers.length})
-                                        {managerNeuronsTotal > 0 && icpPrice && (
-                                            <span style={{ marginLeft: '0.25rem' }}>
-                                                • ${(managerNeuronsTotal * icpPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                            </span>
-                                        )}
-                                    </span>
-                                )}
-                            </h3>
-                            <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                <button
-                                    onClick={handleRefreshNeuronManagers}
-                                    disabled={refreshingNeuronManagers}
-                                    style={{
-                                        background: `${walletPrimary}15`,
-                                        color: walletPrimary,
-                                        border: `1px solid ${walletPrimary}30`,
-                                        borderRadius: '8px',
-                                        padding: '0.5rem 0.75rem',
-                                        cursor: refreshingNeuronManagers ? 'not-allowed' : 'pointer',
-                                        fontSize: '0.85rem',
-                                        fontWeight: '500',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '0.4rem',
-                                        transition: 'all 0.2s ease',
-                                        opacity: refreshingNeuronManagers ? 0.6 : 1
-                                    }}
-                                >
-                                    <FaSync size={12} style={{ animation: refreshingNeuronManagers ? 'walletSpin 1s linear infinite' : 'none' }} />
-                                    Refresh
-                                </button>
-                                <button
-                                    onClick={() => navigate('/create_icp_neuron')}
-                                    style={{
-                                        background: `linear-gradient(135deg, ${walletPrimary}, ${walletSecondary})`,
-                                        color: 'white',
-                                        border: 'none',
-                                        borderRadius: '8px',
-                                        padding: '0.5rem 1rem',
-                                        cursor: 'pointer',
-                                        fontSize: '0.85rem',
-                                        fontWeight: '600',
-                                        transition: 'all 0.2s ease'
-                                    }}
-                                >
-                                    + Create
-                                </button>
-                            </div>
+                        {/* Link to manage canisters */}
+                        <div style={{ marginBottom: '16px' }}>
+                            <Link 
+                                to="/canisters" 
+                                style={{ color: walletPrimary, fontSize: '13px', textDecoration: 'none' }}
+                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                            >
+                                Manage canister groups <FaArrowRight size={10} style={{ marginLeft: '4px' }} />
+                            </Link>
                         </div>
+
+                        {/* ICP Neuron Managers Section */}
+                        <div style={{ 
+                            backgroundColor: theme.colors.secondaryBg, 
+                            borderRadius: '12px', 
+                            padding: '16px',
+                            marginBottom: '16px'
+                        }}>
+                            <div 
+                                style={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    cursor: 'pointer',
+                                    marginBottom: neuronManagersExpanded ? '12px' : 0
+                                }}
+                                onClick={() => setNeuronManagersExpanded(!neuronManagersExpanded)}
+                            >
+                                <h3 style={{ 
+                                    color: theme.colors.primaryText, 
+                                    fontSize: '1rem', 
+                                    fontWeight: '600',
+                                    margin: 0,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem'
+                                }}>
+                                    {neuronManagersExpanded ? <FaChevronDown size={12} /> : <FaChevronRight size={12} />}
+                                    <FaBrain size={16} color="#8b5cf6" />
+                                    ICP Neuron Managers
+                                    {neuronManagers.length > 0 && (
+                                        <span style={{ color: '#8b5cf6', fontWeight: '500' }}>
+                                            ({neuronManagers.length})
+                                            {managerNeuronsTotal > 0 && icpPrice && (
+                                                <span style={{ marginLeft: '0.25rem' }}>
+                                                    • ${(managerNeuronsTotal * icpPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </span>
+                                            )}
+                                        </span>
+                                    )}
+                                </h3>
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); handleRefreshNeuronManagers(); }}
+                                        disabled={refreshingNeuronManagers}
+                                        style={{
+                                            background: `${walletPrimary}15`,
+                                            color: walletPrimary,
+                                            border: `1px solid ${walletPrimary}30`,
+                                            borderRadius: '8px',
+                                            padding: '0.4rem 0.6rem',
+                                            cursor: refreshingNeuronManagers ? 'not-allowed' : 'pointer',
+                                            fontSize: '0.8rem',
+                                            fontWeight: '500',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.3rem',
+                                            transition: 'all 0.2s ease',
+                                            opacity: refreshingNeuronManagers ? 0.6 : 1
+                                        }}
+                                    >
+                                        <FaSync size={10} style={{ animation: refreshingNeuronManagers ? 'walletSpin 1s linear infinite' : 'none' }} />
+                                        Refresh
+                                    </button>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); navigate('/create_icp_neuron'); }}
+                                        style={{
+                                            background: `linear-gradient(135deg, #8b5cf6, #7c3aed)`,
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '8px',
+                                            padding: '0.4rem 0.8rem',
+                                            cursor: 'pointer',
+                                            fontSize: '0.8rem',
+                                            fontWeight: '600',
+                                            transition: 'all 0.2s ease'
+                                        }}
+                                    >
+                                        + Create
+                                    </button>
+                                </div>
+                            </div>
+                            {neuronManagersExpanded && (
+                            <>
                         {/* Learn how it works link */}
                         <div style={{ marginBottom: '12px' }}>
                             <Link 
@@ -6619,74 +6642,73 @@ function Wallet() {
                                 })}
                             </div>
                         )}
-                    </div>
-                )}
+                            </>
+                            )}
+                        </div>
 
-                {/* Canisters Tab Content */}
-                {activeWalletTab === 'canisters' && (
-                    <div style={{ marginBottom: '20px' }}>
-                        <div style={{ 
-                            display: 'flex', 
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            marginBottom: '1rem',
-                            gap: '1rem',
-                            flexWrap: 'wrap'
-                        }}>
-                            <h3 style={{ 
-                                color: theme.colors.primaryText, 
-                                fontSize: '1.1rem', 
-                                fontWeight: '600',
-                                margin: 0,
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.5rem'
-                            }}>
-                                <FaLock size={16} color={walletPrimary} />
-                                Canisters
-                                {trackedCanisters.length > 0 && (
-                                    <span style={{ color: walletPrimary, fontWeight: '500' }}>
-                                        ({trackedCanisters.length})
-                                    </span>
-                                )}
-                            </h3>
-                            <button
-                                onClick={handleRefreshTrackedCanisters}
-                                disabled={refreshingTrackedCanisters}
-                                style={{
-                                    background: `${walletPrimary}15`,
-                                    color: walletPrimary,
-                                    border: `1px solid ${walletPrimary}30`,
-                                    borderRadius: '8px',
-                                    padding: '0.5rem 0.75rem',
-                                    cursor: refreshingTrackedCanisters ? 'not-allowed' : 'pointer',
-                                    fontSize: '0.85rem',
-                                    fontWeight: '500',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '0.4rem',
-                                    transition: 'all 0.2s ease',
-                                    opacity: refreshingTrackedCanisters ? 0.6 : 1
-                                }}
-                            >
-                                <FaSync size={12} style={{ animation: refreshingTrackedCanisters ? 'walletSpin 1s linear infinite' : 'none' }} />
-                                Refresh
-                            </button>
-                        </div>
-                        {/* Manage custom canister groups link */}
-                        <div style={{ marginBottom: '12px' }}>
-                            <Link 
-                                to="/canisters" 
-                                style={{ color: walletPrimary, fontSize: '13px', textDecoration: 'none' }}
-                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                            >
-                                Manage custom canister groups <FaArrowRight size={10} style={{ marginLeft: '4px' }} />
-                            </Link>
-                        </div>
-                        {/* Add canister input */}
+                        {/* Canisters Section */}
                         <div style={{ 
                             backgroundColor: theme.colors.secondaryBg, 
+                            borderRadius: '12px', 
+                            padding: '16px',
+                            marginBottom: '16px'
+                        }}>
+                            <div 
+                                style={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    cursor: 'pointer',
+                                    marginBottom: trackedCanistersExpanded ? '12px' : 0
+                                }}
+                                onClick={() => setTrackedCanistersExpanded(!trackedCanistersExpanded)}
+                            >
+                                <h3 style={{ 
+                                    color: theme.colors.primaryText, 
+                                    fontSize: '1rem', 
+                                    fontWeight: '600',
+                                    margin: 0,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem'
+                                }}>
+                                    {trackedCanistersExpanded ? <FaChevronDown size={12} /> : <FaChevronRight size={12} />}
+                                    <FaBox size={16} color={walletPrimary} />
+                                    Canisters
+                                    {trackedCanisters.length > 0 && (
+                                        <span style={{ color: walletPrimary, fontWeight: '500' }}>
+                                            ({trackedCanisters.length})
+                                        </span>
+                                    )}
+                                </h3>
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); handleRefreshTrackedCanisters(); }}
+                                    disabled={refreshingTrackedCanisters}
+                                    style={{
+                                        background: `${walletPrimary}15`,
+                                        color: walletPrimary,
+                                        border: `1px solid ${walletPrimary}30`,
+                                        borderRadius: '8px',
+                                        padding: '0.4rem 0.6rem',
+                                        cursor: refreshingTrackedCanisters ? 'not-allowed' : 'pointer',
+                                        fontSize: '0.8rem',
+                                        fontWeight: '500',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.3rem',
+                                        transition: 'all 0.2s ease',
+                                        opacity: refreshingTrackedCanisters ? 0.6 : 1
+                                    }}
+                                >
+                                    <FaSync size={10} style={{ animation: refreshingTrackedCanisters ? 'walletSpin 1s linear infinite' : 'none' }} />
+                                    Refresh
+                                </button>
+                            </div>
+                            {trackedCanistersExpanded && (
+                            <>
+                        {/* Add canister input */}
+                        <div style={{ 
+                            backgroundColor: theme.colors.tertiaryBg || theme.colors.primaryBg, 
                             borderRadius: '8px', 
                             padding: '12px 16px',
                             marginBottom: '12px',
@@ -7684,6 +7706,9 @@ function Wallet() {
                                 })}
                             </div>
                         )}
+                            </>
+                            )}
+                        </div>
                     </div>
                 )}
 
