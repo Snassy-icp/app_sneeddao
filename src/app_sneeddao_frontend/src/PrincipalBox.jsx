@@ -814,7 +814,10 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
 
     // Handle refresh dapp in detail modal
     const handleRefreshDapp = useCallback(async (canisterId) => {
-        if (!identity || !canisterId) return;
+        if (!identity || !canisterId) {
+            console.warn('[QuickWallet] handleRefreshDapp: missing identity or canisterId', { identity: !!identity, canisterId });
+            return;
+        }
         
         setIsRefreshingDapp(true);
         try {
@@ -847,6 +850,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                 moduleHash = status.module_hash[0] ? uint8ArrayToHex(status.module_hash[0]) : null;
                 isController = true;
             } catch (err) {
+                // Not a controller - try backend fallback for module_hash
+                console.log('[QuickWallet] canister_status failed (may not be controller):', canisterId);
                 try {
                     const result = await getCanisterInfo(identity, canisterId);
                     if (result && 'ok' in result) {
@@ -863,14 +868,19 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                 [canisterId]: { cycles, memory, isController, moduleHash }
             }));
             
-            // Update modal with new data
-            setDetailDapp(prev => prev ? {
-                ...prev,
-                cycles,
-                memory,
-                isController,
-            } : null);
+            // Update modal with new data - always update even if values are null
+            setDetailDapp(prev => {
+                if (!prev) return null;
+                return {
+                    ...prev,
+                    cycles,
+                    memory,
+                    isController,
+                };
+            });
             
+        } catch (err) {
+            console.error('[QuickWallet] handleRefreshDapp error:', err);
         } finally {
             setIsRefreshingDapp(false);
         }
@@ -2380,7 +2390,21 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                               <>
                               {/* Neuron Managers first */}
                               {neuronManagers.map((manager, index) => {
-                                  const canisterIdStr = manager.canisterId?.toString?.() || manager.canisterId?.toText?.() || manager.canisterId;
+                                  // Safely convert canisterId to string - handle Principal objects and plain objects
+                                  let canisterIdStr = '';
+                                  if (manager.canisterId) {
+                                      if (typeof manager.canisterId === 'string') {
+                                          canisterIdStr = manager.canisterId;
+                                      } else if (typeof manager.canisterId.toText === 'function') {
+                                          canisterIdStr = manager.canisterId.toText();
+                                      } else if (typeof manager.canisterId.toString === 'function') {
+                                          const str = manager.canisterId.toString();
+                                          // Check if toString returned a valid principal string (not [object Object])
+                                          canisterIdStr = str.includes('-') ? str : '';
+                                      }
+                                  }
+                                  // Skip rendering if we couldn't get a valid canister ID
+                                  if (!canisterIdStr) return null;
                                   const neuronsData = managerNeurons[canisterIdStr];
                                   const neurons = neuronsData?.neurons || [];
                                   const isLoading = neuronsData?.loading;

@@ -1734,7 +1734,19 @@ export const WalletProvider = ({ children }) => {
             
             const controllerMap = {};
             await Promise.all(neuronManagers.map(async (manager) => {
-                const canisterId = manager.canisterId?.toString?.() || manager.canisterId?.toText?.() || String(manager.canisterId);
+                // Safely convert canisterId to string
+                let canisterId = '';
+                if (manager.canisterId) {
+                    if (typeof manager.canisterId === 'string') {
+                        canisterId = manager.canisterId;
+                    } else if (typeof manager.canisterId.toText === 'function') {
+                        canisterId = manager.canisterId.toText();
+                    } else if (typeof manager.canisterId.toString === 'function') {
+                        const str = manager.canisterId.toString();
+                        canisterId = str.includes('-') ? str : '';
+                    }
+                }
+                if (!canisterId) return; // Skip if invalid
                 
                 try {
                     const canisterIdPrincipal = Principal.fromText(canisterId);

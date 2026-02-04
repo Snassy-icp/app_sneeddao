@@ -62,10 +62,19 @@ const DappCardModal = ({
 
     // Auto-refresh if cycles/memory are missing when modal opens
     const hasTriggeredAutoRefresh = useRef(false);
+    const lastHandleRefresh = useRef(null);
+    
     useEffect(() => {
+        // Reset if handleRefresh function changed (e.g., identity became available)
+        if (handleRefresh !== lastHandleRefresh.current) {
+            hasTriggeredAutoRefresh.current = false;
+            lastHandleRefresh.current = handleRefresh;
+        }
+        
         if (show && canisterId && handleRefresh && !isRefreshing) {
             // Only auto-refresh once per modal open if data is missing
             if ((cycles === null || memory === null) && !hasTriggeredAutoRefresh.current) {
+                console.log('[DappCardModal] Auto-refreshing for canister:', canisterId, { cycles, memory });
                 hasTriggeredAutoRefresh.current = true;
                 handleRefresh(canisterId);
             }
