@@ -348,6 +348,47 @@ export const updateNeuronInCache = async (snsRoot, neuron) => {
 };
 
 /**
+ * Serialize a neuron for storage in IndexedDB
+ * Handles Uint8Arrays in id field and Principal objects in permissions
+ * @param {Object} neuron - The neuron object to serialize
+ * @returns {Object} The serialized neuron
+ */
+const serializeNeuronForStorage = (neuron) => {
+    // Serialize the id field (Uint8Array -> Array)
+    const serializedId = neuron.id?.map(idObj => ({
+        ...idObj,
+        id: idObj.id instanceof Uint8Array 
+            ? Array.from(idObj.id)
+            : Array.isArray(idObj.id) ? idObj.id : []
+    })) || neuron.id;
+    
+    // Serialize permissions (Principal -> string)
+    const serializedPermissions = neuron.permissions?.map(p => ({
+        ...p,
+        // Store principal as a string for reliable retrieval
+        principal: p.principal 
+            ? (typeof p.principal === 'string' 
+                ? p.principal 
+                : (typeof p.principal.toText === 'function' 
+                    ? p.principal.toText() 
+                    : (p.principal.__principal__ || p.principal.toString?.())))
+            : p.principal,
+        // Ensure permission_type is a regular array
+        permission_type: Array.isArray(p.permission_type) 
+            ? p.permission_type 
+            : (p.permission_type?.length !== undefined 
+                ? Array.from(p.permission_type) 
+                : p.permission_type)
+    })) || neuron.permissions;
+    
+    return {
+        ...neuron,
+        id: serializedId,
+        permissions: serializedPermissions
+    };
+};
+
+/**
  * Save neurons to the shared cache (for use by WalletContext and other consumers)
  * This merges with existing neurons rather than replacing
  * @param {Principal|string} snsRoot - SNS root canister ID (accepts Principal or string)
@@ -396,32 +437,15 @@ export const saveNeuronsToCache = async (snsRoot, neurons) => {
                                     ? idArray.map(b => b.toString(16).padStart(2, '0')).join('')
                                     : '';
                             
-                            // Serialize for storage
-                            const serializedNeuron = {
-                                ...neuron,
-                                id: neuron.id.map(idObj => ({
-                                    ...idObj,
-                                    id: idObj.id instanceof Uint8Array 
-                                        ? Array.from(idObj.id)
-                                        : Array.isArray(idObj.id) ? idObj.id : []
-                                }))
-                            };
-                            existingMap.set(hex.toLowerCase(), serializedNeuron);
+                            // Serialize for storage (handles id and permissions)
+                            existingMap.set(hex.toLowerCase(), serializeNeuronForStorage(neuron));
                         }
                     });
                     
                     mergedNeurons = Array.from(existingMap.values());
                 } else {
                     // No existing data - just serialize the new neurons
-                    mergedNeurons = neurons.map(neuron => ({
-                        ...neuron,
-                        id: neuron.id.map(idObj => ({
-                            ...idObj,
-                            id: idObj.id instanceof Uint8Array 
-                                ? Array.from(idObj.id)
-                                : Array.isArray(idObj.id) ? idObj.id : []
-                        }))
-                    }));
+                    mergedNeurons = neurons.map(neuron => serializeNeuronForStorage(neuron));
                 }
                 
                 const putRequest = store.put({

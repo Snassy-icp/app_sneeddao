@@ -5,6 +5,7 @@ import { useNeurons } from '../contexts/NeuronsContext';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { calculateVotingPower } from '../utils/VotingPowerUtils';
 import { getSnsById } from '../utils/SnsUtils';
+import { safePrincipalString, safePermissionType } from '../utils/NeuronUtils';
 
 /**
  * Hook to check if the current user is a Sneed DAO member
@@ -45,11 +46,14 @@ export function useSneedMembership() {
             const neurons = await fetchNeuronsForSns(SNEED_SNS_ROOT);
             
             // Filter to only hotkeyed neurons (where user has hotkey permission)
+            const userPrincipalStr = identity.getPrincipal().toString();
             const hotkeyNeurons = neurons.filter(neuron => {
-                return neuron.permissions?.some(p => 
-                    p.principal?.toString() === identity.getPrincipal().toString() &&
-                    p.permission_type.includes(4) // Hotkey permission
-                );
+                return neuron.permissions?.some(p => {
+                    const permPrincipal = safePrincipalString(p.principal);
+                    if (!permPrincipal || permPrincipal !== userPrincipalStr) return false;
+                    const permTypes = safePermissionType(p);
+                    return permTypes.includes(4); // Hotkey permission
+                });
             });
             
             setSneedNeurons(hotkeyNeurons);

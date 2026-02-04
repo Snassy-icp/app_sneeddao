@@ -5,6 +5,7 @@ import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/P
 import { useNaming } from '../NamingContext';
 import { useWalletOptional } from '../contexts/WalletContext';
 import { getSnsById } from '../utils/SnsUtils';
+import { safePrincipalString, safePermissionType } from '../utils/NeuronUtils';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'declarations/rll';
 import { useAuth } from '../AuthContext';
 import { useAdminCheck } from '../hooks/useAdminCheck';
@@ -315,14 +316,14 @@ function Discussion({
     const getAllNeurons = useCallback(() => userNeurons, [userNeurons]);
     const getHotkeyNeurons = useCallback(() => {
         if (!identity) return [];
+        const userPrincipalStr = identity.getPrincipal().toString();
         return userNeurons.filter(neuron => 
             neuron.permissions?.some(p => {
-                if (p.principal?.toString() !== identity.getPrincipal().toString()) return false;
+                const permPrincipal = safePrincipalString(p.principal);
+                if (!permPrincipal || permPrincipal !== userPrincipalStr) return false;
                 // Safe array check for cached data
-                const pt = p.permission_type;
-                if (!pt) return false;
-                const arr = Array.isArray(pt) ? pt : (pt.length !== undefined ? Array.from(pt) : []);
-                return arr.includes(4); // Hotkey permission
+                const permTypes = safePermissionType(p);
+                return permTypes.includes(4); // Hotkey permission
             })
         );
     }, [identity, userNeurons]);

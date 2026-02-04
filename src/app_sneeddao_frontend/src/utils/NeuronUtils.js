@@ -46,6 +46,66 @@ export const safePermissionType = (permission) => {
     return [];
 };
 
+/**
+ * Safely extract principal string from various formats
+ * Handles:
+ * - Real Principal objects (from fresh API calls)
+ * - Serialized principals (from IndexedDB/cache as strings)
+ * - Dfinity agent format: {"__principal__":"..."}
+ * - Our custom format: {"__type":"Principal","value":"..."}
+ * - Principal objects with _arr property (internal representation)
+ * - Arrays containing a principal (SNS API format): [Principal]
+ * 
+ * @param {Principal|string|object|array} principal - The principal in any format
+ * @returns {string|null} The principal as a string, or null if invalid
+ */
+export const safePrincipalString = (principal) => {
+    if (!principal) return null;
+    
+    // Handle arrays (SNS API sometimes returns [Principal])
+    if (Array.isArray(principal)) {
+        if (principal.length === 0) return null;
+        return safePrincipalString(principal[0]);
+    }
+    
+    // Already a string
+    if (typeof principal === 'string') {
+        // Validate it looks like a principal (has dashes)
+        return principal.includes('-') ? principal : null;
+    }
+    
+    // Real Principal object with toText method
+    if (typeof principal.toText === 'function') {
+        return principal.toText();
+    }
+    
+    // Dfinity agent serialized format: {"__principal__":"..."}
+    if (principal.__principal__ && typeof principal.__principal__ === 'string') {
+        return principal.__principal__;
+    }
+    
+    // Our custom format: {"__type":"Principal","value":"..."}
+    if (principal.__type === 'Principal' && principal.value) {
+        return principal.value;
+    }
+    
+    // Generic value property
+    if (principal.value && typeof principal.value === 'string' && principal.value.includes('-')) {
+        return principal.value;
+    }
+    
+    // Last resort - try toString but validate result
+    if (typeof principal.toString === 'function') {
+        const str = principal.toString();
+        // Check it's not "[object Object]" and looks like a principal
+        if (str && str !== '[object Object]' && str.includes('-')) {
+            return str;
+        }
+    }
+    
+    return null;
+};
+
 // ============================================================================
 // NEURON INDEXING ENGINE
 // Shared indexing logic for /hub, /users, and anywhere else that needs to 

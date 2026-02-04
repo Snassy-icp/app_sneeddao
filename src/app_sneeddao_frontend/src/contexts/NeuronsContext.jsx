@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../AuthContext';
 import { useSns } from './SnsContext';
-import { fetchUserNeuronsForSns, uint8ArrayToHex } from '../utils/NeuronUtils';
+import { fetchUserNeuronsForSns, uint8ArrayToHex, safePrincipalString, safePermissionType } from '../utils/NeuronUtils';
 import { getSnsById } from '../utils/SnsUtils';
 import { getNeuronsFromCacheByIds, saveNeuronsToCache } from '../hooks/useNeuronsCache';
 
@@ -226,15 +226,15 @@ export function NeuronsProvider({ children }) {
     const getHotkeyNeurons = useCallback(() => {
         if (!identity) return [];
         
+        const userPrincipalStr = identity.getPrincipal().toString();
         const allNeurons = getAllNeurons();
         return allNeurons.filter(neuron => {
             return neuron.permissions?.some(p => {
-                if (p.principal?.toString() !== identity.getPrincipal().toString()) return false;
+                const permPrincipal = safePrincipalString(p.principal);
+                if (!permPrincipal || permPrincipal !== userPrincipalStr) return false;
                 // Safe array check for cached data
-                const pt = p.permission_type;
-                if (!pt) return false;
-                const arr = Array.isArray(pt) ? pt : (pt.length !== undefined ? Array.from(pt) : []);
-                return arr.includes(4); // Hotkey permission
+                const permTypes = safePermissionType(p);
+                return permTypes.includes(4); // Hotkey permission
             });
         });
     }, [identity, getAllNeurons]);

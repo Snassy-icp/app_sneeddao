@@ -14,6 +14,7 @@ import { formatError } from '../utils/errorUtils';
 import { formatPrincipal, getPrincipalDisplayInfoFromContext, PrincipalDisplay } from '../utils/PrincipalUtils';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { getSnsById } from '../utils/SnsUtils';
+import { safePrincipalString, safePermissionType } from '../utils/NeuronUtils';
 import { Principal } from '@dfinity/principal';
 import { FaThumbsUp, FaThumbsDown, FaReply, FaCoins, FaEnvelope, FaEdit, FaTrash, FaPoll } from 'react-icons/fa';
 import { 
@@ -492,14 +493,14 @@ function ThreadViewer({
     const getAllNeurons = useCallback(() => userNeurons, [userNeurons]);
     const getHotkeyNeurons = useCallback(() => {
         if (!identity) return [];
+        const userPrincipalStr = identity.getPrincipal().toString();
         return userNeurons.filter(neuron => 
             neuron.permissions?.some(p => {
-                if (p.principal?.toString() !== identity.getPrincipal().toString()) return false;
+                const permPrincipal = safePrincipalString(p.principal);
+                if (!permPrincipal || permPrincipal !== userPrincipalStr) return false;
                 // Safe array check for cached data
-                const pt = p.permission_type;
-                if (!pt) return false;
-                const arr = Array.isArray(pt) ? pt : (pt.length !== undefined ? Array.from(pt) : []);
-                return arr.includes(4); // Hotkey permission
+                const permTypes = safePermissionType(p);
+                return permTypes.includes(4); // Hotkey permission
             })
         );
     }, [identity, userNeurons]);

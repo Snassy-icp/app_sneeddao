@@ -10,7 +10,7 @@ import PrincipalInput from '../components/PrincipalInput';
 import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalColor, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import ConfirmationModal from '../ConfirmationModal';
-import { fetchPrincipalNeuronsForSns, getOwnerPrincipals, formatNeuronIdLink } from '../utils/NeuronUtils';
+import { fetchPrincipalNeuronsForSns, getOwnerPrincipals, formatNeuronIdLink, safePrincipalString } from '../utils/NeuronUtils';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { getSnsById, fetchAndCacheSnsData, fetchSnsLogo, getAllSnses } from '../utils/SnsUtils';
 import { formatE8s, getDissolveState, uint8ArrayToHex } from '../utils/NeuronUtils';
@@ -439,9 +439,10 @@ export default function PrincipalPage() {
                 }
 
                 const neuronsList = await fetchPrincipalNeuronsForSns(null, selectedSns.canisters.governance, currentPrincipalId.toString());
+                const targetPrincipal = currentPrincipalId.toString();
                 const relevantNeurons = neuronsList.filter(neuron => 
                     neuron.permissions.some(p => 
-                        p.principal?.toString() === currentPrincipalId.toString()
+                        safePrincipalString(p.principal) === targetPrincipal
                     )
                 );
 
@@ -482,7 +483,8 @@ export default function PrincipalPage() {
             neurons.forEach(neuron => {
                 getOwnerPrincipals(neuron).forEach(p => uniquePrincipals.add(p));
                 neuron.permissions.forEach(p => {
-                    if (p.principal) uniquePrincipals.add(p.principal.toString());
+                    const principalStr = safePrincipalString(p.principal);
+                    if (principalStr) uniquePrincipals.add(principalStr);
                 });
             });
 
@@ -2420,23 +2422,26 @@ export default function PrincipalPage() {
                                                         </div>
                                                     )}
                                                     {neuron.permissions
-                                                        .filter(p => !getOwnerPrincipals(neuron).includes(p.principal?.toString()))
-                                                        .map((p, index) => (
-                                                            <div key={index} style={{ 
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                gap: '8px',
-                                                                marginBottom: '6px'
-                                                            }}>
-                                                                <FaKey size={12} color={theme.colors.success} title="Hotkey" />
-                                                                <PrincipalDisplay 
-                                                                    principal={p.principal}
-                                                                    displayInfo={principalDisplayInfo.get(p.principal?.toString())}
-                                                                    showCopyButton={false}
-                                                                    isAuthenticated={isAuthenticated}
-                                                                />
-                                                            </div>
-                                                        ))
+                                                        .filter(p => !getOwnerPrincipals(neuron).includes(safePrincipalString(p.principal)))
+                                                        .map((p, index) => {
+                                                            const principalStr = safePrincipalString(p.principal);
+                                                            return (
+                                                                <div key={index} style={{ 
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '8px',
+                                                                    marginBottom: '6px'
+                                                                }}>
+                                                                    <FaKey size={12} color={theme.colors.success} title="Hotkey" />
+                                                                    <PrincipalDisplay 
+                                                                        principal={p.principal}
+                                                                        displayInfo={principalDisplayInfo.get(principalStr)}
+                                                                        showCopyButton={false}
+                                                                        isAuthenticated={isAuthenticated}
+                                                                    />
+                                                                </div>
+                                                            );
+                                                        })
                                                     }
                                                 </div>
                                             </div>

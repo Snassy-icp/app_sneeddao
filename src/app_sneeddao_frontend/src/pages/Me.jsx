@@ -13,7 +13,9 @@ import {
     getDissolveState, 
     formatNeuronIdLink,
     uint8ArrayToHex,
-    getOwnerPrincipals
+    getOwnerPrincipals,
+    safePrincipalString,
+    safePermissionType
 } from '../utils/NeuronUtils';
 import { useWalletOptional } from '../contexts/WalletContext';
 import {
@@ -537,11 +539,11 @@ export default function Me() {
         neurons.forEach(neuron => {
             // Check if user has MANAGE_PRINCIPALS permission on this neuron
             const userHasManagePermissions = neuron.permissions?.some(p => {
-                if (p.principal?.toString() !== userPrincipal) return false;
+                const permPrincipal = safePrincipalString(p.principal);
+                if (!permPrincipal || permPrincipal !== userPrincipal) return false;
                 // Safe array check for cached data
-                const pt = p.permission_type || [];
-                const arr = Array.isArray(pt) ? pt : (pt.length !== undefined ? Array.from(pt) : []);
-                return arr.includes(MANAGE_PRINCIPALS);
+                const permTypes = safePermissionType(p);
+                return permTypes.includes(MANAGE_PRINCIPALS);
             });
 
             let effectiveOwner;
@@ -564,7 +566,7 @@ export default function Me() {
 
         neuronsByOwner.forEach((ownerNeurons, owner) => {
             const hasAccess = ownerNeurons.some(neuron => 
-                neuron.permissions.some(p => p.principal?.toString() === userPrincipal)
+                neuron.permissions.some(p => safePrincipalString(p.principal) === userPrincipal)
             );
 
             if (hasAccess) {
@@ -672,7 +674,8 @@ export default function Me() {
             neurons.forEach(neuron => {
                 getOwnerPrincipals(neuron).forEach(p => uniquePrincipals.add(p));
                 neuron.permissions.forEach(p => {
-                    if (p.principal) uniquePrincipals.add(p.principal.toString());
+                    const principalStr = safePrincipalString(p.principal);
+                    if (principalStr) uniquePrincipals.add(principalStr);
                 });
             });
 
@@ -2303,10 +2306,10 @@ export default function Me() {
                                                             if (!neuronId) return null;
 
                                                             const hasHotkeyAccess = neuron.permissions?.some(p => {
-                                                                if (p.principal?.toString() !== identity.getPrincipal().toString()) return false;
-                                                                const pt = p.permission_type;
-                                                                const arr = Array.isArray(pt) ? pt : (pt?.length !== undefined ? Array.from(pt) : []);
-                                                                return arr.includes(4);
+                                                                const permPrincipal = safePrincipalString(p.principal);
+                                                                if (!permPrincipal || permPrincipal !== identity.getPrincipal().toString()) return false;
+                                                                const permTypes = safePermissionType(p);
+                                                                return permTypes.includes(4);
                                                             });
 
                                                             const { name, nickname, isVerified } = getDisplayName(neuronId);
@@ -2780,10 +2783,10 @@ function NeuronGroup({
                             if (!neuronId) return null;
 
                             const hasHotkeyAccess = neuron.permissions?.some(p => {
-                                if (p.principal?.toString() !== identity.getPrincipal().toString()) return false;
-                                const pt = p.permission_type;
-                                const arr = Array.isArray(pt) ? pt : (pt?.length !== undefined ? Array.from(pt) : []);
-                                return arr.includes(4);
+                                const permPrincipal = safePrincipalString(p.principal);
+                                if (!permPrincipal || permPrincipal !== identity.getPrincipal().toString()) return false;
+                                const permTypes = safePermissionType(p);
+                                return permTypes.includes(4);
                             });
 
                             const { name, nickname, isVerified } = getDisplayName(neuronId);
@@ -3106,17 +3109,20 @@ function NeuronCard({
                         </div>
                     ))}
                     {neuron.permissions
-                        .filter(p => !getOwnerPrincipals(neuron).includes(p.principal?.toString()))
-                        .map((p, index) => (
-                            <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
-                                <span title="Hotkey">🔑</span>
-                                <PrincipalDisplay 
-                                    principal={p.principal}
-                                    displayInfo={principalDisplayInfo.get(p.principal?.toString())}
-                                    showCopyButton={false}
-                                />
-                            </div>
-                        ))
+                        .filter(p => !getOwnerPrincipals(neuron).includes(safePrincipalString(p.principal)))
+                        .map((p, index) => {
+                            const principalStr = safePrincipalString(p.principal);
+                            return (
+                                <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
+                                    <span title="Hotkey">🔑</span>
+                                    <PrincipalDisplay 
+                                        principal={p.principal}
+                                        displayInfo={principalDisplayInfo.get(principalStr)}
+                                        showCopyButton={false}
+                                    />
+                                </div>
+                            );
+                        })
                     }
                 </div>
             </div>

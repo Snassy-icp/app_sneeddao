@@ -19,6 +19,7 @@ import ConsolidateModal from '../ConsolidateModal';
 import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { getSnsById, fetchSnsLogo } from '../utils/SnsUtils';
+import { safePrincipalString, safePermissionType } from '../utils/NeuronUtils';
 import { HttpAgent } from '@dfinity/agent';
 
 function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
@@ -63,16 +64,17 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     
     // Helper functions matching the old NeuronsContext API
     const getAllNeurons = () => userNeurons;
+    
     const getHotkeyNeurons = () => {
         if (!identity) return [];
+        const userPrincipalStr = identity.getPrincipal().toString();
         return userNeurons.filter(neuron => 
             neuron.permissions?.some(p => {
-                if (p.principal?.toString() !== identity.getPrincipal().toString()) return false;
-                // Safe array check for cached data
-                const pt = p.permission_type;
-                if (!pt) return false;
-                const arr = Array.isArray(pt) ? pt : (pt.length !== undefined ? Array.from(pt) : []);
-                return arr.includes(4); // Hotkey permission
+                const permPrincipal = safePrincipalString(p.principal);
+                if (!permPrincipal || permPrincipal !== userPrincipalStr) return false;
+                // Safe array check for cached data using shared utility
+                const permTypes = safePermissionType(p);
+                return permTypes.includes(4); // Hotkey permission
             })
         );
     };
