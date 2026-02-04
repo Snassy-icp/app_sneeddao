@@ -15,7 +15,10 @@ import NeuronInput from '../components/NeuronInput';
 import NeuronDisplay from '../components/NeuronDisplay';
 import TokenIcon from '../components/TokenIcon';
 import useNeuronsCache from '../hooks/useNeuronsCache';
-import { FaUsers, FaLock, FaUnlock, FaClock, FaDownload, FaSync, FaChevronLeft, FaChevronRight, FaSearch, FaLightbulb, FaArrowUp, FaArrowDown, FaSort, FaFilter, FaCoins, FaVoteYea, FaCheckCircle, FaTimesCircle, FaExternalLinkAlt } from 'react-icons/fa';
+import { FaUsers, FaLock, FaUnlock, FaClock, FaDownload, FaSync, FaChevronLeft, FaChevronRight, FaSearch, FaLightbulb, FaArrowUp, FaArrowDown, FaSort, FaFilter, FaCoins, FaVoteYea, FaCheckCircle, FaTimesCircle, FaExternalLinkAlt, FaCrown, FaKey, FaUserShield, FaQuestion } from 'react-icons/fa';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
+import { Principal } from '@dfinity/principal';
+import { extractPrincipalString } from '../utils/NeuronUtils';
 
 function Neurons() {
     const { theme } = useTheme();
@@ -44,7 +47,7 @@ function Neurons() {
     } = useNeuronsCache(selectedSnsRoot, identity);
     
     // Get naming context
-    const { neuronNames, neuronNicknames, verifiedNames } = useNaming();
+    const { neuronNames, neuronNicknames, verifiedNames, principalNames, principalNicknames } = useNaming();
     
     // Get current SNS info
     const currentSnsInfo = useMemo(() => {
@@ -72,6 +75,36 @@ function Neurons() {
         const isVerified = verifiedMap.get(mapKey);
 
         return { name, nickname, isVerified };
+    };
+
+    // Permission constants
+    const PERM = {
+        UNSPECIFIED: 0, CONFIGURE_DISSOLVE_STATE: 1, MANAGE_PRINCIPALS: 2, SUBMIT_PROPOSAL: 3,
+        VOTE: 4, DISBURSE: 5, SPLIT: 6, MERGE_MATURITY: 7, DISBURSE_MATURITY: 8, STAKE_MATURITY: 9, MANAGE_VOTING_PERMISSION: 10
+    };
+
+    // Get principal symbol based on permissions (like Neuron.jsx)
+    const getPrincipalSymbol = (perms) => {
+        const permArray = perms?.permission_type || [];
+        const permCount = permArray.length;
+        if (permCount === 10 || permCount === 11) return { icon: <FaCrown size={10} />, title: 'Full Owner', color: '#f59e0b' };
+        const hasSubmit = permArray.includes(PERM.SUBMIT_PROPOSAL);
+        const hasVote = permArray.includes(PERM.VOTE);
+        if (permCount === 2 && hasSubmit && hasVote) return { icon: <FaKey size={10} />, title: 'Hotkey', color: '#06b6d4' };
+        if (permCount === 1 && hasVote) return { icon: <FaVoteYea size={10} />, title: 'Voter', color: '#10b981' };
+        if (permArray.includes(PERM.MANAGE_PRINCIPALS)) return { icon: <FaUserShield size={10} />, title: 'Manager', color: neuronPrimary };
+        if (permArray.includes(PERM.DISBURSE) || permArray.includes(PERM.DISBURSE_MATURITY)) return { icon: <FaCoins size={10} />, title: 'Financial', color: '#f59e0b' };
+        return { icon: <FaQuestion size={10} />, title: 'Custom', color: theme.colors.mutedText };
+    };
+
+    // Get principal display info for a principal string
+    const getPrincipalDisplayInfo = (principalStr) => {
+        if (!principalStr || !principalNames || !principalNicknames) return null;
+        try {
+            return getPrincipalDisplayInfoFromContext(Principal.fromText(principalStr), principalNames, principalNicknames);
+        } catch {
+            return null;
+        }
     };
     
     // Pagination state
@@ -1254,6 +1287,65 @@ function Neurons() {
                                                             enableContextMenu={true}
                                                         />
                                                     </div>
+                                                    {/* Compact Principals */}
+                                                    {neuron.permissions?.length > 0 && (
+                                                        <div 
+                                                            style={{
+                                                                marginTop: '0.5rem',
+                                                                display: 'flex',
+                                                                flexWrap: 'wrap',
+                                                                gap: '0.35rem'
+                                                            }}
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                            {neuron.permissions.slice(0, 4).map((perm, idx) => {
+                                                                const symbolInfo = getPrincipalSymbol(perm);
+                                                                const principalStr = extractPrincipalString(perm.principal);
+                                                                if (!principalStr) return null;
+                                                                
+                                                                return (
+                                                                    <div
+                                                                        key={idx}
+                                                                        style={{
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '0.25rem',
+                                                                            padding: '0.2rem 0.4rem',
+                                                                            background: `${symbolInfo.color}15`,
+                                                                            borderRadius: '4px',
+                                                                            border: `1px solid ${symbolInfo.color}25`
+                                                                        }}
+                                                                        title={symbolInfo.title}
+                                                                    >
+                                                                        <span style={{ color: symbolInfo.color, display: 'flex', alignItems: 'center' }}>
+                                                                            {symbolInfo.icon}
+                                                                        </span>
+                                                                        <PrincipalDisplay
+                                                                            principal={Principal.fromText(principalStr)}
+                                                                            displayInfo={getPrincipalDisplayInfo(principalStr)}
+                                                                            showCopyButton={false}
+                                                                            short={true}
+                                                                            isAuthenticated={!!identity}
+                                                                            style={{ fontSize: '0.7rem' }}
+                                                                        />
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                            {neuron.permissions.length > 4 && (
+                                                                <div style={{
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    padding: '0.2rem 0.4rem',
+                                                                    background: `${theme.colors.mutedText}15`,
+                                                                    borderRadius: '4px',
+                                                                    fontSize: '0.7rem',
+                                                                    color: theme.colors.mutedText
+                                                                }}>
+                                                                    +{neuron.permissions.length - 4}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                 </div>
 
                                                 {/* Stake */}
