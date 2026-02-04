@@ -62,6 +62,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const walletTokens = walletContext?.walletTokens || [];
     const walletLoading = walletContext?.walletLoading || false;
     const hasFetchedInitial = walletContext?.hasFetchedInitial || false;
+    const cacheCheckComplete = walletContext?.cacheCheckComplete || false;
     const sendToken = walletContext?.sendToken;
     const isTokenSns = walletContext?.isTokenSns;
     const refreshWallet = walletContext?.refreshWallet;
@@ -1245,8 +1246,13 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                               overflowX: 'hidden'
                           }}
                       >
-                          {/* Show loading only when no tokens yet AND still loading/not fetched */}
-                          {(walletLoading || !hasFetchedInitial) && tokensWithBalance.length === 0 ? (
+                          {/* Show loading until we're CERTAIN we have finished loading
+                               Only show "no tokens" messages when:
+                               - Cache check is complete (we've checked for cached data)
+                               - Initial fetch has completed
+                               - Not currently loading
+                           */}
+                          {(!cacheCheckComplete || walletLoading || !hasFetchedInitial) && tokensWithBalance.length === 0 ? (
                               <div style={{ 
                                   padding: '12px', 
                                   textAlign: 'center',
@@ -1426,7 +1432,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                               })
                           )}
                           {/* Show subtle loading indicator while more tokens are loading */}
-                          {(walletLoading || !hasFetchedInitial) && tokensWithBalance.length > 0 && (
+                          {(!cacheCheckComplete || walletLoading || !hasFetchedInitial) && tokensWithBalance.length > 0 && (
                               <div style={{ 
                                   padding: '6px 12px',
                                   textAlign: 'center',
