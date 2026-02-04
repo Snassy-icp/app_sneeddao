@@ -2200,6 +2200,143 @@ export default function CanistersPage() {
         };
     }, [getManagerHealthStatus, isVersionOutdated]);
 
+    // Helper to calculate overall health statistics for all groups
+    const getGroupsHealthStats = useCallback((groups, ungrouped, statusMap, cycleSettings, detectedManagers, nmCycleSettings) => {
+        const { cycleThresholdRed, cycleThresholdOrange } = cycleSettings;
+        const nmRed = nmCycleSettings?.cycleThresholdRed || cycleThresholdRed;
+        const nmOrange = nmCycleSettings?.cycleThresholdOrange || cycleThresholdOrange;
+        
+        let red = 0, orange = 0, green = 0, unknown = 0;
+        let outdated = 0;
+        
+        // Recursively count canisters in groups
+        const countCanisterInGroup = (grp) => {
+            for (const canisterId of grp.canisters) {
+                // Check if this is a detected neuron manager
+                const detectedManager = detectedManagers?.[canisterId];
+                if (detectedManager?.isValid) {
+                    // Use neuron manager thresholds
+                    const cycles = detectedManager.cycles;
+                    if (cycles === null || cycles === undefined) {
+                        unknown++;
+                    } else if (cycles < nmRed) {
+                        red++;
+                    } else if (cycles < nmOrange) {
+                        orange++;
+                    } else {
+                        green++;
+                    }
+                    // Check if version is outdated
+                    if (detectedManager.version && isVersionOutdated(detectedManager.version)) {
+                        outdated++;
+                    }
+                } else {
+                    // Regular canister
+                    const status = statusMap[canisterId];
+                    if (!status || status.cycles === null || status.cycles === undefined) {
+                        unknown++;
+                    } else {
+                        const cycles = status.cycles;
+                        if (cycles < cycleThresholdRed) red++;
+                        else if (cycles < cycleThresholdOrange) orange++;
+                        else green++;
+                    }
+                }
+            }
+            // Recurse into subgroups
+            for (const subgroup of grp.subgroups) {
+                countCanisterInGroup(subgroup);
+            }
+        };
+        
+        // Count all groups
+        for (const grp of groups) {
+            countCanisterInGroup(grp);
+        }
+        
+        // Count ungrouped canisters
+        for (const canisterId of ungrouped) {
+            const detectedManager = detectedManagers?.[canisterId];
+            if (detectedManager?.isValid) {
+                const cycles = detectedManager.cycles;
+                if (cycles === null || cycles === undefined) {
+                    unknown++;
+                } else if (cycles < nmRed) {
+                    red++;
+                } else if (cycles < nmOrange) {
+                    orange++;
+                } else {
+                    green++;
+                }
+                if (detectedManager.version && isVersionOutdated(detectedManager.version)) {
+                    outdated++;
+                }
+            } else {
+                const status = statusMap[canisterId];
+                if (!status || status.cycles === null || status.cycles === undefined) {
+                    unknown++;
+                } else {
+                    const cycles = status.cycles;
+                    if (cycles < cycleThresholdRed) red++;
+                    else if (cycles < cycleThresholdOrange) orange++;
+                    else green++;
+                }
+            }
+        }
+        
+        // Determine overall status (worst wins)
+        let overallStatus = 'unknown';
+        if (red > 0) overallStatus = 'red';
+        else if (orange > 0) overallStatus = 'orange';
+        else if (green > 0) overallStatus = 'green';
+        
+        const total = red + orange + green + unknown;
+        
+        return { red, orange, green, unknown, outdated, total, overallStatus };
+    }, [isVersionOutdated]);
+
+    // Helper to get overall section status for wallet canisters section
+    const getWalletCanistersStatus = useCallback((canisterIds, statusMap, cycleSettings, detectedManagers, nmCycleSettings) => {
+        const { cycleThresholdRed, cycleThresholdOrange } = cycleSettings;
+        const nmRed = nmCycleSettings?.cycleThresholdRed || cycleThresholdRed;
+        const nmOrange = nmCycleSettings?.cycleThresholdOrange || cycleThresholdOrange;
+        
+        let red = 0, orange = 0, green = 0, unknown = 0;
+        
+        for (const canisterId of canisterIds) {
+            const detectedManager = detectedManagers?.[canisterId];
+            if (detectedManager?.isValid) {
+                const cycles = detectedManager.cycles;
+                if (cycles === null || cycles === undefined) {
+                    unknown++;
+                } else if (cycles < nmRed) {
+                    red++;
+                } else if (cycles < nmOrange) {
+                    orange++;
+                } else {
+                    green++;
+                }
+            } else {
+                const status = statusMap[canisterId];
+                if (!status || status.cycles === null || status.cycles === undefined) {
+                    unknown++;
+                } else {
+                    const cycles = status.cycles;
+                    if (cycles < cycleThresholdRed) red++;
+                    else if (cycles < cycleThresholdOrange) orange++;
+                    else green++;
+                }
+            }
+        }
+        
+        let overallStatus = 'unknown';
+        if (red > 0) overallStatus = 'red';
+        else if (orange > 0) overallStatus = 'orange';
+        else if (green > 0) overallStatus = 'green';
+        
+        return { red, orange, green, unknown, total: canisterIds.length, overallStatus };
+    }, []);
+
     // Component for rendering a single canister card - uses react-dnd
     const CanisterCard = ({ 
         canisterId, groupId, styles, theme, canisterStatus, cycleSettings,
@@ -3278,6 +3415,151 @@ export default function CanistersPage() {
                             </div>
                         </div>
 
+                        {/* Overall Status Summary */}
+                        {(() => {
+                            const groupsStats = getGroupsHealthStats(
+                                canisterGroups.groups, 
+                                canisterGroups.ungrouped, 
+                                canisterStatus, 
+                                cycleSettings,
+                                detectedNeuronManagers,
+                                neuronManagerCycleSettings
+                            );
+                            const walletCanisterStats = getWalletCanistersStatus(trackedCanisters, canisterStatus, cycleSettings, detectedNeuronManagers, neuronManagerCycleSettings);
+                            const managerStats = getManagersHealthStats(neuronManagers, neuronManagerCycleSettings);
+                            
+                            // Calculate totals
+                            const totalCanisters = groupsStats.total + walletCanisterStats.total + managerStats.total;
+                            const totalRed = groupsStats.red + walletCanisterStats.red + managerStats.red;
+                            const totalOrange = groupsStats.orange + walletCanisterStats.orange + managerStats.orange;
+                            const totalGreen = groupsStats.green + walletCanisterStats.green + managerStats.green;
+                            const totalUnknown = groupsStats.unknown + walletCanisterStats.unknown + managerStats.unknown;
+                            const totalOutdated = (groupsStats.outdated || 0) + (managerStats.outdated || 0);
+                            
+                            if (totalCanisters === 0) return null;
+                            
+                            // Determine overall status
+                            let overallStatus = 'unknown';
+                            if (totalRed > 0) overallStatus = 'red';
+                            else if (totalOrange > 0) overallStatus = 'orange';
+                            else if (totalGreen > 0) overallStatus = 'green';
+                            const overallColor = getStatusLampColor(overallStatus);
+                            
+                            return (
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    padding: '14px 18px',
+                                    backgroundColor: theme.colors.secondaryBg,
+                                    borderRadius: '12px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    marginBottom: '20px',
+                                    flexWrap: 'wrap',
+                                    gap: '12px',
+                                }}>
+                                    {/* Overall status */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                        <span
+                                            style={{
+                                                width: '18px',
+                                                height: '18px',
+                                                borderRadius: '50%',
+                                                backgroundColor: overallColor,
+                                                boxShadow: overallStatus !== 'unknown' ? `0 0 12px ${overallColor}` : 'none',
+                                                flexShrink: 0,
+                                            }}
+                                            title={`Overall health: ${overallStatus}`}
+                                        />
+                                        <span style={{ 
+                                            fontWeight: 600, 
+                                            color: theme.colors.primaryText,
+                                            fontSize: '15px',
+                                        }}>
+                                            {totalCanisters} {totalCanisters === 1 ? 'Canister' : 'Canisters'} Total
+                                        </span>
+                                    </div>
+                                    
+                                    {/* Status breakdown */}
+                                    <div style={{ 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        gap: '18px',
+                                        flexWrap: 'wrap',
+                                    }}>
+                                        {totalRed > 0 && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <span style={{
+                                                    width: '10px',
+                                                    height: '10px',
+                                                    borderRadius: '50%',
+                                                    backgroundColor: '#ef4444',
+                                                    boxShadow: '0 0 8px #ef4444',
+                                                }} />
+                                                <span style={{ color: '#ef4444', fontWeight: 500, fontSize: '14px' }}>
+                                                    {totalRed} critical
+                                                </span>
+                                            </div>
+                                        )}
+                                        {totalOrange > 0 && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <span style={{
+                                                    width: '10px',
+                                                    height: '10px',
+                                                    borderRadius: '50%',
+                                                    backgroundColor: '#f59e0b',
+                                                    boxShadow: '0 0 8px #f59e0b',
+                                                }} />
+                                                <span style={{ color: '#f59e0b', fontWeight: 500, fontSize: '14px' }}>
+                                                    {totalOrange} warning
+                                                </span>
+                                            </div>
+                                        )}
+                                        {totalGreen > 0 && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <span style={{
+                                                    width: '10px',
+                                                    height: '10px',
+                                                    borderRadius: '50%',
+                                                    backgroundColor: '#22c55e',
+                                                    boxShadow: '0 0 8px #22c55e',
+                                                }} />
+                                                <span style={{ color: '#22c55e', fontWeight: 500, fontSize: '14px' }}>
+                                                    {totalGreen} healthy
+                                                </span>
+                                            </div>
+                                        )}
+                                        {totalUnknown > 0 && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <span style={{
+                                                    width: '10px',
+                                                    height: '10px',
+                                                    borderRadius: '50%',
+                                                    backgroundColor: '#6b7280',
+                                                }} />
+                                                <span style={{ color: '#6b7280', fontWeight: 500, fontSize: '14px' }}>
+                                                    {totalUnknown} unknown
+                                                </span>
+                                            </div>
+                                        )}
+                                        {totalOutdated > 0 && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <span style={{
+                                                    width: '10px',
+                                                    height: '10px',
+                                                    borderRadius: '50%',
+                                                    backgroundColor: '#8b5cf6',
+                                                }} />
+                                                <span style={{ color: '#8b5cf6', fontWeight: 500, fontSize: '14px' }}>
+                                                    {totalOutdated} outdated
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })()}
+
                         {/* Groups Section - Premium Feature */}
                         <div 
                             style={styles.sectionHeader}
@@ -3285,6 +3567,31 @@ export default function CanistersPage() {
                         >
                             <div style={styles.sectionTitle}>
                                 {customExpanded ? <FaChevronDown /> : <FaChevronRight />}
+                                {/* Groups health lamp */}
+                                {(() => {
+                                    const groupsStats = getGroupsHealthStats(
+                                        canisterGroups.groups, 
+                                        canisterGroups.ungrouped, 
+                                        canisterStatus, 
+                                        cycleSettings,
+                                        detectedNeuronManagers,
+                                        neuronManagerCycleSettings
+                                    );
+                                    const lampColor = getStatusLampColor(groupsStats.overallStatus);
+                                    return groupsStats.total > 0 ? (
+                                        <span
+                                            style={{
+                                                width: '10px',
+                                                height: '10px',
+                                                borderRadius: '50%',
+                                                backgroundColor: lampColor,
+                                                boxShadow: groupsStats.overallStatus !== 'unknown' ? `0 0 6px ${lampColor}` : 'none',
+                                                flexShrink: 0,
+                                            }}
+                                            title={`Groups health: ${groupsStats.overallStatus}`}
+                                        />
+                                    ) : null;
+                                })()}
                                 <FaCube />
                                 Groups
                                 {getAllCanisterIds(canisterGroups).length > 0 && (
@@ -3723,6 +4030,33 @@ export default function CanistersPage() {
                         >
                             <div style={styles.sectionTitle}>
                                 {walletExpanded ? <FaChevronDown /> : <FaChevronRight />}
+                                {/* Wallet health lamp - combines canisters and managers */}
+                                {(() => {
+                                    const canisterStats = getWalletCanistersStatus(trackedCanisters, canisterStatus, cycleSettings, detectedNeuronManagers, neuronManagerCycleSettings);
+                                    const managerStats = getManagersHealthStats(neuronManagers, neuronManagerCycleSettings);
+                                    // Combine stats
+                                    const totalCount = canisterStats.total + managerStats.total;
+                                    if (totalCount === 0) return null;
+                                    // Determine overall status (worst wins)
+                                    let overallStatus = 'unknown';
+                                    if (canisterStats.red > 0 || managerStats.red > 0) overallStatus = 'red';
+                                    else if (canisterStats.orange > 0 || managerStats.orange > 0) overallStatus = 'orange';
+                                    else if (canisterStats.green > 0 || managerStats.green > 0) overallStatus = 'green';
+                                    const lampColor = getStatusLampColor(overallStatus);
+                                    return (
+                                        <span
+                                            style={{
+                                                width: '10px',
+                                                height: '10px',
+                                                borderRadius: '50%',
+                                                backgroundColor: lampColor,
+                                                boxShadow: overallStatus !== 'unknown' ? `0 0 6px ${lampColor}` : 'none',
+                                                flexShrink: 0,
+                                            }}
+                                            title={`Wallet health: ${overallStatus}`}
+                                        />
+                                    );
+                                })()}
                                 <FaWallet size={18} style={{ color: theme.colors.secondaryText }} />
                                 Wallet
                                 {(trackedCanisters.length + neuronManagers.length) > 0 && (
@@ -3782,6 +4116,25 @@ export default function CanistersPage() {
                                 >
                                     <div style={{ ...styles.sectionTitle, fontSize: '14px' }}>
                                         {walletCanistersExpanded ? <FaChevronDown size={12} /> : <FaChevronRight size={12} />}
+                                        {/* Canisters health lamp */}
+                                        {(() => {
+                                            const stats = getWalletCanistersStatus(trackedCanisters, canisterStatus, cycleSettings, detectedNeuronManagers, neuronManagerCycleSettings);
+                                            if (stats.total === 0) return null;
+                                            const lampColor = getStatusLampColor(stats.overallStatus);
+                                            return (
+                                                <span
+                                                    style={{
+                                                        width: '8px',
+                                                        height: '8px',
+                                                        borderRadius: '50%',
+                                                        backgroundColor: lampColor,
+                                                        boxShadow: stats.overallStatus !== 'unknown' ? `0 0 6px ${lampColor}` : 'none',
+                                                        flexShrink: 0,
+                                                    }}
+                                                    title={`Canisters health: ${stats.overallStatus}`}
+                                                />
+                                            );
+                                        })()}
                                         <FaBox style={{ color: theme.colors.accent }} />
                                         Canisters
                                         {trackedCanisters.length > 0 && (
@@ -4185,6 +4538,25 @@ export default function CanistersPage() {
                                 >
                                     <div style={{ ...styles.sectionTitle, fontSize: '14px' }}>
                                         {neuronManagersExpanded ? <FaChevronDown size={12} /> : <FaChevronRight size={12} />}
+                                        {/* Neuron Managers health lamp */}
+                                        {(() => {
+                                            const stats = getManagersHealthStats(neuronManagers, neuronManagerCycleSettings);
+                                            if (stats.total === 0) return null;
+                                            const lampColor = getStatusLampColor(stats.overallStatus);
+                                            return (
+                                                <span
+                                                    style={{
+                                                        width: '8px',
+                                                        height: '8px',
+                                                        borderRadius: '50%',
+                                                        backgroundColor: lampColor,
+                                                        boxShadow: stats.overallStatus !== 'unknown' ? `0 0 6px ${lampColor}` : 'none',
+                                                        flexShrink: 0,
+                                                    }}
+                                                    title={`Neuron Managers health: ${stats.overallStatus}`}
+                                                />
+                                            );
+                                        })()}
                                         <FaBrain style={{ color: '#8b5cf6' }} />
                                         ICP Neuron Managers
                                         {neuronManagers.length > 0 && (
