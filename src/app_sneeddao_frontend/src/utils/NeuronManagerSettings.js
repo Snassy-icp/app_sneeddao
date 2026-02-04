@@ -118,6 +118,31 @@ export function formatCyclesCompact(cycles) {
 }
 
 /**
+ * Format memory for display (e.g., "1.5 GB", "500 MB")
+ * @param {number|bigint} bytes - The memory value in bytes
+ * @returns {string} Formatted string
+ */
+export function formatMemory(bytes) {
+    const bytesNum = typeof bytes === 'bigint' ? Number(bytes) : bytes;
+    
+    if (bytesNum === null || bytesNum === undefined) return 'N/A';
+    
+    const KB = 1024;
+    const MB = 1024 * 1024;
+    const GB = 1024 * 1024 * 1024;
+    
+    if (bytesNum >= GB) {
+        return `${(bytesNum / GB).toFixed(2)} GB`;
+    } else if (bytesNum >= MB) {
+        return `${(bytesNum / MB).toFixed(1)} MB`;
+    } else if (bytesNum >= KB) {
+        return `${(bytesNum / KB).toFixed(0)} KB`;
+    } else {
+        return `${bytesNum} B`;
+    }
+}
+
+/**
  * Parse a user-input cycles value (e.g., "1T", "500B", "1000000000000")
  * @param {string} input - The user input
  * @returns {number|null} The parsed cycles value, or null if invalid

@@ -29,6 +29,7 @@ import { get_short_timezone, format_duration, bigDateToReadable, dateToReadable 
 import { formatAmount, toJsonString, formatAmountWithConversion } from './utils/StringUtils';
 import TokenCard from './TokenCard';
 import TokenCardModal from './components/TokenCardModal';
+import DappCardModal from './components/DappCardModal';
 import PositionCard from './PositionCard';
 import { get_available, get_available_backend, getTokenLogo, get_token_conversion_rate, get_token_icp_rate, getTokenTVL, getTokenMetaForSwap, rewardAmountOrZero, availableOrZero } from './utils/TokenUtils';
 import { registerTrackedCanister, unregisterTrackedCanister, getCanisterInfo } from './utils/BackendUtils';
@@ -54,11 +55,11 @@ import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
 import { useNaming } from './NamingContext';
 import { useWallet } from './contexts/WalletContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, computeAccountId } from './utils/PrincipalUtils';
-import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings, getCanisterManagerSettings } from './utils/NeuronManagerSettings';
+import { getCyclesColor, formatCyclesCompact, formatMemory, getNeuronManagerSettings, getCanisterManagerSettings } from './utils/NeuronManagerSettings';
 import { PERM } from './utils/NeuronPermissionUtils.jsx';
 import { Actor } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
-import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle, FaTint, FaSeedling, FaGift, FaHourglassHalf, FaWater, FaUnlock, FaCheck, FaExclamationTriangle, FaCrown, FaBox, FaDatabase, FaCog, FaExternalLinkAlt, FaTimes, FaLightbulb, FaArrowRight, FaDollarSign, FaChartBar, FaBullseye, FaMoneyBillWave, FaBug, FaCopy } from 'react-icons/fa';
+import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle, FaTint, FaSeedling, FaGift, FaHourglassHalf, FaWater, FaUnlock, FaCheck, FaExclamationTriangle, FaCrown, FaBox, FaDatabase, FaCog, FaExternalLinkAlt, FaTimes, FaLightbulb, FaArrowRight, FaDollarSign, FaChartBar, FaBullseye, FaMoneyBillWave, FaBug, FaCopy, FaExpand } from 'react-icons/fa';
 
 // Custom CSS for Wallet page animations
 const walletCustomStyles = `
@@ -513,6 +514,11 @@ function Wallet() {
     const [selectedTokenLock, setSelectedTokenLock] = useState(null);
     const [locks, setLocks] = useState([]);
     
+    // Dapp Card Modal state
+    const [showDappDetailModal, setShowDappDetailModal] = useState(false);
+    const [detailDapp, setDetailDapp] = useState(null);
+    const [isRefreshingDapp, setIsRefreshingDapp] = useState(false);
+    
     // Local position overrides for immediate UI updates (merged with context positions)
     const [localPositionOverrides, setLocalPositionOverrides] = useState({});
     
@@ -631,6 +637,7 @@ function Wallet() {
     // Local UI state for managers (not shared with context)
     const [neuronManagerCounts, setNeuronManagerCounts] = useState({}); // canisterId -> neuron count
     const [neuronManagerCycles, setNeuronManagerCycles] = useState({}); // canisterId -> cycles
+    const [neuronManagerMemory, setNeuronManagerMemory] = useState({}); // canisterId -> memory bytes
     const [neuronManagerIsController, setNeuronManagerIsController] = useState({}); // canisterId -> boolean
     const [neuronManagerModuleHash, setNeuronManagerModuleHash] = useState({}); // canisterId -> moduleHash string
     const [latestOfficialVersion, setLatestOfficialVersion] = useState(null);
@@ -1713,9 +1720,10 @@ function Wallet() {
                 await agent.fetchRootKey();
             }
             
-            // Fetch cycles, controller status, and module hash for all managers
+            // Fetch cycles, memory, controller status, and module hash for all managers
             const counts = {};
             const cycles = {};
+            const memory = {};
             const controllerStatus = {};
             const moduleHashes = {};
             
@@ -1744,11 +1752,13 @@ function Wallet() {
                         : canisterIdPrincipal;
                     const status = await mgmtActor.canister_status({ canister_id: principalObj });
                     cycles[canisterId] = Number(status.cycles);
+                    memory[canisterId] = Number(status.memory_size);
                     moduleHash = status.module_hash[0] ? uint8ArrayToHex(status.module_hash[0]) : null;
                     isController = true;
                 } catch (cyclesErr) {
                     // Not a controller - try backend fallback for module_hash
                     cycles[canisterId] = null;
+                    memory[canisterId] = null;
                     try {
                         const result = await getCanisterInfo(identity, canisterId);
                         if (result && 'ok' in result) {
@@ -1765,6 +1775,7 @@ function Wallet() {
             
             setNeuronManagerCounts(counts);
             setNeuronManagerCycles(cycles);
+            setNeuronManagerMemory(memory);
             setNeuronManagerIsController(controllerStatus);
             setNeuronManagerModuleHash(moduleHashes);
         } catch (err) {
@@ -2031,10 +2042,12 @@ function Wallet() {
                 });
                 const status = await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
                 setNeuronManagerCycles(prev => ({ ...prev, [canisterId]: Number(status.cycles) }));
+                setNeuronManagerMemory(prev => ({ ...prev, [canisterId]: Number(status.memory_size) }));
                 setNeuronManagerIsController(prev => ({ ...prev, [canisterId]: true }));
             } catch (err) {
                 // Not a controller
                 setNeuronManagerCycles(prev => ({ ...prev, [canisterId]: null }));
+                setNeuronManagerMemory(prev => ({ ...prev, [canisterId]: null }));
             }
             
             // Refresh neurons data if expanded
@@ -3178,6 +3191,36 @@ function Wallet() {
     const openTokenDetailModal = (token) => {
         setDetailToken(token);
         setShowTokenDetailModal(true);
+    };
+
+    // Open dapp detail modal (for canisters and neuron managers)
+    const openDappDetailModal = (dappInfo) => {
+        setDetailDapp(dappInfo);
+        setShowDappDetailModal(true);
+    };
+
+    // Refresh dapp in detail modal
+    const handleRefreshDappModal = async (canisterId) => {
+        if (!identity || !canisterId) return;
+        
+        setIsRefreshingDapp(true);
+        try {
+            await handleRefreshCanisterCard(canisterId);
+            
+            // Update modal with fresh data
+            const status = trackedCanisterStatus[canisterId];
+            const detectedManager = detectedNeuronManagers[canisterId];
+            
+            setDetailDapp(prev => prev ? {
+                ...prev,
+                cycles: status?.cycles,
+                memory: status?.memory,
+                isController: status?.isController,
+                neuronCount: detectedManager?.neuronCount || prev?.neuronCount,
+            } : null);
+        } finally {
+            setIsRefreshingDapp(false);
+        }
     };
 
     const openWrapModal = (token) => {
@@ -5940,6 +5983,36 @@ function Wallet() {
                                                         >
                                                             <FaSync size={12} style={{ animation: refreshingManagerCard === canisterId ? 'spin 1s linear infinite' : 'none' }} />
                                                         </button>
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                openDappDetailModal({
+                                                                    canisterId,
+                                                                    isNeuronManager: true,
+                                                                    neuronManagerVersion: manager.version,
+                                                                    neuronCount: neuronCount || 0,
+                                                                    cycles: neuronManagerCycles[canisterId],
+                                                                    memory: neuronManagerMemory[canisterId],
+                                                                    isController: neuronManagerControllers[canisterId],
+                                                                    neuronsData: neuronsData,
+                                                                });
+                                                            }}
+                                                            style={{
+                                                                background: 'none',
+                                                                border: 'none',
+                                                                cursor: 'pointer',
+                                                                padding: '4px',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                color: theme.colors.mutedText,
+                                                                transition: 'color 0.2s ease',
+                                                            }}
+                                                            onMouseEnter={(e) => e.target.style.color = theme.colors.primaryText}
+                                                            onMouseLeave={(e) => e.target.style.color = theme.colors.mutedText}
+                                                            title="Open in dialog"
+                                                        >
+                                                            <FaExpand size={12} />
+                                                        </button>
                                                     </div>
                                                     {/* Row 2: Total ICP amount */}
                                                     <div className="header-row-2">
@@ -5985,6 +6058,22 @@ function Wallet() {
                                                                 title={`${neuronManagerCycles[canisterId].toLocaleString()} cycles`}
                                                             >
                                                                 ⚡ {formatCyclesCompact(neuronManagerCycles[canisterId])}
+                                                            </span>
+                                                        )}
+                                                        {/* Memory badge */}
+                                                        {neuronManagerMemory[canisterId] !== undefined && neuronManagerMemory[canisterId] !== null && (
+                                                            <span 
+                                                                style={{
+                                                                    background: `${theme.colors.accent}20`,
+                                                                    color: theme.colors.accent,
+                                                                    padding: '2px 8px',
+                                                                    borderRadius: '12px',
+                                                                    fontSize: '0.7rem',
+                                                                    fontWeight: '500',
+                                                                }}
+                                                                title={`${neuronManagerMemory[canisterId].toLocaleString()} bytes`}
+                                                            >
+                                                                💾 {formatMemory(neuronManagerMemory[canisterId])}
                                                             </span>
                                                         )}
                                                         {/* Maturity icon */}
@@ -6116,8 +6205,34 @@ function Wallet() {
                                                             <span style={{ color: theme.colors.mutedText, fontSize: '13px' }}>Loading neurons...</span>
                                                         </div>
                                                     ) : neuronsData?.error ? (
-                                                        <div style={{ color: theme.colors.error || '#ef4444', fontSize: '13px', padding: '10px' }}>
-                                                            Error loading neurons: {neuronsData.error}
+                                                        <div style={{ 
+                                                            padding: '16px', 
+                                                            display: 'flex', 
+                                                            flexDirection: 'column',
+                                                            alignItems: 'center',
+                                                            gap: '8px',
+                                                            textAlign: 'center'
+                                                        }}>
+                                                            <FaExclamationTriangle size={20} style={{ color: theme.colors.warning || '#f59e0b' }} />
+                                                            <span style={{ color: theme.colors.warning || '#f59e0b', fontSize: '13px', fontWeight: '500' }}>
+                                                                Unable to load neurons
+                                                            </span>
+                                                            <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
+                                                                This canister may not be a compatible neuron manager
+                                                            </span>
+                                                            <Link 
+                                                                to={`/canister?id=${canisterId}`} 
+                                                                style={{ 
+                                                                    color: theme.colors.accent, 
+                                                                    fontSize: '12px',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '4px',
+                                                                    marginTop: '4px'
+                                                                }}
+                                                            >
+                                                                View canister details <FaArrowRight size={10} />
+                                                            </Link>
                                                         </div>
                                                     ) : neuronsData?.neurons?.length === 0 ? (
                                                         <div style={{ 
@@ -6879,6 +6994,35 @@ function Wallet() {
                                                             >
                                                                 <FaSync size={12} style={{ animation: refreshingCanisterCard === canisterId ? 'spin 1s linear infinite' : 'none' }} />
                                                             </button>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    openDappDetailModal({
+                                                                        canisterId,
+                                                                        isNeuronManager: true,
+                                                                        neuronManagerVersion: managerVersion,
+                                                                        neuronCount: managerNeuronCount,
+                                                                        cycles: managerCycles,
+                                                                        memory: status?.memory,
+                                                                        isController: managerIsController,
+                                                                    });
+                                                                }}
+                                                                style={{
+                                                                    background: 'none',
+                                                                    border: 'none',
+                                                                    cursor: 'pointer',
+                                                                    padding: '4px',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    color: theme.colors.mutedText,
+                                                                    transition: 'color 0.2s ease',
+                                                                }}
+                                                                onMouseEnter={(e) => e.target.style.color = theme.colors.primaryText}
+                                                                onMouseLeave={(e) => e.target.style.color = theme.colors.mutedText}
+                                                                title="Open in dialog"
+                                                            >
+                                                                <FaExpand size={12} />
+                                                            </button>
                                                         </div>
                                                         {/* Row 2: ICP Neuron Manager label */}
                                                         <div className="header-row-2">
@@ -6914,9 +7058,12 @@ function Wallet() {
                                                                     borderRadius: '12px',
                                                                     fontSize: '0.7rem',
                                                                     fontWeight: '500',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '4px',
                                                                 }}
                                                             >
-                                                                🧠 {managerNeuronCount} neuron{managerNeuronCount !== 1 ? 's' : ''}
+                                                                <FaBrain size={10} /> {managerNeuronCount} neuron{managerNeuronCount !== 1 ? 's' : ''}
                                                             </span>
                                                             {/* Cycles badge */}
                                                             {managerCycles !== undefined && managerCycles !== null && (
@@ -7322,6 +7469,35 @@ function Wallet() {
                                                             title="Refresh canister data"
                                                         >
                                                             <FaSync size={12} style={{ animation: refreshingCanisterCard === canisterId ? 'spin 1s linear infinite' : 'none' }} />
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                openDappDetailModal({
+                                                                    canisterId,
+                                                                    isNeuronManager: false,
+                                                                    neuronManagerVersion: null,
+                                                                    neuronCount: 0,
+                                                                    cycles,
+                                                                    memory,
+                                                                    isController,
+                                                                });
+                                                            }}
+                                                            style={{
+                                                                background: 'none',
+                                                                border: 'none',
+                                                                cursor: 'pointer',
+                                                                padding: '4px',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                color: theme.colors.mutedText,
+                                                                transition: 'color 0.2s ease',
+                                                            }}
+                                                            onMouseEnter={(e) => e.target.style.color = theme.colors.primaryText}
+                                                            onMouseLeave={(e) => e.target.style.color = theme.colors.mutedText}
+                                                            title="Open in dialog"
+                                                        >
+                                                            <FaExpand size={12} />
                                                         </button>
                                                     </div>
                                                     {/* Row 2: Status indicator */}
@@ -8339,6 +8515,23 @@ function Wallet() {
                     handleRefreshToken={handleRefreshToken}
                     isRefreshing={detailToken ? refreshingTokens.has(normalizeId(detailToken.ledger_canister_id)) : false}
                     isSnsToken={detailToken ? snsTokens.has(normalizeId(detailToken.ledger_canister_id)) : false}
+                />
+                <DappCardModal
+                    show={showDappDetailModal}
+                    onClose={() => {
+                        setShowDappDetailModal(false);
+                        setDetailDapp(null);
+                    }}
+                    canisterId={detailDapp?.canisterId}
+                    cycles={detailDapp?.cycles}
+                    memory={detailDapp?.memory}
+                    isController={detailDapp?.isController}
+                    isNeuronManager={detailDapp?.isNeuronManager}
+                    neuronManagerVersion={detailDapp?.neuronManagerVersion}
+                    neuronCount={detailDapp?.neuronCount}
+                    handleRefresh={handleRefreshDappModal}
+                    isRefreshing={isRefreshingDapp}
+                    neuronsData={detailDapp?.neuronsData}
                 />
                     </>
                 )}

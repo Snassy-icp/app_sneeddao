@@ -1,12 +1,12 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaTimes, FaSync, FaBrain, FaBox, FaCrown, FaExternalLinkAlt, FaTrash, FaCoins, FaMicrochip } from 'react-icons/fa';
+import { FaTimes, FaSync, FaBrain, FaBox, FaCrown, FaExternalLinkAlt, FaTrash, FaCoins, FaMicrochip, FaChevronDown, FaChevronRight, FaLock, FaHourglassHalf, FaCheck, FaQuestionCircle, FaSeedling } from 'react-icons/fa';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
 
 /**
  * Modal wrapper for displaying a Dapp card (Canister or Neuron Manager)
- * Used in the PrincipalBox compact wallet to show full dapp details
+ * Used in the PrincipalBox compact wallet and Wallet page to show full dapp details
  */
 const DappCardModal = ({ 
     show, 
@@ -20,6 +20,8 @@ const DappCardModal = ({
     isNeuronManager = false,
     neuronManagerVersion = null,
     neuronCount = 0,
+    // Neurons data for neuron managers
+    neuronsData = null, // { loading, neurons, error }
     // Optional handlers
     handleRefresh,
     handleRemove,
@@ -29,6 +31,10 @@ const DappCardModal = ({
     const { theme } = useTheme();
     const { getPrincipalDisplayName } = useNaming();
     const navigate = useNavigate();
+    
+    // State for expanded neurons
+    const [expandedNeurons, setExpandedNeurons] = useState({});
+    const [showNeuronsList, setShowNeuronsList] = useState(true);
 
     // Get display name for canister
     const displayInfo = getPrincipalDisplayName(canisterId);
@@ -79,9 +85,38 @@ const DappCardModal = ({
         return '#10b981'; // Green - healthy
     };
 
+    // Format duration (for dissolve delay, age)
+    const formatDuration = (seconds) => {
+        if (!seconds || seconds === 0) return '0d';
+        const days = Math.floor(seconds / 86400);
+        const years = Math.floor(days / 365);
+        const months = Math.floor((days % 365) / 30);
+        const remainingDays = days % 30;
+        
+        if (years > 0) return `${years}y ${months}m`;
+        if (months > 0) return `${months}m ${remainingDays}d`;
+        return `${days}d`;
+    };
+
     if (!show || !canisterId) return null;
 
     const accentColor = isNeuronManager ? '#8b5cf6' : theme.colors.accent;
+    const neurons = neuronsData?.neurons || [];
+    const neuronsLoading = neuronsData?.loading;
+    const neuronsError = neuronsData?.error;
+
+    // Calculate totals from neurons
+    let totalStake = 0;
+    let totalMaturity = 0;
+    neurons.forEach(neuron => {
+        if (neuron.info) totalStake += Number(neuron.info.stake_e8s || 0) / 1e8;
+        if (neuron.full) {
+            totalMaturity += Number(neuron.full.maturity_e8s_equivalent || 0) / 1e8;
+            if (neuron.full.staked_maturity_e8s_equivalent?.[0]) {
+                totalMaturity += Number(neuron.full.staked_maturity_e8s_equivalent[0]) / 1e8;
+            }
+        }
+    });
 
     return (
         <div 
@@ -109,7 +144,9 @@ const DappCardModal = ({
                 style={{
                     position: 'relative',
                     width: '100%',
-                    maxWidth: '400px',
+                    maxWidth: '500px',
+                    maxHeight: '90vh',
+                    overflowY: 'auto',
                     backgroundColor: theme.colors.primaryBg,
                     borderRadius: '16px',
                     border: `1px solid ${theme.colors.border}`,
@@ -124,6 +161,10 @@ const DappCardModal = ({
                     justifyContent: 'space-between',
                     padding: '16px 20px',
                     borderBottom: `1px solid ${theme.colors.border}`,
+                    position: 'sticky',
+                    top: 0,
+                    backgroundColor: theme.colors.primaryBg,
+                    zIndex: 1,
                 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         {/* Icon */}
@@ -136,6 +177,7 @@ const DappCardModal = ({
                             alignItems: 'center',
                             justifyContent: 'center',
                             position: 'relative',
+                            flexShrink: 0,
                         }}>
                             {isNeuronManager ? (
                                 <FaBrain size={24} style={{ color: accentColor }} />
@@ -244,11 +286,11 @@ const DappCardModal = ({
                     {/* Stats Grid */}
                     <div style={{
                         display: 'grid',
-                        gridTemplateColumns: isNeuronManager ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)',
+                        gridTemplateColumns: 'repeat(2, 1fr)',
                         gap: '12px',
-                        marginBottom: '20px',
+                        marginBottom: '16px',
                     }}>
-                        {/* Neuron Manager specific: Version & Neurons */}
+                        {/* Neuron Manager specific: Version */}
                         {isNeuronManager && neuronManagerVersion && (
                             <div style={{
                                 backgroundColor: theme.colors.secondaryBg,
@@ -274,6 +316,7 @@ const DappCardModal = ({
                             </div>
                         )}
                         
+                        {/* Neurons count */}
                         {isNeuronManager && (
                             <div style={{
                                 backgroundColor: theme.colors.secondaryBg,
@@ -298,7 +341,7 @@ const DappCardModal = ({
                                     justifyContent: 'center',
                                     gap: '4px',
                                 }}>
-                                    🧠 {neuronCount}
+                                    <FaBrain size={12} /> {neuronCount}
                                 </div>
                             </div>
                         )}
@@ -361,6 +404,231 @@ const DappCardModal = ({
                             </div>
                         </div>
                     </div>
+
+                    {/* ICP Totals for neuron managers */}
+                    {isNeuronManager && neurons.length > 0 && (
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(2, 1fr)',
+                            gap: '12px',
+                            marginBottom: '16px',
+                        }}>
+                            <div style={{
+                                backgroundColor: theme.colors.secondaryBg,
+                                borderRadius: '10px',
+                                padding: '12px',
+                                textAlign: 'center',
+                            }}>
+                                <div style={{
+                                    color: theme.colors.mutedText,
+                                    fontSize: '10px',
+                                    textTransform: 'uppercase',
+                                    marginBottom: '4px',
+                                }}>
+                                    Staked ICP
+                                </div>
+                                <div style={{
+                                    color: theme.colors.primaryText,
+                                    fontSize: '14px',
+                                    fontWeight: '600',
+                                }}>
+                                    {totalStake.toFixed(4)} ICP
+                                </div>
+                            </div>
+                            <div style={{
+                                backgroundColor: theme.colors.secondaryBg,
+                                borderRadius: '10px',
+                                padding: '12px',
+                                textAlign: 'center',
+                            }}>
+                                <div style={{
+                                    color: theme.colors.mutedText,
+                                    fontSize: '10px',
+                                    textTransform: 'uppercase',
+                                    marginBottom: '4px',
+                                }}>
+                                    Maturity
+                                </div>
+                                <div style={{
+                                    color: totalMaturity > 0 ? '#10b981' : theme.colors.mutedText,
+                                    fontSize: '14px',
+                                    fontWeight: '600',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '4px',
+                                }}>
+                                    <FaSeedling size={12} /> {totalMaturity.toFixed(4)} ICP
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Neurons List for neuron managers */}
+                    {isNeuronManager && neuronsData && (
+                        <div style={{
+                            marginBottom: '16px',
+                        }}>
+                            <div 
+                                onClick={() => setShowNeuronsList(!showNeuronsList)}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    cursor: 'pointer',
+                                    padding: '8px 0',
+                                    color: theme.colors.primaryText,
+                                    fontWeight: '500',
+                                    fontSize: '14px',
+                                }}
+                            >
+                                {showNeuronsList ? <FaChevronDown size={12} /> : <FaChevronRight size={12} />}
+                                <FaBrain size={14} style={{ color: accentColor }} />
+                                Neurons ({neurons.length})
+                            </div>
+                            
+                            {showNeuronsList && (
+                                <div style={{
+                                    backgroundColor: theme.colors.secondaryBg,
+                                    borderRadius: '10px',
+                                    padding: '8px',
+                                    maxHeight: '300px',
+                                    overflowY: 'auto',
+                                }}>
+                                    {neuronsLoading ? (
+                                        <div style={{ 
+                                            textAlign: 'center', 
+                                            padding: '20px',
+                                            color: theme.colors.mutedText,
+                                            fontSize: '13px',
+                                        }}>
+                                            Loading neurons...
+                                        </div>
+                                    ) : neuronsError ? (
+                                        <div style={{ 
+                                            textAlign: 'center', 
+                                            padding: '20px',
+                                            color: theme.colors.warning || '#f59e0b',
+                                            fontSize: '13px',
+                                        }}>
+                                            Unable to load neurons
+                                        </div>
+                                    ) : neurons.length === 0 ? (
+                                        <div style={{ 
+                                            textAlign: 'center', 
+                                            padding: '20px',
+                                            color: theme.colors.mutedText,
+                                            fontSize: '13px',
+                                        }}>
+                                            No neurons found
+                                        </div>
+                                    ) : (
+                                        neurons.map((neuron, index) => {
+                                            const stake = neuron.info ? Number(neuron.info.stake_e8s || 0) / 1e8 : 0;
+                                            const maturity = neuron.full ? Number(neuron.full.maturity_e8s_equivalent || 0) / 1e8 : 0;
+                                            const stakedMaturity = neuron.full?.staked_maturity_e8s_equivalent?.[0] 
+                                                ? Number(neuron.full.staked_maturity_e8s_equivalent[0]) / 1e8 
+                                                : 0;
+                                            const stateNum = neuron.info?.state;
+                                            const stateLabel = stateNum === 1 ? 'Locked' 
+                                                : stateNum === 2 ? 'Dissolving' 
+                                                : stateNum === 3 ? 'Dissolved' 
+                                                : 'Unknown';
+                                            const stateColor = stateNum === 1 ? '#22c55e'
+                                                : stateNum === 2 ? '#f59e0b'
+                                                : stateNum === 3 ? '#3b82f6'
+                                                : theme.colors.mutedText;
+                                            const stateIcon = stateNum === 1 ? <FaLock size={10} /> 
+                                                : stateNum === 2 ? <FaHourglassHalf size={10} /> 
+                                                : stateNum === 3 ? <FaCheck size={10} /> 
+                                                : <FaQuestionCircle size={10} />;
+                                            const neuronIdStr = neuron.id?.id?.toString() || neuron.id?.toString() || `neuron-${index}`;
+                                            const isExpanded = expandedNeurons[neuronIdStr];
+                                            const dissolveDelay = neuron.info?.dissolve_delay_seconds ? Number(neuron.info.dissolve_delay_seconds) : 0;
+                                            const age = neuron.info?.age_seconds ? Number(neuron.info.age_seconds) : 0;
+
+                                            return (
+                                                <div 
+                                                    key={neuronIdStr}
+                                                    style={{
+                                                        backgroundColor: theme.colors.primaryBg,
+                                                        borderRadius: '8px',
+                                                        marginBottom: index < neurons.length - 1 ? '8px' : 0,
+                                                        overflow: 'hidden',
+                                                    }}
+                                                >
+                                                    <div 
+                                                        onClick={() => setExpandedNeurons(prev => ({ ...prev, [neuronIdStr]: !prev[neuronIdStr] }))}
+                                                        style={{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'space-between',
+                                                            padding: '10px 12px',
+                                                            cursor: 'pointer',
+                                                        }}
+                                                    >
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                            {isExpanded ? <FaChevronDown size={10} /> : <FaChevronRight size={10} />}
+                                                            <span style={{ color: stateColor, display: 'flex', alignItems: 'center' }}>
+                                                                {stateIcon}
+                                                            </span>
+                                                            <span style={{ 
+                                                                color: theme.colors.primaryText, 
+                                                                fontSize: '13px',
+                                                                fontFamily: 'monospace',
+                                                            }}>
+                                                                {neuronIdStr.length > 16 ? `${neuronIdStr.slice(0, 8)}...${neuronIdStr.slice(-6)}` : neuronIdStr}
+                                                            </span>
+                                                        </div>
+                                                        <span style={{ 
+                                                            color: theme.colors.primaryText, 
+                                                            fontSize: '13px',
+                                                            fontWeight: '500',
+                                                        }}>
+                                                            {stake.toFixed(4)} ICP
+                                                        </span>
+                                                    </div>
+                                                    
+                                                    {isExpanded && (
+                                                        <div style={{
+                                                            padding: '0 12px 12px 12px',
+                                                            display: 'grid',
+                                                            gridTemplateColumns: 'repeat(2, 1fr)',
+                                                            gap: '8px',
+                                                            fontSize: '12px',
+                                                        }}>
+                                                            <div>
+                                                                <span style={{ color: theme.colors.mutedText }}>State: </span>
+                                                                <span style={{ color: stateColor }}>{stateLabel}</span>
+                                                            </div>
+                                                            <div>
+                                                                <span style={{ color: theme.colors.mutedText }}>Dissolve: </span>
+                                                                <span style={{ color: theme.colors.primaryText }}>{formatDuration(dissolveDelay)}</span>
+                                                            </div>
+                                                            <div>
+                                                                <span style={{ color: theme.colors.mutedText }}>Maturity: </span>
+                                                                <span style={{ color: maturity > 0 ? '#10b981' : theme.colors.mutedText }}>{maturity.toFixed(4)}</span>
+                                                            </div>
+                                                            <div>
+                                                                <span style={{ color: theme.colors.mutedText }}>Age: </span>
+                                                                <span style={{ color: theme.colors.primaryText }}>{formatDuration(age)}</span>
+                                                            </div>
+                                                            {stakedMaturity > 0 && (
+                                                                <div style={{ gridColumn: 'span 2' }}>
+                                                                    <span style={{ color: theme.colors.mutedText }}>Staked Maturity: </span>
+                                                                    <span style={{ color: '#10b981' }}>{stakedMaturity.toFixed(4)}</span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     {/* Controller Status */}
                     <div style={{

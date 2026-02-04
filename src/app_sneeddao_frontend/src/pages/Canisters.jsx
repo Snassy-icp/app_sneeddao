@@ -3723,7 +3723,7 @@ export default function CanistersPage() {
                         >
                             <div style={styles.sectionTitle}>
                                 {walletExpanded ? <FaChevronDown /> : <FaChevronRight />}
-                                <span style={{ fontSize: '18px' }}>💼</span>
+                                <FaWallet size={18} style={{ color: theme.colors.secondaryText }} />
                                 Wallet
                                 {(trackedCanisters.length + neuronManagers.length) > 0 && (
                                     <span style={styles.sectionCount}>{trackedCanisters.length + neuronManagers.length}</span>

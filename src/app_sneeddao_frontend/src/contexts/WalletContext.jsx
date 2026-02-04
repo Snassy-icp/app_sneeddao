@@ -1540,14 +1540,19 @@ export const WalletProvider = ({ children }) => {
     }, [identity]);
     
     // Fetch all ICP Neuron Managers
-    const fetchNeuronManagers = useCallback(async () => {
+    const fetchNeuronManagers = useCallback(async (isBackgroundRefresh = false) => {
         if (!identity || !isAuthenticated) {
             setNeuronManagers([]);
             return;
         }
         
         const sessionId = ++managersFetchSessionRef.current;
-        setNeuronManagersLoading(true);
+        
+        // Only show loading spinner if this is NOT a background refresh
+        // This prevents a flash when refreshing cached data in the background
+        if (!isBackgroundRefresh) {
+            setNeuronManagersLoading(true);
+        }
         
         try {
             const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
@@ -1721,7 +1726,7 @@ export const WalletProvider = ({ children }) => {
                 setTimeout(() => {
                     fetchCompactWalletTokens();
                     fetchCompactPositions(false, false);
-                    fetchNeuronManagers();
+                    fetchNeuronManagers(true); // true = background refresh, don't show loading spinner
                     fetchTrackedCanisters();
                 }, 50);
                 setTimeout(() => { isFetchingRef.current = false; }, 150);

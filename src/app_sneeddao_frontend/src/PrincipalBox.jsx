@@ -8,7 +8,7 @@ import { useAuth } from './AuthContext';
 import { useTheme } from './contexts/ThemeContext';
 import { useNaming } from './NamingContext';
 import { useWalletOptional } from './contexts/WalletContext';
-import { computeAccountId } from './utils/PrincipalUtils';
+import { computeAccountId, PrincipalDisplay, getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
 import { formatAmount } from './utils/StringUtils';
 import { get_available_backend } from './utils/TokenUtils';
 import { normalizeId } from './hooks/useNeuronsCache';
@@ -2314,18 +2314,26 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                               <div style={{
                                                   display: 'flex',
                                                   alignItems: 'center',
-                                                  gap: '4px'
+                                                  gap: '4px',
+                                                  minWidth: 0,
                                               }}>
-                                                  <span style={{ 
-                                                      color: theme.colors.primaryText,
-                                                      fontSize: '13px',
-                                                      fontWeight: '500',
-                                                      overflow: 'hidden',
-                                                      textOverflow: 'ellipsis',
-                                                      whiteSpace: 'nowrap'
-                                                  }}>
-                                                      {displayName}
-                                                  </span>
+                                                  <PrincipalDisplay
+                                                      principal={canisterIdStr}
+                                                      showCopyButton={false}
+                                                      isAuthenticated={!!identity}
+                                                      noLink={true}
+                                                      style={{ 
+                                                          fontSize: '13px',
+                                                          fontWeight: '500',
+                                                          overflow: 'hidden',
+                                                          textOverflow: 'ellipsis',
+                                                          whiteSpace: 'nowrap',
+                                                          minWidth: 0,
+                                                          flex: 1,
+                                                      }}
+                                                      showSendMessage={false}
+                                                      showViewProfile={false}
+                                                  />
                                                   <span style={{ 
                                                       color: theme.colors.mutedText,
                                                       fontSize: '11px',
@@ -2443,18 +2451,26 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                               <div style={{
                                                   display: 'flex',
                                                   alignItems: 'center',
-                                                  gap: '4px'
+                                                  gap: '4px',
+                                                  minWidth: 0,
                                               }}>
-                                                  <span style={{ 
-                                                      color: theme.colors.primaryText,
-                                                      fontSize: '13px',
-                                                      fontWeight: '500',
-                                                      overflow: 'hidden',
-                                                      textOverflow: 'ellipsis',
-                                                      whiteSpace: 'nowrap'
-                                                  }}>
-                                                      {displayName}
-                                                  </span>
+                                                  <PrincipalDisplay
+                                                      principal={canisterId}
+                                                      showCopyButton={false}
+                                                      isAuthenticated={!!identity}
+                                                      noLink={true}
+                                                      style={{ 
+                                                          fontSize: '13px',
+                                                          fontWeight: '500',
+                                                          overflow: 'hidden',
+                                                          textOverflow: 'ellipsis',
+                                                          whiteSpace: 'nowrap',
+                                                          minWidth: 0,
+                                                          flex: 1,
+                                                      }}
+                                                      showSendMessage={false}
+                                                      showViewProfile={false}
+                                                  />
                                                   {isNeuronManager && detectedManager?.neuronCount > 0 && (
                                                       <span style={{ 
                                                           color: theme.colors.mutedText,
