@@ -443,6 +443,93 @@ export const saveNeuronsToCache = async (snsRoot, neurons) => {
 };
 
 /**
+ * Save the complete list of neuron IDs for an SNS
+ * This marks the cache as "complete" - we have all neurons for this SNS
+ * @param {Principal|string} snsRoot - SNS root canister ID
+ * @param {string[]} neuronIds - Array of neuron IDs in hex format
+ */
+export const setAllNeuronIdsForSns = async (snsRoot, neuronIds) => {
+    const normalizedRoot = normalizeId(snsRoot);
+    if (!normalizedRoot || !neuronIds) return;
+    
+    try {
+        const db = await initializeNeuronsDB();
+        
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction([STORE_NAME], 'readwrite');
+            const store = transaction.objectStore(STORE_NAME);
+            const getRequest = store.get(normalizedRoot);
+            
+            getRequest.onsuccess = () => {
+                const existingData = getRequest.result || { snsRoot: normalizedRoot, neurons: [] };
+                
+                const putRequest = store.put({
+                    ...existingData,
+                    snsRoot: normalizedRoot,
+                    allNeuronIds: neuronIds,
+                    allNeuronIdsTimestamp: Date.now(),
+                    timestamp: Date.now()
+                });
+                
+                putRequest.onsuccess = () => resolve();
+                putRequest.onerror = () => reject(putRequest.error);
+            };
+            
+            getRequest.onerror = () => reject(getRequest.error);
+        });
+    } catch (error) {
+        console.warn('[NeuronsCache] Error saving allNeuronIds:', error);
+    }
+};
+
+/**
+ * Get the complete list of neuron IDs for an SNS (if available)
+ * Returns null if we don't have a complete list (only partial/user neurons)
+ * @param {Principal|string} snsRoot - SNS root canister ID
+ * @returns {{ ids: string[], timestamp: number } | null} Complete ID list or null
+ */
+export const getAllNeuronIdsForSns = async (snsRoot) => {
+    const normalizedRoot = normalizeId(snsRoot);
+    if (!normalizedRoot) return null;
+    
+    try {
+        const db = await initializeNeuronsDB();
+        
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction([STORE_NAME], 'readonly');
+            const store = transaction.objectStore(STORE_NAME);
+            const request = store.get(normalizedRoot);
+            
+            request.onsuccess = () => {
+                const data = request.result;
+                if (data && data.allNeuronIds && data.allNeuronIds.length > 0) {
+                    resolve({
+                        ids: data.allNeuronIds,
+                        timestamp: data.allNeuronIdsTimestamp || data.timestamp
+                    });
+                } else {
+                    resolve(null);
+                }
+            };
+            
+            request.onerror = () => reject(request.error);
+        });
+    } catch (error) {
+        return null;
+    }
+};
+
+/**
+ * Check if we have a complete neuron list for an SNS
+ * @param {Principal|string} snsRoot - SNS root canister ID
+ * @returns {boolean} True if we have the complete list
+ */
+export const hasCompleteNeuronList = async (snsRoot) => {
+    const result = await getAllNeuronIdsForSns(snsRoot);
+    return result !== null && result.ids.length > 0;
+};
+
+/**
  * Check if cache exists for an SNS
  * @param {Principal|string} snsRoot - SNS root canister ID (accepts Principal or string)
  * @returns {boolean} True if cache exists
@@ -895,6 +982,18 @@ export default function useNeuronsCache(selectedSnsRoot, identity) {
             // Cache the fetched data
             await setCacheData(normalizedSnsRoot, sortedNeurons, { symbol });
             
+            // Save the complete list of neuron IDs (marks this SNS as "complete")
+            const allNeuronIds = sortedNeurons.map(n => {
+                const idArray = n.id?.[0]?.id;
+                if (!idArray) return null;
+                return idArray instanceof Uint8Array 
+                    ? uint8ArrayToHex(idArray)
+                    : Array.isArray(idArray)
+                        ? idArray.map(b => b.toString(16).padStart(2, '0')).join('')
+                        : null;
+            }).filter(Boolean);
+            await setAllNeuronIdsForSns(normalizedSnsRoot, allNeuronIds);
+            
             setLoadingProgress({ 
                 count: sortedNeurons.length,
                 message: `Cached ${sortedNeurons.length} neurons for future use`,
@@ -910,19 +1009,64 @@ export default function useNeuronsCache(selectedSnsRoot, identity) {
     }, [normalizedSnsRoot, identity, fetchNeuronCount, setCacheData]);
 
     // Load data (from cache or fetch)
+    // If we have a complete ID list, use progressive loading for instant display
     const loadData = useCallback(async () => {
         if (!normalizedSnsRoot) return;
         
-        const cachedData = await getCachedData(normalizedSnsRoot);
-        if (cachedData) {
-            setLoadingProgress({ count: cachedData.neurons.length, message: 'Loading from cache...', percent: 100 });
-            setNeurons(cachedData.neurons);
-            setTokenSymbol(cachedData.metadata.symbol);
-            setLoading(false);
+        // First, check if we have a complete ID list (indicates full neuron data)
+        const completeIdList = await getAllNeuronIdsForSns(normalizedSnsRoot);
+        
+        if (completeIdList && completeIdList.ids.length > 0) {
+            // We have a complete list - start with instant display
+            setLoading(true);
+            setLoadingProgress({ 
+                count: completeIdList.ids.length, 
+                message: `Loading ${completeIdList.ids.length} neurons from cache...`, 
+                percent: 10 
+            });
+            
+            // Try to load full neuron data from cache
+            const cachedData = await getCachedData(normalizedSnsRoot);
+            
+            if (cachedData && cachedData.neurons && cachedData.neurons.length > 0) {
+                // Great - we have full cached data
+                setLoadingProgress({ 
+                    count: cachedData.neurons.length, 
+                    message: 'Loaded from cache', 
+                    percent: 100 
+                });
+                setNeurons(cachedData.neurons);
+                setTokenSymbol(cachedData.metadata?.symbol || 'SNS');
+                setLoading(false);
+                
+                // Check if we need to refresh (count mismatch with API)
+                const apiCount = await fetchNeuronCount();
+                if (apiCount > 0 && Math.abs(apiCount - cachedData.neurons.length) > 5) {
+                    // Significant difference - silently refresh in background
+                    console.log(`[NeuronsCache] Cache has ${cachedData.neurons.length} neurons, API reports ${apiCount}. Refreshing...`);
+                    fetchNeurons(); // Don't await - runs in background
+                }
+            } else {
+                // We have IDs but not full data - this shouldn't happen normally
+                // but let's handle it by fetching fresh
+                await fetchNeurons();
+            }
         } else {
-            await fetchNeurons();
+            // No complete ID list - check for any cached data
+            const cachedData = await getCachedData(normalizedSnsRoot);
+            
+            if (cachedData && cachedData.neurons && cachedData.neurons.length > 0) {
+                // We have some cached neurons but not a complete list
+                // This might be just the user's neurons from WalletContext
+                // Don't use this - fetch fresh data instead
+                console.log(`[NeuronsCache] Found ${cachedData.neurons.length} cached neurons but no complete ID list. Fetching fresh...`);
+                await fetchNeurons();
+            } else {
+                // No cached data at all - fetch fresh
+                await fetchNeurons();
+            }
         }
-    }, [normalizedSnsRoot, getCachedData, fetchNeurons]);
+    }, [normalizedSnsRoot, getCachedData, fetchNeurons, fetchNeuronCount]);
 
     // Refresh data (clear cache and fetch)
     const refreshData = useCallback(async () => {
