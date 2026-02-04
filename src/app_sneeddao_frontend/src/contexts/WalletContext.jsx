@@ -13,7 +13,7 @@ import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron
 import { HttpAgent } from '@dfinity/agent';
 import { getTokenLogo, get_token_conversion_rate, get_available, get_available_backend } from '../utils/TokenUtils';
 import { fetchUserNeuronsForSns, uint8ArrayToHex } from '../utils/NeuronUtils';
-import { getTipTokensReceivedByUser } from '../utils/BackendUtils';
+import { getTipTokensReceivedByUser, getTrackedCanisters } from '../utils/BackendUtils';
 import { fetchAndCacheSnsData, getAllSnses, getSnsById } from '../utils/SnsUtils';
 import { getNeuronsFromCacheByIds, saveNeuronsToCache, getAllNeuronsForSns, normalizeId } from '../hooks/useNeuronsCache';
 import { initializeLogoCache, getLogo, setLogo, getLogoSync } from '../hooks/useLogoCache';
@@ -334,6 +334,12 @@ export const WalletProvider = ({ children }) => {
     const [hasFetchedManagers, setHasFetchedManagers] = useState(false);
     const managersFetchSessionRef = useRef(0);
     
+    // Tracked Canisters (wallet canisters) - shared between quick wallet and /wallet page
+    const [trackedCanisters, setTrackedCanisters] = useState([]); // Array of canister ID strings
+    const [trackedCanistersLoading, setTrackedCanistersLoading] = useState(false);
+    const [hasFetchedTrackedCanisters, setHasFetchedTrackedCanisters] = useState(false);
+    const trackedCanistersFetchSessionRef = useRef(0);
+    
     // Track if we loaded from persistent cache (for instant display)
     const [loadedFromCache, setLoadedFromCache] = useState(false);
     const [cacheCheckComplete, setCacheCheckComplete] = useState(false); // True after cache check finishes (with or without data)
@@ -504,6 +510,12 @@ export const WalletProvider = ({ children }) => {
                         setManagerNeuronsTotal(cachedData.managerNeuronsTotal);
                     }
                     
+                    // Restore tracked canisters
+                    if (cachedData.trackedCanisters && cachedData.trackedCanisters.length > 0) {
+                        setTrackedCanisters(cachedData.trackedCanisters);
+                        setHasFetchedTrackedCanisters(true);
+                    }
+                    
                     // Restore last updated
                     if (cachedData.lastUpdated) {
                         setLastUpdated(new Date(cachedData.lastUpdated));
@@ -558,6 +570,7 @@ export const WalletProvider = ({ children }) => {
                 neuronManagers,
                 managerNeurons,
                 managerNeuronsTotal,
+                trackedCanisters,
                 lastUpdated: lastUpdated?.getTime() || Date.now()
             });
         }, 2000); // Save 2 seconds after last change
@@ -567,7 +580,7 @@ export const WalletProvider = ({ children }) => {
                 clearTimeout(saveCacheTimeoutRef.current);
             }
         };
-    }, [principalId, isAuthenticated, walletTokens, liquidityPositions, neuronCache, neuronManagers, managerNeurons, managerNeuronsTotal, lastUpdated, hasFetchedInitial, loadedFromCache]);
+    }, [principalId, isAuthenticated, walletTokens, liquidityPositions, neuronCache, neuronManagers, managerNeurons, managerNeuronsTotal, trackedCanisters, lastUpdated, hasFetchedInitial, loadedFromCache]);
 
     // Load SNS data to know which tokens are SNS tokens
     useEffect(() => {
@@ -1636,6 +1649,43 @@ export const WalletProvider = ({ children }) => {
         setManagerNeurons({});
         fetchNeuronManagers();
     }, [fetchNeuronManagers]);
+    
+    // Fetch tracked canisters (wallet canisters)
+    const fetchTrackedCanisters = useCallback(async () => {
+        if (!identity || !isAuthenticated) {
+            setTrackedCanisters([]);
+            return;
+        }
+        
+        const sessionId = ++trackedCanistersFetchSessionRef.current;
+        setTrackedCanistersLoading(true);
+        
+        try {
+            const canisters = await getTrackedCanisters(identity);
+            
+            if (trackedCanistersFetchSessionRef.current !== sessionId) return;
+            
+            // Convert Principal objects to strings
+            const canisterIds = canisters.map(p => p.toText());
+            setTrackedCanisters(canisterIds);
+            setHasFetchedTrackedCanisters(true);
+        } catch (err) {
+            console.error('Error fetching tracked canisters:', err);
+            if (trackedCanistersFetchSessionRef.current === sessionId) {
+                setHasFetchedTrackedCanisters(true);
+            }
+        } finally {
+            if (trackedCanistersFetchSessionRef.current === sessionId) {
+                setTrackedCanistersLoading(false);
+            }
+        }
+    }, [identity, isAuthenticated]);
+    
+    // Refresh tracked canisters
+    const refreshTrackedCanisters = useCallback(() => {
+        setHasFetchedTrackedCanisters(false);
+        fetchTrackedCanisters();
+    }, [fetchTrackedCanisters]);
 
     // Fetch tokens and positions when user authenticates
     // Always fetch fresh data in background, even if we loaded from persistent cache
@@ -1662,6 +1712,7 @@ export const WalletProvider = ({ children }) => {
                     fetchCompactWalletTokens();
                     fetchCompactPositions(false, false);
                     fetchNeuronManagers();
+                    fetchTrackedCanisters();
                 }, 50);
                 setTimeout(() => { isFetchingRef.current = false; }, 150);
             } else if (!hasFetchedInitial && !loadedFromCache) {
@@ -1672,6 +1723,7 @@ export const WalletProvider = ({ children }) => {
                 fetchCompactWalletTokens();
                 fetchCompactPositions(true);
                 fetchNeuronManagers();
+                fetchTrackedCanisters();
                 setTimeout(() => { isFetchingRef.current = false; }, 100);
             }
         }
@@ -1682,10 +1734,12 @@ export const WalletProvider = ({ children }) => {
             setNeuronManagers([]);
             setManagerNeurons({});
             setManagerNeuronsTotal(0);
+            setTrackedCanisters([]);
             setNeuronCache(new Map());
             setHasFetchedInitial(false);
             setHasFetchedPositions(false);
             setHasFetchedManagers(false);
+            setHasFetchedTrackedCanisters(false);
             setHasDetailedData(false);
             setLastUpdated(null);
             setLoadedFromCache(false);
@@ -1694,7 +1748,7 @@ export const WalletProvider = ({ children }) => {
             hasInitializedFromCacheRef.current = false;
             isFetchingRef.current = false;
         }
-    }, [isAuthenticated, identity, hasFetchedInitial, loadedFromCache, cacheCheckComplete, fetchCompactWalletTokens, fetchCompactPositions, fetchNeuronManagers]);
+    }, [isAuthenticated, identity, hasFetchedInitial, loadedFromCache, cacheCheckComplete, fetchCompactWalletTokens, fetchCompactPositions, fetchNeuronManagers, fetchTrackedCanisters]);
 
     // Update tokens from Wallet.jsx (more detailed data including locks, staked, etc.)
     const updateWalletTokens = useCallback((tokens) => {
@@ -1795,6 +1849,7 @@ export const WalletProvider = ({ children }) => {
         setHasFetchedInitial(false);
         setHasFetchedPositions(false);
         setHasFetchedManagers(false);
+        setHasFetchedTrackedCanisters(false);
         setLoadedFromCache(false);
         // Clear neuron cache so neurons are refetched
         setNeuronCache(new Map());
@@ -1805,9 +1860,10 @@ export const WalletProvider = ({ children }) => {
         fetchCompactWalletTokens();
         fetchCompactPositions(true); // Clear first on explicit refresh
         fetchNeuronManagers();
+        fetchTrackedCanisters();
         // Also refetch all neurons
         fetchAllSnsNeurons();
-    }, [fetchIcpPrice, fetchCompactWalletTokens, fetchCompactPositions, fetchNeuronManagers, fetchAllSnsNeurons]);
+    }, [fetchIcpPrice, fetchCompactWalletTokens, fetchCompactPositions, fetchNeuronManagers, fetchTrackedCanisters, fetchAllSnsNeurons]);
 
     // Helper to calculate send amounts (frontend vs backend balance)
     const calcSendAmounts = useCallback((token, bigintAmount) => {
@@ -1923,6 +1979,11 @@ export const WalletProvider = ({ children }) => {
             hasFetchedManagers,
             refreshNeuronManagers,
             fetchManagerNeuronsData,
+            // Tracked Canisters (wallet canisters) - shared between quick wallet and /wallet
+            trackedCanisters,
+            trackedCanistersLoading,
+            hasFetchedTrackedCanisters,
+            refreshTrackedCanisters,
             // Shared ICP price - ensures consistent values across components
             icpPrice,
             fetchIcpPrice

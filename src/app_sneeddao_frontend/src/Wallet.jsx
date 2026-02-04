@@ -31,7 +31,7 @@ import TokenCard from './TokenCard';
 import TokenCardModal from './components/TokenCardModal';
 import PositionCard from './PositionCard';
 import { get_available, get_available_backend, getTokenLogo, get_token_conversion_rate, get_token_icp_rate, getTokenTVL, getTokenMetaForSwap, rewardAmountOrZero, availableOrZero } from './utils/TokenUtils';
-import { getTrackedCanisters, registerTrackedCanister, unregisterTrackedCanister, getCanisterInfo } from './utils/BackendUtils';
+import { registerTrackedCanister, unregisterTrackedCanister, getCanisterInfo } from './utils/BackendUtils';
 import { getPositionTVL, isLockedPosition } from "./utils/PositionUtils";
 import { headerStyles } from './styles/HeaderStyles';
 import { usePremiumStatus } from './hooks/usePremiumStatus';
@@ -445,6 +445,11 @@ function Wallet() {
         hasFetchedManagers: contextHasFetchedManagers,
         refreshNeuronManagers: contextRefreshNeuronManagers,
         fetchManagerNeuronsData: contextFetchManagerNeuronsData,
+        // Tracked canisters from context (shared with quick wallet)
+        trackedCanisters: contextTrackedCanisters,
+        trackedCanistersLoading: contextTrackedCanistersLoading,
+        hasFetchedTrackedCanisters: contextHasFetchedTrackedCanisters,
+        refreshTrackedCanisters: contextRefreshTrackedCanisters,
         // Shared ICP price (same as quick wallet)
         icpPrice: contextIcpPrice,
         fetchIcpPrice: contextFetchIcpPrice
@@ -660,9 +665,9 @@ function Wallet() {
     const [deregisterManagerError, setDeregisterManagerError] = useState(''); // Error message for remove manager
     const [confirmRemoveManager, setConfirmRemoveManager] = useState(null);
     
-    // Tracked canisters (wallet canisters) state
-    const [trackedCanisters, setTrackedCanisters] = useState([]);
-    const [trackedCanistersLoading, setTrackedCanistersLoading] = useState(false);
+    // Tracked canisters from context - local alias and extra state
+    const trackedCanisters = contextTrackedCanisters || [];
+    const trackedCanistersLoading = contextTrackedCanistersLoading;
     const [refreshingTrackedCanisters, setRefreshingTrackedCanisters] = useState(false);
     const [trackedCanistersExpanded, setTrackedCanistersExpanded] = useState(() => {
         try {
@@ -898,14 +903,20 @@ function Wallet() {
     }, [isAuthenticated, identity, tokens]);
     
     // Fetch wallet-specific data on mount
-    // Positions and neuron managers are now fetched by WalletContext and shared with quick wallet
+    // Positions, neuron managers, and tracked canisters are now fetched by WalletContext
     useEffect(() => {
         if (!isAuthenticated) return;
         
         fetchIcpPrice();
         fetchIcpToCyclesRate();
-        fetchTrackedCanisters();
     }, [isAuthenticated]);
+    
+    // Fetch status for tracked canisters when the list changes
+    useEffect(() => {
+        if (trackedCanisters.length > 0 && identity) {
+            fetchTrackedCanistersStatus(trackedCanisters);
+        }
+    }, [trackedCanisters, identity, fetchTrackedCanistersStatus]);
     
     // Handle manual refresh
     useEffect(() => {
@@ -1775,20 +1786,14 @@ function Wallet() {
         }
     }, [neuronManagers, isAuthenticated]);
 
-    // Fetch tracked canisters (wallet canisters)
-    async function fetchTrackedCanisters() {
-        if (!identity) {
-            setTrackedCanisters([]);
+    // Fetch status for tracked canisters (cycles, memory, module hash)
+    // The canister list comes from WalletContext, this just fetches detailed status
+    const fetchTrackedCanistersStatus = useCallback(async (canisterIds) => {
+        if (!identity || !canisterIds || canisterIds.length === 0) {
             return;
         }
         
-        setTrackedCanistersLoading(true);
         try {
-            const canisters = await getTrackedCanisters(identity);
-            // Convert Principal objects to strings
-            const canisterIds = canisters.map(p => p.toText());
-            setTrackedCanisters(canisterIds);
-            
             // Fetch status for each canister in parallel
             const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
                 ? 'https://ic0.app' 
@@ -1834,13 +1839,11 @@ function Wallet() {
                 
                 statusMap[canisterId] = { cycles, memory, isController, moduleHash };
             }));
-            setTrackedCanisterStatus(statusMap);
+            setTrackedCanisterStatus(prev => ({ ...prev, ...statusMap }));
         } catch (err) {
-            console.error('Error fetching tracked canisters:', err);
-        } finally {
-            setTrackedCanistersLoading(false);
+            console.error('Error fetching tracked canister status:', err);
         }
-    }
+    }, [identity]);
     
     // Check if a module hash matches any known neuron manager version
     const isKnownNeuronManagerHash = useCallback((moduleHash) => {
@@ -2064,7 +2067,7 @@ function Wallet() {
         try {
             await registerTrackedCanister(identity, newTrackedCanisterId.trim());
             setNewTrackedCanisterId('');
-            await fetchTrackedCanisters();
+            if (contextRefreshTrackedCanisters) contextRefreshTrackedCanisters();
         } catch (err) {
             console.error('Error adding tracked canister:', err);
             setAddTrackedCanisterError(err.message || 'Failed to add canister');
@@ -2080,7 +2083,7 @@ function Wallet() {
         setRemovingTrackedCanister(canisterId);
         try {
             await unregisterTrackedCanister(identity, canisterId);
-            await fetchTrackedCanisters();
+            if (contextRefreshTrackedCanisters) contextRefreshTrackedCanisters();
         } catch (err) {
             console.error('Error removing tracked canister:', err);
         } finally {
@@ -2093,7 +2096,11 @@ function Wallet() {
     async function handleRefreshTrackedCanisters() {
         setRefreshingTrackedCanisters(true);
         try {
-            await fetchTrackedCanisters();
+            if (contextRefreshTrackedCanisters) await contextRefreshTrackedCanisters();
+            // Also refresh status
+            if (trackedCanisters.length > 0) {
+                await fetchTrackedCanistersStatus(trackedCanisters);
+            }
         } finally {
             setRefreshingTrackedCanisters(false);
         }
@@ -2330,7 +2337,7 @@ function Wallet() {
             setTopUpCanisterId(null);
             
             // Refresh data
-            fetchTrackedCanisters();
+            if (contextRefreshTrackedCanisters) contextRefreshTrackedCanisters();
             fetchTokens();
             
         } catch (err) {
@@ -2430,7 +2437,7 @@ function Wallet() {
                 setTransferTargetCanister(null);
                 setTransferCanisterRecipient('');
                 setTransferCanisterSuccess('');
-                fetchTrackedCanisters();
+                if (contextRefreshTrackedCanisters) contextRefreshTrackedCanisters();
             }, 2000);
             
         } catch (err) {

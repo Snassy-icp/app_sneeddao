@@ -2921,7 +2921,7 @@ export default function CanistersPage() {
                                 alignItems: 'center',
                                 gap: '0.5rem'
                             }}>
-                                Canister Manager
+                                Dapp Manager
                             </h1>
                             <p style={{
                                 fontSize: '0.95rem',
@@ -2948,7 +2948,7 @@ export default function CanistersPage() {
                             <span><strong style={{ color: '#9b59b6' }}>{neuronManagers.length}</strong> neuron managers</span>
                         </div>
                         <Link 
-                            to="/help/canister-manager" 
+                            to="/help/dapp-manager" 
                             style={{ 
                                 display: 'inline-flex', 
                                 alignItems: 'center', 

@@ -143,7 +143,8 @@ function App() {
                     <Route path="/help/sneedlock" element={<HelpSneedlock />} />
                     <Route path="/help/icp-neuron-manager" element={<HelpIcpNeuronManager />} />
                     <Route path="/help/sneedex" element={<HelpSneedex />} />
-                    <Route path="/help/canister-manager" element={<HelpCanisterManager />} />
+                    <Route path="/help/dapp-manager" element={<HelpCanisterManager />} />
+                    <Route path="/help/canister-manager" element={<HelpCanisterManager />} /> {/* Backwards compat */}
                     <Route path="/help/sns_jailbreak" element={<HelpSnsJailbreak />} />
                     <Route path="/rll" element={<RLL />} />
                     <Route path="/rll_info" element={<RLLInfo />} />

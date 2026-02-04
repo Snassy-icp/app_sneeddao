@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaCopy, FaCheck, FaWallet, FaPaperPlane, FaKey, FaIdCard, FaExternalLinkAlt, FaSync, FaCoins, FaWater, FaLock, FaBug, FaTimes, FaBrain } from 'react-icons/fa';
+import { FaCopy, FaCheck, FaWallet, FaPaperPlane, FaKey, FaIdCard, FaExternalLinkAlt, FaSync, FaCoins, FaWater, FaLock, FaBug, FaTimes, FaBrain, FaBox } from 'react-icons/fa';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { Principal } from '@dfinity/principal';
 import { principalToSubAccount } from '@dfinity/utils';
@@ -42,7 +42,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
             return false;
         }
     });
-    const [walletTab, setWalletTab] = useState('tokens'); // 'tokens', 'positions', or 'managers'
+    const [walletTab, setWalletTab] = useState('tokens'); // 'tokens', 'positions', or 'dapps'
     const [showPositionDetailModal, setShowPositionDetailModal] = useState(false);
     const [detailPosition, setDetailPosition] = useState(null);
     const [detailPositionDetails, setDetailPositionDetails] = useState(null);
@@ -79,6 +79,11 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const managerNeuronsTotal = walletContext?.managerNeuronsTotal || 0;
     const neuronManagersLoading = walletContext?.neuronManagersLoading || false;
     const hasFetchedManagers = walletContext?.hasFetchedManagers || false;
+    
+    // Get tracked canisters from context
+    const trackedCanisters = walletContext?.trackedCanisters || [];
+    const trackedCanistersLoading = walletContext?.trackedCanistersLoading || false;
+    const hasFetchedTrackedCanisters = walletContext?.hasFetchedTrackedCanisters || false;
     
     // Get shared ICP price from context (ensures same value as Wallet page)
     const icpPrice = walletContext?.icpPrice;
@@ -1122,24 +1127,24 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                               Positions
                           </button>
                           <button
-                              onClick={() => setWalletTab('managers')}
+                              onClick={() => setWalletTab('dapps')}
                               style={{
                                   display: 'flex',
                                   alignItems: 'center',
                                   gap: '4px',
                                   padding: '5px 10px',
-                                  background: walletTab === 'managers' ? `${theme.colors.accent}20` : 'transparent',
-                                  border: `1px solid ${walletTab === 'managers' ? theme.colors.accent : theme.colors.border}`,
+                                  background: walletTab === 'dapps' ? `${theme.colors.accent}20` : 'transparent',
+                                  border: `1px solid ${walletTab === 'dapps' ? theme.colors.accent : theme.colors.border}`,
                                   borderRadius: '6px',
                                   cursor: 'pointer',
-                                  color: walletTab === 'managers' ? theme.colors.accent : theme.colors.mutedText,
+                                  color: walletTab === 'dapps' ? theme.colors.accent : theme.colors.mutedText,
                                   fontSize: '11px',
-                                  fontWeight: walletTab === 'managers' ? '600' : '500',
+                                  fontWeight: walletTab === 'dapps' ? '600' : '500',
                                   transition: 'all 0.2s ease'
                               }}
                           >
-                              <FaBrain size={10} />
-                              Managers
+                              <FaBox size={10} />
+                              Dapps
                           </button>
                       </div>
 
@@ -1849,8 +1854,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                       </>
                       )}
 
-                      {/* Managers Tab Header */}
-                      {walletTab === 'managers' && (
+                      {/* Dapps Tab Header */}
+                      {walletTab === 'dapps' && (
                       <div 
                           style={{ 
                               color: theme.colors.mutedText, 
@@ -1864,11 +1869,19 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                           }}
                       >
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <FaBrain size={10} />
-                              ICP Neuron Managers
+                              <FaBox size={10} />
+                              Dapps
+                              {(neuronManagers.length + trackedCanisters.length) > 0 && (
+                                  <span style={{ 
+                                      color: theme.colors.accent,
+                                      fontWeight: '600'
+                                  }}>
+                                      ({neuronManagers.length + trackedCanisters.length})
+                                  </span>
+                              )}
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              {totalManagersUSD !== null && (
+                              {totalManagersUSD !== null && totalManagersUSD > 0 && (
                                   <span style={{ 
                                       color: '#10b981',
                                       fontSize: '12px',
@@ -1883,8 +1896,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                       </div>
                       )}
 
-                      {/* Managers Tab Content */}
-                      {walletTab === 'managers' && (
+                      {/* Dapps Tab Content */}
+                      {walletTab === 'dapps' && (
                       <>
                       <div 
                           className="compact-wallet-container"
@@ -1898,26 +1911,29 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                               paddingRight: '4px'
                           }}
                       >
-                          {neuronManagersLoading && neuronManagers.length === 0 ? (
+                          {/* Loading state */}
+                          {(neuronManagersLoading && neuronManagers.length === 0 && trackedCanistersLoading && trackedCanisters.length === 0) ? (
                               <div style={{ 
                                   color: theme.colors.mutedText, 
                                   fontSize: '12px',
                                   textAlign: 'center',
                                   padding: '20px'
                               }}>
-                                  Loading managers...
+                                  Loading dapps...
                               </div>
-                          ) : neuronManagers.length === 0 ? (
+                          ) : (neuronManagers.length === 0 && trackedCanisters.length === 0) ? (
                               <div style={{ 
                                   color: theme.colors.mutedText, 
                                   fontSize: '12px',
                                   textAlign: 'center',
                                   padding: '20px'
                               }}>
-                                  No neuron managers found
+                                  No dapps found
                               </div>
                           ) : (
-                              neuronManagers.map((manager, index) => {
+                              <>
+                              {/* Neuron Managers first */}
+                              {neuronManagers.map((manager, index) => {
                                   const canisterIdStr = manager.canisterId?.toString?.() || manager.canisterId?.toText?.() || manager.canisterId;
                                   const neuronsData = managerNeurons[canisterIdStr];
                                   const neurons = neuronsData?.neurons || [];
@@ -1941,7 +1957,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                   
                                   return (
                                       <div
-                                          key={index}
+                                          key={`manager-${index}`}
                                           onClick={() => {
                                               navigate('/wallet');
                                               setShowPopup(false);
@@ -2035,10 +2051,87 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                           </div>
                                       </div>
                                   );
-                              })
+                              })}
+                              
+                              {/* Tracked Canisters after */}
+                              {trackedCanisters.map((canisterId, index) => {
+                                  return (
+                                      <div
+                                          key={`canister-${index}`}
+                                          onClick={() => {
+                                              navigate('/wallet');
+                                              setShowPopup(false);
+                                          }}
+                                          style={{
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: '10px',
+                                              padding: '10px',
+                                              backgroundColor: theme.colors.secondaryBg,
+                                              borderRadius: '10px',
+                                              cursor: 'pointer',
+                                              transition: 'all 0.2s ease',
+                                              border: `1px solid ${theme.colors.border}`
+                                          }}
+                                          onMouseOver={(e) => {
+                                              e.currentTarget.style.backgroundColor = `${theme.colors.accent}15`;
+                                              e.currentTarget.style.borderColor = theme.colors.accent;
+                                          }}
+                                          onMouseOut={(e) => {
+                                              e.currentTarget.style.backgroundColor = theme.colors.secondaryBg;
+                                              e.currentTarget.style.borderColor = theme.colors.border;
+                                          }}
+                                      >
+                                          {/* Canister Icon */}
+                                          <div 
+                                              style={{
+                                                  width: '36px',
+                                                  height: '36px',
+                                                  borderRadius: '50%',
+                                                  backgroundColor: `${theme.colors.mutedText}20`,
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  justifyContent: 'center',
+                                                  flexShrink: 0
+                                              }}
+                                          >
+                                              <FaBox size={16} style={{ color: theme.colors.mutedText }} />
+                                          </div>
+                                          
+                                          {/* Canister Info */}
+                                          <div style={{ 
+                                              flex: 1, 
+                                              minWidth: 0,
+                                              display: 'flex',
+                                              flexDirection: 'column',
+                                              gap: '2px'
+                                          }}>
+                                              <span style={{ 
+                                                  color: theme.colors.primaryText,
+                                                  fontSize: '13px',
+                                                  fontWeight: '500',
+                                                  overflow: 'hidden',
+                                                  textOverflow: 'ellipsis',
+                                                  whiteSpace: 'nowrap'
+                                              }}>
+                                                  {canisterId.slice(0, 5)}...{canisterId.slice(-5)}
+                                              </span>
+                                              <span style={{ 
+                                                  color: theme.colors.mutedText,
+                                                  fontSize: '11px',
+                                                  opacity: 0.8
+                                              }}>
+                                                  Canister
+                                              </span>
+                                          </div>
+                                      </div>
+                                  );
+                              })}
+                              </>
                           )}
-                          {/* Show subtle loading indicator while more managers are loading */}
-                          {(neuronManagersLoading || !hasFetchedManagers) && neuronManagers.length > 0 && (
+                          {/* Show subtle loading indicator while more dapps are loading */}
+                          {((neuronManagersLoading || !hasFetchedManagers) && neuronManagers.length > 0) || 
+                           ((trackedCanistersLoading || !hasFetchedTrackedCanisters) && trackedCanisters.length > 0) ? (
                               <div style={{ 
                                   padding: '6px 12px',
                                   textAlign: 'center',
@@ -2052,11 +2145,11 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                   opacity: 0.7
                               }}>
                                   <FaSync size={8} style={{ animation: 'spin 1s linear infinite' }} />
-                                  Loading more managers...
+                                  Loading...
                               </div>
-                          )}
+                          ) : null}
                       </div>
-                      {neuronManagers.length > 0 && (
+                      {(neuronManagers.length > 0 || trackedCanisters.length > 0) && (
                           <button
                               onClick={() => {
                                   navigate('/wallet');
@@ -2088,8 +2181,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                   e.target.style.borderColor = theme.colors.border;
                               }}
                           >
-                              <FaBrain size={11} />
-                              View All Managers
+                              <FaBox size={11} />
+                              View All Dapps
                           </button>
                       )}
                       </>

@@ -1272,7 +1272,7 @@ export default function CanisterPage() {
                                 transition: 'all 0.2s'
                             }}
                         >
-                            <FaArrowLeft size={11} /> Back to Canister Manager
+                            <FaArrowLeft size={11} /> Back to Dapp Manager
                         </Link>
                     </div>
                 </div>

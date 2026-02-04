@@ -77,9 +77,9 @@ const helpTopics = [
         color: '#3b82f6',
     },
     {
-        path: '/help/canister-manager',
+        path: '/help/dapp-manager',
         icon: FaCubes,
-        title: 'Canister Manager',
+        title: 'Dapp Manager',
         description: 'Track, organize, and monitor all your Internet Computer canisters',
         color: '#ec4899',
     },
