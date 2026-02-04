@@ -1283,14 +1283,20 @@ function ThreadViewer({
                 // Refresh posts to get the real post from server
                 await fetchPosts();
                 
-                // Auto-upvote if user has voting power
-                if (allNeurons && allNeurons.length > 0 && totalVotingPower > 0) {
+                // Auto-upvote if user has selected neurons with voting power
+                const selectedNeurons = getSelectedNeurons();
+                if (selectedNeurons && selectedNeurons.length > 0 && totalVotingPower > 0) {
                     try {
                         // Set voting state to show spinner
                         const postIdStr = postId.toString();
                         setVotingStates(prev => new Map(prev.set(postIdStr, 'voting')));
                         
-                        await forumActor.vote_on_post(Number(postId), { upvote: null });
+                        // Convert selected neurons to the format expected by backend
+                        const neuronIds = selectedNeurons.map(neuron => ({
+                            id: neuron.id[0].id
+                        }));
+                        
+                        await forumActor.vote_on_post_with_neurons(Number(postId), { upvote: null }, neuronIds);
                         
                         // Set success state and user vote
                         setVotingStates(prev => new Map(prev.set(postIdStr, 'success')));
@@ -1862,14 +1868,20 @@ function ThreadViewer({
                 // Refresh posts to get the real post from server
                 await fetchPosts();
                 
-                // Auto-upvote if user has voting power
-                if (allNeurons && allNeurons.length > 0 && totalVotingPower > 0) {
+                // Auto-upvote if user has selected neurons with voting power
+                const selectedNeurons = getSelectedNeurons();
+                if (selectedNeurons && selectedNeurons.length > 0 && totalVotingPower > 0) {
                     try {
                         // Set voting state to show spinner
                         const postIdStr = postId.toString();
                         setVotingStates(prev => new Map(prev.set(postIdStr, 'voting')));
                         
-                        await forumActor.vote_on_post(Number(postId), { upvote: null });
+                        // Convert selected neurons to the format expected by backend
+                        const neuronIds = selectedNeurons.map(neuron => ({
+                            id: neuron.id[0].id
+                        }));
+                        
+                        await forumActor.vote_on_post_with_neurons(Number(postId), { upvote: null }, neuronIds);
                         
                         // Set success state and user vote
                         setVotingStates(prev => new Map(prev.set(postIdStr, 'success')));
@@ -1914,7 +1926,7 @@ function ThreadViewer({
             setOptimisticPosts(prev => prev.filter(p => p._tempId !== tempId));
             if (onError) onError('Failed to create reply: ' + error.message);
         }
-    }, [forumActor, threadId, onError, fetchPosts, allNeurons, totalVotingPower, createOptimisticPost]);
+    }, [forumActor, threadId, onError, fetchPosts, getSelectedNeurons, totalVotingPower, createOptimisticPost]);
 
     const openTipModal = useCallback((post, defaultToken = null) => {
         const scrollY = window.scrollY;
