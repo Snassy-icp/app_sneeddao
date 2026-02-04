@@ -2147,6 +2147,10 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                   const neurons = neuronsData?.neurons || [];
                                   const isLoading = neuronsData?.loading;
                                   
+                                  // Get display name for canister
+                                  const displayInfo = getPrincipalDisplayName(canisterIdStr);
+                                  const displayName = displayInfo?.name || `${canisterIdStr.slice(0, 5)}...${canisterIdStr.slice(-5)}`;
+                                  
                                   // Calculate ICP value for this manager
                                   let managerIcpTotal = 0;
                                   neurons.forEach(neuron => {
@@ -2240,7 +2244,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                                       textOverflow: 'ellipsis',
                                                       whiteSpace: 'nowrap'
                                                   }}>
-                                                      {canisterIdStr.slice(0, 5)}...{canisterIdStr.slice(-5)}
+                                                      {displayName}
                                                   </span>
                                                   <span style={{ 
                                                       color: theme.colors.mutedText,
@@ -2275,6 +2279,10 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                   const isController = status?.isController;
                                   const cycles = status?.cycles;
                                   const memory = status?.memory;
+                                  
+                                  // Get display name for canister
+                                  const displayInfo = getPrincipalDisplayName(canisterId);
+                                  const displayName = displayInfo?.name || `${canisterId.slice(0, 5)}...${canisterId.slice(-5)}`;
                                   
                                   return (
                                       <div 
@@ -2360,7 +2368,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                                       textOverflow: 'ellipsis',
                                                       whiteSpace: 'nowrap'
                                                   }}>
-                                                      {canisterId.slice(0, 5)}...{canisterId.slice(-5)}
+                                                      {displayName}
                                                   </span>
                                                   {isNeuronManager && detectedManager?.neuronCount > 0 && (
                                                       <span style={{ 

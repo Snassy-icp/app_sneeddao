@@ -911,13 +911,6 @@ function Wallet() {
         fetchIcpToCyclesRate();
     }, [isAuthenticated]);
     
-    // Fetch status for tracked canisters when the list changes
-    useEffect(() => {
-        if (trackedCanisters.length > 0 && identity) {
-            fetchTrackedCanistersStatus(trackedCanisters);
-        }
-    }, [trackedCanisters, identity, fetchTrackedCanistersStatus]);
-    
     // Handle manual refresh
     useEffect(() => {
         if (refreshTrigger > 0 && isAuthenticated) {
@@ -1844,6 +1837,13 @@ function Wallet() {
             console.error('Error fetching tracked canister status:', err);
         }
     }, [identity]);
+    
+    // Fetch status for tracked canisters when the list changes
+    useEffect(() => {
+        if (trackedCanisters.length > 0 && identity) {
+            fetchTrackedCanistersStatus(trackedCanisters);
+        }
+    }, [trackedCanisters, identity, fetchTrackedCanistersStatus]);
     
     // Check if a module hash matches any known neuron manager version
     const isKnownNeuronManagerHash = useCallback((moduleHash) => {
