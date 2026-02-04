@@ -560,36 +560,31 @@ export default function Me() {
                 effectiveOwner = ownerPrincipals.length > 0 ? ownerPrincipals[0] : null;
             }
 
-            if (effectiveOwner) {
-                if (!neuronsByOwner.has(effectiveOwner)) {
-                    neuronsByOwner.set(effectiveOwner, []);
-                }
-                neuronsByOwner.get(effectiveOwner).push(neuron);
+            const ownerKey = effectiveOwner || 'unknown';
+            if (!neuronsByOwner.has(ownerKey)) {
+                neuronsByOwner.set(ownerKey, []);
             }
+            neuronsByOwner.get(ownerKey).push(neuron);
         });
 
         neuronsByOwner.forEach((ownerNeurons, owner) => {
-            const hasAccess = ownerNeurons.some(neuron => 
-                neuron.permissions.some(p => safePrincipalString(p.principal) === userPrincipal)
+            const filteredNeurons = hideEmptyNeurons 
+                ? ownerNeurons.filter(n => !isNeuronEmpty(n))
+                : ownerNeurons;
+            
+            if (filteredNeurons.length === 0) return;
+            
+            const totalStake = filteredNeurons.reduce(
+                (sum, n) => sum + BigInt(n.cached_neuron_stake_e8s || 0), 
+                BigInt(0)
             );
 
-            if (hasAccess) {
-                const filteredNeurons = hideEmptyNeurons 
-                    ? ownerNeurons.filter(n => !isNeuronEmpty(n))
-                    : ownerNeurons;
-                
-                const totalStake = filteredNeurons.reduce(
-                    (sum, n) => sum + BigInt(n.cached_neuron_stake_e8s || 0), 
-                    BigInt(0)
-                );
-
-                groups.set(owner, {
-                    isMy: owner === userPrincipal,
-                    ownerPrincipal: owner,
-                    neurons: filteredNeurons,
-                    totalStake
-                });
-            }
+            groups.set(owner || 'unknown', {
+                isMy: owner === userPrincipal,
+                ownerPrincipal: owner || 'unknown',
+                neurons: filteredNeurons,
+                totalStake
+            });
         });
 
         return groups;
