@@ -1499,7 +1499,7 @@ export default function CanistersPage() {
     const canDropItem = useCallback((item, targetType, targetId = null) => {
         if (!item) return false;
         
-        // Groups can only be dropped into other groups (within Custom Canisters)
+        // Groups can only be dropped into other groups (within Groups section)
         // They cannot be dropped into wallet or neuron_managers
         if (item.type === 'group') {
             if (targetType === 'wallet' || targetType === 'neuron_managers' || targetType === 'ungrouped') {
@@ -3278,7 +3278,7 @@ export default function CanistersPage() {
                             </div>
                         </div>
 
-                        {/* Custom Canisters Section with Groups - Premium Feature */}
+                        {/* Groups Section - Premium Feature */}
                         <div 
                             style={styles.sectionHeader}
                             onClick={() => setCustomExpanded(!customExpanded)}
@@ -3286,7 +3286,7 @@ export default function CanistersPage() {
                             <div style={styles.sectionTitle}>
                                 {customExpanded ? <FaChevronDown /> : <FaChevronRight />}
                                 <FaCube />
-                                Custom Canisters
+                                Groups
                                 {getAllCanisterIds(canisterGroups).length > 0 && (
                                     <span style={styles.sectionCount}>{getAllCanisterIds(canisterGroups).length}</span>
                                 )}
@@ -3404,7 +3404,7 @@ export default function CanistersPage() {
                                 ) : getAllCanisterIds(canisterGroups).length === 0 && canisterGroups.groups.length === 0 ? (
                                     <div style={{ ...styles.emptyState, marginBottom: '24px' }}>
                                         <div style={styles.emptyIcon}>📦</div>
-                                        <div style={styles.emptyText}>No custom canisters being tracked</div>
+                                        <div style={styles.emptyText}>No groups or canisters being tracked</div>
                                         <div style={styles.emptySubtext}>
                                             Add a canister ID above to start tracking it, or create a group to organize your canisters.
                                         </div>
