@@ -3,7 +3,7 @@ import { useAuth } from '../AuthContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
-import { fetchAndCacheSnsData, getSnsById, fetchSnsLogo } from '../utils/SnsUtils';
+import { fetchAndCacheSnsData, getSnsById, getAllSnses, fetchSnsLogo } from '../utils/SnsUtils';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { HttpAgent } from '@dfinity/agent';
@@ -126,6 +126,8 @@ export default function Me() {
     const walletContext = useWalletOptional();
     const getNeuronsForGovernance = walletContext?.getNeuronsForGovernance;
     const cacheCheckComplete = walletContext?.cacheCheckComplete;
+    const neuronCache = walletContext?.neuronCache;
+    const neuronCacheInitialized = walletContext?.neuronCacheInitialized;
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const [snsList, setSnsList] = useState([]);
@@ -136,6 +138,7 @@ export default function Me() {
     const [activeTab, setActiveTab] = useState('neurons'); // 'neurons', 'transactions', 'settings'
     const [expandedGroups, setExpandedGroups] = useState(new Set(['self']));
     const [activeNeuronGroup, setActiveNeuronGroup] = useState('self'); // Track active neuron group tab
+    const [activeNeuronSns, setActiveNeuronSns] = useState(null); // Track active SNS in neurons tab
     const [tokenSymbol, setTokenSymbol] = useState('SNS');
     const [editingName, setEditingName] = useState(null);
     const [nameInput, setNameInput] = useState('');
@@ -592,6 +595,57 @@ export default function Me() {
         return groups;
     }, [neurons, identity, hideEmptyNeurons]);
 
+    // Compute list of SNSes with neurons from the global cache
+    const snsesWithNeurons = React.useMemo(() => {
+        if (!neuronCache || neuronCache.size === 0) return [];
+        
+        const allSnses = getAllSnses();
+        const result = [];
+        
+        neuronCache.forEach((neuronsList, governanceId) => {
+            if (!neuronsList || neuronsList.length === 0) return;
+            
+            // Find SNS info for this governance canister
+            const snsInfo = allSnses.find(sns => 
+                sns.canisters?.governance === governanceId
+            );
+            
+            if (snsInfo) {
+                result.push({
+                    rootCanisterId: snsInfo.rootCanisterId,
+                    governanceId: governanceId,
+                    name: snsInfo.name || 'Unknown SNS',
+                    logo: snsInfo.logo,
+                    neuronCount: neuronsList.length,
+                    totalStake: neuronsList.reduce((sum, n) => sum + BigInt(n.cached_neuron_stake_e8s || 0), BigInt(0))
+                });
+            }
+        });
+        
+        // Sort by total stake (descending)
+        result.sort((a, b) => {
+            if (b.totalStake > a.totalStake) return 1;
+            if (b.totalStake < a.totalStake) return -1;
+            return 0;
+        });
+        
+        return result;
+    }, [neuronCache]);
+
+    // Set initial active SNS when snsesWithNeurons loads
+    useEffect(() => {
+        if (snsesWithNeurons.length > 0 && !activeNeuronSns) {
+            // Try to select the currently selected SNS if user has neurons there
+            const matchingSnS = snsesWithNeurons.find(s => s.rootCanisterId === selectedSnsRoot);
+            if (matchingSnS) {
+                setActiveNeuronSns(matchingSnS.rootCanisterId);
+            } else {
+                // Otherwise select the first SNS with most stake
+                setActiveNeuronSns(snsesWithNeurons[0].rootCanisterId);
+            }
+        }
+    }, [snsesWithNeurons, selectedSnsRoot, activeNeuronSns]);
+
     // Fetch SNS data on component mount
     useEffect(() => {
         const fetchSnsData = async () => {
@@ -608,11 +662,11 @@ export default function Me() {
         fetchSnsData();
     }, [identity]);
 
-    // Fetch neurons when selected SNS changes - uses global cache
+    // Fetch neurons when active SNS tab changes - uses global cache
     // Wait for cacheCheckComplete to ensure cache has been hydrated first
     useEffect(() => {
         const fetchNeurons = async () => {
-            if (!identity || !selectedSnsRoot) return;
+            if (!identity || !activeNeuronSns) return;
             
             // Wait for cache check to complete before fetching
             // This ensures we use cached neurons if available instead of always hitting network
@@ -621,7 +675,7 @@ export default function Me() {
             setLoading(true);
             setError(null);
             try {
-                const selectedSns = getSnsById(selectedSnsRoot);
+                const selectedSns = getSnsById(activeNeuronSns);
                 if (!selectedSns) {
                     throw new Error('Selected SNS not found');
                 }
@@ -652,7 +706,7 @@ export default function Me() {
             }
         };
         fetchNeurons();
-    }, [identity, selectedSnsRoot, getNeuronsForGovernance, cacheCheckComplete]);
+    }, [identity, activeNeuronSns, getNeuronsForGovernance, cacheCheckComplete]);
 
     useEffect(() => {
         if (identity) {
@@ -1564,14 +1618,19 @@ export default function Me() {
                                     : theme.colors.secondaryText,
                             }}
                         >
-                            <TokenIcon 
-                                logo={selectedSnsLogo} 
-                                size={18} 
-                                fallbackIcon={<FaBrain size={14} />}
-                                fallbackColor={activeTab === 'neurons' ? 'white' : theme.colors.secondaryText}
-                                rounded={false}
-                            />
+                            <FaBrain size={14} style={{ color: activeTab === 'neurons' ? 'white' : theme.colors.secondaryText }} />
                             <span>Neurons</span>
+                            {snsesWithNeurons.length > 0 && (
+                                <span style={{
+                                    fontSize: '0.7rem',
+                                    background: activeTab === 'neurons' ? 'rgba(255,255,255,0.25)' : theme.colors.tertiaryBg,
+                                    padding: '0.1rem 0.4rem',
+                                    borderRadius: '8px',
+                                    fontWeight: '600'
+                                }}>
+                                    {snsesWithNeurons.length}
+                                </span>
+                            )}
                         </button>
                         <button
                             onClick={() => setActiveTab('transactions')}
@@ -2080,26 +2139,21 @@ export default function Me() {
                                     gap: '0.75rem'
                                 }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                        <div style={{
-                                            width: '40px',
-                                            height: '40px',
-                                            borderRadius: '10px',
-                                            background: selectedSnsLogo ? 'transparent' : `linear-gradient(135deg, ${mePrimary}30, ${meSecondary}20)`,
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            color: mePrimary,
-                                            overflow: 'hidden'
-                                        }}>
-                                            {selectedSnsLogo ? (
-                                                <img src={selectedSnsLogo} alt="DAO" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px' }} />
-                                            ) : (
-                                                <FaBrain size={18} />
-                                            )}
-                                        </div>
+                                        <FaBrain size={20} style={{ color: mePrimary }} />
                                         <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '1.1rem' }}>
-                                            My {selectedSnsInfo?.name || 'DAO'} Neurons
+                                            My Neurons
                                         </span>
+                                        {snsesWithNeurons.length > 0 && (
+                                            <span style={{ 
+                                                color: theme.colors.mutedText, 
+                                                fontSize: '0.85rem',
+                                                background: theme.colors.tertiaryBg,
+                                                padding: '0.2rem 0.5rem',
+                                                borderRadius: '4px'
+                                            }}>
+                                                {snsesWithNeurons.reduce((sum, s) => sum + s.neuronCount, 0)} total
+                                            </span>
+                                        )}
                                     </div>
                                     <Link
                                         to="/help/neurons"
@@ -2116,6 +2170,110 @@ export default function Me() {
                                         ❓ Help
                                     </Link>
                                 </div>
+                                
+                                {/* SNS Subtabs */}
+                                {snsesWithNeurons.length > 0 && (
+                                    <div style={{ 
+                                        display: 'flex',
+                                        flexWrap: 'wrap',
+                                        gap: '0.5rem',
+                                        marginBottom: '1rem',
+                                        background: theme.colors.tertiaryBg,
+                                        padding: '0.5rem',
+                                        borderRadius: '12px',
+                                        border: `1px solid ${theme.colors.border}`
+                                    }}>
+                                        {snsesWithNeurons.map(sns => {
+                                            const isActive = activeNeuronSns === sns.rootCanisterId;
+                                            return (
+                                                <button
+                                                    key={sns.rootCanisterId}
+                                                    onClick={() => setActiveNeuronSns(sns.rootCanisterId)}
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.4rem',
+                                                        padding: '0.5rem 0.75rem',
+                                                        borderRadius: '8px',
+                                                        border: 'none',
+                                                        cursor: 'pointer',
+                                                        fontWeight: '500',
+                                                        fontSize: '0.85rem',
+                                                        transition: 'all 0.2s ease',
+                                                        background: isActive 
+                                                            ? `linear-gradient(135deg, ${mePrimary}, ${meSecondary})`
+                                                            : 'transparent',
+                                                        color: isActive ? 'white' : theme.colors.secondaryText,
+                                                        boxShadow: isActive ? `0 2px 8px ${mePrimary}30` : 'none'
+                                                    }}
+                                                >
+                                                    <TokenIcon 
+                                                        logo={sns.logo} 
+                                                        size={18} 
+                                                        fallbackIcon={<FaBrain size={12} />}
+                                                        fallbackColor={isActive ? 'white' : theme.colors.secondaryText}
+                                                        rounded={false}
+                                                    />
+                                                    <span>{sns.name}</span>
+                                                    <span style={{ 
+                                                        opacity: 0.8, 
+                                                        fontSize: '0.75rem',
+                                                        background: isActive ? 'rgba(255,255,255,0.2)' : theme.colors.primaryBg,
+                                                        padding: '0.1rem 0.35rem',
+                                                        borderRadius: '4px'
+                                                    }}>
+                                                        {sns.neuronCount}
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                                
+                                {/* No neurons message */}
+                                {snsesWithNeurons.length === 0 && neuronCacheInitialized && (
+                                    <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
+                                        <div style={{
+                                            width: '60px',
+                                            height: '60px',
+                                            borderRadius: '50%',
+                                            background: `${mePrimary}15`,
+                                            margin: '0 auto 1rem',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            color: mePrimary
+                                        }}>
+                                            <FaBrain size={24} />
+                                        </div>
+                                        <p style={{ fontSize: '1rem', marginBottom: '0.5rem' }}>No neurons found.</p>
+                                        <p style={{ fontSize: '0.9rem', color: theme.colors.mutedText }}>
+                                            Stake tokens in any SNS DAO to create neurons.
+                                        </p>
+                                    </div>
+                                )}
+                                
+                                {/* Loading state for cache */}
+                                {!neuronCacheInitialized && (
+                                    <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
+                                        <div className="me-pulse" style={{
+                                            width: '48px',
+                                            height: '48px',
+                                            borderRadius: '50%',
+                                            background: `linear-gradient(135deg, ${mePrimary}30, ${meSecondary}20)`,
+                                            margin: '0 auto 1rem',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            color: mePrimary
+                                        }}>
+                                            <FaBrain size={20} />
+                                        </div>
+                                        Loading neurons...
+                                    </div>
+                                )}
+                                
+                                {/* Hide empty neurons checkbox */}
                                 {neurons.length > 0 && (
                                     <div style={{ marginBottom: '1rem' }}>
                                         <label style={{
@@ -2138,7 +2296,8 @@ export default function Me() {
                                     </div>
                                 )}
                                 
-                                {loading ? (
+                                {/* Show neuron content only when we have SNS tabs and an active SNS selected */}
+                                {snsesWithNeurons.length > 0 && activeNeuronSns && (loading ? (
                                     <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
                                         <div className="me-pulse" style={{
                                             width: '48px',
@@ -2153,7 +2312,7 @@ export default function Me() {
                                         }}>
                                             <FaBrain size={20} />
                                         </div>
-                                        Loading neurons...
+                                        Loading {snsesWithNeurons.find(s => s.rootCanisterId === activeNeuronSns)?.name || 'SNS'} neurons...
                                     </div>
                                 ) : neurons.length === 0 ? (
                                     <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
@@ -2172,7 +2331,7 @@ export default function Me() {
                                         </div>
                                         <p style={{ fontSize: '1rem', marginBottom: '0.5rem' }}>No neurons found for this SNS.</p>
                                         <p style={{ fontSize: '0.9rem', color: theme.colors.mutedText }}>
-                                            Try selecting a different SNS or stake tokens to create neurons.
+                                            Try selecting a different SNS.
                                         </p>
                                     </div>
                                 ) : (
@@ -2352,7 +2511,7 @@ export default function Me() {
                                             );
                                         })()}
                                     </div>
-                                )}
+                                ))}
                             </div>
                         )}
 

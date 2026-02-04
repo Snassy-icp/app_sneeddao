@@ -69,22 +69,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         if (!identity) return [];
         const userPrincipalStr = identity.getPrincipal().toString();
         
-        // Debug: log first neuron's permission structure
-        if (userNeurons.length > 0 && userNeurons[0].permissions?.length > 0) {
-            const firstPerm = userNeurons[0].permissions[0];
-            console.log('[Header] Debug neuron permission:', {
-                rawPrincipal: firstPerm.principal,
-                typeofPrincipal: typeof firstPerm.principal,
-                hasToText: typeof firstPerm.principal?.toText === 'function',
-                has__principal__: firstPerm.principal?.__principal__,
-                safePrincipalResult: safePrincipalString(firstPerm.principal),
-                userPrincipal: userPrincipalStr,
-                permissionType: firstPerm.permission_type,
-                safePermTypeResult: safePermissionType(firstPerm)
-            });
-        }
-        
-        const result = userNeurons.filter(neuron => 
+        return userNeurons.filter(neuron => 
             neuron.permissions?.some(p => {
                 const permPrincipal = safePrincipalString(p.principal);
                 if (!permPrincipal || permPrincipal !== userPrincipalStr) return false;
@@ -93,21 +78,6 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 return permTypes.includes(4); // Hotkey permission (Vote)
             })
         );
-        
-        // Debug: log filter results
-        console.log('[Header] getHotkeyNeurons result:', {
-            totalNeurons: userNeurons.length,
-            hotkeyNeurons: result.length,
-            userPrincipal: userPrincipalStr,
-            firstNeuronMatch: userNeurons.length > 0 ? userNeurons[0].permissions?.map(p => ({
-                principal: safePrincipalString(p.principal),
-                matchesUser: safePrincipalString(p.principal) === userPrincipalStr,
-                permTypes: safePermissionType(p),
-                hasVote: safePermissionType(p).includes(4)
-            })) : []
-        });
-        
-        return result;
     };
     const { newTipCount } = useTipNotifications();
     const { newReplyCount } = useReplyNotifications();

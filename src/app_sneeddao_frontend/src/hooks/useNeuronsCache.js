@@ -363,18 +363,6 @@ const serializeNeuronForStorage = (neuron) => {
             : Array.isArray(idObj.id) ? idObj.id : []
     })) || neuron.id;
     
-    // Debug: log first permission's principal for debugging
-    if (neuron.permissions?.length > 0) {
-        const firstPerm = neuron.permissions[0];
-        console.log('[serializeNeuronForStorage] First permission principal:', {
-            rawPrincipal: firstPerm.principal,
-            type: typeof firstPerm.principal,
-            hasToText: typeof firstPerm.principal?.toText === 'function',
-            has__principal__: firstPerm.principal?.__principal__,
-            has_arr: !!firstPerm.principal?._arr
-        });
-    }
-    
     // Serialize permissions (Principal -> string)
     const serializedPermissions = neuron.permissions?.map(p => {
         // Extract principal string safely
@@ -689,16 +677,6 @@ export const getNeuronsFromCacheByIds = async (snsRoot, neuronIdHexArray) => {
                 if (!data || !data.neurons) {
                     resolve({ found: [], missing: neuronIdHexArray });
                     return;
-                }
-                
-                // Debug: log first neuron's permission structure from cache
-                if (data.neurons.length > 0 && data.neurons[0].permissions?.length > 0) {
-                    const firstPerm = data.neurons[0].permissions[0];
-                    console.log('[getNeuronsFromCacheByIds] First cached permission:', {
-                        principal: firstPerm.principal,
-                        principalType: typeof firstPerm.principal,
-                        permission_type: firstPerm.permission_type
-                    });
                 }
                 
                 const found = [];

@@ -517,15 +517,8 @@ export const WalletProvider = ({ children }) => {
                         // IMPORTANT: Update ref IMMEDIATELY before state update
                         // This prevents race conditions where other code checks the ref before the useEffect runs
                         if (hydratedMap.size > 0) {
-                            console.log('[WalletContext] Hydrated neurons cache:', {
-                                mapSize: hydratedMap.size,
-                                keys: Array.from(hydratedMap.keys()),
-                                neuronCounts: Array.from(hydratedMap.entries()).map(([k, v]) => `${k}: ${v.length}`)
-                            });
                             neuronCacheRef.current = hydratedMap;
                             setNeuronCache(hydratedMap);
-                        } else {
-                            console.log('[WalletContext] No neurons to hydrate from cache');
                         }
                         // Always mark as initialized after hydration attempt so consumers know cache check is done
                         setNeuronCacheInitialized(true);
@@ -787,18 +780,7 @@ export const WalletProvider = ({ children }) => {
         // Check if already in memory cache with actual neurons (use ref to get latest value, avoid stale closure)
         // Don't return empty arrays - those might be from failed hydration
         const cachedNeurons = neuronCacheRef.current.get(govId);
-        
-        // Debug: log cache lookup
-        console.log('[fetchAndCacheNeurons] Cache lookup:', {
-            govId,
-            cacheSize: neuronCacheRef.current.size,
-            cacheKeys: Array.from(neuronCacheRef.current.keys()),
-            hasCachedNeurons: !!cachedNeurons,
-            cachedNeuronsCount: cachedNeurons?.length || 0
-        });
-        
         if (cachedNeurons && cachedNeurons.length > 0) {
-            console.log('[fetchAndCacheNeurons] Returning from cache:', cachedNeurons.length, 'neurons');
             return cachedNeurons;
         }
         
