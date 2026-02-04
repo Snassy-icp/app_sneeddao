@@ -14,15 +14,17 @@ import ReactMarkdown from 'react-markdown';
 import './Wallet.css';
 import { getSnsById, getAllSnses, clearSnsCache } from './utils/SnsUtils';
 import { useOptimizedSnsLoading } from './hooks/useOptimizedSnsLoading';
-import { formatNeuronDisplayWithContext, uint8ArrayToHex } from './utils/NeuronUtils';
+import { formatNeuronDisplayWithContext, uint8ArrayToHex, extractPrincipalString } from './utils/NeuronUtils';
 import { fetchUserNeuronsForSns } from './utils/NeuronUtils';
 import { useNaming } from './NamingContext';
 import { useTheme } from './contexts/ThemeContext';
 import { Principal } from '@dfinity/principal';
 import { getProposalStatus, isProposalAcceptingVotes, getVotingTimeRemaining } from './utils/ProposalUtils';
 import { calculateVotingPower, formatVotingPower } from './utils/VotingPowerUtils';
-import { FaChevronLeft, FaChevronRight, FaSearch, FaExternalLinkAlt, FaCheckCircle, FaTimesCircle, FaClock, FaVoteYea, FaComments, FaChevronDown, FaChevronUp, FaFilter, FaSort, FaGavel, FaUsers } from 'react-icons/fa';
+import { FaChevronLeft, FaChevronRight, FaSearch, FaExternalLinkAlt, FaCheckCircle, FaTimesCircle, FaClock, FaVoteYea, FaComments, FaChevronDown, FaChevronUp, FaFilter, FaSort, FaGavel, FaUsers, FaCrown, FaKey, FaUserShield, FaCoins, FaQuestion } from 'react-icons/fa';
 import { getRelativeTime, getFullDate } from './utils/DateUtils';
+import { getNeuronFromCache } from './hooks/useNeuronsCache';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
 
 // Custom CSS for animations
 const customStyles = `
@@ -113,7 +115,40 @@ function Proposal() {
     const [eligibleNeuronsInfo, setEligibleNeuronsInfo] = useState({ count: 0, totalVP: 0 });
     const [nervousSystemParams, setNervousSystemParams] = useState(null);
 
-    const { getNeuronDisplayName, neuronNames, neuronNicknames, verifiedNames } = useNaming();
+    const { getNeuronDisplayName, neuronNames, neuronNicknames, verifiedNames, principalNames, principalNicknames } = useNaming();
+
+    // Proposer permissions state
+    const [proposerPermissions, setProposerPermissions] = useState(null);
+
+    // Permission constants
+    const PERM = {
+        UNSPECIFIED: 0, CONFIGURE_DISSOLVE_STATE: 1, MANAGE_PRINCIPALS: 2, SUBMIT_PROPOSAL: 3,
+        VOTE: 4, DISBURSE: 5, SPLIT: 6, MERGE_MATURITY: 7, DISBURSE_MATURITY: 8, STAKE_MATURITY: 9, MANAGE_VOTING_PERMISSION: 10
+    };
+
+    // Get principal symbol based on permissions
+    const getPrincipalSymbol = (perms) => {
+        const permArray = perms?.permission_type || [];
+        const permCount = permArray.length;
+        if (permCount === 10 || permCount === 11) return { icon: <FaCrown size={10} />, title: 'Full Owner', color: '#f59e0b' };
+        const hasSubmit = permArray.includes(PERM.SUBMIT_PROPOSAL);
+        const hasVote = permArray.includes(PERM.VOTE);
+        if (permCount === 2 && hasSubmit && hasVote) return { icon: <FaKey size={10} />, title: 'Hotkey', color: '#06b6d4' };
+        if (permCount === 1 && hasVote) return { icon: <FaVoteYea size={10} />, title: 'Voter', color: '#10b981' };
+        if (permArray.includes(PERM.MANAGE_PRINCIPALS)) return { icon: <FaUserShield size={10} />, title: 'Manager', color: proposalPrimary };
+        if (permArray.includes(PERM.DISBURSE) || permArray.includes(PERM.DISBURSE_MATURITY)) return { icon: <FaCoins size={10} />, title: 'Financial', color: '#f59e0b' };
+        return { icon: <FaQuestion size={10} />, title: 'Custom', color: theme.colors.mutedText };
+    };
+
+    // Get principal display info
+    const getPrincipalDisplayInfoLocal = (principalStr) => {
+        if (!principalStr || !principalNames || !principalNicknames) return null;
+        try {
+            return getPrincipalDisplayInfoFromContext(Principal.fromText(principalStr), principalNames, principalNicknames);
+        } catch {
+            return null;
+        }
+    };
 
     const getNeuronDisplayInfo = (neuronId) => {
         if (!neuronId || !selectedSnsRoot) return null;
@@ -154,6 +189,30 @@ function Proposal() {
             fetchProposalData();
         }
     }, [currentProposalId, selectedSnsRoot]);
+
+    // Fetch proposer neuron permissions
+    useEffect(() => {
+        if (!proposalData?.proposer?.[0]?.id || !selectedSnsRoot) {
+            setProposerPermissions(null);
+            return;
+        }
+        
+        const fetchProposerPermissions = async () => {
+            const neuronIdHex = uint8ArrayToHex(proposalData.proposer[0].id);
+            if (!neuronIdHex) return;
+            
+            try {
+                const neuron = await getNeuronFromCache(selectedSnsRoot, neuronIdHex);
+                if (neuron?.permissions?.length > 0) {
+                    setProposerPermissions(neuron.permissions);
+                }
+            } catch (err) {
+                console.warn('Failed to load proposer permissions:', err);
+            }
+        };
+        
+        fetchProposerPermissions();
+    }, [proposalData, selectedSnsRoot]);
 
     useEffect(() => {
         if (forumActor && currentProposalId && selectedSnsRoot) {
@@ -1147,6 +1206,75 @@ function Proposal() {
                                                 </div>
                                             </div>
                                         </div>
+                                        
+                                        {/* Proposed By */}
+                                        {proposalData.proposer?.[0]?.id && (
+                                            <div style={{
+                                                background: theme.colors.primaryBg,
+                                                borderRadius: '12px',
+                                                padding: '1rem 1.25rem',
+                                                marginBottom: '1.5rem'
+                                            }}>
+                                                <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Proposed by</div>
+                                                <div style={{ marginBottom: proposerPermissions?.length > 0 ? '0.75rem' : 0 }}>
+                                                    {formatNeuronDisplayWithContext(
+                                                        proposalData.proposer[0].id, 
+                                                        selectedSnsRoot, 
+                                                        getNeuronDisplayInfo(proposalData.proposer[0].id),
+                                                        { 
+                                                            onNicknameUpdate: handleNicknameUpdate,
+                                                            isAuthenticated: isAuthenticated
+                                                        }
+                                                    )}
+                                                </div>
+                                                
+                                                {/* Principals (show all) */}
+                                                {proposerPermissions?.length > 0 && (
+                                                    <div 
+                                                        style={{
+                                                            display: 'flex',
+                                                            flexWrap: 'wrap',
+                                                            gap: '0.4rem',
+                                                            alignItems: 'center'
+                                                        }}
+                                                    >
+                                                        {proposerPermissions.map((perm, idx) => {
+                                                            const symbolInfo = getPrincipalSymbol(perm);
+                                                            const principalStr = extractPrincipalString(perm.principal);
+                                                            if (!principalStr) return null;
+                                                            
+                                                            return (
+                                                                <div
+                                                                    key={idx}
+                                                                    style={{
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '0.25rem',
+                                                                        padding: '0.25rem 0.5rem',
+                                                                        background: `${symbolInfo.color}15`,
+                                                                        borderRadius: '4px',
+                                                                        border: `1px solid ${symbolInfo.color}25`
+                                                                    }}
+                                                                    title={symbolInfo.title}
+                                                                >
+                                                                    <span style={{ color: symbolInfo.color, display: 'flex', alignItems: 'center' }}>
+                                                                        {symbolInfo.icon}
+                                                                    </span>
+                                                                    <PrincipalDisplay
+                                                                        principal={Principal.fromText(principalStr)}
+                                                                        displayInfo={getPrincipalDisplayInfoLocal(principalStr)}
+                                                                        showCopyButton={false}
+                                                                        short={true}
+                                                                        isAuthenticated={isAuthenticated}
+                                                                        style={{ fontSize: '0.75rem' }}
+                                                                    />
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                         
                                         {/* Summary */}
                                         <div style={{

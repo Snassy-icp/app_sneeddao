@@ -17,7 +17,10 @@ import { getProposalStatus, isProposalAcceptingVotes, getVotingTimeRemaining } f
 import { calculateVotingPower } from '../utils/VotingPowerUtils';
 import { getRelativeTime, getFullDate } from '../utils/DateUtils';
 import { HttpAgent } from '@dfinity/agent';
-import { FaGavel, FaSearch, FaFilter, FaDownload, FaChevronDown, FaChevronRight, FaExternalLinkAlt, FaCheck, FaTimes, FaClock, FaLayerGroup, FaVoteYea } from 'react-icons/fa';
+import { FaGavel, FaSearch, FaFilter, FaDownload, FaChevronDown, FaChevronRight, FaExternalLinkAlt, FaCheck, FaTimes, FaClock, FaLayerGroup, FaVoteYea, FaCrown, FaKey, FaUserShield, FaCoins, FaQuestion } from 'react-icons/fa';
+import { Principal } from '@dfinity/principal';
+import { getNeuronFromCache } from '../hooks/useNeuronsCache';
+import { extractPrincipalString } from '../utils/NeuronUtils';
 
 // Custom CSS for animations
 const customStyles = `
@@ -125,6 +128,59 @@ function Proposals() {
     const [votedProposals, setVotedProposals] = useState(new Set()); // Track proposals we've voted on this session
     const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
     const eligibilityCheckRef = useRef(null);
+
+    // Proposer neuron permissions state
+    const [proposerPermissions, setProposerPermissions] = useState({}); // { neuronIdHex: permissions[] }
+    const [expandedProposerPrincipals, setExpandedProposerPrincipals] = useState(new Set());
+
+    // Permission constants
+    const PERM = {
+        UNSPECIFIED: 0, CONFIGURE_DISSOLVE_STATE: 1, MANAGE_PRINCIPALS: 2, SUBMIT_PROPOSAL: 3,
+        VOTE: 4, DISBURSE: 5, SPLIT: 6, MERGE_MATURITY: 7, DISBURSE_MATURITY: 8, STAKE_MATURITY: 9, MANAGE_VOTING_PERMISSION: 10
+    };
+
+    // Get principal symbol based on permissions
+    const getPrincipalSymbol = (perms) => {
+        const permArray = perms?.permission_type || [];
+        const permCount = permArray.length;
+        if (permCount === 10 || permCount === 11) return { icon: <FaCrown size={10} />, title: 'Full Owner', color: '#f59e0b' };
+        const hasSubmit = permArray.includes(PERM.SUBMIT_PROPOSAL);
+        const hasVote = permArray.includes(PERM.VOTE);
+        if (permCount === 2 && hasSubmit && hasVote) return { icon: <FaKey size={10} />, title: 'Hotkey', color: '#06b6d4' };
+        if (permCount === 1 && hasVote) return { icon: <FaVoteYea size={10} />, title: 'Voter', color: '#10b981' };
+        if (permArray.includes(PERM.MANAGE_PRINCIPALS)) return { icon: <FaUserShield size={10} />, title: 'Manager', color: proposalPrimary };
+        if (permArray.includes(PERM.DISBURSE) || permArray.includes(PERM.DISBURSE_MATURITY)) return { icon: <FaCoins size={10} />, title: 'Financial', color: '#f59e0b' };
+        return { icon: <FaQuestion size={10} />, title: 'Custom', color: theme.colors.mutedText };
+    };
+
+    // Get principal display info for a principal string
+    const getPrincipalDisplayInfo = (principalStr) => {
+        if (!principalStr || !principalNames || !principalNicknames) return null;
+        try {
+            return getPrincipalDisplayInfoFromContext(Principal.fromText(principalStr), principalNames, principalNicknames);
+        } catch {
+            return null;
+        }
+    };
+
+    // Check if a principal has a name or nickname
+    const principalHasName = (principalStr) => {
+        if (!principalStr) return false;
+        const displayInfo = getPrincipalDisplayInfo(principalStr);
+        return displayInfo && (displayInfo.name || displayInfo.nickname);
+    };
+
+    const toggleProposerPrincipalsExpanded = (neuronIdHex) => {
+        setExpandedProposerPrincipals(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(neuronIdHex)) {
+                newSet.delete(neuronIdHex);
+            } else {
+                newSet.add(neuronIdHex);
+            }
+            return newSet;
+        });
+    };
 
     // Load SNS information and logo
     const loadSnsInfo = async () => {
@@ -666,6 +722,42 @@ function Proposals() {
 
         setFilteredProposals(filtered);
     }, [proposals, proposerFilter, topicFilter, selectedSnsRoot, neuronNames, neuronNicknames]);
+
+    // Load proposer neuron permissions progressively
+    useEffect(() => {
+        if (!filteredProposals.length || !selectedSnsRoot) return;
+
+        // Get unique proposer neuron IDs from current page of proposals
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        const currentPageProposals = filteredProposals.slice(startIndex, startIndex + itemsPerPage);
+        
+        const proposerNeuronIds = currentPageProposals
+            .map(p => p.proposer?.[0]?.id)
+            .filter(Boolean)
+            .map(id => uint8ArrayToHex(id))
+            .filter(id => id && !proposerPermissions[id]);
+
+        if (proposerNeuronIds.length === 0) return;
+
+        // Load permissions for each proposer neuron
+        const loadPermissions = async () => {
+            for (const neuronIdHex of proposerNeuronIds) {
+                try {
+                    const neuron = await getNeuronFromCache(selectedSnsRoot, neuronIdHex);
+                    if (neuron?.permissions?.length > 0) {
+                        setProposerPermissions(prev => ({
+                            ...prev,
+                            [neuronIdHex]: neuron.permissions
+                        }));
+                    }
+                } catch (err) {
+                    console.warn(`Failed to load permissions for proposer ${neuronIdHex}:`, err);
+                }
+            }
+        };
+
+        loadPermissions();
+    }, [filteredProposals, currentPage, itemsPerPage, selectedSnsRoot, proposerPermissions]);
 
     // Handle SNS loading errors
     useEffect(() => {
@@ -1693,6 +1785,104 @@ function Proposals() {
                                                 <span style={{ color: theme.colors.mutedText }}>Unknown</span>
                                             }
                                         </div>
+                                        
+                                        {/* Compact Proposer Principals */}
+                                        {proposal.proposer?.[0]?.id && (() => {
+                                            const neuronIdHex = uint8ArrayToHex(proposal.proposer[0].id);
+                                            const permissions = proposerPermissions[neuronIdHex];
+                                            if (!permissions || permissions.length === 0) return null;
+                                            
+                                            const isExpanded = expandedProposerPrincipals.has(neuronIdHex);
+                                            
+                                            // Separate named and unnamed principals
+                                            const namedPrincipals = permissions.filter(perm => {
+                                                const principalStr = extractPrincipalString(perm.principal);
+                                                return principalStr && principalHasName(principalStr);
+                                            });
+                                            const unnamedPrincipals = permissions.filter(perm => {
+                                                const principalStr = extractPrincipalString(perm.principal);
+                                                return principalStr && !principalHasName(principalStr);
+                                            });
+                                            
+                                            // Show named principals first, then unnamed if expanded
+                                            const principalsToShow = isExpanded 
+                                                ? [...namedPrincipals, ...unnamedPrincipals]
+                                                : namedPrincipals;
+                                            
+                                            const hasHiddenPrincipals = unnamedPrincipals.length > 0;
+                                            
+                                            return (
+                                                <div 
+                                                    style={{
+                                                        marginTop: '0.35rem',
+                                                        display: 'flex',
+                                                        flexWrap: 'wrap',
+                                                        gap: '0.35rem',
+                                                        alignItems: 'center'
+                                                    }}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    {principalsToShow.map((perm, idx) => {
+                                                        const symbolInfo = getPrincipalSymbol(perm);
+                                                        const principalStr = extractPrincipalString(perm.principal);
+                                                        if (!principalStr) return null;
+                                                        
+                                                        return (
+                                                            <div
+                                                                key={idx}
+                                                                style={{
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '0.25rem',
+                                                                    padding: '0.2rem 0.4rem',
+                                                                    background: `${symbolInfo.color}15`,
+                                                                    borderRadius: '4px',
+                                                                    border: `1px solid ${symbolInfo.color}25`
+                                                                }}
+                                                                title={symbolInfo.title}
+                                                            >
+                                                                <span style={{ color: symbolInfo.color, display: 'flex', alignItems: 'center' }}>
+                                                                    {symbolInfo.icon}
+                                                                </span>
+                                                                <PrincipalDisplay
+                                                                    principal={Principal.fromText(principalStr)}
+                                                                    displayInfo={getPrincipalDisplayInfo(principalStr)}
+                                                                    showCopyButton={false}
+                                                                    short={true}
+                                                                    isAuthenticated={isAuthenticated}
+                                                                    style={{ fontSize: '0.7rem' }}
+                                                                />
+                                                            </div>
+                                                        );
+                                                    })}
+                                                    {/* Show expand/collapse button if there are unnamed principals */}
+                                                    {hasHiddenPrincipals && (
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                toggleProposerPrincipalsExpanded(neuronIdHex);
+                                                            }}
+                                                            style={{
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                padding: '0.2rem 0.5rem',
+                                                                background: `${theme.colors.mutedText}15`,
+                                                                borderRadius: '4px',
+                                                                fontSize: '0.7rem',
+                                                                color: theme.colors.mutedText,
+                                                                border: 'none',
+                                                                cursor: 'pointer',
+                                                                fontWeight: '500'
+                                                            }}
+                                                            title={isExpanded ? 'Show less' : `Show ${unnamedPrincipals.length} more`}
+                                                        >
+                                                            {isExpanded ? '−' : `...${unnamedPrincipals.length}`}
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
                                     </div>
                                     
                                     {/* Treasury Transfer Details */}
