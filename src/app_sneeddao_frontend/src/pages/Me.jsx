@@ -2458,14 +2458,18 @@ export default function Me() {
                                                             ) : (
                                                                 <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                                                                     <span>Hotkey access to</span>
-                                                                    <PrincipalDisplay
-                                                                        principal={Principal.fromText(group.ownerPrincipal)}
-                                                                        displayInfo={principalDisplayInfo.get(group.ownerPrincipal)}
-                                                                        showCopyButton={false}
-                                                                        short={true}
-                                                                        noLink={true}
-                                                                        isAuthenticated={true}
-                                                                    />
+                                                                    {group.ownerPrincipal && group.ownerPrincipal.includes('-') ? (
+                                                                        <PrincipalDisplay
+                                                                            principal={Principal.fromText(group.ownerPrincipal)}
+                                                                            displayInfo={principalDisplayInfo.get(group.ownerPrincipal)}
+                                                                            showCopyButton={false}
+                                                                            short={true}
+                                                                            noLink={true}
+                                                                            isAuthenticated={true}
+                                                                        />
+                                                                    ) : (
+                                                                        <span style={{ color: theme.colors.mutedText }}>{group.ownerPrincipal?.slice(0, 8) || 'Unknown'}...</span>
+                                                                    )}
                                                                 </span>
                                                             )}
                                                         </div>
@@ -2932,14 +2936,18 @@ function NeuronGroup({
                             flexWrap: 'wrap'
                         }}>
                             <span>🔑 Hotkey access to</span>
-                            <PrincipalDisplay
-                                principal={Principal.fromText(group.ownerPrincipal)}
-                                displayInfo={principalDisplayInfo.get(group.ownerPrincipal)}
-                                showCopyButton={false}
-                                short={true}
-                                noLink={true}
-                                isAuthenticated={true}
-                            />
+                            {group.ownerPrincipal && group.ownerPrincipal.includes('-') ? (
+                                <PrincipalDisplay
+                                    principal={Principal.fromText(group.ownerPrincipal)}
+                                    displayInfo={principalDisplayInfo.get(group.ownerPrincipal)}
+                                    showCopyButton={false}
+                                    short={true}
+                                    noLink={true}
+                                    isAuthenticated={true}
+                                />
+                            ) : (
+                                <span style={{ color: theme.colors.mutedText }}>{group.ownerPrincipal?.slice(0, 8) || 'Unknown'}...</span>
+                            )}
                             <span style={{ color: theme.colors.mutedText }}>({group.neurons.length})</span>
                         </span>
                     )}
@@ -3282,7 +3290,7 @@ function NeuronCard({
             <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: `1px solid ${theme.colors.border}` }}>
                 <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginBottom: '0.5rem' }}>Permissions</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                    {getOwnerPrincipals(neuron).map((ownerStr) => (
+                    {getOwnerPrincipals(neuron).filter(ownerStr => ownerStr && ownerStr.includes('-')).map((ownerStr) => (
                         <div key={ownerStr} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
                             <span title="Owner">👑</span>
                             <PrincipalDisplay

@@ -318,18 +318,15 @@ export const getOwnerPrincipals = (neuron) => {
     const perms = neuron?.permissions || [];
     perms.forEach(permission => {
         if (!permission?.principal) return;
-        // Ensure permArray is an array (may be corrupted from cache serialization)
-        let permArray = permission.permission_type || [];
-        if (!Array.isArray(permArray)) {
-            // If it's array-like (has length), convert to array
-            if (permArray.length !== undefined) {
-                permArray = Array.from(permArray);
-            } else {
-                permArray = [];
-            }
-        }
+        
+        // Use safePrincipalString to handle cached/serialized principals
+        const principalStr = safePrincipalString(permission.principal);
+        if (!principalStr) return;
+        
+        // Use safePermissionType to handle cached/serialized permission arrays
+        const permArray = safePermissionType(permission);
         if (permArray.includes(MANAGE_PRINCIPALS)) {
-            owners.add(permission.principal.toString());
+            owners.add(principalStr);
         }
     });
 
