@@ -1,7 +1,7 @@
 // Neuron permission utilities - shared across components
 import React from 'react';
 import { FaCrown, FaKey, FaVoteYea, FaBolt, FaBriefcase, FaWrench, FaLock, FaHourglassHalf, FaUnlock, FaQuestion } from 'react-icons/fa';
-import { normalizeId } from '../hooks/useNeuronsCache';
+import { safePrincipalString, safePermissionType } from './NeuronUtils';
 
 // SNS Neuron Permission Types
 // Official source: https://github.com/dfinity/ic/blob/master/rs/sns/governance/proto/ic_sns_governance.proto
@@ -25,7 +25,8 @@ export const PERM = {
  * @returns {Object} - Object with icon (React component) and title properties
  */
 export function getPrincipalSymbol(neuronPermissions) {
-    const permArray = neuronPermissions.permission_type || [];
+    // Use safePermissionType to handle cached/serialized permission arrays
+    const permArray = safePermissionType(neuronPermissions);
     const permCount = permArray.length;
     
     // Full owner (all 10 or 11 permissions - 11 includes UNSPECIFIED from neuron creation)
@@ -75,11 +76,11 @@ export function getUserPermissionIcons(neuron, userPrincipalString) {
         return [];
     }
     
-    // Find the user's permissions
-    const normalizedUserPrincipal = normalizeId(userPrincipalString);
-    const userPerms = neuron.permissions.find(p => 
-        normalizeId(p.principal?.[0]) === normalizedUserPrincipal
-    );
+    // Find the user's permissions using safePrincipalString to handle cached/serialized principals
+    const userPerms = neuron.permissions.find(p => {
+        const permPrincipal = safePrincipalString(p.principal);
+        return permPrincipal && permPrincipal === userPrincipalString;
+    });
     
     if (!userPerms) {
         return [];
