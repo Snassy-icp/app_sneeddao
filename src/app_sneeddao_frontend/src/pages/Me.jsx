@@ -163,6 +163,14 @@ export default function Me() {
             return false;
         }
     });
+    const [includeReachable, setIncludeReachable] = useState(() => {
+        try {
+            const saved = localStorage.getItem('includeReachable_Me');
+            return saved !== null ? JSON.parse(saved) : true; // Default to true for /me page
+        } catch (error) {
+            return true;
+        }
+    });
     
     // Settings section
     const [generalSettingsExpanded, setGeneralSettingsExpanded] = useState(false);
@@ -490,6 +498,15 @@ export default function Me() {
         }
     }, [hideEmptyNeurons]);
 
+    // Save includeReachable preference to localStorage
+    useEffect(() => {
+        try {
+            localStorage.setItem('includeReachable_Me', JSON.stringify(includeReachable));
+        } catch (error) {
+            console.warn('Could not save includeReachable preference:', error);
+        }
+    }, [includeReachable]);
+
     const selectedSnsInfo = React.useMemo(() => {
         try {
             return selectedSnsRoot ? getSnsById(selectedSnsRoot) : null;
@@ -534,10 +551,32 @@ export default function Me() {
 
     // Group neurons by owner
     // If user has MANAGE_PRINCIPALS permission on a neuron, it's considered "owned" by the user
+    // When includeReachable is false, all neurons go into a single "My Neurons" group
     const groupedNeurons = React.useMemo(() => {
         const groups = new Map();
         const userPrincipal = identity?.getPrincipal().toString();
         const MANAGE_PRINCIPALS = 2; // Permission type for managing principals
+
+        // If includeReachable is false, put all neurons in a single group
+        if (!includeReachable) {
+            const filteredNeurons = hideEmptyNeurons 
+                ? neurons.filter(n => !isNeuronEmpty(n))
+                : neurons;
+            
+            if (filteredNeurons.length > 0) {
+                const totalStake = filteredNeurons.reduce(
+                    (sum, n) => sum + BigInt(n.cached_neuron_stake_e8s || 0), 
+                    BigInt(0)
+                );
+                groups.set(userPrincipal || 'self', {
+                    isMy: true,
+                    ownerPrincipal: userPrincipal || 'self',
+                    neurons: filteredNeurons,
+                    totalStake
+                });
+            }
+            return groups;
+        }
 
         const neuronsByOwner = new Map();
         neurons.forEach(neuron => {
@@ -588,7 +627,7 @@ export default function Me() {
         });
 
         return groups;
-    }, [neurons, identity, hideEmptyNeurons]);
+    }, [neurons, identity, hideEmptyNeurons, includeReachable]);
 
     // Compute list of SNSes with neurons from the global cache
     const snsesWithNeurons = React.useMemo(() => {
@@ -2268,9 +2307,9 @@ export default function Me() {
                                     </div>
                                 )}
                                 
-                                {/* Hide empty neurons checkbox */}
+                                {/* Neuron filter checkboxes */}
                                 {neurons.length > 0 && (
-                                    <div style={{ marginBottom: '1rem' }}>
+                                    <div style={{ marginBottom: '1rem', display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
                                         <label style={{
                                             display: 'flex',
                                             alignItems: 'center',
@@ -2287,6 +2326,23 @@ export default function Me() {
                                                 style={{ cursor: 'pointer', accentColor: mePrimary, width: '16px', height: '16px' }}
                                             />
                                             Hide empty neurons
+                                        </label>
+                                        <label style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.5rem',
+                                            cursor: 'pointer',
+                                            color: theme.colors.secondaryText,
+                                            fontSize: '0.9rem',
+                                            userSelect: 'none',
+                                        }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={includeReachable}
+                                                onChange={(e) => setIncludeReachable(e.target.checked)}
+                                                style={{ cursor: 'pointer', accentColor: mePrimary, width: '16px', height: '16px' }}
+                                            />
+                                            Include reachable
                                         </label>
                                     </div>
                                 )}

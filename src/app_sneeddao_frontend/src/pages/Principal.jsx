@@ -10,7 +10,7 @@ import PrincipalInput from '../components/PrincipalInput';
 import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalColor, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import ConfirmationModal from '../ConfirmationModal';
-import { fetchPrincipalNeuronsForSns, getOwnerPrincipals, formatNeuronIdLink, safePrincipalString } from '../utils/NeuronUtils';
+import { fetchPrincipalNeuronsForSns, getOwnerPrincipals, formatNeuronIdLink, safePrincipalString, safePermissionType } from '../utils/NeuronUtils';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { getSnsById, fetchAndCacheSnsData, fetchSnsLogo, getAllSnses } from '../utils/SnsUtils';
 import { formatE8s, getDissolveState, uint8ArrayToHex } from '../utils/NeuronUtils';
@@ -144,6 +144,9 @@ export default function PrincipalPage() {
     const [activeNeuronSns, setActiveNeuronSns] = useState(null);
     const [loadingAllNeurons, setLoadingAllNeurons] = useState(false);
     const [allNeuronsLoaded, setAllNeuronsLoaded] = useState(false);
+    const [includeReachable, setIncludeReachable] = useState(false); // Default to false for principal page
+    const [loadingReachable, setLoadingReachable] = useState(false);
+    const [activeNeuronGroup, setActiveNeuronGroup] = useState(null); // Track active neuron group tab
     const [activeTab, setActiveTab] = useState(() => {
         // Default to transactions tab if a subaccount is in the URL
         const urlSubaccount = new URLSearchParams(window.location.search).get('subaccount');
@@ -447,6 +450,89 @@ export default function PrincipalPage() {
         return result;
     }, [principalNeuronCache]);
 
+    // Helper to check if a neuron is empty (0 stake and 0 maturity)
+    const isNeuronEmpty = useCallback((neuron) => {
+        const stake = BigInt(neuron.cached_neuron_stake_e8s || 0);
+        const maturity = BigInt(neuron.maturity_e8s_equivalent || 0);
+        return stake === 0n && maturity === 0n;
+    }, []);
+
+    // Group neurons by owner (for reachable neurons display)
+    const groupedNeurons = React.useMemo(() => {
+        const groups = new Map();
+        const viewedPrincipal = stablePrincipalId.current?.toString();
+        const MANAGE_PRINCIPALS = 2; // Permission type for managing principals
+
+        if (!viewedPrincipal || !neurons.length) return groups;
+
+        const neuronsByOwner = new Map();
+        neurons.forEach(neuron => {
+            // Check if viewed principal has MANAGE_PRINCIPALS permission on this neuron
+            const viewedHasManagePermissions = neuron.permissions?.some(p => {
+                const permPrincipal = safePrincipalString(p.principal);
+                if (!permPrincipal || permPrincipal !== viewedPrincipal) return false;
+                const permTypes = safePermissionType(p);
+                return permTypes.includes(MANAGE_PRINCIPALS);
+            });
+
+            // Check if viewed principal has any direct permission on this neuron
+            const viewedHasDirectPermission = neuron.permissions?.some(p => 
+                safePrincipalString(p.principal) === viewedPrincipal
+            );
+
+            let effectiveOwner;
+            if (viewedHasManagePermissions) {
+                // If viewed principal has manage permissions, consider them the owner
+                effectiveOwner = viewedPrincipal;
+            } else if (viewedHasDirectPermission) {
+                // Has direct permission but not manage - still "their" neuron
+                effectiveOwner = viewedPrincipal;
+            } else {
+                // Otherwise, use the first owner from getOwnerPrincipals
+                const ownerPrincipals = getOwnerPrincipals(neuron);
+                effectiveOwner = ownerPrincipals.length > 0 ? ownerPrincipals[0] : null;
+            }
+
+            const ownerKey = effectiveOwner || 'unknown';
+            if (!neuronsByOwner.has(ownerKey)) {
+                neuronsByOwner.set(ownerKey, []);
+            }
+            neuronsByOwner.get(ownerKey).push(neuron);
+        });
+
+        neuronsByOwner.forEach((ownerNeurons, owner) => {
+            if (ownerNeurons.length === 0) return;
+            
+            const totalStake = ownerNeurons.reduce(
+                (sum, n) => sum + BigInt(n.cached_neuron_stake_e8s || 0), 
+                BigInt(0)
+            );
+
+            groups.set(owner || 'unknown', {
+                isDirect: owner === viewedPrincipal,
+                ownerPrincipal: owner || 'unknown',
+                neurons: ownerNeurons,
+                totalStake
+            });
+        });
+
+        return groups;
+    }, [neurons]);
+
+    // Set initial active neuron group when neurons change
+    useEffect(() => {
+        if (groupedNeurons.size > 0 && !activeNeuronGroup) {
+            // Default to direct neurons group (the viewed principal)
+            const viewedPrincipal = stablePrincipalId.current?.toString();
+            if (viewedPrincipal && groupedNeurons.has(viewedPrincipal)) {
+                setActiveNeuronGroup(viewedPrincipal);
+            } else {
+                // Fallback to first group
+                setActiveNeuronGroup(Array.from(groupedNeurons.keys())[0]);
+            }
+        }
+    }, [groupedNeurons, activeNeuronGroup]);
+
     // Set initial active SNS when snsesWithNeurons loads
     useEffect(() => {
         if (snsesWithNeurons.length > 0 && !activeNeuronSns) {
@@ -461,41 +547,50 @@ export default function PrincipalPage() {
         }
     }, [snsesWithNeurons, selectedSnsRoot, activeNeuronSns]);
 
-    // Load neurons across all SNSes when principal changes
+    // Store both direct neurons and all reachable neurons separately
+    const [directNeuronCache, setDirectNeuronCache] = useState(new Map()); // Only neurons with direct permissions
+    const [reachableNeuronCache, setReachableNeuronCache] = useState(new Map()); // All reachable neurons (including through owners)
+    const [reachableLoaded, setReachableLoaded] = useState(false);
+
+    // Load direct neurons across all SNSes when principal changes
     useEffect(() => {
         let mounted = true;
         const currentPrincipalId = stablePrincipalId.current;
 
         if (!currentPrincipalId) {
+            setDirectNeuronCache(new Map());
             setPrincipalNeuronCache(new Map());
             setAllNeuronsLoaded(false);
             setActiveNeuronSns(null);
+            setReachableLoaded(false);
             return;
         }
 
-        const fetchAllNeurons = async () => {
+        const fetchDirectNeurons = async () => {
             setLoadingAllNeurons(true);
             setAllNeuronsLoaded(false);
             setActiveNeuronSns(null); // Reset when starting new fetch
+            setReachableLoaded(false);
             
             const allSnses = getAllSnses();
             const newCache = new Map();
             const targetPrincipal = currentPrincipalId.toString();
             
-            // Fetch neurons from all SNSes in parallel
+            // Fetch neurons from all SNSes in parallel - but only keep those with direct permissions
             const fetchPromises = allSnses.map(async (sns) => {
                 if (!sns.canisters?.governance) return null;
                 
                 try {
                     const neuronsList = await fetchPrincipalNeuronsForSns(null, sns.canisters.governance, targetPrincipal);
-                    const relevantNeurons = neuronsList.filter(neuron => 
+                    // Only keep neurons where the principal has DIRECT permissions
+                    const directNeurons = neuronsList.filter(neuron => 
                         neuron.permissions.some(p => 
                             safePrincipalString(p.principal) === targetPrincipal
                         )
                     );
                     
-                    if (relevantNeurons.length > 0 && mounted) {
-                        return { governanceId: sns.canisters.governance, neurons: relevantNeurons };
+                    if (directNeurons.length > 0 && mounted) {
+                        return { governanceId: sns.canisters.governance, neurons: directNeurons };
                     }
                 } catch (err) {
                     console.error(`Error fetching neurons for ${sns.name}:`, err);
@@ -512,16 +607,76 @@ export default function PrincipalPage() {
                     }
                 });
                 
-                setPrincipalNeuronCache(newCache);
+                setDirectNeuronCache(newCache);
+                setPrincipalNeuronCache(newCache); // Initially use direct neurons
                 setLoadingAllNeurons(false);
                 setAllNeuronsLoaded(true);
             }
         };
         
-        fetchAllNeurons();
+        fetchDirectNeurons();
         
         return () => { mounted = false; };
     }, [principalParam]);
+
+    // Load reachable neurons on demand when includeReachable is toggled
+    useEffect(() => {
+        if (!includeReachable || reachableLoaded) {
+            // If toggling off, switch back to direct neurons only
+            if (!includeReachable && allNeuronsLoaded) {
+                setPrincipalNeuronCache(directNeuronCache);
+            }
+            return;
+        }
+
+        let mounted = true;
+        const currentPrincipalId = stablePrincipalId.current;
+
+        if (!currentPrincipalId) return;
+
+        const fetchReachableNeurons = async () => {
+            setLoadingReachable(true);
+            
+            const allSnses = getAllSnses();
+            const newCache = new Map();
+            const targetPrincipal = currentPrincipalId.toString();
+            
+            // Fetch ALL reachable neurons (including through owners)
+            const fetchPromises = allSnses.map(async (sns) => {
+                if (!sns.canisters?.governance) return null;
+                
+                try {
+                    const neuronsList = await fetchPrincipalNeuronsForSns(null, sns.canisters.governance, targetPrincipal);
+                    // Keep ALL neurons returned (not filtered to direct only)
+                    if (neuronsList.length > 0 && mounted) {
+                        return { governanceId: sns.canisters.governance, neurons: neuronsList };
+                    }
+                } catch (err) {
+                    console.error(`Error fetching reachable neurons for ${sns.name}:`, err);
+                }
+                return null;
+            });
+            
+            const results = await Promise.all(fetchPromises);
+            
+            if (mounted) {
+                results.forEach(result => {
+                    if (result) {
+                        newCache.set(result.governanceId, result.neurons);
+                    }
+                });
+                
+                setReachableNeuronCache(newCache);
+                setPrincipalNeuronCache(newCache);
+                setLoadingReachable(false);
+                setReachableLoaded(true);
+            }
+        };
+        
+        fetchReachableNeurons();
+        
+        return () => { mounted = false; };
+    }, [includeReachable, reachableLoaded, allNeuronsLoaded, directNeuronCache]);
 
     // Load neurons for the selected SNS tab and update token symbol
     useEffect(() => {
@@ -535,6 +690,7 @@ export default function PrincipalPage() {
 
             setLoadingNeurons(true);
             setNeuronError(null);
+            setActiveNeuronGroup(null); // Reset group selection when switching SNS
 
             try {
                 const selectedSns = getSnsById(activeNeuronSns);
@@ -2403,7 +2559,8 @@ export default function PrincipalPage() {
                                 alignItems: 'center', 
                                 justifyContent: 'space-between',
                                 gap: '0.75rem',
-                                marginBottom: '1rem'
+                                marginBottom: '1rem',
+                                flexWrap: 'wrap'
                             }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                                     <div style={{
@@ -2420,20 +2577,51 @@ export default function PrincipalPage() {
                                         <FaBrain size={18} />
                                     </div>
                                     <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '1.1rem' }}>
-                                        Reachable Neurons
+                                        {includeReachable ? 'Reachable Neurons' : 'Direct Neurons'}
                                     </span>
                                 </div>
-                                {snsesWithNeurons.length > 0 && (
-                                    <div style={{ 
-                                        fontSize: '0.85rem', 
-                                        color: theme.colors.mutedText,
-                                        background: theme.colors.tertiaryBg,
-                                        padding: '0.35rem 0.75rem',
-                                        borderRadius: '8px'
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                                    {/* Include reachable toggle */}
+                                    <label style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem',
+                                        cursor: 'pointer',
+                                        color: theme.colors.secondaryText,
+                                        fontSize: '0.85rem',
+                                        userSelect: 'none',
                                     }}>
-                                        {snsesWithNeurons.reduce((sum, s) => sum + s.neuronCount, 0)} total
-                                    </div>
-                                )}
+                                        <input
+                                            type="checkbox"
+                                            checked={includeReachable}
+                                            onChange={(e) => setIncludeReachable(e.target.checked)}
+                                            disabled={loadingReachable}
+                                            style={{ cursor: 'pointer', accentColor: principalAccent, width: '14px', height: '14px' }}
+                                        />
+                                        Include reachable
+                                        {loadingReachable && (
+                                            <span className="principal-spin" style={{
+                                                width: '12px',
+                                                height: '12px',
+                                                border: `2px solid ${theme.colors.border}`,
+                                                borderTopColor: principalAccent,
+                                                borderRadius: '50%',
+                                                display: 'inline-block'
+                                            }} />
+                                        )}
+                                    </label>
+                                    {snsesWithNeurons.length > 0 && (
+                                        <div style={{ 
+                                            fontSize: '0.85rem', 
+                                            color: theme.colors.mutedText,
+                                            background: theme.colors.tertiaryBg,
+                                            padding: '0.35rem 0.75rem',
+                                            borderRadius: '8px'
+                                        }}>
+                                            {snsesWithNeurons.reduce((sum, s) => sum + s.neuronCount, 0)} total
+                                        </div>
+                                    )}
+                                </div>
                             </div>
 
                             {/* SNS Subtabs */}
@@ -2566,109 +2754,250 @@ export default function PrincipalPage() {
                                     No neurons found for this SNS.
                                 </div>
                             ) : (
-                                <div style={{ 
-                                    display: 'grid',
-                                    gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-                                    gap: '1rem'
-                                }}>
-                                    {neurons.map((neuron) => {
-                                        const neuronId = uint8ArrayToHex(neuron.id[0]?.id);
-                                        if (!neuronId) return null;
+                                <div>
+                                    {/* Neuron Group Tabs - only show if includeReachable is true and more than one group */}
+                                    {includeReachable && groupedNeurons.size > 1 && (
+                                        <div style={{ 
+                                            display: 'flex',
+                                            flexWrap: 'wrap',
+                                            gap: '0.5rem',
+                                            marginBottom: '1rem',
+                                            background: theme.colors.tertiaryBg,
+                                            padding: '0.5rem',
+                                            borderRadius: '12px',
+                                            border: `1px solid ${theme.colors.border}`
+                                        }}>
+                                            {Array.from(groupedNeurons.entries())
+                                                .sort((a, b) => {
+                                                    if (a[1].isDirect && !b[1].isDirect) return -1;
+                                                    if (!a[1].isDirect && b[1].isDirect) return 1;
+                                                    return 0;
+                                                })
+                                                .map(([groupId, group]) => {
+                                                    const isDirect = Boolean(group.isDirect);
+                                                    const isActive = activeNeuronGroup === groupId;
+                                                    return (
+                                                        <button
+                                                            key={groupId}
+                                                            onClick={() => setActiveNeuronGroup(groupId)}
+                                                            style={{
+                                                                flex: '1 1 auto',
+                                                                minWidth: '120px',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                gap: '0.4rem',
+                                                                padding: '0.6rem 0.75rem',
+                                                                borderRadius: '10px',
+                                                                border: 'none',
+                                                                cursor: 'pointer',
+                                                                fontWeight: '600',
+                                                                fontSize: '0.85rem',
+                                                                transition: 'all 0.2s ease',
+                                                                background: isActive 
+                                                                    ? `linear-gradient(135deg, ${principalAccent}, ${principalSecondary})`
+                                                                    : 'transparent',
+                                                                color: isActive ? 'white' : theme.colors.secondaryText,
+                                                                boxShadow: isActive ? `0 2px 8px ${principalAccent}30` : 'none'
+                                                            }}
+                                                        >
+                                                            <span>{isDirect ? <FaCrown size={12} /> : <FaKey size={12} />}</span>
+                                                            <span style={{ 
+                                                                overflow: 'hidden', 
+                                                                textOverflow: 'ellipsis',
+                                                                whiteSpace: 'nowrap',
+                                                                maxWidth: '150px'
+                                                            }}>
+                                                                {isDirect ? 'Direct Access' : (
+                                                                    principalDisplayInfo.get(group.ownerPrincipal)?.display || 
+                                                                    `${group.ownerPrincipal.slice(0, 8)}...`
+                                                                )}
+                                                            </span>
+                                                            <span style={{ 
+                                                                background: isActive ? 'rgba(255,255,255,0.2)' : `${principalAccent}20`,
+                                                                padding: '0.15rem 0.4rem',
+                                                                borderRadius: '6px',
+                                                                fontSize: '0.75rem',
+                                                                color: isActive ? 'white' : principalAccent
+                                                            }}>
+                                                                {group.neurons.length}
+                                                            </span>
+                                                        </button>
+                                                    );
+                                                })}
+                                        </div>
+                                    )}
+
+                                    {/* Neuron Cards - show based on grouping when includeReachable is true */}
+                                    {(() => {
+                                        // Determine which neurons to show
+                                        let neuronsToShow = neurons;
+                                        let groupHeader = null;
+
+                                        if (includeReachable && groupedNeurons.size > 1 && activeNeuronGroup) {
+                                            const activeGroup = groupedNeurons.get(activeNeuronGroup);
+                                            if (activeGroup) {
+                                                neuronsToShow = activeGroup.neurons;
+                                                const isDirect = activeGroup.isDirect;
+                                                groupHeader = (
+                                                    <div style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'space-between',
+                                                        marginBottom: '1rem',
+                                                        flexWrap: 'wrap',
+                                                        gap: '0.5rem'
+                                                    }}>
+                                                        <div style={{ 
+                                                            display: 'flex', 
+                                                            alignItems: 'center', 
+                                                            gap: '0.5rem',
+                                                            color: theme.colors.secondaryText,
+                                                            fontSize: '0.9rem'
+                                                        }}>
+                                                            {isDirect ? (
+                                                                <span>Neurons with direct permissions</span>
+                                                            ) : (
+                                                                <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                                                    <span>Reachable via</span>
+                                                                    {activeGroup.ownerPrincipal && activeGroup.ownerPrincipal.includes('-') ? (
+                                                                        <PrincipalDisplay
+                                                                            principal={Principal.fromText(activeGroup.ownerPrincipal)}
+                                                                            displayInfo={principalDisplayInfo.get(activeGroup.ownerPrincipal)}
+                                                                            showCopyButton={false}
+                                                                            short={true}
+                                                                            noLink={true}
+                                                                            isAuthenticated={isAuthenticated}
+                                                                        />
+                                                                    ) : (
+                                                                        <span style={{ color: theme.colors.mutedText }}>{activeGroup.ownerPrincipal?.slice(0, 8) || 'Unknown'}...</span>
+                                                                    )}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div style={{
+                                                            color: principalAccent,
+                                                            fontSize: '1rem',
+                                                            fontWeight: '700',
+                                                            whiteSpace: 'nowrap'
+                                                        }}>
+                                                            {formatE8s(activeGroup.totalStake)} {tokenSymbol}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            }
+                                        }
 
                                         return (
-                                            <div
-                                                key={neuronId}
-                                                style={{
-                                                    background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${principalAccent}08 100%)`,
-                                                    borderRadius: '14px',
-                                                    padding: '1.25rem',
-                                                    border: `1px solid ${theme.colors.border}`
-                                                }}
-                                            >
-                                                <div style={{ marginBottom: '1rem' }}>
-                                                    {formatNeuronIdLink(neuronId, activeNeuronSns || selectedSnsRoot || SNEED_SNS_ROOT)}
-                                                </div>
-
-                                                <div style={{ 
-                                                    fontSize: '1.5rem',
-                                                    fontWeight: '700',
-                                                    color: principalAccent,
-                                                    marginBottom: '1rem'
-                                                }}>
-                                                    {formatE8s(neuron.cached_neuron_stake_e8s)} {tokenSymbol}
-                                                </div>
-
+                                            <>
+                                                {groupHeader}
                                                 <div style={{ 
                                                     display: 'grid',
-                                                    gridTemplateColumns: '1fr 1fr',
-                                                    gap: '1rem',
-                                                    fontSize: '0.85rem'
+                                                    gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+                                                    gap: '1rem'
                                                 }}>
-                                                    <div>
-                                                        <div style={{ color: theme.colors.mutedText, marginBottom: '2px' }}>Created</div>
-                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
-                                                            {new Date(Number(neuron.created_timestamp_seconds) * 1000).toLocaleDateString()}
-                                                        </div>
-                                                    </div>
-                                                    <div>
-                                                        <div style={{ color: theme.colors.mutedText, marginBottom: '2px' }}>Dissolve State</div>
-                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{getDissolveState(neuron)}</div>
-                                                    </div>
-                                                    <div>
-                                                        <div style={{ color: theme.colors.mutedText, marginBottom: '2px' }}>Maturity</div>
-                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{formatE8s(neuron.maturity_e8s_equivalent)} {tokenSymbol}</div>
-                                                    </div>
-                                                    <div>
-                                                        <div style={{ color: theme.colors.mutedText, marginBottom: '2px' }}>Voting Power</div>
-                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{(Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2)}x</div>
-                                                    </div>
-                                                </div>
+                                                    {neuronsToShow.map((neuron) => {
+                                                        const neuronId = uint8ArrayToHex(neuron.id[0]?.id);
+                                                        if (!neuronId) return null;
 
-                                                {/* Permissions */}
-                                                <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: `1px solid ${theme.colors.border}` }}>
-                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginBottom: '0.5rem' }}>Permissions</div>
-                                                    {getOwnerPrincipals(neuron).length > 0 && (
-                                                        <div style={{ 
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            gap: '8px',
-                                                            marginBottom: '6px'
-                                                        }}>
-                                                            <FaCrown size={12} style={{ color: theme.colors.secondaryText }} title="Owner" />
-                                                            <PrincipalDisplay 
-                                                                principal={Principal.fromText(getOwnerPrincipals(neuron)[0])}
-                                                                displayInfo={principalDisplayInfo.get(getOwnerPrincipals(neuron)[0])}
-                                                                showCopyButton={false}
-                                                                isAuthenticated={isAuthenticated}
-                                                            />
-                                                        </div>
-                                                    )}
-                                                    {neuron.permissions
-                                                        .filter(p => !getOwnerPrincipals(neuron).includes(safePrincipalString(p.principal)))
-                                                        .map((p, index) => {
-                                                            const principalStr = safePrincipalString(p.principal);
-                                                            return (
-                                                                <div key={index} style={{ 
-                                                                    display: 'flex',
-                                                                    alignItems: 'center',
-                                                                    gap: '8px',
-                                                                    marginBottom: '6px'
-                                                                }}>
-                                                                    <FaKey size={12} style={{ color: theme.colors.secondaryText }} title="Hotkey" />
-                                                                    <PrincipalDisplay 
-                                                                        principal={p.principal}
-                                                                        displayInfo={principalDisplayInfo.get(principalStr)}
-                                                                        showCopyButton={false}
-                                                                        isAuthenticated={isAuthenticated}
-                                                                    />
+                                                        return (
+                                                            <div
+                                                                key={neuronId}
+                                                                style={{
+                                                                    background: `linear-gradient(135deg, ${theme.colors.primaryBg} 0%, ${principalAccent}08 100%)`,
+                                                                    borderRadius: '14px',
+                                                                    padding: '1.25rem',
+                                                                    border: `1px solid ${theme.colors.border}`
+                                                                }}
+                                                            >
+                                                                <div style={{ marginBottom: '1rem' }}>
+                                                                    {formatNeuronIdLink(neuronId, activeNeuronSns || selectedSnsRoot || SNEED_SNS_ROOT)}
                                                                 </div>
-                                                            );
-                                                        })
-                                                    }
+
+                                                                <div style={{ 
+                                                                    fontSize: '1.5rem',
+                                                                    fontWeight: '700',
+                                                                    color: principalAccent,
+                                                                    marginBottom: '1rem'
+                                                                }}>
+                                                                    {formatE8s(neuron.cached_neuron_stake_e8s)} {tokenSymbol}
+                                                                </div>
+
+                                                                <div style={{ 
+                                                                    display: 'grid',
+                                                                    gridTemplateColumns: '1fr 1fr',
+                                                                    gap: '1rem',
+                                                                    fontSize: '0.85rem'
+                                                                }}>
+                                                                    <div>
+                                                                        <div style={{ color: theme.colors.mutedText, marginBottom: '2px' }}>Created</div>
+                                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
+                                                                            {new Date(Number(neuron.created_timestamp_seconds) * 1000).toLocaleDateString()}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div>
+                                                                        <div style={{ color: theme.colors.mutedText, marginBottom: '2px' }}>Dissolve State</div>
+                                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{getDissolveState(neuron)}</div>
+                                                                    </div>
+                                                                    <div>
+                                                                        <div style={{ color: theme.colors.mutedText, marginBottom: '2px' }}>Maturity</div>
+                                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{formatE8s(neuron.maturity_e8s_equivalent)} {tokenSymbol}</div>
+                                                                    </div>
+                                                                    <div>
+                                                                        <div style={{ color: theme.colors.mutedText, marginBottom: '2px' }}>Voting Power</div>
+                                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{(Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2)}x</div>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Permissions */}
+                                                                <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: `1px solid ${theme.colors.border}` }}>
+                                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginBottom: '0.5rem' }}>Permissions</div>
+                                                                    {getOwnerPrincipals(neuron).length > 0 && (
+                                                                        <div style={{ 
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '8px',
+                                                                            marginBottom: '6px'
+                                                                        }}>
+                                                                            <FaCrown size={12} style={{ color: theme.colors.secondaryText }} title="Owner" />
+                                                                            <PrincipalDisplay 
+                                                                                principal={Principal.fromText(getOwnerPrincipals(neuron)[0])}
+                                                                                displayInfo={principalDisplayInfo.get(getOwnerPrincipals(neuron)[0])}
+                                                                                showCopyButton={false}
+                                                                                isAuthenticated={isAuthenticated}
+                                                                            />
+                                                                        </div>
+                                                                    )}
+                                                                    {neuron.permissions
+                                                                        .filter(p => !getOwnerPrincipals(neuron).includes(safePrincipalString(p.principal)))
+                                                                        .map((p, index) => {
+                                                                            const principalStr = safePrincipalString(p.principal);
+                                                                            return (
+                                                                                <div key={index} style={{ 
+                                                                                    display: 'flex',
+                                                                                    alignItems: 'center',
+                                                                                    gap: '8px',
+                                                                                    marginBottom: '6px'
+                                                                                }}>
+                                                                                    <FaKey size={12} style={{ color: theme.colors.secondaryText }} title="Hotkey" />
+                                                                                    <PrincipalDisplay 
+                                                                                        principal={p.principal}
+                                                                                        displayInfo={principalDisplayInfo.get(principalStr)}
+                                                                                        showCopyButton={false}
+                                                                                        isAuthenticated={isAuthenticated}
+                                                                                    />
+                                                                                </div>
+                                                                            );
+                                                                        })
+                                                                    }
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
                                                 </div>
-                                            </div>
+                                            </>
                                         );
-                                    })}
+                                    })()}
                                 </div>
                             ))}
                         </div>
