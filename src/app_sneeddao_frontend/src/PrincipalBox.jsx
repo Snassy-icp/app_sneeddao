@@ -45,6 +45,7 @@ const managementCanisterIdlFactory = ({ IDL }) => {
 };
 import TokenCardModal from './components/TokenCardModal';
 import PositionCardModal from './components/PositionCardModal';
+import DappCardModal from './components/DappCardModal';
 import LockModal from './LockModal';
 import { usePremiumStatus } from './hooks/usePremiumStatus';
 import './PrincipalBox.css';
@@ -75,6 +76,9 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const [detailPosition, setDetailPosition] = useState(null);
     const [detailPositionDetails, setDetailPositionDetails] = useState(null);
     const [isRefreshingPosition, setIsRefreshingPosition] = useState(false);
+    const [showDappDetailModal, setShowDappDetailModal] = useState(false);
+    const [detailDapp, setDetailDapp] = useState(null); // { canisterId, isNeuronManager, ... }
+    const [isRefreshingDapp, setIsRefreshingDapp] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
     const [showDebugReportModal, setShowDebugReportModal] = useState(false);
     const [debugReportCopied, setDebugReportCopied] = useState(false);
@@ -789,6 +793,77 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         setShowPositionDetailModal(true);
         setShowPopup(false); // Close the popup when opening the modal
     }, []);
+
+    // Open dapp detail modal
+    const openDappDetailModal = useCallback((dappInfo) => {
+        setDetailDapp(dappInfo);
+        setShowDappDetailModal(true);
+        setShowPopup(false); // Close the popup when opening the modal
+    }, []);
+
+    // Handle refresh dapp in detail modal
+    const handleRefreshDapp = useCallback(async (canisterId) => {
+        if (!identity || !canisterId) return;
+        
+        setIsRefreshingDapp(true);
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            let cycles = null;
+            let memory = null;
+            let isController = false;
+            let moduleHash = null;
+            
+            try {
+                const canisterIdPrincipal = Principal.fromText(canisterId);
+                const mgmtActor = Actor.createActor(managementCanisterIdlFactory, {
+                    agent,
+                    canisterId: MANAGEMENT_CANISTER_ID,
+                    callTransform: (methodName, args, callConfig) => ({
+                        ...callConfig,
+                        effectiveCanisterId: canisterIdPrincipal,
+                    }),
+                });
+                const status = await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
+                cycles = Number(status.cycles);
+                memory = Number(status.memory_size);
+                moduleHash = status.module_hash[0] ? uint8ArrayToHex(status.module_hash[0]) : null;
+                isController = true;
+            } catch (err) {
+                try {
+                    const result = await getCanisterInfo(identity, canisterId);
+                    if (result && 'ok' in result) {
+                        moduleHash = result.ok.module_hash[0] ? uint8ArrayToHex(result.ok.module_hash[0]) : null;
+                    }
+                } catch (fallbackErr) {
+                    // Ignore
+                }
+            }
+            
+            // Update local status
+            setTrackedCanisterStatus(prev => ({
+                ...prev,
+                [canisterId]: { cycles, memory, isController, moduleHash }
+            }));
+            
+            // Update modal with new data
+            setDetailDapp(prev => prev ? {
+                ...prev,
+                cycles,
+                memory,
+                isController,
+            } : null);
+            
+        } finally {
+            setIsRefreshingDapp(false);
+        }
+    }, [identity]);
 
     // Handle refresh position in detail modal
     const handleRefreshPosition = useCallback(async () => {
@@ -2172,10 +2247,15 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                       <div 
                                           key={`manager-${index}`}
                                           className="compact-wallet-token"
-                                          onClick={() => {
-                                              navigate('/wallet');
-                                              setShowPopup(false);
-                                          }}
+                                          onClick={() => openDappDetailModal({
+                                              canisterId: canisterIdStr,
+                                              isNeuronManager: true,
+                                              neuronManagerVersion: manager.version,
+                                              neuronCount: neurons.length,
+                                              cycles: null, // Registered managers don't have cycles info in quick wallet yet
+                                              memory: null,
+                                              isController: true, // You always control registered managers
+                                          })}
                                           style={{
                                               display: 'flex',
                                               alignItems: 'center',
@@ -2288,10 +2368,15 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                       <div 
                                           key={`canister-${index}`}
                                           className="compact-wallet-token"
-                                          onClick={() => {
-                                              navigate('/wallet');
-                                              setShowPopup(false);
-                                          }}
+                                          onClick={() => openDappDetailModal({
+                                              canisterId,
+                                              isNeuronManager,
+                                              neuronManagerVersion: detectedManager?.version || null,
+                                              neuronCount: detectedManager?.neuronCount || 0,
+                                              cycles,
+                                              memory,
+                                              isController,
+                                          })}
                                           style={{
                                               display: 'flex',
                                               alignItems: 'center',
@@ -2564,6 +2649,24 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
           swapCanisterBalance1={detailPosition?.swapCanisterBalance1}
           token0Fee={detailPosition?.token0Fee}
           token1Fee={detailPosition?.token1Fee}
+      />
+      
+      {/* Dapp Detail Modal */}
+      <DappCardModal
+          show={showDappDetailModal}
+          onClose={() => {
+              setShowDappDetailModal(false);
+              setDetailDapp(null);
+          }}
+          canisterId={detailDapp?.canisterId}
+          cycles={detailDapp?.cycles}
+          memory={detailDapp?.memory}
+          isController={detailDapp?.isController}
+          isNeuronManager={detailDapp?.isNeuronManager}
+          neuronManagerVersion={detailDapp?.neuronManagerVersion}
+          neuronCount={detailDapp?.neuronCount}
+          handleRefresh={handleRefreshDapp}
+          isRefreshing={isRefreshingDapp}
       />
       
       {/* Debug Report Modal (Admin only) */}
