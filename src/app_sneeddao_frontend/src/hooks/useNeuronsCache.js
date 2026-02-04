@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { HttpAgent } from '@dfinity/agent';
+import { Principal } from '@dfinity/principal';
 import { getSnsById, getAllSnses } from '../utils/SnsUtils';
 import { uint8ArrayToHex, getNeuronDetails } from '../utils/NeuronUtils';
 
@@ -362,24 +363,64 @@ const serializeNeuronForStorage = (neuron) => {
             : Array.isArray(idObj.id) ? idObj.id : []
     })) || neuron.id;
     
+    // Debug: log first permission's principal for debugging
+    if (neuron.permissions?.length > 0) {
+        const firstPerm = neuron.permissions[0];
+        console.log('[serializeNeuronForStorage] First permission principal:', {
+            rawPrincipal: firstPerm.principal,
+            type: typeof firstPerm.principal,
+            hasToText: typeof firstPerm.principal?.toText === 'function',
+            has__principal__: firstPerm.principal?.__principal__,
+            has_arr: !!firstPerm.principal?._arr
+        });
+    }
+    
     // Serialize permissions (Principal -> string)
-    const serializedPermissions = neuron.permissions?.map(p => ({
-        ...p,
-        // Store principal as a string for reliable retrieval
-        principal: p.principal 
-            ? (typeof p.principal === 'string' 
-                ? p.principal 
-                : (typeof p.principal.toText === 'function' 
-                    ? p.principal.toText() 
-                    : (p.principal.__principal__ || p.principal.toString?.())))
-            : p.principal,
-        // Ensure permission_type is a regular array
-        permission_type: Array.isArray(p.permission_type) 
-            ? p.permission_type 
-            : (p.permission_type?.length !== undefined 
-                ? Array.from(p.permission_type) 
-                : p.permission_type)
-    })) || neuron.permissions;
+    const serializedPermissions = neuron.permissions?.map(p => {
+        // Extract principal string safely
+        let principalStr = null;
+        if (p.principal) {
+            if (typeof p.principal === 'string') {
+                principalStr = p.principal;
+            } else if (typeof p.principal.toText === 'function') {
+                principalStr = p.principal.toText();
+            } else if (p.principal.__principal__ && typeof p.principal.__principal__ === 'string') {
+                principalStr = p.principal.__principal__;
+            } else if (p.principal._arr) {
+                // Try to reconstruct from internal _arr bytes
+                try {
+                    const arr = p.principal._arr;
+                    const bytes = arr instanceof Uint8Array ? arr : 
+                                 (Array.isArray(arr) ? new Uint8Array(arr) : 
+                                  (arr.length !== undefined ? new Uint8Array(Array.from(arr)) : null));
+                    if (bytes) {
+                        principalStr = Principal.fromUint8Array(bytes).toText();
+                    }
+                } catch (e) {
+                    console.warn('[serializeNeuronForStorage] Failed to reconstruct principal from _arr:', e);
+                }
+            }
+            // Fallback: try toString but validate it's not [object Object]
+            if (!principalStr) {
+                const str = p.principal.toString?.();
+                if (str && str !== '[object Object]' && str.includes('-')) {
+                    principalStr = str;
+                }
+            }
+        }
+        
+        return {
+            ...p,
+            // Store principal as a string for reliable retrieval
+            principal: principalStr,
+            // Ensure permission_type is a regular array
+            permission_type: Array.isArray(p.permission_type) 
+                ? p.permission_type 
+                : (p.permission_type?.length !== undefined 
+                    ? Array.from(p.permission_type) 
+                    : p.permission_type)
+        };
+    }) || neuron.permissions;
     
     return {
         ...neuron,
@@ -648,6 +689,16 @@ export const getNeuronsFromCacheByIds = async (snsRoot, neuronIdHexArray) => {
                 if (!data || !data.neurons) {
                     resolve({ found: [], missing: neuronIdHexArray });
                     return;
+                }
+                
+                // Debug: log first neuron's permission structure from cache
+                if (data.neurons.length > 0 && data.neurons[0].permissions?.length > 0) {
+                    const firstPerm = data.neurons[0].permissions[0];
+                    console.log('[getNeuronsFromCacheByIds] First cached permission:', {
+                        principal: firstPerm.principal,
+                        principalType: typeof firstPerm.principal,
+                        permission_type: firstPerm.permission_type
+                    });
                 }
                 
                 const found = [];

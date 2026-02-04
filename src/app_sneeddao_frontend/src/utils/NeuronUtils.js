@@ -94,6 +94,27 @@ export const safePrincipalString = (principal) => {
         return principal.value;
     }
     
+    // Handle Principal objects with _arr property (internal byte representation)
+    // When a Principal object is serialized to IndexedDB, it loses its methods but keeps _arr
+    if (principal._arr !== undefined) {
+        try {
+            // _arr contains the raw principal bytes
+            const arr = principal._arr;
+            // Convert to Uint8Array if needed
+            const bytes = arr instanceof Uint8Array ? arr : 
+                         (Array.isArray(arr) ? new Uint8Array(arr) : 
+                          (arr.length !== undefined ? new Uint8Array(Array.from(arr)) : null));
+            if (bytes) {
+                // Use Principal.fromUint8Array to reconstruct
+                const reconstructed = Principal.fromUint8Array(bytes);
+                return reconstructed.toText();
+            }
+        } catch (e) {
+            // Reconstruction failed, continue to fallback
+            console.warn('[safePrincipalString] Failed to reconstruct from _arr:', e);
+        }
+    }
+    
     // Last resort - try toString but validate result
     if (typeof principal.toString === 'function') {
         const str = principal.toString();
