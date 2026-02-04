@@ -138,6 +138,12 @@ export default function PrincipalPage() {
     const [neuronError, setNeuronError] = useState(null);
     const [tokenSymbol, setTokenSymbol] = useState('SNS');
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
+    
+    // Multi-SNS neuron support (like /me page)
+    const [principalNeuronCache, setPrincipalNeuronCache] = useState(new Map()); // Map<governanceId, neurons[]>
+    const [activeNeuronSns, setActiveNeuronSns] = useState(null);
+    const [loadingAllNeurons, setLoadingAllNeurons] = useState(false);
+    const [allNeuronsLoaded, setAllNeuronsLoaded] = useState(false);
     const [activeTab, setActiveTab] = useState(() => {
         // Default to transactions tab if a subaccount is in the URL
         const urlSubaccount = new URLSearchParams(window.location.search).get('subaccount');
@@ -404,62 +410,160 @@ export default function PrincipalPage() {
         fetchInitialPrincipalInfo();
     }, [identity, principalParam]);
 
-    // Load neurons when dependencies change
+    // Compute list of SNSes with neurons from the principal's neuron cache
+    const snsesWithNeurons = React.useMemo(() => {
+        if (!principalNeuronCache || principalNeuronCache.size === 0) return [];
+        
+        const allSnses = getAllSnses();
+        const result = [];
+        
+        principalNeuronCache.forEach((neuronsList, governanceId) => {
+            if (!neuronsList || neuronsList.length === 0) return;
+            
+            // Find SNS info for this governance canister
+            const snsInfo = allSnses.find(sns => 
+                sns.canisters?.governance === governanceId
+            );
+            
+            if (snsInfo) {
+                result.push({
+                    rootCanisterId: snsInfo.rootCanisterId,
+                    governanceId: governanceId,
+                    name: snsInfo.name || 'Unknown SNS',
+                    logo: snsInfo.logo,
+                    neuronCount: neuronsList.length,
+                    totalStake: neuronsList.reduce((sum, n) => sum + BigInt(n.cached_neuron_stake_e8s || 0), BigInt(0))
+                });
+            }
+        });
+        
+        // Sort by total stake (descending)
+        result.sort((a, b) => {
+            if (b.totalStake > a.totalStake) return 1;
+            if (b.totalStake < a.totalStake) return -1;
+            return 0;
+        });
+        
+        return result;
+    }, [principalNeuronCache]);
+
+    // Set initial active SNS when snsesWithNeurons loads
+    useEffect(() => {
+        if (snsesWithNeurons.length > 0 && !activeNeuronSns) {
+            // Try to select the currently selected SNS if user has neurons there
+            const matchingSns = snsesWithNeurons.find(s => s.rootCanisterId === selectedSnsRoot);
+            if (matchingSns) {
+                setActiveNeuronSns(matchingSns.rootCanisterId);
+            } else {
+                // Otherwise select the first SNS with most stake
+                setActiveNeuronSns(snsesWithNeurons[0].rootCanisterId);
+            }
+        }
+    }, [snsesWithNeurons, selectedSnsRoot, activeNeuronSns]);
+
+    // Load neurons across all SNSes when principal changes
     useEffect(() => {
         let mounted = true;
-        let currentFetchKey = null;
+        const currentPrincipalId = stablePrincipalId.current;
 
-        const fetchNeurons = async () => {
-            const currentSnsRoot = searchParams.get('sns') || selectedSnsRoot || SNEED_SNS_ROOT;
-            const currentPrincipalId = stablePrincipalId.current;
+        if (!currentPrincipalId) {
+            setPrincipalNeuronCache(new Map());
+            setAllNeuronsLoaded(false);
+            setActiveNeuronSns(null);
+            return;
+        }
 
-            if (!currentSnsRoot || !currentPrincipalId) {
-                if (mounted) {
-                    setLoadingNeurons(false);
-                    setNeurons([]);
+        const fetchAllNeurons = async () => {
+            setLoadingAllNeurons(true);
+            setAllNeuronsLoaded(false);
+            setActiveNeuronSns(null); // Reset when starting new fetch
+            
+            const allSnses = getAllSnses();
+            const newCache = new Map();
+            const targetPrincipal = currentPrincipalId.toString();
+            
+            // Fetch neurons from all SNSes in parallel
+            const fetchPromises = allSnses.map(async (sns) => {
+                if (!sns.canisters?.governance) return null;
+                
+                try {
+                    const neuronsList = await fetchPrincipalNeuronsForSns(null, sns.canisters.governance, targetPrincipal);
+                    const relevantNeurons = neuronsList.filter(neuron => 
+                        neuron.permissions.some(p => 
+                            safePrincipalString(p.principal) === targetPrincipal
+                        )
+                    );
+                    
+                    if (relevantNeurons.length > 0 && mounted) {
+                        return { governanceId: sns.canisters.governance, neurons: relevantNeurons };
+                    }
+                } catch (err) {
+                    console.error(`Error fetching neurons for ${sns.name}:`, err);
                 }
-                return;
-            }
-
-            const fetchKey = `${currentSnsRoot}-${currentPrincipalId.toString()}`;
-            if (fetchKey === currentFetchKey) {
-                return;
-            }
-            currentFetchKey = fetchKey;
-
+                return null;
+            });
+            
+            const results = await Promise.all(fetchPromises);
+            
             if (mounted) {
-                setLoadingNeurons(true);
-                setNeuronError(null);
+                results.forEach(result => {
+                    if (result) {
+                        newCache.set(result.governanceId, result.neurons);
+                    }
+                });
+                
+                setPrincipalNeuronCache(newCache);
+                setLoadingAllNeurons(false);
+                setAllNeuronsLoaded(true);
             }
+        };
+        
+        fetchAllNeurons();
+        
+        return () => { mounted = false; };
+    }, [principalParam]);
+
+    // Load neurons for the selected SNS tab and update token symbol
+    useEffect(() => {
+        let mounted = true;
+
+        const loadSelectedSnsNeurons = async () => {
+            if (!activeNeuronSns) {
+                setNeurons([]);
+                return;
+            }
+
+            setLoadingNeurons(true);
+            setNeuronError(null);
 
             try {
-                const selectedSns = getSnsById(currentSnsRoot);
+                const selectedSns = getSnsById(activeNeuronSns);
                 if (!selectedSns) {
                     throw new Error('Selected SNS not found');
                 }
 
-                const neuronsList = await fetchPrincipalNeuronsForSns(null, selectedSns.canisters.governance, currentPrincipalId.toString());
-                const targetPrincipal = currentPrincipalId.toString();
-                const relevantNeurons = neuronsList.filter(neuron => 
-                    neuron.permissions.some(p => 
-                        safePrincipalString(p.principal) === targetPrincipal
-                    )
-                );
-
+                // Get neurons from cache
+                const cachedNeurons = principalNeuronCache.get(selectedSns.canisters.governance) || [];
+                
                 if (mounted) {
-                    setNeurons(relevantNeurons);
+                    setNeurons(cachedNeurons);
 
-                    const icrc1Actor = createIcrc1Actor(selectedSns.canisters.ledger, {
-                        agentOptions: { agent: new HttpAgent() }
-                    });
-                    const metadata = await icrc1Actor.icrc1_metadata();
-                    const symbolEntry = metadata.find(entry => entry[0] === 'icrc1:symbol');
-                    if (symbolEntry && symbolEntry[1]) {
-                        setTokenSymbol(symbolEntry[1].Text);
+                    // Fetch token symbol
+                    try {
+                        const icrc1Actor = createIcrc1Actor(selectedSns.canisters.ledger, {
+                            agentOptions: { agent: new HttpAgent() }
+                        });
+                        const metadata = await icrc1Actor.icrc1_metadata();
+                        const symbolEntry = metadata.find(entry => entry[0] === 'icrc1:symbol');
+                        if (symbolEntry && symbolEntry[1]) {
+                            setTokenSymbol(symbolEntry[1].Text);
+                        }
+                    } catch (err) {
+                        console.error('Error fetching token symbol:', err);
                     }
                 }
             } catch (err) {
-                console.error('Error fetching neurons:', err);
+                console.error('Error loading neurons:', err);
                 if (mounted) {
                     setNeuronError('Failed to load neurons');
                 }
@@ -470,9 +574,9 @@ export default function PrincipalPage() {
             }
         };
 
-        fetchNeurons();
+        loadSelectedSnsNeurons();
         return () => { mounted = false; };
-    }, [identity, searchParams, principalParam, selectedSnsRoot, SNEED_SNS_ROOT]);
+    }, [activeNeuronSns, principalNeuronCache]);
 
     // Fetch principal display info for all unique principals
     useEffect(() => {
@@ -1964,14 +2068,19 @@ export default function PrincipalPage() {
                                 : theme.colors.secondaryText,
                         }}
                     >
-                        <TokenIcon 
-                            logo={snsLogo} 
-                            size={18} 
-                            fallbackIcon={<FaBrain size={14} />}
-                            fallbackColor={activeTab === 'neurons' ? 'white' : theme.colors.secondaryText}
-                            rounded={false}
-                        />
-                        <span>Hotkeyed Neurons</span>
+                        <FaBrain size={14} />
+                        <span>Neurons</span>
+                        {snsesWithNeurons.length > 0 && (
+                            <span style={{
+                                fontSize: '0.75rem',
+                                background: activeTab === 'neurons' ? 'rgba(255,255,255,0.2)' : theme.colors.tertiaryBg,
+                                padding: '0.1rem 0.4rem',
+                                borderRadius: '6px',
+                                fontWeight: '500'
+                            }}>
+                                {snsesWithNeurons.reduce((sum, s) => sum + s.neuronCount, 0)}
+                            </span>
+                        )}
                     </button>
                     <button
                         onClick={() => setActiveTab('transactions')}
@@ -2292,32 +2401,145 @@ export default function PrincipalPage() {
                             <div style={{ 
                                 display: 'flex', 
                                 alignItems: 'center', 
+                                justifyContent: 'space-between',
                                 gap: '0.75rem',
                                 marginBottom: '1rem'
                             }}>
-                                <div style={{
-                                    width: '40px',
-                                    height: '40px',
-                                    borderRadius: '10px',
-                                    background: snsLogo ? 'transparent' : `linear-gradient(135deg, ${principalAccent}30, ${principalSecondary}20)`,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    color: principalAccent,
-                                    overflow: 'hidden'
-                                }}>
-                                    {snsLogo ? (
-                                        <img src={snsLogo} alt="DAO" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px' }} />
-                                    ) : (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                    <div style={{
+                                        width: '40px',
+                                        height: '40px',
+                                        borderRadius: '10px',
+                                        background: `linear-gradient(135deg, ${principalAccent}30, ${principalSecondary}20)`,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        color: principalAccent,
+                                        overflow: 'hidden'
+                                    }}>
                                         <FaBrain size={18} />
-                                    )}
+                                    </div>
+                                    <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '1.1rem' }}>
+                                        Reachable Neurons
+                                    </span>
                                 </div>
-                                <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '1.1rem' }}>
-                                    {snsInfo?.name || 'DAO'} Neurons
-                                </span>
+                                {snsesWithNeurons.length > 0 && (
+                                    <div style={{ 
+                                        fontSize: '0.85rem', 
+                                        color: theme.colors.mutedText,
+                                        background: theme.colors.tertiaryBg,
+                                        padding: '0.35rem 0.75rem',
+                                        borderRadius: '8px'
+                                    }}>
+                                        {snsesWithNeurons.reduce((sum, s) => sum + s.neuronCount, 0)} total
+                                    </div>
+                                )}
                             </div>
 
-                            {loadingNeurons ? (
+                            {/* SNS Subtabs */}
+                            {snsesWithNeurons.length > 0 && (
+                                <div style={{ 
+                                    display: 'flex',
+                                    flexWrap: 'wrap',
+                                    gap: '0.5rem',
+                                    marginBottom: '1rem',
+                                    background: theme.colors.tertiaryBg,
+                                    padding: '0.5rem',
+                                    borderRadius: '12px',
+                                    border: `1px solid ${theme.colors.border}`
+                                }}>
+                                    {snsesWithNeurons.map(sns => {
+                                        const isActive = activeNeuronSns === sns.rootCanisterId;
+                                        return (
+                                            <button
+                                                key={sns.rootCanisterId}
+                                                onClick={() => setActiveNeuronSns(sns.rootCanisterId)}
+                                                style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.4rem',
+                                                    padding: '0.5rem 0.75rem',
+                                                    borderRadius: '8px',
+                                                    border: 'none',
+                                                    cursor: 'pointer',
+                                                    fontWeight: '500',
+                                                    fontSize: '0.85rem',
+                                                    transition: 'all 0.2s ease',
+                                                    background: isActive 
+                                                        ? `linear-gradient(135deg, ${principalAccent}, ${principalSecondary})`
+                                                        : 'transparent',
+                                                    color: isActive ? 'white' : theme.colors.secondaryText,
+                                                    boxShadow: isActive ? `0 2px 8px ${principalAccent}30` : 'none'
+                                                }}
+                                            >
+                                                <TokenIcon 
+                                                    logo={sns.logo} 
+                                                    size={18} 
+                                                    fallbackIcon={<FaBrain size={12} />}
+                                                    fallbackColor={isActive ? 'white' : theme.colors.secondaryText}
+                                                    rounded={false}
+                                                />
+                                                <span>{sns.name}</span>
+                                                <span style={{ 
+                                                    opacity: 0.8, 
+                                                    fontSize: '0.75rem',
+                                                    background: isActive ? 'rgba(255,255,255,0.2)' : theme.colors.primaryBg,
+                                                    padding: '0.1rem 0.35rem',
+                                                    borderRadius: '4px'
+                                                }}>
+                                                    {sns.neuronCount}
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+
+                            {/* No neurons message */}
+                            {snsesWithNeurons.length === 0 && allNeuronsLoaded && (
+                                <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
+                                    <div style={{
+                                        width: '60px',
+                                        height: '60px',
+                                        borderRadius: '50%',
+                                        background: `${principalAccent}15`,
+                                        margin: '0 auto 1rem',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        color: principalAccent
+                                    }}>
+                                        <FaBrain size={24} />
+                                    </div>
+                                    <p style={{ fontSize: '1rem', marginBottom: '0.5rem' }}>No neurons found.</p>
+                                    <p style={{ fontSize: '0.9rem', color: theme.colors.mutedText }}>
+                                        This principal doesn't have any reachable neurons in any SNS DAO.
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* Loading state for initial fetch */}
+                            {loadingAllNeurons && (
+                                <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
+                                    <div className="principal-pulse" style={{
+                                        width: '48px',
+                                        height: '48px',
+                                        borderRadius: '50%',
+                                        background: `linear-gradient(135deg, ${principalAccent}30, ${principalSecondary}20)`,
+                                        margin: '0 auto 1rem',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        color: principalAccent
+                                    }}>
+                                        <FaBrain size={20} />
+                                    </div>
+                                    Scanning all DAOs for neurons...
+                                </div>
+                            )}
+
+                            {/* Show neuron content only when we have SNS tabs and an active SNS selected */}
+                            {snsesWithNeurons.length > 0 && activeNeuronSns && (loadingNeurons ? (
                                 <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
                                     <div className="principal-spin" style={{
                                         width: '30px',
@@ -2327,7 +2549,7 @@ export default function PrincipalPage() {
                                         borderRadius: '50%',
                                         margin: '0 auto 1rem'
                                     }} />
-                                    Loading neurons...
+                                    Loading {snsesWithNeurons.find(s => s.rootCanisterId === activeNeuronSns)?.name || 'SNS'} neurons...
                                 </div>
                             ) : neuronError ? (
                                 <div style={{ 
@@ -2341,7 +2563,7 @@ export default function PrincipalPage() {
                                 </div>
                             ) : neurons.length === 0 ? (
                                 <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
-                                    No neurons found where this principal is a hotkey.
+                                    No neurons found for this SNS.
                                 </div>
                             ) : (
                                 <div style={{ 
@@ -2364,7 +2586,7 @@ export default function PrincipalPage() {
                                                 }}
                                             >
                                                 <div style={{ marginBottom: '1rem' }}>
-                                                    {formatNeuronIdLink(neuronId, searchParams.get('sns') || selectedSnsRoot || SNEED_SNS_ROOT)}
+                                                    {formatNeuronIdLink(neuronId, activeNeuronSns || selectedSnsRoot || SNEED_SNS_ROOT)}
                                                 </div>
 
                                                 <div style={{ 
@@ -2412,7 +2634,7 @@ export default function PrincipalPage() {
                                                             gap: '8px',
                                                             marginBottom: '6px'
                                                         }}>
-                                                            <FaCrown size={12} title="Owner" />
+                                                            <FaCrown size={12} style={{ color: theme.colors.secondaryText }} title="Owner" />
                                                             <PrincipalDisplay 
                                                                 principal={Principal.fromText(getOwnerPrincipals(neuron)[0])}
                                                                 displayInfo={principalDisplayInfo.get(getOwnerPrincipals(neuron)[0])}
@@ -2432,7 +2654,7 @@ export default function PrincipalPage() {
                                                                     gap: '8px',
                                                                     marginBottom: '6px'
                                                                 }}>
-                                                                    <FaKey size={12} title="Hotkey" />
+                                                                    <FaKey size={12} style={{ color: theme.colors.secondaryText }} title="Hotkey" />
                                                                     <PrincipalDisplay 
                                                                         principal={p.principal}
                                                                         displayInfo={principalDisplayInfo.get(principalStr)}
@@ -2448,7 +2670,7 @@ export default function PrincipalPage() {
                                         );
                                     })}
                                 </div>
-                            )}
+                            ))}
                         </div>
                     )}
 
