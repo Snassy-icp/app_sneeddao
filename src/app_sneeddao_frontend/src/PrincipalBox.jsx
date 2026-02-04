@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaCopy, FaCheck, FaWallet, FaPaperPlane, FaKey, FaIdCard, FaExternalLinkAlt, FaSync, FaCoins, FaWater, FaLock, FaBug, FaTimes, FaBrain, FaBox } from 'react-icons/fa';
+import { FaCopy, FaCheck, FaWallet, FaPaperPlane, FaKey, FaIdCard, FaExternalLinkAlt, FaSync, FaCoins, FaWater, FaLock, FaBug, FaTimes, FaBrain, FaBox, FaCrown, FaMicrochip } from 'react-icons/fa';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { Principal } from '@dfinity/principal';
 import { principalToSubAccount } from '@dfinity/utils';
@@ -14,7 +14,35 @@ import { get_available_backend } from './utils/TokenUtils';
 import { normalizeId } from './hooks/useNeuronsCache';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
+import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
+import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
+import { HttpAgent, Actor } from '@dfinity/agent';
+import { uint8ArrayToHex } from './utils/NeuronUtils';
+import { getCanisterInfo } from './utils/BackendUtils';
 import SendTokenModal from './SendTokenModal';
+
+// Management canister constants
+const MANAGEMENT_CANISTER_ID = 'aaaaa-aa';
+const managementCanisterIdlFactory = ({ IDL }) => {
+    return IDL.Service({
+        canister_status: IDL.Func(
+            [IDL.Record({ canister_id: IDL.Principal })],
+            [IDL.Record({
+                status: IDL.Variant({ running: IDL.Null, stopping: IDL.Null, stopped: IDL.Null }),
+                memory_size: IDL.Nat,
+                cycles: IDL.Nat,
+                settings: IDL.Record({
+                    freezing_threshold: IDL.Nat,
+                    controllers: IDL.Vec(IDL.Principal),
+                    memory_allocation: IDL.Nat,
+                    compute_allocation: IDL.Nat,
+                }),
+                module_hash: IDL.Opt(IDL.Vec(IDL.Nat8)),
+            })],
+            ['query']
+        ),
+    });
+};
 import TokenCardModal from './components/TokenCardModal';
 import PositionCardModal from './components/PositionCardModal';
 import LockModal from './LockModal';
@@ -85,6 +113,11 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const trackedCanistersLoading = walletContext?.trackedCanistersLoading || false;
     const hasFetchedTrackedCanisters = walletContext?.hasFetchedTrackedCanisters || false;
     
+    // Neuron manager detection state for tracked canisters
+    const [officialVersions, setOfficialVersions] = useState([]);
+    const [trackedCanisterStatus, setTrackedCanisterStatus] = useState({}); // canisterId -> { cycles, memory, isController, moduleHash }
+    const [detectedNeuronManagers, setDetectedNeuronManagers] = useState({}); // canisterId -> { version, neuronCount, cycles, memory, isController, isValid }
+    
     // Get shared ICP price from context (ensures same value as Wallet page)
     const icpPrice = walletContext?.icpPrice;
     
@@ -127,6 +160,176 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         };
         checkAdmin();
     }, [identity]);
+
+    // Fetch official versions for neuron manager detection
+    useEffect(() => {
+        const fetchOfficialVersions = async () => {
+            if (!identity) return;
+            
+            try {
+                const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                    ? 'https://ic0.app' 
+                    : 'http://localhost:4943';
+                const agent = new HttpAgent({ identity, host });
+                if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                    await agent.fetchRootKey();
+                }
+                
+                const factory = createFactoryActor(factoryCanisterId, { agent });
+                const fetchedOfficialVersions = await factory.getOfficialVersions();
+                setOfficialVersions(fetchedOfficialVersions || []);
+            } catch (err) {
+                console.warn('[QuickWallet] Error fetching official versions:', err);
+            }
+        };
+        
+        fetchOfficialVersions();
+    }, [identity]);
+
+    // Fetch canister status (cycles, memory, moduleHash) for tracked canisters
+    useEffect(() => {
+        const fetchCanisterStatus = async () => {
+            if (!identity || trackedCanisters.length === 0) return;
+            
+            try {
+                const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                    ? 'https://ic0.app' 
+                    : 'http://localhost:4943';
+                const agent = new HttpAgent({ identity, host });
+                if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                    await agent.fetchRootKey();
+                }
+                
+                const statusMap = {};
+                await Promise.all(trackedCanisters.map(async (canisterId) => {
+                    let cycles = null;
+                    let memory = null;
+                    let isController = false;
+                    let moduleHash = null;
+                    
+                    try {
+                        const canisterIdPrincipal = Principal.fromText(canisterId);
+                        const mgmtActor = Actor.createActor(managementCanisterIdlFactory, {
+                            agent,
+                            canisterId: MANAGEMENT_CANISTER_ID,
+                            callTransform: (methodName, args, callConfig) => ({
+                                ...callConfig,
+                                effectiveCanisterId: canisterIdPrincipal,
+                            }),
+                        });
+                        const status = await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
+                        cycles = Number(status.cycles);
+                        memory = Number(status.memory_size);
+                        moduleHash = status.module_hash[0] ? uint8ArrayToHex(status.module_hash[0]) : null;
+                        isController = true;
+                    } catch (err) {
+                        // Not a controller - try backend fallback for module_hash
+                        try {
+                            const result = await getCanisterInfo(identity, canisterId);
+                            if (result && 'ok' in result) {
+                                moduleHash = result.ok.module_hash[0] ? uint8ArrayToHex(result.ok.module_hash[0]) : null;
+                            }
+                        } catch (fallbackErr) {
+                            // Ignore fallback errors
+                        }
+                    }
+                    
+                    statusMap[canisterId] = { cycles, memory, isController, moduleHash };
+                }));
+                setTrackedCanisterStatus(statusMap);
+            } catch (err) {
+                console.warn('[QuickWallet] Error fetching canister status:', err);
+            }
+        };
+        
+        fetchCanisterStatus();
+    }, [identity, trackedCanisters]);
+
+    // Check if a module hash matches any known neuron manager version
+    const isKnownNeuronManagerHash = useCallback((moduleHash) => {
+        if (!moduleHash || officialVersions.length === 0) return null;
+        const hashLower = moduleHash.toLowerCase();
+        return officialVersions.find(v => v.wasmHash.toLowerCase() === hashLower) || null;
+    }, [officialVersions]);
+
+    // Fetch neuron manager info for a detected canister
+    const fetchDetectedManagerInfo = useCallback(async (canisterId, existingStatus) => {
+        if (!identity) return;
+        
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const managerActor = createManagerActor(canisterId, { agent });
+            const [version, neuronIds] = await Promise.all([
+                managerActor.getVersion(),
+                managerActor.getNeuronIds(),
+            ]);
+            
+            setDetectedNeuronManagers(prev => ({
+                ...prev,
+                [canisterId]: {
+                    version,
+                    neuronCount: neuronIds?.length || 0,
+                    cycles: existingStatus?.cycles,
+                    memory: existingStatus?.memory,
+                    isController: existingStatus?.isController,
+                    isValid: true,
+                }
+            }));
+        } catch (err) {
+            // Mark as detected but invalid
+            setDetectedNeuronManagers(prev => ({
+                ...prev,
+                [canisterId]: {
+                    version: null,
+                    neuronCount: 0,
+                    cycles: existingStatus?.cycles,
+                    memory: existingStatus?.memory,
+                    isController: existingStatus?.isController,
+                    isValid: false,
+                }
+            }));
+        }
+    }, [identity]);
+
+    // Detect neuron managers from tracked canisters based on module hash
+    useEffect(() => {
+        if (officialVersions.length === 0) return;
+        
+        for (const [canisterId, status] of Object.entries(trackedCanisterStatus)) {
+            if (!status?.moduleHash) continue;
+            if (detectedNeuronManagers[canisterId]) continue; // Already detected
+            
+            const matchedVersion = isKnownNeuronManagerHash(status.moduleHash);
+            if (matchedVersion) {
+                fetchDetectedManagerInfo(canisterId, status);
+            }
+        }
+    }, [officialVersions, trackedCanisterStatus, detectedNeuronManagers, isKnownNeuronManagerHash, fetchDetectedManagerInfo]);
+
+    // Helper to format cycles compactly
+    const formatCyclesCompact = useCallback((cycles) => {
+        if (cycles === null || cycles === undefined) return null;
+        if (cycles >= 1e12) return `${(cycles / 1e12).toFixed(1)}T`;
+        if (cycles >= 1e9) return `${(cycles / 1e9).toFixed(1)}B`;
+        if (cycles >= 1e6) return `${(cycles / 1e6).toFixed(1)}M`;
+        return cycles.toLocaleString();
+    }, []);
+
+    // Helper to format memory compactly
+    const formatMemoryCompact = useCallback((bytes) => {
+        if (bytes === null || bytes === undefined) return null;
+        if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)}GB`;
+        if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(1)}MB`;
+        if (bytes >= 1e3) return `${(bytes / 1e3).toFixed(1)}KB`;
+        return `${bytes}B`;
+    }, []);
 
     // Filter tokens based on hideDust setting
     const tokensWithBalance = useMemo(() => {
@@ -1896,39 +2099,44 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                       </div>
                       )}
 
-                      {/* Dapps Tab Content */}
+                      {/* Dapps Tab Content - Compact list like tokens */}
                       {walletTab === 'dapps' && (
                       <>
                       <div 
                           className="compact-wallet-container"
-                          style={{ 
-                              display: 'flex', 
-                              flexDirection: 'column', 
-                              gap: '6px',
-                              maxHeight: '320px',
+                          style={{
+                              backgroundColor: theme.colors.primaryBg,
+                              borderRadius: '8px',
+                              maxHeight: '200px',
                               overflowY: 'auto',
-                              overflowX: 'hidden',
-                              paddingRight: '4px'
+                              overflowX: 'hidden'
                           }}
                       >
                           {/* Loading state */}
                           {(neuronManagersLoading && neuronManagers.length === 0 && trackedCanistersLoading && trackedCanisters.length === 0) ? (
                               <div style={{ 
-                                  color: theme.colors.mutedText, 
-                                  fontSize: '12px',
+                                  padding: '12px', 
                                   textAlign: 'center',
-                                  padding: '20px'
+                                  color: theme.colors.mutedText,
+                                  fontSize: '12px'
                               }}>
                                   Loading dapps...
                               </div>
                           ) : (neuronManagers.length === 0 && trackedCanisters.length === 0) ? (
-                              <div style={{ 
-                                  color: theme.colors.mutedText, 
-                                  fontSize: '12px',
-                                  textAlign: 'center',
-                                  padding: '20px'
-                              }}>
-                                  No dapps found
+                              <div 
+                                  style={{ 
+                                      padding: '12px', 
+                                      textAlign: 'center',
+                                      color: theme.colors.mutedText,
+                                      fontSize: '12px',
+                                      cursor: 'pointer'
+                                  }}
+                                  onClick={() => {
+                                      navigate('/wallet');
+                                      setShowPopup(false);
+                                  }}
+                              >
+                                  No dapps found. Visit wallet to add.
                               </div>
                           ) : (
                               <>
@@ -1954,10 +2162,12 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                   });
                                   
                                   const managerUsdValue = icpPrice ? managerIcpTotal * icpPrice : null;
+                                  const totalItems = neuronManagers.length + trackedCanisters.length;
                                   
                                   return (
-                                      <div
+                                      <div 
                                           key={`manager-${index}`}
+                                          className="compact-wallet-token"
                                           onClick={() => {
                                               navigate('/wallet');
                                               setShowPopup(false);
@@ -1965,40 +2175,51 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                           style={{
                                               display: 'flex',
                                               alignItems: 'center',
+                                              padding: '8px 12px',
+                                              borderBottom: (index < neuronManagers.length - 1 || trackedCanisters.length > 0) ? `1px solid ${theme.colors.border}` : 'none',
                                               gap: '10px',
-                                              padding: '10px',
-                                              backgroundColor: theme.colors.secondaryBg,
-                                              borderRadius: '10px',
                                               cursor: 'pointer',
-                                              transition: 'all 0.2s ease',
-                                              border: `1px solid ${theme.colors.border}`
-                                          }}
-                                          onMouseOver={(e) => {
-                                              e.currentTarget.style.backgroundColor = `${theme.colors.accent}15`;
-                                              e.currentTarget.style.borderColor = theme.colors.accent;
-                                          }}
-                                          onMouseOut={(e) => {
-                                              e.currentTarget.style.backgroundColor = theme.colors.secondaryBg;
-                                              e.currentTarget.style.borderColor = theme.colors.border;
+                                              minWidth: 0,
+                                              maxWidth: '100%',
+                                              boxSizing: 'border-box'
                                           }}
                                       >
-                                          {/* Manager Icon */}
-                                          <div 
-                                              style={{
-                                                  width: '36px',
-                                                  height: '36px',
-                                                  borderRadius: '50%',
-                                                  backgroundColor: `${theme.colors.accent}20`,
-                                                  display: 'flex',
-                                                  alignItems: 'center',
-                                                  justifyContent: 'center',
-                                                  flexShrink: 0
-                                              }}
-                                          >
-                                              <FaBrain size={18} style={{ color: theme.colors.accent }} />
+                                          {/* Icon with crown indicator */}
+                                          <div style={{ 
+                                              width: '28px', 
+                                              height: '28px', 
+                                              flexShrink: 0,
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              justifyContent: 'center',
+                                              position: 'relative'
+                                          }}>
+                                              <div 
+                                                  style={{
+                                                      width: '28px',
+                                                      height: '28px',
+                                                      borderRadius: '50%',
+                                                      backgroundColor: `${theme.colors.accent}20`,
+                                                      display: 'flex',
+                                                      alignItems: 'center',
+                                                      justifyContent: 'center'
+                                                  }}
+                                              >
+                                                  <FaBrain size={14} style={{ color: theme.colors.accent }} />
+                                              </div>
+                                              {/* Crown for all registered managers (you always control these) */}
+                                              <FaCrown 
+                                                  size={8} 
+                                                  style={{ 
+                                                      position: 'absolute',
+                                                      top: '-2px',
+                                                      right: '-2px',
+                                                      color: '#f59e0b'
+                                                  }} 
+                                              />
                                           </div>
                                           
-                                          {/* Manager Info */}
+                                          {/* Info */}
                                           <div style={{ 
                                               flex: 1, 
                                               minWidth: 0,
@@ -2006,58 +2227,59 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                               flexDirection: 'column',
                                               gap: '2px'
                                           }}>
-                                              <span style={{ 
-                                                  color: theme.colors.primaryText,
-                                                  fontSize: '13px',
-                                                  fontWeight: '500',
-                                                  overflow: 'hidden',
-                                                  textOverflow: 'ellipsis',
-                                                  whiteSpace: 'nowrap'
+                                              <div style={{
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  gap: '4px'
                                               }}>
-                                                  {canisterIdStr.slice(0, 5)}...{canisterIdStr.slice(-5)}
-                                              </span>
+                                                  <span style={{ 
+                                                      color: theme.colors.primaryText,
+                                                      fontSize: '13px',
+                                                      fontWeight: '500',
+                                                      overflow: 'hidden',
+                                                      textOverflow: 'ellipsis',
+                                                      whiteSpace: 'nowrap'
+                                                  }}>
+                                                      {canisterIdStr.slice(0, 5)}...{canisterIdStr.slice(-5)}
+                                                  </span>
+                                                  <span style={{ 
+                                                      color: theme.colors.mutedText,
+                                                      fontSize: '11px',
+                                                      flexShrink: 0
+                                                  }}>
+                                                      {neurons.length}n
+                                                  </span>
+                                              </div>
+                                              {/* USD Value */}
                                               <span style={{ 
                                                   color: theme.colors.mutedText,
-                                                  fontSize: '11px',
-                                                  opacity: 0.8
-                                              }}>
-                                                  {neurons.length} neuron{neurons.length !== 1 ? 's' : ''}
-                                              </span>
-                                          </div>
-                                          
-                                          {/* Manager Value */}
-                                          <div style={{
-                                              textAlign: 'right',
-                                              flexShrink: 0
-                                          }}>
-                                              <div style={{ 
-                                                  color: theme.colors.primaryText,
-                                                  fontSize: '13px',
-                                                  fontWeight: '600'
+                                                  fontSize: '11px'
                                               }}>
                                                   {isLoading 
-                                                      ? '...'
+                                                      ? 'Loading...'
                                                       : managerUsdValue !== null 
                                                           ? `$${managerUsdValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                                                          : 'N/A'
+                                                          : `${managerIcpTotal.toFixed(2)} ICP`
                                                   }
-                                              </div>
-                                              <div style={{
-                                                  color: theme.colors.mutedText,
-                                                  fontSize: '10px'
-                                              }}>
-                                                  {managerIcpTotal > 0 ? `${managerIcpTotal.toFixed(4)} ICP` : ''}
-                                              </div>
+                                              </span>
                                           </div>
                                       </div>
                                   );
                               })}
                               
-                              {/* Tracked Canisters after */}
+                              {/* Tracked Canisters after - with progressive detection */}
                               {trackedCanisters.map((canisterId, index) => {
+                                  const status = trackedCanisterStatus[canisterId];
+                                  const detectedManager = detectedNeuronManagers[canisterId];
+                                  const isNeuronManager = detectedManager?.isValid;
+                                  const isController = status?.isController;
+                                  const cycles = status?.cycles;
+                                  const memory = status?.memory;
+                                  
                                   return (
-                                      <div
+                                      <div 
                                           key={`canister-${index}`}
+                                          className="compact-wallet-token"
                                           onClick={() => {
                                               navigate('/wallet');
                                               setShowPopup(false);
@@ -2065,40 +2287,59 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                           style={{
                                               display: 'flex',
                                               alignItems: 'center',
+                                              padding: '8px 12px',
+                                              borderBottom: index < trackedCanisters.length - 1 ? `1px solid ${theme.colors.border}` : 'none',
                                               gap: '10px',
-                                              padding: '10px',
-                                              backgroundColor: theme.colors.secondaryBg,
-                                              borderRadius: '10px',
                                               cursor: 'pointer',
-                                              transition: 'all 0.2s ease',
-                                              border: `1px solid ${theme.colors.border}`
-                                          }}
-                                          onMouseOver={(e) => {
-                                              e.currentTarget.style.backgroundColor = `${theme.colors.accent}15`;
-                                              e.currentTarget.style.borderColor = theme.colors.accent;
-                                          }}
-                                          onMouseOut={(e) => {
-                                              e.currentTarget.style.backgroundColor = theme.colors.secondaryBg;
-                                              e.currentTarget.style.borderColor = theme.colors.border;
+                                              minWidth: 0,
+                                              maxWidth: '100%',
+                                              boxSizing: 'border-box'
                                           }}
                                       >
-                                          {/* Canister Icon */}
-                                          <div 
-                                              style={{
-                                                  width: '36px',
-                                                  height: '36px',
-                                                  borderRadius: '50%',
-                                                  backgroundColor: `${theme.colors.mutedText}20`,
-                                                  display: 'flex',
-                                                  alignItems: 'center',
-                                                  justifyContent: 'center',
-                                                  flexShrink: 0
-                                              }}
-                                          >
-                                              <FaBox size={16} style={{ color: theme.colors.mutedText }} />
+                                          {/* Icon with crown indicator for controlled canisters */}
+                                          <div style={{ 
+                                              width: '28px', 
+                                              height: '28px', 
+                                              flexShrink: 0,
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              justifyContent: 'center',
+                                              position: 'relative'
+                                          }}>
+                                              <div 
+                                                  style={{
+                                                      width: '28px',
+                                                      height: '28px',
+                                                      borderRadius: '50%',
+                                                      backgroundColor: isNeuronManager 
+                                                          ? `${theme.colors.accent}20` 
+                                                          : `${theme.colors.mutedText}20`,
+                                                      display: 'flex',
+                                                      alignItems: 'center',
+                                                      justifyContent: 'center'
+                                                  }}
+                                              >
+                                                  {isNeuronManager ? (
+                                                      <FaBrain size={14} style={{ color: theme.colors.accent }} />
+                                                  ) : (
+                                                      <FaBox size={12} style={{ color: theme.colors.mutedText }} />
+                                                  )}
+                                              </div>
+                                              {/* Crown for controlled canisters */}
+                                              {isController && (
+                                                  <FaCrown 
+                                                      size={8} 
+                                                      style={{ 
+                                                          position: 'absolute',
+                                                          top: '-2px',
+                                                          right: '-2px',
+                                                          color: '#f59e0b'
+                                                      }} 
+                                                  />
+                                              )}
                                           </div>
                                           
-                                          {/* Canister Info */}
+                                          {/* Info */}
                                           <div style={{ 
                                               flex: 1, 
                                               minWidth: 0,
@@ -2106,22 +2347,54 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                               flexDirection: 'column',
                                               gap: '2px'
                                           }}>
-                                              <span style={{ 
-                                                  color: theme.colors.primaryText,
-                                                  fontSize: '13px',
-                                                  fontWeight: '500',
-                                                  overflow: 'hidden',
-                                                  textOverflow: 'ellipsis',
-                                                  whiteSpace: 'nowrap'
+                                              <div style={{
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  gap: '4px'
                                               }}>
-                                                  {canisterId.slice(0, 5)}...{canisterId.slice(-5)}
-                                              </span>
+                                                  <span style={{ 
+                                                      color: theme.colors.primaryText,
+                                                      fontSize: '13px',
+                                                      fontWeight: '500',
+                                                      overflow: 'hidden',
+                                                      textOverflow: 'ellipsis',
+                                                      whiteSpace: 'nowrap'
+                                                  }}>
+                                                      {canisterId.slice(0, 5)}...{canisterId.slice(-5)}
+                                                  </span>
+                                                  {isNeuronManager && detectedManager?.neuronCount > 0 && (
+                                                      <span style={{ 
+                                                          color: theme.colors.mutedText,
+                                                          fontSize: '11px',
+                                                          flexShrink: 0
+                                                      }}>
+                                                          {detectedManager.neuronCount}n
+                                                      </span>
+                                                  )}
+                                              </div>
+                                              {/* Cycles and Memory info */}
                                               <span style={{ 
                                                   color: theme.colors.mutedText,
                                                   fontSize: '11px',
-                                                  opacity: 0.8
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  gap: '6px'
                                               }}>
-                                                  Canister
+                                                  {cycles !== null && cycles !== undefined ? (
+                                                      <span style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                                                          <FaCoins size={8} />
+                                                          {formatCyclesCompact(cycles)}
+                                                      </span>
+                                                  ) : null}
+                                                  {memory !== null && memory !== undefined ? (
+                                                      <span style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                                                          <FaMicrochip size={8} />
+                                                          {formatMemoryCompact(memory)}
+                                                      </span>
+                                                  ) : null}
+                                                  {cycles === null && memory === null && (
+                                                      <span>{isNeuronManager ? 'Neuron Manager' : 'Canister'}</span>
+                                                  )}
                                               </span>
                                           </div>
                                       </div>
