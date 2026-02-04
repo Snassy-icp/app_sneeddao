@@ -4575,7 +4575,7 @@ function Wallet() {
         }
     };
 
-    // Scan for tokens - check all known SNS ledgers for balances
+    // Scan for tokens - check all whitelisted tokens for balances
     const handleScanForTokens = async () => {
         if (!identity || scanningTokens) return;
         
@@ -4585,21 +4585,19 @@ function Wallet() {
         try {
             const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
             
-            // Get all SNS ledgers
-            const allSnses = getAllSnses();
-            const snsLedgers = allSnses
-                .map(sns => sns.canisters?.ledger)
-                .filter(Boolean);
+            // Get all whitelisted tokens (same as token selector dropdowns)
+            const whitelistedTokens = await backendActor.get_whitelisted_tokens();
+            const whitelistedLedgers = whitelistedTokens.map(t => t.ledger_id.toString());
             
             // Get already registered ledgers
             const registeredLedgers = await backendActor.get_ledger_canister_ids();
             const registeredSet = new Set(registeredLedgers.map(l => l.toString()));
             
             // Filter to only unregistered ledgers
-            const ledgersToScan = snsLedgers.filter(ledger => !registeredSet.has(ledger));
+            const ledgersToScan = whitelistedLedgers.filter(ledger => !registeredSet.has(ledger));
             
             if (ledgersToScan.length === 0) {
-                console.log('[Scan] All known SNS tokens are already in wallet');
+                console.log('[Scan] All whitelisted tokens are already in wallet');
                 setScanningTokens(false);
                 return;
             }
