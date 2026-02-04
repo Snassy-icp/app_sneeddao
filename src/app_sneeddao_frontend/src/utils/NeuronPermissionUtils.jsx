@@ -90,6 +90,67 @@ export function getUserPermissionIcons(neuron, userPrincipalString) {
 }
 
 /**
+ * Get ownership priority for sorting neurons
+ * Lower number = higher priority (shown first)
+ * @param {Object} neuron - Full neuron object
+ * @param {string} userPrincipalString - User's principal as string
+ * @returns {number} - Priority value (0 = highest, 100 = lowest)
+ */
+export function getOwnershipPriority(neuron, userPrincipalString) {
+    if (!neuron.permissions || !userPrincipalString) {
+        return 100; // No permissions = lowest priority
+    }
+    
+    // Find the user's permissions
+    const userPerms = neuron.permissions.find(p => {
+        const permPrincipal = safePrincipalString(p.principal);
+        return permPrincipal && permPrincipal === userPrincipalString;
+    });
+    
+    if (!userPerms) {
+        return 100; // No permissions = lowest priority
+    }
+    
+    const permArray = safePermissionType(userPerms);
+    const permCount = permArray.length;
+    
+    // Full owner (10-11 permissions) = highest priority
+    if (permCount === 10 || permCount === 11) {
+        return 0;
+    }
+    
+    // Hotkey (submit + vote)
+    const hasSubmit = permArray.includes(PERM.SUBMIT_PROPOSAL);
+    const hasVote = permArray.includes(PERM.VOTE);
+    if (permCount === 2 && hasSubmit && hasVote) {
+        return 10;
+    }
+    
+    // Manager (has manage principals)
+    if (permArray.includes(PERM.MANAGE_PRINCIPALS)) {
+        return 20;
+    }
+    
+    // Financial (has disburse)
+    if (permArray.includes(PERM.DISBURSE) || permArray.includes(PERM.DISBURSE_MATURITY)) {
+        return 30;
+    }
+    
+    // Voter only
+    if (permCount === 1 && hasVote) {
+        return 40;
+    }
+    
+    // Custom permissions
+    if (permCount > 0) {
+        return 50;
+    }
+    
+    // No permissions (just reachable)
+    return 100;
+}
+
+/**
  * Get state icon and color for neuron dissolve state
  * @param {string} state - State string ('Locked', 'Dissolving', 'Dissolved')
  * @returns {Object} - Object with icon (React component) and color

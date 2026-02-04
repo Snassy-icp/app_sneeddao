@@ -15,7 +15,7 @@ import { useWalletOptional } from './contexts/WalletContext';
 import { fetchUserNeuronsForSns } from './utils/NeuronUtils';
 import { useNaming } from './NamingContext';
 import { VotingPowerCalculator } from './utils/VotingPowerUtils';
-import { getUserPermissionIcons, getStateIcon, PERM } from './utils/NeuronPermissionUtils.jsx';
+import { getUserPermissionIcons, getStateIcon, getOwnershipPriority, PERM } from './utils/NeuronPermissionUtils.jsx';
 import { Link } from 'react-router-dom';
 import { FaDollarSign, FaLock, FaBrain, FaInfoCircle, FaTint, FaSeedling, FaHourglassHalf, FaGift, FaExpandAlt, FaSync, FaQuestionCircle, FaPlus, FaBan, FaPlay, FaStop, FaWallet, FaExchangeAlt, FaArrowDown, FaArrowUp, FaChevronDown, FaChevronRight, FaExclamationTriangle, FaCog, FaClock, FaCut } from 'react-icons/fa';
 
@@ -2298,6 +2298,14 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     {neurons.length > 0 ? (
                                         neurons
                                             .filter(neuron => !hideEmptyNeurons || !isNeuronEmpty(neuron))
+                                            .sort((a, b) => {
+                                                // Sort by ownership priority (owners first, then hotkeys, then reachable)
+                                                const userPrincipal = identity?.getPrincipal()?.toString();
+                                                if (!userPrincipal) return 0;
+                                                const priorityA = getOwnershipPriority(a, userPrincipal);
+                                                const priorityB = getOwnershipPriority(b, userPrincipal);
+                                                return priorityA - priorityB;
+                                            })
                                             .map((neuron, neuronIndex) => {
                                             const neuronIdHex = getNeuronIdHex(neuron);
                                             const isExpanded = expandedNeurons.has(neuronIdHex);
