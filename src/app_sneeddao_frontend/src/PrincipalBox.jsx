@@ -73,7 +73,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
             return false;
         }
     });
-    const [walletTab, setWalletTab] = useState('tokens'); // 'tokens', 'positions', or 'dapps' (Apps)
+    const [walletTab, setWalletTab] = useState('tokens'); // 'tokens', 'positions' (Liquidity), or 'dapps' (Apps)
     const [showPositionDetailModal, setShowPositionDetailModal] = useState(false);
     const [detailPosition, setDetailPosition] = useState(null);
     const [detailPositionDetails, setDetailPositionDetails] = useState(null);
@@ -128,6 +128,9 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const [officialVersions, setOfficialVersions] = useState([]);
     const [trackedCanisterStatus, setTrackedCanisterStatus] = useState({}); // canisterId -> { cycles, memory, isController, moduleHash }
     const [detectedNeuronManagers, setDetectedNeuronManagers] = useState({}); // canisterId -> { version, neuronCount, cycles, memory, isController, isValid }
+    
+    // Controller status for registered neuron managers
+    const [neuronManagerIsController, setNeuronManagerIsController] = useState({}); // canisterId -> boolean
     
     // Get shared ICP price from context (ensures same value as Wallet page)
     const icpPrice = walletContext?.icpPrice;
@@ -255,6 +258,53 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         
         fetchCanisterStatus();
     }, [identity, trackedCanisters]);
+
+    // Fetch controller status for registered neuron managers
+    useEffect(() => {
+        const fetchManagerControllerStatus = async () => {
+            if (!identity || neuronManagers.length === 0) return;
+            
+            try {
+                const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                    ? 'https://ic0.app' 
+                    : 'http://localhost:4943';
+                const agent = new HttpAgent({ identity, host });
+                if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                    await agent.fetchRootKey();
+                }
+                
+                const controllerMap = {};
+                await Promise.all(neuronManagers.map(async (manager) => {
+                    const canisterId = manager.canisterId?.toString?.() || manager.canisterId?.toText?.() || manager.canisterId;
+                    let isController = false;
+                    
+                    try {
+                        const canisterIdPrincipal = Principal.fromText(canisterId);
+                        const mgmtActor = Actor.createActor(managementCanisterIdlFactory, {
+                            agent,
+                            canisterId: MANAGEMENT_CANISTER_ID,
+                            callTransform: (methodName, args, callConfig) => ({
+                                ...callConfig,
+                                effectiveCanisterId: canisterIdPrincipal,
+                            }),
+                        });
+                        await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
+                        isController = true;
+                    } catch (err) {
+                        // Not a controller
+                        isController = false;
+                    }
+                    
+                    controllerMap[canisterId] = isController;
+                }));
+                setNeuronManagerIsController(controllerMap);
+            } catch (err) {
+                console.warn('[QuickWallet] Error fetching manager controller status:', err);
+            }
+        };
+        
+        fetchManagerControllerStatus();
+    }, [identity, neuronManagers]);
 
     // Check if a module hash matches any known neuron manager version
     const isKnownNeuronManagerHash = useCallback((moduleHash) => {
@@ -1460,7 +1510,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                               }}
                           >
                               <FaWater size={10} />
-                              Positions
+                              Liquidity
                           </button>
                           <button
                               onClick={() => setWalletTab('dapps')}
@@ -1830,7 +1880,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                       </>
                       )}
 
-                      {/* Positions Tab Header */}
+                      {/* Liquidity Tab Header */}
                       {walletTab === 'positions' && (
                       <div 
                           style={{ 
@@ -1846,7 +1896,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                       >
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                               <FaWater size={10} />
-                              Positions
+                              Liquidity
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                               {totalPositionsUSD !== null && (
@@ -1894,7 +1944,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                       </div>
                       )}
 
-                      {/* Positions Tab Content */}
+                      {/* Liquidity Tab Content */}
                       {walletTab === 'positions' && (
                       <>
                       <div 
@@ -2123,7 +2173,12 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                           <button
                                               onClick={(e) => {
                                                   e.stopPropagation();
-                                                  handleOpenSendLiquidityPositionFromDetail({ ...position, ...positionDetails });
+                                                  // Map positionId to id for SendLiquidityPositionModal compatibility
+                                                  handleOpenSendLiquidityPositionFromDetail({ 
+                                                      ...position, 
+                                                      ...positionDetails,
+                                                      id: positionDetails.positionId
+                                                  });
                                               }}
                                               style={{
                                                   background: 'none',
@@ -2202,7 +2257,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                               }}
                           >
                               <FaWater size={11} />
-                              View All Positions
+                              View All Liquidity
                           </button>
                       )}
                       </>
@@ -2406,9 +2461,9 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                               isNeuronManager: true,
                                               neuronManagerVersion: manager.version,
                                               neuronCount: neurons.length,
-                                              cycles: null, // Registered managers don't have cycles info in quick wallet yet
+                                              cycles: null, // Will be fetched on modal open via auto-refresh
                                               memory: null,
-                                              isController: true, // You always control registered managers
+                                              isController: neuronManagerIsController[canisterIdStr] ?? false,
                                           })}
                                           style={{
                                               display: 'flex',
@@ -2445,16 +2500,18 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                               >
                                                   <FaBrain size={14} style={{ color: theme.colors.accent }} />
                                               </div>
-                                              {/* Crown for all registered managers (you always control these) */}
-                                              <FaCrown 
-                                                  size={8} 
-                                                  style={{ 
-                                                      position: 'absolute',
-                                                      top: '-2px',
-                                                      right: '-2px',
-                                                      color: '#f59e0b'
-                                                  }} 
-                                              />
+                                              {/* Crown only if user is a controller */}
+                                              {neuronManagerIsController[canisterIdStr] && (
+                                                  <FaCrown 
+                                                      size={8} 
+                                                      style={{ 
+                                                          position: 'absolute',
+                                                          top: '-2px',
+                                                          right: '-2px',
+                                                          color: '#f59e0b'
+                                                      }} 
+                                                  />
+                                              )}
                                           </div>
                                           
                                           {/* Info */}
@@ -2510,33 +2567,35 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                               </span>
                                           </div>
                                           
-                                          {/* Send Button */}
-                                          <button
-                                              onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  handleSendCanister(canisterIdStr, true);
-                                              }}
-                                              style={{
-                                                  background: 'none',
-                                                  border: 'none',
-                                                  padding: '4px 8px',
-                                                  cursor: 'pointer',
-                                                  color: theme.colors.accent,
-                                                  fontSize: '11px',
-                                                  display: 'flex',
-                                                  alignItems: 'center',
-                                                  gap: '4px',
-                                                  borderRadius: '4px',
-                                                  transition: 'background-color 0.15s ease',
-                                                  flexShrink: 0
-                                              }}
-                                              onMouseOver={(e) => e.currentTarget.style.backgroundColor = `${theme.colors.accent}20`}
-                                              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                                              title="Transfer control"
-                                          >
-                                              <FaPaperPlane size={10} />
-                                              <span>Send</span>
-                                          </button>
+                                          {/* Send Button - only show if controller */}
+                                          {neuronManagerIsController[canisterIdStr] && (
+                                              <button
+                                                  onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      handleSendCanister(canisterIdStr, true);
+                                                  }}
+                                                  style={{
+                                                      background: 'none',
+                                                      border: 'none',
+                                                      padding: '4px 8px',
+                                                      cursor: 'pointer',
+                                                      color: theme.colors.accent,
+                                                      fontSize: '11px',
+                                                      display: 'flex',
+                                                      alignItems: 'center',
+                                                      gap: '4px',
+                                                      borderRadius: '4px',
+                                                      transition: 'background-color 0.15s ease',
+                                                      flexShrink: 0
+                                                  }}
+                                                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = `${theme.colors.accent}20`}
+                                                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                                  title="Transfer control"
+                                              >
+                                                  <FaPaperPlane size={10} />
+                                                  <span>Send</span>
+                                              </button>
+                                          )}
                                       </div>
                                   );
                               })}

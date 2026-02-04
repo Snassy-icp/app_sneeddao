@@ -30,6 +30,7 @@ import { formatAmount, toJsonString, formatAmountWithConversion } from './utils/
 import TokenCard from './TokenCard';
 import TokenCardModal from './components/TokenCardModal';
 import DappCardModal from './components/DappCardModal';
+import PositionCardModal from './components/PositionCardModal';
 import PositionCard from './PositionCard';
 import { get_available, get_available_backend, getTokenLogo, get_token_conversion_rate, get_token_icp_rate, getTokenTVL, getTokenMetaForSwap, rewardAmountOrZero, availableOrZero } from './utils/TokenUtils';
 import { registerTrackedCanister, unregisterTrackedCanister, getCanisterInfo } from './utils/BackendUtils';
@@ -518,6 +519,12 @@ function Wallet() {
     const [showDappDetailModal, setShowDappDetailModal] = useState(false);
     const [detailDapp, setDetailDapp] = useState(null);
     const [isRefreshingDapp, setIsRefreshingDapp] = useState(false);
+    
+    // Position Card Modal state
+    const [showPositionDetailModal, setShowPositionDetailModal] = useState(false);
+    const [detailPosition, setDetailPosition] = useState(null);
+    const [detailPositionDetails, setDetailPositionDetails] = useState(null);
+    const [isRefreshingPositionModal, setIsRefreshingPositionModal] = useState(false);
     
     // Local position overrides for immediate UI updates (merged with context positions)
     const [localPositionOverrides, setLocalPositionOverrides] = useState({});
@@ -3262,6 +3269,49 @@ function Wallet() {
         }
     };
 
+    // Open position detail modal
+    const openPositionDetailModal = (position, positionDetails) => {
+        setDetailPosition(position);
+        setDetailPositionDetails(positionDetails);
+        setShowPositionDetailModal(true);
+    };
+
+    // Refresh position in detail modal
+    const handleRefreshPositionModal = async (position) => {
+        if (!position) return;
+        setIsRefreshingPositionModal(true);
+        try {
+            await handleRefreshPosition(position);
+            // The position data will be updated via context, which is reflected in the modal
+        } finally {
+            setIsRefreshingPositionModal(false);
+        }
+    };
+
+    // Keep detailPosition and detailPositionDetails in sync with liquidityPositions context
+    useEffect(() => {
+        if (detailPosition && detailPositionDetails && liquidityPositions.length > 0) {
+            const swapId = normalizeId(detailPosition.swapCanisterId);
+            const posId = detailPositionDetails.positionId;
+            
+            for (const lp of liquidityPositions) {
+                const lpSwapId = normalizeId(lp.swapCanisterId);
+                if (lpSwapId === swapId && lp.positions) {
+                    const updatedDetails = lp.positions.find(p => p.positionId === posId);
+                    if (updatedDetails) {
+                        if (lp !== detailPosition) {
+                            setDetailPosition(lp);
+                        }
+                        if (updatedDetails !== detailPositionDetails) {
+                            setDetailPositionDetails(updatedDetails);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    }, [liquidityPositions, detailPosition, detailPositionDetails]);
+
     const openWrapModal = (token) => {
         setSelectedToken(token);
         setShowWrapUnwrapModal(true);
@@ -5658,6 +5708,7 @@ function Wallet() {
                                 token1Fee={position.token1Fee}
                                 hideButtons={false}
                                 hideUnclaimedFees={false}
+                                onOpenDetailModal={openPositionDetailModal}
                             />
                         ))
                     );})}
@@ -8616,6 +8667,44 @@ function Wallet() {
                         setTransferCanisterSuccess('');
                         setTransferCanisterModalOpen(true);
                     }}
+                />
+                <PositionCardModal
+                    show={showPositionDetailModal}
+                    onClose={() => {
+                        setShowPositionDetailModal(false);
+                        setDetailPosition(null);
+                        setDetailPositionDetails(null);
+                    }}
+                    position={detailPosition}
+                    positionDetails={detailPositionDetails}
+                    openSendLiquidityPositionModal={(position) => {
+                        // Close the position modal first
+                        setShowPositionDetailModal(false);
+                        // Open the send modal with the position data
+                        openSendLiquidityPositionModal({ 
+                            ...detailPosition, 
+                            ...detailPositionDetails,
+                            id: detailPositionDetails?.positionId
+                        });
+                    }}
+                    openLockPositionModal={(position) => {
+                        // Close the position modal first
+                        setShowPositionDetailModal(false);
+                        // Open the lock modal
+                        openLockPositionModal(position);
+                    }}
+                    handleWithdrawPositionRewards={handleWithdrawPositionRewards}
+                    handleClaimLockedPositionFees={handleClaimLockedPositionFees}
+                    handleClaimUnlockedDepositedPositionFees={handleClaimUnlockedDepositedPositionFees}
+                    handleWithdrawPosition={handleWithdrawPosition}
+                    handleWithdrawSwapBalance={handleWithdrawSwapBalance}
+                    handleTransferPositionOwnership={handleSendLiquidityPosition}
+                    handleRefreshPosition={handleRefreshPositionModal}
+                    isRefreshing={isRefreshingPositionModal || (detailPosition ? refreshingPositions.has(normalizeId(detailPosition.swapCanisterId)) : false)}
+                    swapCanisterBalance0={detailPosition?.swapCanisterBalance0}
+                    swapCanisterBalance1={detailPosition?.swapCanisterBalance1}
+                    token0Fee={detailPosition?.token0Fee}
+                    token1Fee={detailPosition?.token1Fee}
                 />
                     </>
                 )}
