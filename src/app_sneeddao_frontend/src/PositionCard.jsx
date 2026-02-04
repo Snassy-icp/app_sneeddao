@@ -200,54 +200,56 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                                 {formatAmount(positionDetails.token0Amount + (hideUnclaimedFees ? 0n : positionDetails.tokensOwed0), position.token0Decimals)} {position.token0Symbol}
                             </span>
                         </div>
-                        {onOpenDetailModal && (
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    onOpenDetailModal(position, positionDetails);
-                                }}
-                                style={{
-                                    background: 'none',
-                                    border: 'none',
-                                    cursor: 'pointer',
-                                    padding: '4px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    color: theme.colors.mutedText,
-                                    transition: 'color 0.2s ease'
-                                }}
-                                onMouseEnter={(e) => e.currentTarget.style.color = theme.colors.accent}
-                                onMouseLeave={(e) => e.currentTarget.style.color = theme.colors.mutedText}
-                                title="Open in dialog"
-                            >
-                                <FaExpandAlt size={14} />
-                            </button>
-                        )}
-                        {handleRefreshPosition && (
-                            <button
-                                onClick={async (e) => {
-                                    e.stopPropagation();
-                                    await handleRefreshPosition(position);
-                                }}
-                                disabled={isRefreshing}
-                                style={{
-                                    background: 'none',
-                                    border: 'none',
-                                    cursor: isRefreshing ? 'default' : 'pointer',
-                                    padding: '4px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    color: theme.colors.mutedText,
-                                    transition: 'color 0.2s ease',
-                                    opacity: isRefreshing ? 0.6 : 1
-                                }}
-                                onMouseEnter={(e) => !isRefreshing && (e.currentTarget.style.color = theme.colors.primaryText)}
-                                onMouseLeave={(e) => !isRefreshing && (e.currentTarget.style.color = theme.colors.mutedText)}
-                                title="Refresh position data"
-                            >
-                                <FaSync size={12} style={{ animation: isRefreshing ? 'spin 1s linear infinite' : 'none' }} />
-                            </button>
-                        )}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            {onOpenDetailModal && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onOpenDetailModal(position, positionDetails);
+                                    }}
+                                    style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        padding: '4px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        color: theme.colors.mutedText,
+                                        transition: 'color 0.2s ease'
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.color = theme.colors.accent}
+                                    onMouseLeave={(e) => e.currentTarget.style.color = theme.colors.mutedText}
+                                    title="Open in dialog"
+                                >
+                                    <FaExpandAlt size={14} />
+                                </button>
+                            )}
+                            {handleRefreshPosition && (
+                                <button
+                                    onClick={async (e) => {
+                                        e.stopPropagation();
+                                        await handleRefreshPosition(position);
+                                    }}
+                                    disabled={isRefreshing}
+                                    style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        cursor: isRefreshing ? 'default' : 'pointer',
+                                        padding: '4px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        color: theme.colors.mutedText,
+                                        transition: 'color 0.2s ease',
+                                        opacity: isRefreshing ? 0.6 : 1
+                                    }}
+                                    onMouseEnter={(e) => !isRefreshing && (e.currentTarget.style.color = theme.colors.primaryText)}
+                                    onMouseLeave={(e) => !isRefreshing && (e.currentTarget.style.color = theme.colors.mutedText)}
+                                    title="Refresh position data"
+                                >
+                                    <FaSync size={12} style={{ animation: isRefreshing ? 'spin 1s linear infinite' : 'none' }} />
+                                </button>
+                            )}
+                        </div>
                     </div>
                     {/* Row 3: Second token balance */}
                     <div className="header-row-3" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>

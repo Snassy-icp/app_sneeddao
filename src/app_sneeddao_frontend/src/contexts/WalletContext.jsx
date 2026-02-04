@@ -10,7 +10,7 @@ import { createActor as createForumActor, canisterId as forumCanisterId } from '
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
-import { HttpAgent } from '@dfinity/agent';
+import { HttpAgent, Actor } from '@dfinity/agent';
 import { getTokenLogo, get_token_conversion_rate, get_available, get_available_backend } from '../utils/TokenUtils';
 import { fetchUserNeuronsForSns, uint8ArrayToHex } from '../utils/NeuronUtils';
 import { getTipTokensReceivedByUser, getTrackedCanisters } from '../utils/BackendUtils';
@@ -22,6 +22,29 @@ import { getCachedRewards, setCachedRewards } from '../hooks/useRewardsCache';
 import priceService from '../services/PriceService';
 
 const WalletContext = createContext(null);
+
+// Management canister for checking controller status
+const MANAGEMENT_CANISTER_ID = 'aaaaa-aa';
+const managementCanisterIdlFactory = ({ IDL }) => {
+    return IDL.Service({
+        canister_status: IDL.Func(
+            [IDL.Record({ canister_id: IDL.Principal })],
+            [IDL.Record({
+                status: IDL.Variant({ running: IDL.Null, stopping: IDL.Null, stopped: IDL.Null }),
+                memory_size: IDL.Nat,
+                cycles: IDL.Nat,
+                settings: IDL.Record({
+                    freezing_threshold: IDL.Nat,
+                    controllers: IDL.Vec(IDL.Principal),
+                    memory_allocation: IDL.Nat,
+                    compute_allocation: IDL.Nat,
+                }),
+                module_hash: IDL.Opt(IDL.Vec(IDL.Nat8)),
+            })],
+            []
+        ),
+    });
+};
 
 // ============================================================================
 // PERSISTENT CACHE HELPERS (IndexedDB - much larger quota than localStorage)
@@ -327,18 +350,24 @@ export const WalletProvider = ({ children }) => {
     }, [neuronCache]);
     
     // ICP Neuron Managers - shared between quick wallet and /wallet page
-    const [neuronManagers, setNeuronManagers] = useState([]); // Array of { canisterId, version, isController }
+    const [neuronManagers, setNeuronManagers] = useState([]); // Array of { canisterId, version }
     const [managerNeurons, setManagerNeurons] = useState({}); // canisterId -> { loading, neurons, error }
     const [managerNeuronsTotal, setManagerNeuronsTotal] = useState(0); // Total ICP value
     const [neuronManagersLoading, setNeuronManagersLoading] = useState(false);
     const [hasFetchedManagers, setHasFetchedManagers] = useState(false);
     const managersFetchSessionRef = useRef(0);
     
+    // Controller status for neuron managers - shared between quick wallet and /wallet page
+    const [neuronManagerIsController, setNeuronManagerIsController] = useState({}); // canisterId -> boolean
+    
     // Tracked Canisters (wallet canisters) - shared between quick wallet and /wallet page
     const [trackedCanisters, setTrackedCanisters] = useState([]); // Array of canister ID strings
     const [trackedCanistersLoading, setTrackedCanistersLoading] = useState(false);
     const [hasFetchedTrackedCanisters, setHasFetchedTrackedCanisters] = useState(false);
     const trackedCanistersFetchSessionRef = useRef(0);
+    
+    // Controller status for tracked canisters - shared between quick wallet and /wallet page
+    const [trackedCanisterIsController, setTrackedCanisterIsController] = useState({}); // canisterId -> boolean
     
     // Track if we loaded from persistent cache (for instant display)
     const [loadedFromCache, setLoadedFromCache] = useState(false);
@@ -1689,6 +1718,97 @@ export const WalletProvider = ({ children }) => {
         setHasFetchedTrackedCanisters(false);
         fetchTrackedCanisters();
     }, [fetchTrackedCanisters]);
+    
+    // Fetch controller status for neuron managers
+    const fetchNeuronManagerControllerStatus = useCallback(async () => {
+        if (!identity || neuronManagers.length === 0) return;
+        
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const controllerMap = {};
+            await Promise.all(neuronManagers.map(async (manager) => {
+                const canisterId = manager.canisterId?.toString?.() || manager.canisterId?.toText?.() || String(manager.canisterId);
+                
+                try {
+                    const canisterIdPrincipal = Principal.fromText(canisterId);
+                    const mgmtActor = Actor.createActor(managementCanisterIdlFactory, {
+                        agent,
+                        canisterId: MANAGEMENT_CANISTER_ID,
+                        callTransform: (methodName, args, callConfig) => ({
+                            ...callConfig,
+                            effectiveCanisterId: canisterIdPrincipal,
+                        }),
+                    });
+                    await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
+                    controllerMap[canisterId] = true;
+                } catch (err) {
+                    // Not a controller
+                    controllerMap[canisterId] = false;
+                }
+            }));
+            setNeuronManagerIsController(controllerMap);
+        } catch (err) {
+            console.warn('[WalletContext] Error fetching manager controller status:', err);
+        }
+    }, [identity, neuronManagers]);
+    
+    // Fetch controller status for tracked canisters
+    const fetchTrackedCanisterControllerStatus = useCallback(async () => {
+        if (!identity || trackedCanisters.length === 0) return;
+        
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const controllerMap = {};
+            await Promise.all(trackedCanisters.map(async (canisterId) => {
+                try {
+                    const canisterIdPrincipal = Principal.fromText(canisterId);
+                    const mgmtActor = Actor.createActor(managementCanisterIdlFactory, {
+                        agent,
+                        canisterId: MANAGEMENT_CANISTER_ID,
+                        callTransform: (methodName, args, callConfig) => ({
+                            ...callConfig,
+                            effectiveCanisterId: canisterIdPrincipal,
+                        }),
+                    });
+                    await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
+                    controllerMap[canisterId] = true;
+                } catch (err) {
+                    // Not a controller
+                    controllerMap[canisterId] = false;
+                }
+            }));
+            setTrackedCanisterIsController(controllerMap);
+        } catch (err) {
+            console.warn('[WalletContext] Error fetching tracked canister controller status:', err);
+        }
+    }, [identity, trackedCanisters]);
+    
+    // Auto-fetch controller status when managers/canisters are loaded
+    useEffect(() => {
+        if (neuronManagers.length > 0 && identity) {
+            fetchNeuronManagerControllerStatus();
+        }
+    }, [neuronManagers, identity, fetchNeuronManagerControllerStatus]);
+    
+    useEffect(() => {
+        if (trackedCanisters.length > 0 && identity) {
+            fetchTrackedCanisterControllerStatus();
+        }
+    }, [trackedCanisters, identity, fetchTrackedCanisterControllerStatus]);
 
     // Fetch tokens and positions when user authenticates
     // Always fetch fresh data in background, even if we loaded from persistent cache
@@ -1737,7 +1857,9 @@ export const WalletProvider = ({ children }) => {
             setNeuronManagers([]);
             setManagerNeurons({});
             setManagerNeuronsTotal(0);
+            setNeuronManagerIsController({});
             setTrackedCanisters([]);
+            setTrackedCanisterIsController({});
             setNeuronCache(new Map());
             setHasFetchedInitial(false);
             setHasFetchedPositions(false);
@@ -1987,6 +2109,9 @@ export const WalletProvider = ({ children }) => {
             trackedCanistersLoading,
             hasFetchedTrackedCanisters,
             refreshTrackedCanisters,
+            // Controller status - shared between quick wallet and /wallet page
+            neuronManagerIsController,
+            trackedCanisterIsController,
             // Shared ICP price - ensures consistent values across components
             icpPrice,
             fetchIcpPrice

@@ -126,11 +126,12 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     
     // Neuron manager detection state for tracked canisters
     const [officialVersions, setOfficialVersions] = useState([]);
-    const [trackedCanisterStatus, setTrackedCanisterStatus] = useState({}); // canisterId -> { cycles, memory, isController, moduleHash }
+    const [trackedCanisterStatus, setTrackedCanisterStatus] = useState({}); // canisterId -> { cycles, memory, moduleHash }
     const [detectedNeuronManagers, setDetectedNeuronManagers] = useState({}); // canisterId -> { version, neuronCount, cycles, memory, isController, isValid }
     
-    // Controller status for registered neuron managers
-    const [neuronManagerIsController, setNeuronManagerIsController] = useState({}); // canisterId -> boolean
+    // Get shared controller status from context (same data as /wallet page)
+    const neuronManagerIsController = walletContext?.neuronManagerIsController || {};
+    const trackedCanisterIsController = walletContext?.trackedCanisterIsController || {};
     
     // Get shared ICP price from context (ensures same value as Wallet page)
     const icpPrice = walletContext?.icpPrice;
@@ -258,53 +259,6 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         
         fetchCanisterStatus();
     }, [identity, trackedCanisters]);
-
-    // Fetch controller status for registered neuron managers
-    useEffect(() => {
-        const fetchManagerControllerStatus = async () => {
-            if (!identity || neuronManagers.length === 0) return;
-            
-            try {
-                const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
-                    ? 'https://ic0.app' 
-                    : 'http://localhost:4943';
-                const agent = new HttpAgent({ identity, host });
-                if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                    await agent.fetchRootKey();
-                }
-                
-                const controllerMap = {};
-                await Promise.all(neuronManagers.map(async (manager) => {
-                    const canisterId = manager.canisterId?.toString?.() || manager.canisterId?.toText?.() || manager.canisterId;
-                    let isController = false;
-                    
-                    try {
-                        const canisterIdPrincipal = Principal.fromText(canisterId);
-                        const mgmtActor = Actor.createActor(managementCanisterIdlFactory, {
-                            agent,
-                            canisterId: MANAGEMENT_CANISTER_ID,
-                            callTransform: (methodName, args, callConfig) => ({
-                                ...callConfig,
-                                effectiveCanisterId: canisterIdPrincipal,
-                            }),
-                        });
-                        await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
-                        isController = true;
-                    } catch (err) {
-                        // Not a controller
-                        isController = false;
-                    }
-                    
-                    controllerMap[canisterId] = isController;
-                }));
-                setNeuronManagerIsController(controllerMap);
-            } catch (err) {
-                console.warn('[QuickWallet] Error fetching manager controller status:', err);
-            }
-        };
-        
-        fetchManagerControllerStatus();
-    }, [identity, neuronManagers]);
 
     // Check if a module hash matches any known neuron manager version
     const isKnownNeuronManagerHash = useCallback((moduleHash) => {
@@ -2605,7 +2559,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                   const status = trackedCanisterStatus[canisterId];
                                   const detectedManager = detectedNeuronManagers[canisterId];
                                   const isNeuronManager = detectedManager?.isValid;
-                                  const isController = status?.isController;
+                                  // Use shared controller status from context
+                                  const isController = trackedCanisterIsController[canisterId];
                                   const cycles = status?.cycles;
                                   const memory = status?.memory;
                                   
