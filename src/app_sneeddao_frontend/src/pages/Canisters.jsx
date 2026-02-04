@@ -13,6 +13,7 @@ import { usePremiumStatus } from '../hooks/usePremiumStatus';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
 import { FaPlus, FaTrash, FaCube, FaSpinner, FaChevronDown, FaChevronRight, FaBrain, FaFolder, FaFolderOpen, FaEdit, FaCheck, FaTimes, FaCrown, FaLock, FaStar, FaArrowRight, FaWallet, FaQuestionCircle } from 'react-icons/fa';
+import { uint8ArrayToHex } from '../utils/NeuronUtils';
 import { useNavigate } from 'react-router-dom';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
@@ -199,6 +200,11 @@ export default function CanistersPage() {
     const [confirmRemoveManager, setConfirmRemoveManager] = useState(null);
     const [managerError, setManagerError] = useState(null);
     const [latestOfficialVersion, setLatestOfficialVersion] = useState(null);
+    
+    // Official versions and detected neuron managers (for progressive upgrade)
+    const [officialVersions, setOfficialVersions] = useState([]);
+    // Detected neuron managers from custom/wallet sections - canisterId -> { version, neuronCount, cycles, memory, isController }
+    const [detectedNeuronManagers, setDetectedNeuronManagers] = useState({});
     // Use different thresholds for neuron managers vs general canisters
     const [cycleSettings] = useState(() => getCanisterManagerSettings());
     const [neuronManagerCycleSettings] = useState(() => getNeuronManagerSettings());
@@ -251,6 +257,91 @@ export default function CanistersPage() {
         if (!latestOfficialVersion || !version) return false;
         return compareVersions(version, latestOfficialVersion) < 0;
     };
+    
+    // Check if a module hash matches any known neuron manager version
+    const isKnownNeuronManagerHash = useCallback((moduleHash) => {
+        if (!moduleHash || officialVersions.length === 0) return null;
+        const hashLower = moduleHash.toLowerCase();
+        return officialVersions.find(v => v.wasmHash.toLowerCase() === hashLower) || null;
+    }, [officialVersions]);
+    
+    // Fetch neuron manager info for a detected canister
+    const fetchDetectedManagerInfo = useCallback(async (canisterId) => {
+        if (!identity) return;
+        
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const managerActor = createManagerActor(canisterId, { agent });
+            const [version, neuronIds] = await Promise.all([
+                managerActor.getVersion(),
+                managerActor.getNeuronIds(),
+            ]);
+            
+            // Get the existing status info (cycles, memory, isController)
+            const existingStatus = canisterStatus[canisterId] || trackedCanisterStatus[canisterId] || {};
+            
+            setDetectedNeuronManagers(prev => ({
+                ...prev,
+                [canisterId]: {
+                    version,
+                    neuronCount: neuronIds?.length || 0,
+                    cycles: existingStatus.cycles,
+                    memory: existingStatus.memory,
+                    isController: existingStatus.isController,
+                }
+            }));
+        } catch (err) {
+            console.warn(`Failed to fetch manager info for ${canisterId}:`, err.message || err);
+            // Still mark as detected but with fallback values
+            const existingStatus = canisterStatus[canisterId] || trackedCanisterStatus[canisterId] || {};
+            setDetectedNeuronManagers(prev => ({
+                ...prev,
+                [canisterId]: {
+                    version: { major: 0n, minor: 0n, patch: 0n },
+                    neuronCount: 0,
+                    cycles: existingStatus.cycles,
+                    memory: existingStatus.memory,
+                    isController: existingStatus.isController,
+                }
+            }));
+        }
+    }, [identity, canisterStatus, trackedCanisterStatus]);
+    
+    // Detect neuron managers from custom canisters based on module hash
+    useEffect(() => {
+        if (officialVersions.length === 0) return;
+        
+        // Check custom canister statuses
+        for (const [canisterId, status] of Object.entries(canisterStatus)) {
+            if (!status?.moduleHash) continue;
+            if (detectedNeuronManagers[canisterId]) continue; // Already detected
+            
+            const matchedVersion = isKnownNeuronManagerHash(status.moduleHash);
+            if (matchedVersion) {
+                // Fetch neuron manager info
+                fetchDetectedManagerInfo(canisterId);
+            }
+        }
+        
+        // Check tracked (wallet) canister statuses
+        for (const [canisterId, status] of Object.entries(trackedCanisterStatus)) {
+            if (!status?.moduleHash) continue;
+            if (detectedNeuronManagers[canisterId]) continue; // Already detected
+            
+            const matchedVersion = isKnownNeuronManagerHash(status.moduleHash);
+            if (matchedVersion) {
+                // Fetch neuron manager info
+                fetchDetectedManagerInfo(canisterId);
+            }
+        }
+    }, [officialVersions, canisterStatus, trackedCanisterStatus, detectedNeuronManagers, isKnownNeuronManagerHash, fetchDetectedManagerInfo]);
 
     // Fetch neuron managers
     const fetchNeuronManagers = useCallback(async () => {
@@ -273,14 +364,17 @@ export default function CanistersPage() {
             const factory = createFactoryActor(factoryCanisterId, { agent });
             
             // Fetch managers and official versions in parallel
-            const [canisterIds, officialVersions] = await Promise.all([
+            const [canisterIds, fetchedOfficialVersions] = await Promise.all([
                 factory.getMyManagers(),
                 factory.getOfficialVersions(),
             ]);
             
+            // Store official versions for use in detecting neuron managers
+            setOfficialVersions(fetchedOfficialVersions || []);
+            
             // Find latest official version
-            if (officialVersions && officialVersions.length > 0) {
-                const sorted = [...officialVersions].sort((a, b) => compareVersions(b, a));
+            if (fetchedOfficialVersions && fetchedOfficialVersions.length > 0) {
+                const sorted = [...fetchedOfficialVersions].sort((a, b) => compareVersions(b, a));
                 setLatestOfficialVersion(sorted[0]);
             }
             
@@ -288,48 +382,58 @@ export default function CanistersPage() {
             const managersWithInfo = await Promise.all(
                 canisterIds.map(async (canisterIdPrincipal) => {
                     const canisterId = canisterIdPrincipal.toString();
+                    let isValidManager = true; // Track if getVersion/getNeuronIds succeeded
+                    let currentVersion = null;
+                    let neuronIds = [];
+                    
                     try {
                         const managerActor = createManagerActor(canisterId, { agent });
-                        const [currentVersion, neuronIds] = await Promise.all([
+                        [currentVersion, neuronIds] = await Promise.all([
                             managerActor.getVersion(),
                             managerActor.getNeuronIds(),
                         ]);
-                        
-                        // Try to fetch cycles and memory (may fail if not controller)
-                        // Need to create actor with effectiveCanisterId for management canister
-                        let cycles = null;
-                        let memory = null;
-                        let isController = false;
-                        try {
-                            const mgmtActor = Actor.createActor(managementCanisterIdlFactory, {
-                                agent,
-                                canisterId: MANAGEMENT_CANISTER_ID,
-                                callTransform: (methodName, args, callConfig) => ({
-                                    ...callConfig,
-                                    effectiveCanisterId: canisterIdPrincipal,
-                                }),
-                            });
-                            const status = await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
-                            cycles = Number(status.cycles);
-                            memory = Number(status.memory_size);
-                            isController = true;
-                        } catch (cyclesErr) {
-                            // Not a controller, can't get status
-                            console.log(`Cannot fetch status for ${canisterId} (not a controller)`);
-                        }
-                        
-                        return { 
-                            canisterId: canisterIdPrincipal, 
-                            version: currentVersion,
-                            neuronCount: neuronIds?.length || 0,
-                            cycles,
-                            memory,
-                            isController,
-                        };
                     } catch (err) {
-                        console.error(`Error fetching info for ${canisterId}:`, err);
-                        return { canisterId: canisterIdPrincipal, version: { major: 0, minor: 0, patch: 0 }, neuronCount: 0, cycles: null, memory: null, isController: false };
+                        console.warn(`Manager methods failed for ${canisterId}:`, err.message || err);
+                        isValidManager = false;
+                        currentVersion = { major: 0n, minor: 0n, patch: 0n };
+                        neuronIds = [];
                     }
+                    
+                    // Try to fetch cycles, memory, and module hash (may fail if not controller)
+                    // Need to create actor with effectiveCanisterId for management canister
+                    let cycles = null;
+                    let memory = null;
+                    let isController = false;
+                    let moduleHash = null;
+                    try {
+                        const mgmtActor = Actor.createActor(managementCanisterIdlFactory, {
+                            agent,
+                            canisterId: MANAGEMENT_CANISTER_ID,
+                            callTransform: (methodName, args, callConfig) => ({
+                                ...callConfig,
+                                effectiveCanisterId: canisterIdPrincipal,
+                            }),
+                        });
+                        const status = await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
+                        cycles = Number(status.cycles);
+                        memory = Number(status.memory_size);
+                        moduleHash = status.module_hash[0] ? uint8ArrayToHex(status.module_hash[0]) : null;
+                        isController = true;
+                    } catch (cyclesErr) {
+                        // Not a controller, can't get status
+                        console.log(`Cannot fetch status for ${canisterId} (not a controller)`);
+                    }
+                    
+                    return { 
+                        canisterId: canisterIdPrincipal, 
+                        version: currentVersion,
+                        neuronCount: neuronIds?.length || 0,
+                        cycles,
+                        memory,
+                        isController,
+                        moduleHash,
+                        isValidManager, // True if getVersion/getNeuronIds succeeded
+                    };
                 })
             );
             
@@ -368,12 +472,13 @@ export default function CanistersPage() {
             const status = await mgmtActor.canister_status({ canister_id: canisterPrincipal });
             const cycles = Number(status.cycles);
             const memory = Number(status.memory_size);
+            const moduleHash = status.module_hash[0] ? uint8ArrayToHex(status.module_hash[0]) : null;
             
-            setCanisterStatus(prev => ({ ...prev, [canisterId]: { cycles, memory, isController: true } }));
+            setCanisterStatus(prev => ({ ...prev, [canisterId]: { cycles, memory, isController: true, moduleHash } }));
         } catch (err) {
             // Not a controller or other error - mark isController as false
             console.log(`Cannot fetch status for ${canisterId}:`, err.message || err);
-            setCanisterStatus(prev => ({ ...prev, [canisterId]: { cycles: null, memory: null, isController: false } }));
+            setCanisterStatus(prev => ({ ...prev, [canisterId]: { cycles: null, memory: null, isController: false, moduleHash: null } }));
         }
     }, [identity]);
 
@@ -531,10 +636,11 @@ export default function CanistersPage() {
                                 cycles: Number(status.cycles),
                                 memory: Number(status.memory_size),
                                 isController: true,
+                                moduleHash: status.module_hash[0] ? uint8ArrayToHex(status.module_hash[0]) : null,
                             };
                         } catch {
                             // Can't get status - not a controller
-                            statusMap[canisterId] = null;
+                            statusMap[canisterId] = { cycles: null, memory: null, isController: false, moduleHash: null };
                         }
                     }));
                     setTrackedCanisterStatus(statusMap);
@@ -1411,7 +1517,10 @@ export default function CanistersPage() {
         // Health status props
         getGroupHealthStatus, getStatusLampColor,
         // Drag and drop handlers
-        onDndDrop, canDropItem
+        onDndDrop, canDropItem,
+        // Neuron manager detection props
+        detectedNeuronManagers, neuronManagerCycleSettings, latestOfficialVersion,
+        isVersionOutdated, getManagerHealthStatus,
     }) => {
         // react-dnd drag hook for making this group draggable
         const [{ isDragging }, drag] = useDrag(() => ({
@@ -1740,29 +1849,62 @@ export default function CanistersPage() {
                                 getStatusLampColor={getStatusLampColor}
                                 onDndDrop={onDndDrop}
                                 canDropItem={canDropItem}
+                                detectedNeuronManagers={detectedNeuronManagers}
+                                neuronManagerCycleSettings={neuronManagerCycleSettings}
+                                latestOfficialVersion={latestOfficialVersion}
+                                isVersionOutdated={isVersionOutdated}
+                                getManagerHealthStatus={getManagerHealthStatus}
                             />
                         ))}
                         
                         {/* Canisters in this group */}
                         {group.canisters.length > 0 && (
                             <div style={styles.canisterList}>
-                                {group.canisters.map((canisterId) => (
-                                    <CanisterCard
-                                        key={canisterId}
-                                        canisterId={canisterId}
-                                        groupId={group.id}
-                                        styles={styles}
-                                        theme={theme}
-                                        canisterStatus={canisterStatus}
-                                        cycleSettings={cycleSettings}
-                                        principalNames={principalNames}
-                                        principalNicknames={principalNicknames}
-                                        isAuthenticated={isAuthenticated}
-                                        confirmRemoveCanister={confirmRemoveCanister}
-                                        setConfirmRemoveCanister={setConfirmRemoveCanister}
-                                        handleRemoveCanister={handleRemoveCanister}
-                                    />
-                                ))}
+                                {group.canisters.map((canisterId) => {
+                                    // Check if this canister is a detected neuron manager
+                                    const detectedManager = detectedNeuronManagers?.[canisterId];
+                                    if (detectedManager) {
+                                        return (
+                                            <NeuronManagerCardItem
+                                                key={canisterId}
+                                                canisterId={canisterId}
+                                                sourceGroupId={group.id}
+                                                managerInfo={detectedManager}
+                                                styles={styles}
+                                                theme={theme}
+                                                principalNames={principalNames}
+                                                principalNicknames={principalNicknames}
+                                                isAuthenticated={isAuthenticated}
+                                                neuronManagerCycleSettings={neuronManagerCycleSettings}
+                                                latestOfficialVersion={latestOfficialVersion}
+                                                isVersionOutdated={isVersionOutdated}
+                                                getManagerHealthStatus={getManagerHealthStatus}
+                                                getStatusLampColor={getStatusLampColor}
+                                                onRemove={(id) => handleRemoveCanister(id, group.id)}
+                                                isConfirming={confirmRemoveCanister?.canisterId === canisterId && confirmRemoveCanister?.groupId === group.id}
+                                                setConfirmRemove={(id) => setConfirmRemoveCanister(id ? { canisterId: id, groupId: group.id } : null)}
+                                                isRemoving={false}
+                                            />
+                                        );
+                                    }
+                                    return (
+                                        <CanisterCard
+                                            key={canisterId}
+                                            canisterId={canisterId}
+                                            groupId={group.id}
+                                            styles={styles}
+                                            theme={theme}
+                                            canisterStatus={canisterStatus}
+                                            cycleSettings={cycleSettings}
+                                            principalNames={principalNames}
+                                            principalNicknames={principalNicknames}
+                                            isAuthenticated={isAuthenticated}
+                                            confirmRemoveCanister={confirmRemoveCanister}
+                                            setConfirmRemoveCanister={setConfirmRemoveCanister}
+                                            handleRemoveCanister={handleRemoveCanister}
+                                        />
+                                    );
+                                })}
                             </div>
                         )}
                         
@@ -2165,6 +2307,243 @@ export default function CanistersPage() {
                             title="Remove from tracking"
                         >
                             <FaTrash />
+                        </button>
+                    )}
+                </div>
+            </div>
+        );
+    };
+    
+    // Component for rendering a detected neuron manager card (can be used in any section)
+    const NeuronManagerCardItem = ({
+        canisterId,
+        sourceGroupId,
+        managerInfo, // { version, neuronCount, cycles, memory, isController }
+        styles,
+        theme,
+        principalNames,
+        principalNicknames,
+        isAuthenticated,
+        neuronManagerCycleSettings,
+        latestOfficialVersion,
+        isVersionOutdated,
+        getManagerHealthStatus,
+        getStatusLampColor,
+        onRemove,
+        isConfirming,
+        setConfirmRemove,
+        isRemoving,
+    }) => {
+        // react-dnd drag hook
+        const [{ isDragging }, drag] = useDrag(() => ({
+            type: DragItemTypes.CANISTER,
+            item: { type: 'canister', id: canisterId, sourceGroupId },
+            collect: (monitor) => ({
+                isDragging: monitor.isDragging(),
+            }),
+        }), [canisterId, sourceGroupId]);
+
+        const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
+        const version = managerInfo?.version;
+        const neuronCount = managerInfo?.neuronCount || 0;
+        const cycles = managerInfo?.cycles;
+        const memory = managerInfo?.memory;
+        const isController = managerInfo?.isController;
+        
+        // Compute health status similar to neuron managers section
+        const healthStatus = getManagerHealthStatus({ cycles, version }, neuronManagerCycleSettings);
+        const lampColor = getStatusLampColor(healthStatus);
+
+        return (
+            <div 
+                ref={drag}
+                style={{
+                    ...styles.managerCard,
+                    cursor: isDragging ? 'grabbing' : 'grab',
+                    opacity: isDragging ? 0.4 : 1,
+                    transition: 'opacity 0.15s ease',
+                }}
+            >
+                <div style={styles.managerInfo}>
+                    {/* Health status lamp */}
+                    <span
+                        style={{
+                            width: '8px',
+                            height: '8px',
+                            borderRadius: '50%',
+                            backgroundColor: lampColor,
+                            boxShadow: healthStatus !== 'unknown' ? `0 0 6px ${lampColor}` : 'none',
+                            flexShrink: 0,
+                        }}
+                        title={`Health: ${healthStatus}${isVersionOutdated(version) ? ' (outdated version)' : ''}`}
+                    />
+                    <div style={{ ...styles.managerIcon, position: 'relative' }}>
+                        <FaBrain size={18} />
+                        {isController && (
+                            <FaCrown 
+                                size={10} 
+                                style={{ 
+                                    position: 'absolute', 
+                                    top: -4, 
+                                    right: -4, 
+                                    color: '#f59e0b',
+                                }} 
+                                title="You are a controller"
+                            />
+                        )}
+                    </div>
+                    <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                            <PrincipalDisplay
+                                principal={canisterId}
+                                displayInfo={displayInfo}
+                                showCopyButton={true}
+                                isAuthenticated={isAuthenticated}
+                                noLink={true}
+                                style={{ fontSize: '14px' }}
+                                showSendMessage={false}
+                                showViewProfile={false}
+                            />
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                            {version && (
+                                <span 
+                                    style={{
+                                        ...styles.managerVersion,
+                                        ...(isVersionOutdated(version) ? {
+                                            backgroundColor: '#f59e0b20',
+                                            color: '#f59e0b',
+                                        } : {}),
+                                    }}
+                                    title={isVersionOutdated(version) 
+                                        ? `Newer version available: v${Number(latestOfficialVersion?.major || 0)}.${Number(latestOfficialVersion?.minor || 0)}.${Number(latestOfficialVersion?.patch || 0)}`
+                                        : undefined
+                                    }
+                                >
+                                    {isVersionOutdated(version) && '⚠️ '}
+                                    v{Number(version.major)}.{Number(version.minor)}.{Number(version.patch)}
+                                </span>
+                            )}
+                            <span style={{
+                                ...styles.managerVersion,
+                                backgroundColor: neuronCount > 0 ? '#8b5cf620' : theme.colors.tertiaryBg,
+                                color: neuronCount > 0 ? '#8b5cf6' : theme.colors.secondaryText,
+                            }}>
+                                🧠 {neuronCount} neuron{neuronCount !== 1 ? 's' : ''}
+                            </span>
+                            {cycles !== null && cycles !== undefined && (
+                                <span 
+                                    style={{
+                                        ...styles.managerVersion,
+                                        backgroundColor: `${getCyclesColor(cycles, neuronManagerCycleSettings)}20`,
+                                        color: getCyclesColor(cycles, neuronManagerCycleSettings),
+                                    }}
+                                    title={`${cycles.toLocaleString()} cycles`}
+                                >
+                                    ⚡ {formatCyclesCompact(cycles)}
+                                </span>
+                            )}
+                            {memory !== null && memory !== undefined && (
+                                <span 
+                                    style={{
+                                        ...styles.managerVersion,
+                                        backgroundColor: `${theme.colors.accent}20`,
+                                        color: theme.colors.accent,
+                                    }}
+                                    title={`${memory.toLocaleString()} bytes`}
+                                >
+                                    💾 {formatMemory(memory)}
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                </div>
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <Link
+                        to={`/icp_neuron_manager/${canisterId}`}
+                        style={{
+                            ...styles.viewLink,
+                            backgroundColor: '#8b5cf615',
+                            color: '#8b5cf6',
+                            padding: '6px 8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                        }}
+                        title="Manage neurons"
+                    >
+                        <FaBrain size={12} />
+                    </Link>
+                    <Link
+                        to={`/canister?id=${canisterId}`}
+                        style={{
+                            ...styles.viewLink,
+                            padding: '6px 8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                        }}
+                        title="View details"
+                    >
+                        <FaEdit size={12} />
+                    </Link>
+                    {isConfirming ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }} onClick={(e) => e.stopPropagation()}>
+                            <span style={{ color: '#888', fontSize: '11px', whiteSpace: 'nowrap' }}>Remove?</span>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setConfirmRemove(null);
+                                    onRemove(canisterId);
+                                }}
+                                disabled={isRemoving}
+                                style={{
+                                    backgroundColor: '#ef4444',
+                                    color: '#fff',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '4px 10px',
+                                    cursor: isRemoving ? 'not-allowed' : 'pointer',
+                                    fontSize: '12px',
+                                    fontWeight: '500',
+                                    opacity: isRemoving ? 0.7 : 1,
+                                }}
+                            >
+                                {isRemoving ? '...' : 'Yes'}
+                            </button>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setConfirmRemove(null);
+                                }}
+                                style={{
+                                    backgroundColor: theme.colors.secondaryBg,
+                                    color: theme.colors.primaryText,
+                                    border: `1px solid ${theme.colors.border}`,
+                                    borderRadius: '4px',
+                                    padding: '4px 10px',
+                                    cursor: 'pointer',
+                                    fontSize: '12px',
+                                }}
+                            >
+                                No
+                            </button>
+                        </div>
+                    ) : (
+                        <button
+                            onClick={(e) => { 
+                                e.stopPropagation(); 
+                                setConfirmRemove(canisterId);
+                            }}
+                            style={styles.removeButton}
+                            disabled={isRemoving}
+                            title="Remove from list"
+                        >
+                            {isRemoving ? (
+                                <FaSpinner className="spin" />
+                            ) : (
+                                <FaTrash />
+                            )}
                         </button>
                     )}
                 </div>
@@ -3199,6 +3578,11 @@ export default function CanistersPage() {
                                                 getStatusLampColor={getStatusLampColor}
                                                 onDndDrop={handleDndDrop}
                                                 canDropItem={canDropItem}
+                                                detectedNeuronManagers={detectedNeuronManagers}
+                                                neuronManagerCycleSettings={neuronManagerCycleSettings}
+                                                latestOfficialVersion={latestOfficialVersion}
+                                                isVersionOutdated={isVersionOutdated}
+                                                getManagerHealthStatus={getManagerHealthStatus}
                                             />
                                         ))}
                                         
@@ -3235,23 +3619,51 @@ export default function CanistersPage() {
                                                     </div>
                                                     {canisterGroups.ungrouped.length > 0 && (
                                                         <div style={styles.canisterList}>
-                                                            {canisterGroups.ungrouped.map((canisterId) => (
-                                                                <CanisterCard
-                                                                    key={canisterId}
-                                                                    canisterId={canisterId}
-                                                                    groupId="ungrouped"
-                                                                    styles={styles}
-                                                                    theme={theme}
-                                                                    canisterStatus={canisterStatus}
-                                                                    cycleSettings={cycleSettings}
-                                                                    principalNames={principalNames}
-                                                                    principalNicknames={principalNicknames}
-                                                                    isAuthenticated={isAuthenticated}
-                                                                    confirmRemoveCanister={confirmRemoveCanister}
-                                                                    setConfirmRemoveCanister={setConfirmRemoveCanister}
-                                                                    handleRemoveCanister={handleRemoveCanister}
-                                                                />
-                                                            ))}
+                                                            {canisterGroups.ungrouped.map((canisterId) => {
+                                                                // Check if this canister is a detected neuron manager
+                                                                const detectedManager = detectedNeuronManagers[canisterId];
+                                                                if (detectedManager) {
+                                                                    return (
+                                                                        <NeuronManagerCardItem
+                                                                            key={canisterId}
+                                                                            canisterId={canisterId}
+                                                                            sourceGroupId="ungrouped"
+                                                                            managerInfo={detectedManager}
+                                                                            styles={styles}
+                                                                            theme={theme}
+                                                                            principalNames={principalNames}
+                                                                            principalNicknames={principalNicknames}
+                                                                            isAuthenticated={isAuthenticated}
+                                                                            neuronManagerCycleSettings={neuronManagerCycleSettings}
+                                                                            latestOfficialVersion={latestOfficialVersion}
+                                                                            isVersionOutdated={isVersionOutdated}
+                                                                            getManagerHealthStatus={getManagerHealthStatus}
+                                                                            getStatusLampColor={getStatusLampColor}
+                                                                            onRemove={(id) => handleRemoveCanister(id, 'ungrouped')}
+                                                                            isConfirming={confirmRemoveCanister?.canisterId === canisterId && confirmRemoveCanister?.groupId === 'ungrouped'}
+                                                                            setConfirmRemove={(id) => setConfirmRemoveCanister(id ? { canisterId: id, groupId: 'ungrouped' } : null)}
+                                                                            isRemoving={false}
+                                                                        />
+                                                                    );
+                                                                }
+                                                                return (
+                                                                    <CanisterCard
+                                                                        key={canisterId}
+                                                                        canisterId={canisterId}
+                                                                        groupId="ungrouped"
+                                                                        styles={styles}
+                                                                        theme={theme}
+                                                                        canisterStatus={canisterStatus}
+                                                                        cycleSettings={cycleSettings}
+                                                                        principalNames={principalNames}
+                                                                        principalNicknames={principalNicknames}
+                                                                        isAuthenticated={isAuthenticated}
+                                                                        confirmRemoveCanister={confirmRemoveCanister}
+                                                                        setConfirmRemoveCanister={setConfirmRemoveCanister}
+                                                                        handleRemoveCanister={handleRemoveCanister}
+                                                                    />
+                                                                );
+                                                            })}
                                                         </div>
                                                     )}
                                                 </div>
@@ -3490,6 +3902,33 @@ export default function CanistersPage() {
                                                 const isController = status?.isController;
                                                 const isConfirming = confirmRemoveWalletCanister === canisterId;
                                                 const isRemoving = removingWalletCanister === canisterId;
+                                                
+                                                // Check if this canister is a detected neuron manager
+                                                const detectedManager = detectedNeuronManagers[canisterId];
+                                                if (detectedManager) {
+                                                    return (
+                                                        <NeuronManagerCardItem
+                                                            key={canisterId}
+                                                            canisterId={canisterId}
+                                                            sourceGroupId="wallet"
+                                                            managerInfo={detectedManager}
+                                                            styles={styles}
+                                                            theme={theme}
+                                                            principalNames={principalNames}
+                                                            principalNicknames={principalNicknames}
+                                                            isAuthenticated={isAuthenticated}
+                                                            neuronManagerCycleSettings={neuronManagerCycleSettings}
+                                                            latestOfficialVersion={latestOfficialVersion}
+                                                            isVersionOutdated={isVersionOutdated}
+                                                            getManagerHealthStatus={getManagerHealthStatus}
+                                                            getStatusLampColor={getStatusLampColor}
+                                                            onRemove={handleRemoveWalletCanister}
+                                                            isConfirming={isConfirming}
+                                                            setConfirmRemove={setConfirmRemoveWalletCanister}
+                                                            isRemoving={isRemoving}
+                                                        />
+                                                    );
+                                                }
                                                 
                                                 // Get health status for this canister
                                                 const canisterHealth = getCanisterHealthStatus(canisterId, trackedCanisterStatus, cycleSettings);
@@ -3887,6 +4326,174 @@ export default function CanistersPage() {
                                         {neuronManagers.map((manager) => {
                                             const canisterId = manager.canisterId.toText();
                                             const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
+                                            
+                                            // Check if this is actually a valid neuron manager
+                                            // If manager methods failed AND no matching WASM hash, show as regular canister
+                                            const hasMatchingWasm = manager.moduleHash && isKnownNeuronManagerHash(manager.moduleHash);
+                                            const shouldShowAsManager = manager.isValidManager || hasMatchingWasm;
+                                            
+                                            if (!shouldShowAsManager) {
+                                                // Show as regular canister card
+                                                const canisterHealth = getCanisterHealthStatus(canisterId, { [canisterId]: { cycles: manager.cycles } }, cycleSettings);
+                                                const canisterLampColor = getStatusLampColor(canisterHealth);
+                                                
+                                                return (
+                                                    <DraggableItem
+                                                        key={canisterId}
+                                                        type="canister"
+                                                        id={canisterId}
+                                                        sourceGroupId="neuron_managers"
+                                                        style={{
+                                                            ...styles.canisterCard,
+                                                            transition: 'opacity 0.15s ease',
+                                                        }}
+                                                    >
+                                                        <div style={styles.canisterInfo}>
+                                                            <span
+                                                                style={{
+                                                                    width: '8px',
+                                                                    height: '8px',
+                                                                    borderRadius: '50%',
+                                                                    backgroundColor: canisterLampColor,
+                                                                    boxShadow: canisterHealth !== 'unknown' ? `0 0 6px ${canisterLampColor}` : 'none',
+                                                                    flexShrink: 0,
+                                                                }}
+                                                                title={`Health: ${canisterHealth} (Not a valid neuron manager)`}
+                                                            />
+                                                            <div style={{ ...styles.canisterIcon, position: 'relative' }}>
+                                                                <FaCube size={18} />
+                                                                {manager.isController && (
+                                                                    <FaCrown 
+                                                                        size={10} 
+                                                                        style={{ 
+                                                                            position: 'absolute', 
+                                                                            top: -4, 
+                                                                            right: -4, 
+                                                                            color: '#f59e0b',
+                                                                        }} 
+                                                                        title="You are a controller"
+                                                                    />
+                                                                )}
+                                                            </div>
+                                                            <div>
+                                                                <PrincipalDisplay
+                                                                    principal={canisterId}
+                                                                    displayInfo={displayInfo}
+                                                                    showCopyButton={true}
+                                                                    isAuthenticated={isAuthenticated}
+                                                                    noLink={true}
+                                                                    style={{ fontSize: '14px' }}
+                                                                    showSendMessage={false}
+                                                                    showViewProfile={false}
+                                                                />
+                                                                <div style={{ fontSize: '11px', color: '#f59e0b', marginTop: '2px' }}>
+                                                                    ⚠️ Not a valid neuron manager
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
+                                                            {manager.cycles !== null && (
+                                                                <span 
+                                                                    style={{
+                                                                        ...styles.managerVersion,
+                                                                        backgroundColor: `${getCyclesColor(manager.cycles, neuronManagerCycleSettings)}20`,
+                                                                        color: getCyclesColor(manager.cycles, neuronManagerCycleSettings),
+                                                                    }}
+                                                                    title={`${manager.cycles.toLocaleString()} cycles`}
+                                                                >
+                                                                    ⚡ {formatCyclesCompact(manager.cycles)}
+                                                                </span>
+                                                            )}
+                                                            {manager.memory !== null && (
+                                                                <span 
+                                                                    style={{
+                                                                        ...styles.managerVersion,
+                                                                        backgroundColor: `${theme.colors.accent}20`,
+                                                                        color: theme.colors.accent,
+                                                                    }}
+                                                                    title={`${manager.memory.toLocaleString()} bytes`}
+                                                                >
+                                                                    💾 {formatMemory(manager.memory)}
+                                                                </span>
+                                                            )}
+                                                            <Link
+                                                                to={`/canister?id=${canisterId}`}
+                                                                style={{
+                                                                    ...styles.viewLink,
+                                                                    padding: '6px 8px',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'center',
+                                                                }}
+                                                                title="View details"
+                                                            >
+                                                                <FaEdit size={12} />
+                                                            </Link>
+                                                            {confirmRemoveManager === canisterId ? (
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }} onClick={(e) => e.stopPropagation()}>
+                                                                    <span style={{ color: '#888', fontSize: '11px', whiteSpace: 'nowrap' }}>Remove?</span>
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setConfirmRemoveManager(null);
+                                                                            handleRemoveManager(manager.canisterId);
+                                                                        }}
+                                                                        disabled={removingManager === canisterId}
+                                                                        style={{
+                                                                            backgroundColor: '#ef4444',
+                                                                            color: '#fff',
+                                                                            border: 'none',
+                                                                            borderRadius: '4px',
+                                                                            padding: '4px 10px',
+                                                                            cursor: removingManager === canisterId ? 'not-allowed' : 'pointer',
+                                                                            fontSize: '12px',
+                                                                            fontWeight: '500',
+                                                                            opacity: removingManager === canisterId ? 0.7 : 1,
+                                                                        }}
+                                                                    >
+                                                                        {removingManager === canisterId ? '...' : 'Yes'}
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setConfirmRemoveManager(null);
+                                                                        }}
+                                                                        style={{
+                                                                            backgroundColor: theme.colors.secondaryBg,
+                                                                            color: theme.colors.primaryText,
+                                                                            border: `1px solid ${theme.colors.border}`,
+                                                                            borderRadius: '4px',
+                                                                            padding: '4px 10px',
+                                                                            cursor: 'pointer',
+                                                                            fontSize: '12px',
+                                                                        }}
+                                                                    >
+                                                                        No
+                                                                    </button>
+                                                                </div>
+                                                            ) : (
+                                                                <button
+                                                                    onClick={(e) => { 
+                                                                        e.stopPropagation(); 
+                                                                        setConfirmRemoveManager(canisterId);
+                                                                    }}
+                                                                    style={styles.removeButton}
+                                                                    disabled={removingManager === canisterId}
+                                                                    title="Remove from list"
+                                                                >
+                                                                    {removingManager === canisterId ? (
+                                                                        <FaSpinner className="spin" />
+                                                                    ) : (
+                                                                        <FaTrash />
+                                                                    )}
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </DraggableItem>
+                                                );
+                                            }
+                                            
+                                            // Show as neuron manager card
                                             const managerHealth = getManagerHealthStatus(manager, neuronManagerCycleSettings);
                                             const managerLampColor = getStatusLampColor(managerHealth);
                                             
