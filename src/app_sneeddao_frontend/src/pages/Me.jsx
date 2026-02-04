@@ -2336,19 +2336,31 @@ export default function Me() {
                                     </div>
                                 ) : (
                                     <div>
-                                        {/* Neuron Group Tabs */}
-                                        {Array.from(groupedNeurons.entries()).length > 1 && (
-                                            <div style={{ 
-                                                display: 'flex',
-                                                flexWrap: 'wrap',
-                                                gap: '0.5rem',
-                                                marginBottom: '1rem',
-                                                background: theme.colors.tertiaryBg,
-                                                padding: '0.5rem',
-                                                borderRadius: '12px',
-                                                border: `1px solid ${theme.colors.border}`
-                                            }}>
-                                                {Array.from(groupedNeurons.entries()).map(([groupId, group]) => {
+                                        {/* Neuron Group Tabs - only show if more than one group */}
+                                        {(() => {
+                                            // Sort entries: "My Neurons" (isMy: true) first
+                                            const sortedEntries = Array.from(groupedNeurons.entries())
+                                                .sort((a, b) => {
+                                                    if (a[1].isMy && !b[1].isMy) return -1;
+                                                    if (!a[1].isMy && b[1].isMy) return 1;
+                                                    return 0;
+                                                });
+                                            
+                                            // Don't show tabs if only one group
+                                            if (sortedEntries.length <= 1) return null;
+                                            
+                                            return (
+                                                <div style={{ 
+                                                    display: 'flex',
+                                                    flexWrap: 'wrap',
+                                                    gap: '0.5rem',
+                                                    marginBottom: '1rem',
+                                                    background: theme.colors.tertiaryBg,
+                                                    padding: '0.5rem',
+                                                    borderRadius: '12px',
+                                                    border: `1px solid ${theme.colors.border}`
+                                                }}>
+                                                    {sortedEntries.map(([groupId, group]) => {
                                                     const isMyNeurons = Boolean(group.isMy);
                                                     const isActive = activeNeuronGroup === groupId;
                                                     return (
@@ -2400,13 +2412,20 @@ export default function Me() {
                                                         </button>
                                                     );
                                                 })}
-                                            </div>
-                                        )}
+                                                </div>
+                                            );
+                                        })()}
 
                                         {/* Active Group Content */}
                                         {(() => {
                                             // Get the active group, fallback to first group if activeNeuronGroup not found
-                                            const entries = Array.from(groupedNeurons.entries());
+                                            // Sort entries: "My Neurons" (isMy: true) first
+                                            const entries = Array.from(groupedNeurons.entries())
+                                                .sort((a, b) => {
+                                                    if (a[1].isMy && !b[1].isMy) return -1;
+                                                    if (!a[1].isMy && b[1].isMy) return 1;
+                                                    return 0;
+                                                });
                                             let activeGroup = entries.find(([id]) => id === activeNeuronGroup);
                                             if (!activeGroup && entries.length > 0) {
                                                 activeGroup = entries[0];
