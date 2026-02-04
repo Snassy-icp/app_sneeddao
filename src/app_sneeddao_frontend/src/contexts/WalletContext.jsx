@@ -350,169 +350,173 @@ export const WalletProvider = ({ children }) => {
         hasInitializedFromCacheRef.current = true;
         
         const loadCache = async () => {
-            // First try to migrate from old localStorage cache (one-time)
-            let cachedData = await migrateFromLocalStorage(principalId);
-            
-            // If no migrated data, load from IndexedDB
-            if (!cachedData) {
-                cachedData = await loadWalletCache(principalId);
-            }
-            
-            if (cachedData) {
-                // Restore tokens (with deduplication by principal)
-                if (cachedData.walletTokens && cachedData.walletTokens.length > 0) {
-                    const seenPrincipals = new Set();
-                    const deduplicatedTokens = cachedData.walletTokens.filter(token => {
-                        const principal = normalizeId(token.principal) || normalizeId(token.ledger_canister_id);
-                        if (!principal) return false;
-                        if (seenPrincipals.has(principal)) return false;
-                        seenPrincipals.add(principal);
-                        return true;
-                    });
-                    
-                    // Load cached rewards and apply to tokens
-                    const cachedRewards = await getCachedRewards(principalId);
-                    const tokensWithRewards = deduplicatedTokens.map(token => {
-                        const tokenId = normalizeId(token.principal) || normalizeId(token.ledger_canister_id);
-                        const reward = cachedRewards?.[tokenId];
-                        if (reward !== undefined) {
-                            return { ...token, rewards: reward };
-                        }
-                        return token;
-                    });
-                    
-                    setWalletTokens(tokensWithRewards);
-                    setHasFetchedInitial(true);
+            try {
+                // First try to migrate from old localStorage cache (one-time)
+                let cachedData = await migrateFromLocalStorage(principalId);
+                
+                // If no migrated data, load from IndexedDB
+                if (!cachedData) {
+                    cachedData = await loadWalletCache(principalId);
                 }
                 
-                // Restore positions (with deduplication)
-                if (cachedData.liquidityPositions && cachedData.liquidityPositions.length > 0) {
-                    // Deduplicate by swapCanisterId (using normalizeId for Principal/string insensitivity)
-                    const seenSwapIds = new Set();
-                    const deduplicatedPositions = cachedData.liquidityPositions.filter(pos => {
-                        const swapId = normalizeId(pos.swapCanisterId);
-                        if (!swapId) return false;
-                        if (seenSwapIds.has(swapId)) return false;
-                        seenSwapIds.add(swapId);
-                        return true;
-                    });
-                    
-                    // Also deduplicate inner positions arrays
-                    const cleanedPositions = deduplicatedPositions.map(lp => {
-                        if (!lp.positions || lp.positions.length === 0) return lp;
-                        const seenPositionIds = new Set();
-                        const cleanedInnerPositions = lp.positions.filter(pos => {
-                            const posId = normalizeId(pos.positionId);
-                            if (seenPositionIds.has(posId)) return false;
-                            seenPositionIds.add(posId);
+                if (cachedData) {
+                    // Restore tokens (with deduplication by principal)
+                    if (cachedData.walletTokens && cachedData.walletTokens.length > 0) {
+                        const seenPrincipals = new Set();
+                        const deduplicatedTokens = cachedData.walletTokens.filter(token => {
+                            const principal = normalizeId(token.principal) || normalizeId(token.ledger_canister_id);
+                            if (!principal) return false;
+                            if (seenPrincipals.has(principal)) return false;
+                            seenPrincipals.add(principal);
                             return true;
                         });
-                        return { ...lp, positions: cleanedInnerPositions };
-                    });
-                    
-                    setLiquidityPositions(cleanedPositions);
-                    setHasFetchedPositions(true);
-                    hasPositionsRef.current = true;
-                }
-                
-                // Restore neuron cache from IDs (hydrate from shared IndexedDB cache)
-                // We now store only neuron IDs in localStorage and hydrate from shared cache
-                // IMPORTANT: This is async but we MUST wait for it before marking cache complete
-                if (cachedData.neuronCacheIds || cachedData.neuronCache) {
-                    // Handle both old format (neuronCache with full objects) and new format (neuronCacheIds)
-                    const cacheData = cachedData.neuronCacheIds || cachedData.neuronCache;
-                    const entries = cacheData instanceof Map ? Array.from(cacheData.entries()) : 
-                                   Array.isArray(cacheData) ? cacheData : [];
-                    
-                    // For each governance, try to hydrate neurons from shared IndexedDB cache
-                    const hydratedMap = new Map();
-                    
-                    for (const [governanceId, neuronDataOrIds] of entries) {
-                        // Extract neuron IDs from either old format (full objects) or new format (just IDs)
-                        let neuronIds;
-                        if (Array.isArray(neuronDataOrIds) && neuronDataOrIds.length > 0) {
-                            if (typeof neuronDataOrIds[0] === 'string') {
-                                // New format: just IDs
-                                neuronIds = neuronDataOrIds;
-                            } else if (neuronDataOrIds[0]?.id) {
-                                // Old format: full neuron objects - extract IDs
-                                neuronIds = neuronDataOrIds.map(n => {
-                                    const idArray = n.id?.[0]?.id;
-                                    if (!idArray) return null;
-                                    return Array.isArray(idArray) 
-                                        ? idArray.map(b => b.toString(16).padStart(2, '0')).join('')
-                                        : uint8ArrayToHex(new Uint8Array(idArray));
-                                }).filter(Boolean);
+                        
+                        // Load cached rewards and apply to tokens
+                        const cachedRewards = await getCachedRewards(principalId);
+                        const tokensWithRewards = deduplicatedTokens.map(token => {
+                            const tokenId = normalizeId(token.principal) || normalizeId(token.ledger_canister_id);
+                            const reward = cachedRewards?.[tokenId];
+                            if (reward !== undefined) {
+                                return { ...token, rewards: reward };
                             }
-                        }
+                            return token;
+                        });
                         
-                        // Normalize governance ID for consistent cache keys
-                        const normalizedGovId = normalizeId(governanceId);
+                        setWalletTokens(tokensWithRewards);
+                        setHasFetchedInitial(true);
+                    }
+                    
+                    // Restore positions (with deduplication)
+                    if (cachedData.liquidityPositions && cachedData.liquidityPositions.length > 0) {
+                        // Deduplicate by swapCanisterId (using normalizeId for Principal/string insensitivity)
+                        const seenSwapIds = new Set();
+                        const deduplicatedPositions = cachedData.liquidityPositions.filter(pos => {
+                            const swapId = normalizeId(pos.swapCanisterId);
+                            if (!swapId) return false;
+                            if (seenSwapIds.has(swapId)) return false;
+                            seenSwapIds.add(swapId);
+                            return true;
+                        });
                         
-                        // Skip governance IDs with 0 neuron IDs - don't add empty arrays
-                        // (empty arrays would block fresh fetches later)
-                        if (!neuronIds || neuronIds.length === 0) {
-                            continue;
-                        }
+                        // Also deduplicate inner positions arrays
+                        const cleanedPositions = deduplicatedPositions.map(lp => {
+                            if (!lp.positions || lp.positions.length === 0) return lp;
+                            const seenPositionIds = new Set();
+                            const cleanedInnerPositions = lp.positions.filter(pos => {
+                                const posId = normalizeId(pos.positionId);
+                                if (seenPositionIds.has(posId)) return false;
+                                seenPositionIds.add(posId);
+                                return true;
+                            });
+                            return { ...lp, positions: cleanedInnerPositions };
+                        });
                         
-                        // Find SNS root for this governance canister
-                        const allSnses = getAllSnses();
-                        const sns = allSnses.find(s => normalizeId(s.canisters?.governance) === normalizedGovId);
-                        const snsRoot = sns?.rootCanisterId;
+                        setLiquidityPositions(cleanedPositions);
+                        setHasFetchedPositions(true);
+                        hasPositionsRef.current = true;
+                    }
+                    
+                    // Restore neuron cache from IDs (hydrate from shared IndexedDB cache)
+                    // We now store only neuron IDs in localStorage and hydrate from shared cache
+                    // IMPORTANT: This is async but we MUST wait for it before marking cache complete
+                    if (cachedData.neuronCacheIds || cachedData.neuronCache) {
+                        // Handle both old format (neuronCache with full objects) and new format (neuronCacheIds)
+                        const cacheData = cachedData.neuronCacheIds || cachedData.neuronCache;
+                        const entries = cacheData instanceof Map ? Array.from(cacheData.entries()) : 
+                                       Array.isArray(cacheData) ? cacheData : [];
                         
-                        if (snsRoot) {
-                            // Try to hydrate from shared IndexedDB cache
-                            try {
-                                const { found, missing } = await getNeuronsFromCacheByIds(snsRoot, neuronIds);
-                                // Only add to map if we found actual neurons
-                                if (found && found.length > 0) {
-                                    hydratedMap.set(normalizedGovId, found);
+                        // For each governance, try to hydrate neurons from shared IndexedDB cache
+                        const hydratedMap = new Map();
+                        
+                        for (const [governanceId, neuronDataOrIds] of entries) {
+                            // Extract neuron IDs from either old format (full objects) or new format (just IDs)
+                            let neuronIds;
+                            if (Array.isArray(neuronDataOrIds) && neuronDataOrIds.length > 0) {
+                                if (typeof neuronDataOrIds[0] === 'string') {
+                                    // New format: just IDs
+                                    neuronIds = neuronDataOrIds;
+                                } else if (neuronDataOrIds[0]?.id) {
+                                    // Old format: full neuron objects - extract IDs
+                                    neuronIds = neuronDataOrIds.map(n => {
+                                        const idArray = n.id?.[0]?.id;
+                                        if (!idArray) return null;
+                                        return Array.isArray(idArray) 
+                                            ? idArray.map(b => b.toString(16).padStart(2, '0')).join('')
+                                            : uint8ArrayToHex(new Uint8Array(idArray));
+                                    }).filter(Boolean);
                                 }
-                                // Note: missing neurons will be fetched fresh by fetchAndCacheNeurons
-                            } catch (e) {
-                                console.warn('Failed to hydrate neurons from cache:', e);
                             }
-                        } else if (Array.isArray(neuronDataOrIds) && neuronDataOrIds[0]?.id) {
-                            // No SNS mapping but we have old format full objects - use them directly
-                            hydratedMap.set(normalizedGovId, neuronDataOrIds);
+                            
+                            // Normalize governance ID for consistent cache keys
+                            const normalizedGovId = normalizeId(governanceId);
+                            
+                            // Skip governance IDs with 0 neuron IDs - don't add empty arrays
+                            // (empty arrays would block fresh fetches later)
+                            if (!neuronIds || neuronIds.length === 0) {
+                                continue;
+                            }
+                            
+                            // Find SNS root for this governance canister
+                            const allSnses = getAllSnses();
+                            const sns = allSnses.find(s => normalizeId(s.canisters?.governance) === normalizedGovId);
+                            const snsRoot = sns?.rootCanisterId;
+                            
+                            if (snsRoot) {
+                                // Try to hydrate from shared IndexedDB cache
+                                try {
+                                    const { found, missing } = await getNeuronsFromCacheByIds(snsRoot, neuronIds);
+                                    // Only add to map if we found actual neurons
+                                    if (found && found.length > 0) {
+                                        hydratedMap.set(normalizedGovId, found);
+                                    }
+                                    // Note: missing neurons will be fetched fresh by fetchAndCacheNeurons
+                                } catch (e) {
+                                    console.warn('Failed to hydrate neurons from cache:', e);
+                                }
+                            } else if (Array.isArray(neuronDataOrIds) && neuronDataOrIds[0]?.id) {
+                                // No SNS mapping but we have old format full objects - use them directly
+                                hydratedMap.set(normalizedGovId, neuronDataOrIds);
+                            }
                         }
+                        
+                        // IMPORTANT: Update ref IMMEDIATELY before state update
+                        // This prevents race conditions where other code checks the ref before the useEffect runs
+                        if (hydratedMap.size > 0) {
+                            neuronCacheRef.current = hydratedMap;
+                            setNeuronCache(hydratedMap);
+                        }
+                        // Always mark as initialized after hydration attempt so consumers know cache check is done
+                        setNeuronCacheInitialized(true);
+                    } else {
+                        // No cached neuron data, but still mark as initialized so consumers don't wait forever
+                        setNeuronCacheInitialized(true);
                     }
                     
-                    // IMPORTANT: Update ref IMMEDIATELY before state update
-                    // This prevents race conditions where other code checks the ref before the useEffect runs
-                    if (hydratedMap.size > 0) {
-                        neuronCacheRef.current = hydratedMap;
-                        setNeuronCache(hydratedMap);
+                    // Restore neuron managers
+                    if (cachedData.neuronManagers && cachedData.neuronManagers.length > 0) {
+                        setNeuronManagers(cachedData.neuronManagers);
+                        setHasFetchedManagers(true);
                     }
-                    // Always mark as initialized after hydration attempt so consumers know cache check is done
-                    setNeuronCacheInitialized(true);
-                } else {
-                    // No cached neuron data, but still mark as initialized so consumers don't wait forever
-                    setNeuronCacheInitialized(true);
+                    if (cachedData.managerNeurons) {
+                        setManagerNeurons(cachedData.managerNeurons);
+                    }
+                    if (cachedData.managerNeuronsTotal !== undefined) {
+                        setManagerNeuronsTotal(cachedData.managerNeuronsTotal);
+                    }
+                    
+                    // Restore last updated
+                    if (cachedData.lastUpdated) {
+                        setLastUpdated(new Date(cachedData.lastUpdated));
+                    }
+                    
+                    setLoadedFromCache(true);
                 }
-                
-                // Restore neuron managers
-                if (cachedData.neuronManagers && cachedData.neuronManagers.length > 0) {
-                    setNeuronManagers(cachedData.neuronManagers);
-                    setHasFetchedManagers(true);
-                }
-                if (cachedData.managerNeurons) {
-                    setManagerNeurons(cachedData.managerNeurons);
-                }
-                if (cachedData.managerNeuronsTotal !== undefined) {
-                    setManagerNeuronsTotal(cachedData.managerNeuronsTotal);
-                }
-                
-                // Restore last updated
-                if (cachedData.lastUpdated) {
-                    setLastUpdated(new Date(cachedData.lastUpdated));
-                }
-                
-                setLoadedFromCache(true);
+            } catch (error) {
+                console.error('[WalletContext] Error loading cache:', error);
+            } finally {
+                // ALWAYS mark cache check as complete, even if there was an error
+                setCacheCheckComplete(true);
             }
-            
-            // Mark cache check as complete AFTER all async operations (including neuron hydration)
-            setCacheCheckComplete(true);
         };
         
         loadCache();
