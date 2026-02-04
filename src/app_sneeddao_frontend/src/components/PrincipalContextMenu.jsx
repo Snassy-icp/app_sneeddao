@@ -114,21 +114,39 @@ const PrincipalContextMenu = ({
     const menuPosition = getMenuPosition();
 
     return createPortal(
-        <div
-            ref={menuRef}
-            style={{
-                position: 'fixed',
-                left: menuPosition.x,
-                top: menuPosition.y,
-                zIndex: 10000,
-                backgroundColor: '#2a2a2a',
-                border: '1px solid #3a3a3a',
-                borderRadius: '8px',
-                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
-                padding: '8px 0',
-                minWidth: '200px'
-            }}
-        >
+        <>
+            {/* Invisible backdrop to capture clicks outside */}
+            <div
+                onClick={onClose}
+                onContextMenu={(e) => {
+                    e.preventDefault();
+                    onClose();
+                }}
+                style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    zIndex: 10099,
+                    background: 'transparent',
+                }}
+            />
+            <div
+                ref={menuRef}
+                style={{
+                    position: 'fixed',
+                    left: menuPosition.x,
+                    top: menuPosition.y,
+                    zIndex: 10100,
+                    backgroundColor: '#2a2a2a',
+                    border: '1px solid #3a3a3a',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+                    padding: '8px 0',
+                    minWidth: '200px'
+                }}
+            >
             {isAuthenticated && showSendMessage && (
                 <div
                     onClick={handleSendMessage}
@@ -246,7 +264,8 @@ const PrincipalContextMenu = ({
                     <span>{item.label}</span>
                 </div>
             ))}
-        </div>,
+            </div>
+        </>,
         document.body
     );
 };

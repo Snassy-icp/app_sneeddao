@@ -2921,7 +2921,7 @@ export default function CanistersPage() {
                                 alignItems: 'center',
                                 gap: '0.5rem'
                             }}>
-                                Dapp Manager
+                                App Manager
                             </h1>
                             <p style={{
                                 fontSize: '0.95rem',

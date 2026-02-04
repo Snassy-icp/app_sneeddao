@@ -73,7 +73,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
             return false;
         }
     });
-    const [walletTab, setWalletTab] = useState('tokens'); // 'tokens', 'positions', or 'dapps'
+    const [walletTab, setWalletTab] = useState('tokens'); // 'tokens', 'positions', or 'dapps' (Apps)
     const [showPositionDetailModal, setShowPositionDetailModal] = useState(false);
     const [detailPosition, setDetailPosition] = useState(null);
     const [detailPositionDetails, setDetailPositionDetails] = useState(null);
@@ -1480,7 +1480,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                               }}
                           >
                               <FaBox size={10} />
-                              Dapps
+                              Apps
                           </button>
                       </div>
 
@@ -2190,7 +2190,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                       </>
                       )}
 
-                      {/* Dapps Tab Header */}
+                      {/* Apps Tab Header */}
                       {walletTab === 'dapps' && (
                       <div 
                           style={{ 
@@ -2206,7 +2206,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                       >
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                               <FaBox size={10} />
-                              Dapps
+                              Apps
                               {(neuronManagers.length + trackedCanisters.length) > 0 && (
                                   <span style={{ 
                                       color: theme.colors.accent,
@@ -2228,11 +2228,89 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                       ${totalManagersUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </span>
                               )}
+                              {walletContext?.refreshNeuronManagers && (
+                                  <button
+                                      onClick={async (e) => {
+                                          e.stopPropagation();
+                                          setIsRefreshingWallet(true);
+                                          try {
+                                              await walletContext.refreshNeuronManagers();
+                                              // Also refresh tracked canisters status
+                                              if (trackedCanisters.length > 0 && identity) {
+                                                  // Re-fetch tracked canister status
+                                                  const statusMap = {};
+                                                  const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                                                      ? 'https://ic0.app' 
+                                                      : 'http://localhost:4943';
+                                                  const agent = new HttpAgent({ identity, host });
+                                                  if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                                                      await agent.fetchRootKey();
+                                                  }
+                                                  await Promise.allSettled(trackedCanisters.map(async (canisterId) => {
+                                                      let cycles = null;
+                                                      let memory = null;
+                                                      let isController = false;
+                                                      let moduleHash = null;
+                                                      try {
+                                                          const canisterIdPrincipal = Principal.fromText(canisterId);
+                                                          const mgmtActor = Actor.createActor(managementCanisterIdlFactory, {
+                                                              agent,
+                                                              canisterId: MANAGEMENT_CANISTER_ID,
+                                                              callTransform: (methodName, args, callConfig) => ({
+                                                                  ...callConfig,
+                                                                  effectiveCanisterId: canisterIdPrincipal,
+                                                              }),
+                                                          });
+                                                          const status = await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
+                                                          cycles = Number(status.cycles);
+                                                          memory = Number(status.memory_size);
+                                                          isController = true;
+                                                          if (status.module_hash?.[0]) {
+                                                              moduleHash = uint8ArrayToHex(status.module_hash[0]);
+                                                          }
+                                                      } catch (e) {
+                                                          // Try backend fallback
+                                                          try {
+                                                              const info = await getCanisterInfo(canisterId);
+                                                              if (info?.module_hash) {
+                                                                  moduleHash = info.module_hash;
+                                                              }
+                                                          } catch {}
+                                                      }
+                                                      statusMap[canisterId] = { cycles, memory, isController, moduleHash };
+                                                  }));
+                                                  setTrackedCanisterStatus(statusMap);
+                                              }
+                                          } catch (error) {
+                                              console.error('Error refreshing apps:', error);
+                                          } finally {
+                                              setIsRefreshingWallet(false);
+                                          }
+                                      }}
+                                      disabled={isRefreshingWallet}
+                                      style={{
+                                          background: 'none',
+                                          border: 'none',
+                                          cursor: isRefreshingWallet ? 'default' : 'pointer',
+                                          padding: '4px',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          color: theme.colors.mutedText,
+                                          transition: 'color 0.2s ease',
+                                          opacity: isRefreshingWallet ? 0.6 : 1
+                                      }}
+                                      onMouseEnter={(e) => !isRefreshingWallet && (e.currentTarget.style.color = theme.colors.primaryText)}
+                                      onMouseLeave={(e) => !isRefreshingWallet && (e.currentTarget.style.color = theme.colors.mutedText)}
+                                      title="Refresh apps data"
+                                  >
+                                      <FaSync size={10} style={{ animation: isRefreshingWallet ? 'spin 1s linear infinite' : 'none' }} />
+                                  </button>
+                              )}
                           </div>
                       </div>
                       )}
 
-                      {/* Dapps Tab Content - Compact list like tokens */}
+                      {/* Apps Tab Content - Compact list like tokens */}
                       {walletTab === 'dapps' && (
                       <>
                       <div 
@@ -2253,7 +2331,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                   color: theme.colors.mutedText,
                                   fontSize: '12px'
                               }}>
-                                  Loading dapps...
+                                  Loading apps...
                               </div>
                           ) : (neuronManagers.length === 0 && trackedCanisters.length === 0) ? (
                               <div 
@@ -2269,7 +2347,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                       setShowPopup(false);
                                   }}
                               >
-                                  No dapps found. Visit wallet to add.
+                                  No apps found. Visit wallet to add.
                               </div>
                           ) : (
                               <>
@@ -2569,7 +2647,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                               })}
                               </>
                           )}
-                          {/* Show subtle loading indicator while more dapps are loading */}
+                          {/* Show subtle loading indicator while more apps are loading */}
                           {((neuronManagersLoading || !hasFetchedManagers) && neuronManagers.length > 0) || 
                            ((trackedCanistersLoading || !hasFetchedTrackedCanisters) && trackedCanisters.length > 0) ? (
                               <div style={{ 
@@ -2622,7 +2700,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                               }}
                           >
                               <FaBox size={11} />
-                              View All Dapps
+                              View All Apps
                           </button>
                       )}
                       </>

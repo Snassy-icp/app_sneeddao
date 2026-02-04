@@ -193,39 +193,13 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                             ${getPositionTVL(position, positionDetails, hideUnclaimedFees).toFixed(2)}
                         </span>
                     </div>
-                    {/* Row 2: First token balance, refresh button */}
+                    {/* Row 2: First token balance, expand and refresh buttons */}
                     <div className="header-row-2">
                         <div className="amount-symbol">
                             <span className="token-amount">
                                 {formatAmount(positionDetails.token0Amount + (hideUnclaimedFees ? 0n : positionDetails.tokensOwed0), position.token0Decimals)} {position.token0Symbol}
                             </span>
                         </div>
-                        {handleRefreshPosition && (
-                            <button
-                                onClick={async (e) => {
-                                    e.stopPropagation();
-                                    await handleRefreshPosition(position);
-                                }}
-                                disabled={isRefreshing}
-                                style={{
-                                    background: 'none',
-                                    border: 'none',
-                                    cursor: isRefreshing ? 'default' : 'pointer',
-                                    padding: '4px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    color: theme.colors.mutedText,
-                                    fontSize: '1.2rem',
-                                    transition: 'color 0.2s ease',
-                                    opacity: isRefreshing ? 0.6 : 1
-                                }}
-                                onMouseEnter={(e) => !isRefreshing && (e.currentTarget.style.color = theme.colors.primaryText)}
-                                onMouseLeave={(e) => !isRefreshing && (e.currentTarget.style.color = theme.colors.mutedText)}
-                                title="Refresh position data"
-                            >
-                                <FaSync size={12} style={{ animation: isRefreshing ? 'spin 1s linear infinite' : 'none' }} />
-                            </button>
-                        )}
                         {onOpenDetailModal && (
                             <button
                                 onClick={(e) => {
@@ -247,6 +221,31 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                                 title="Open in dialog"
                             >
                                 <FaExpandAlt size={14} />
+                            </button>
+                        )}
+                        {handleRefreshPosition && (
+                            <button
+                                onClick={async (e) => {
+                                    e.stopPropagation();
+                                    await handleRefreshPosition(position);
+                                }}
+                                disabled={isRefreshing}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    cursor: isRefreshing ? 'default' : 'pointer',
+                                    padding: '4px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    color: theme.colors.mutedText,
+                                    transition: 'color 0.2s ease',
+                                    opacity: isRefreshing ? 0.6 : 1
+                                }}
+                                onMouseEnter={(e) => !isRefreshing && (e.currentTarget.style.color = theme.colors.primaryText)}
+                                onMouseLeave={(e) => !isRefreshing && (e.currentTarget.style.color = theme.colors.mutedText)}
+                                title="Refresh position data"
+                            >
+                                <FaSync size={12} style={{ animation: isRefreshing ? 'spin 1s linear infinite' : 'none' }} />
                             </button>
                         )}
                     </div>

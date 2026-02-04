@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useContext, useMemo } from 'react';
+import React, { useState, useCallback, useContext, useMemo, useRef, useEffect } from 'react';
 import { sha224 } from '@dfinity/principal/lib/esm/utils/sha224';
 import { encodeIcrcAccount } from '@dfinity/ledger-icrc';
 import { getPrincipalName, getPrincipalNickname } from './BackendUtils';
@@ -244,6 +244,22 @@ export const PrincipalDisplay = React.memo(({
 }) => {
     const [contextMenuOpen, setContextMenuOpen] = useState(false);
     const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
+    const instanceId = useRef(Math.random().toString(36).substring(7));
+    
+    // Listen for global close event from other context menus
+    useEffect(() => {
+        const handleGlobalClose = (e) => {
+            // Close this menu if another one opened
+            if (e.detail?.sourceId !== instanceId.current) {
+                setContextMenuOpen(false);
+            }
+        };
+        
+        window.addEventListener('principal-context-menu-open', handleGlobalClose);
+        return () => {
+            window.removeEventListener('principal-context-menu-open', handleGlobalClose);
+        };
+    }, []);
     const [messageDialogOpen, setMessageDialogOpen] = useState(false);
     const [nicknameDialogOpen, setNicknameDialogOpen] = useState(false);
     const [longPressTimer, setLongPressTimer] = useState(null);
@@ -293,6 +309,11 @@ export const PrincipalDisplay = React.memo(({
         e.preventDefault();
         e.stopPropagation();
         
+        // Dispatch event to close other context menus
+        window.dispatchEvent(new CustomEvent('principal-context-menu-open', { 
+            detail: { sourceId: instanceId.current } 
+        }));
+        
         // Use clientX/clientY for fixed positioning
         setContextMenuPosition({ x: e.clientX, y: e.clientY });
         setContextMenuOpen(true);
@@ -306,6 +327,11 @@ export const PrincipalDisplay = React.memo(({
         if (!touch) return;
         
         const timer = setTimeout(() => {
+            // Dispatch event to close other context menus
+            window.dispatchEvent(new CustomEvent('principal-context-menu-open', { 
+                detail: { sourceId: instanceId.current } 
+            }));
+            
             // Use clientX/clientY for fixed positioning
             setContextMenuPosition({ x: touch.clientX, y: touch.clientY });
             setContextMenuOpen(true);

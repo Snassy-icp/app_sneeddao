@@ -59,7 +59,7 @@ import { getCyclesColor, formatCyclesCompact, formatMemory, getNeuronManagerSett
 import { PERM } from './utils/NeuronPermissionUtils.jsx';
 import { Actor } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
-import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle, FaTint, FaSeedling, FaGift, FaHourglassHalf, FaWater, FaUnlock, FaCheck, FaExclamationTriangle, FaCrown, FaBox, FaDatabase, FaCog, FaExternalLinkAlt, FaTimes, FaLightbulb, FaArrowRight, FaDollarSign, FaChartBar, FaBullseye, FaMoneyBillWave, FaBug, FaCopy, FaExpand } from 'react-icons/fa';
+import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle, FaTint, FaSeedling, FaGift, FaHourglassHalf, FaWater, FaUnlock, FaCheck, FaExclamationTriangle, FaCrown, FaBox, FaDatabase, FaCog, FaExternalLinkAlt, FaTimes, FaLightbulb, FaArrowRight, FaDollarSign, FaChartBar, FaBullseye, FaMoneyBillWave, FaBug, FaCopy, FaExpandAlt } from 'react-icons/fa';
 
 // Custom CSS for Wallet page animations
 const walletCustomStyles = `
@@ -5298,7 +5298,7 @@ function Wallet() {
                     {[
                         { id: 'tokens', label: 'Tokens', icon: <FaCoins size={14} />, subtitle: tokensTotal > 0 ? `$${tokensTotal.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : null },
                         { id: 'positions', label: 'Liquidity', icon: <FaExchangeAlt size={14} />, subtitle: lpPositionsTotal > 0 ? `$${lpPositionsTotal.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : null },
-                        { id: 'dapps', label: 'Dapps', icon: <FaBox size={14} />, subtitle: (neuronManagers.length + trackedCanisters.length) > 0 ? `${neuronManagers.length + trackedCanisters.length}` : null }
+                        { id: 'dapps', label: 'Apps', icon: <FaBox size={14} />, subtitle: (neuronManagers.length + trackedCanisters.length) > 0 ? `${neuronManagers.length + trackedCanisters.length}` : null }
                     ].map(tab => (
                         <button
                             key={tab.id}
@@ -5633,7 +5633,7 @@ function Wallet() {
                 </>
                 )}
 
-                {/* Dapps Tab Content - Neuron Managers and Canisters combined */}
+                {/* Apps Tab Content - Neuron Managers and Canisters combined */}
                 {activeWalletTab === 'dapps' && (
                     <div style={{ marginBottom: '20px' }}>
                         {/* Link to manage canisters */}
@@ -6011,7 +6011,7 @@ function Wallet() {
                                                             onMouseLeave={(e) => e.target.style.color = theme.colors.mutedText}
                                                             title="Open in dialog"
                                                         >
-                                                            <FaExpand size={12} />
+                                                            <FaExpandAlt size={14} />
                                                         </button>
                                                     </div>
                                                     {/* Row 2: Total ICP amount */}
@@ -7021,7 +7021,7 @@ function Wallet() {
                                                                 onMouseLeave={(e) => e.target.style.color = theme.colors.mutedText}
                                                                 title="Open in dialog"
                                                             >
-                                                                <FaExpand size={12} />
+                                                                <FaExpandAlt size={14} />
                                                             </button>
                                                         </div>
                                                         {/* Row 2: ICP Neuron Manager label */}
@@ -7531,7 +7531,7 @@ function Wallet() {
                                                             onMouseLeave={(e) => e.target.style.color = theme.colors.mutedText}
                                                             title="Open in dialog"
                                                         >
-                                                            <FaExpand size={12} />
+                                                            <FaExpandAlt size={14} />
                                                         </button>
                                                     </div>
                                                     {/* Row 2: Status indicator */}

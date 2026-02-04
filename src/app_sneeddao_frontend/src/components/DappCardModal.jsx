@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FaTimes, FaSync, FaBrain, FaBox, FaCrown, FaExternalLinkAlt, FaTrash, FaCoins, FaMicrochip, FaChevronDown, FaChevronRight, FaLock, FaHourglassHalf, FaCheck, FaQuestionCircle, FaSeedling, FaPaperPlane } from 'react-icons/fa';
 import { useTheme } from '../contexts/ThemeContext';
@@ -59,6 +59,22 @@ const DappCardModal = ({
             document.body.style.overflow = '';
         };
     }, [show, onClose]);
+
+    // Auto-refresh if cycles/memory are missing when modal opens
+    const hasTriggeredAutoRefresh = useRef(false);
+    useEffect(() => {
+        if (show && canisterId && handleRefresh && !isRefreshing) {
+            // Only auto-refresh once per modal open if data is missing
+            if ((cycles === null || memory === null) && !hasTriggeredAutoRefresh.current) {
+                hasTriggeredAutoRefresh.current = true;
+                handleRefresh(canisterId);
+            }
+        }
+        // Reset the auto-refresh flag when modal closes
+        if (!show) {
+            hasTriggeredAutoRefresh.current = false;
+        }
+    }, [show, canisterId, cycles, memory, handleRefresh, isRefreshing]);
 
     // Format cycles compactly
     const formatCyclesCompact = (c) => {
