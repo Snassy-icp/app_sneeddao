@@ -259,6 +259,12 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         }, 0n);
     };
 
+    const getPermissionPrincipalId = (perm) => {
+        if (!perm) return null;
+        if (Array.isArray(perm.principal)) return perm.principal[0];
+        return perm.principal || null;
+    };
+
     // Get collectable maturity (only from neurons where user has DISBURSE_MATURITY permission)
     const getCollectableMaturity = () => {
         if (!identity) return 0n;
@@ -266,7 +272,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         return neurons.reduce((total, neuron) => {
             // Check if user has DISBURSE_MATURITY permission (permission 8)
             const userPerms = neuron.permissions?.find(p => 
-                normalizeId(p.principal?.[0]) === userPrincipal
+                normalizeId(getPermissionPrincipalId(p)) === userPrincipal
             );
             const canDisburseMaturity = userPerms?.permission_type?.includes(PERM.DISBURSE_MATURITY) || false;
             
@@ -370,7 +376,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         if (!identity || !neuron.permissions) return false;
         const userPrincipal = normalizeId(identity.getPrincipal());
         const userPerms = neuron.permissions.find(p => 
-            normalizeId(p.principal?.[0]) === userPrincipal
+            normalizeId(getPermissionPrincipalId(p)) === userPrincipal
         );
         return userPerms?.permission_type?.includes(permissionType) || false;
     };

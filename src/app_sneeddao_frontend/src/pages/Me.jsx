@@ -159,6 +159,7 @@ export default function Me() {
     const [isSubmittingPrincipalName, setIsSubmittingPrincipalName] = useState(false);
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
     const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
+    const myPrincipalText = identity?.getPrincipal?.().toString();
     const [hideEmptyNeurons, setHideEmptyNeurons] = useState(() => {
         try {
             const saved = localStorage.getItem('hideEmptyNeurons_Me');
@@ -2591,7 +2592,7 @@ export default function Me() {
 
                                                             const hasHotkeyAccess = neuron.permissions?.some(p => {
                                                                 const permPrincipal = safePrincipalString(p.principal);
-                                                                if (!permPrincipal || permPrincipal !== identity.getPrincipal().toString()) return false;
+                                                                if (!permPrincipal || !myPrincipalText || permPrincipal !== myPrincipalText) return false;
                                                                 const permTypes = safePermissionType(p);
                                                                 return permTypes.includes(4);
                                                             });
@@ -3077,7 +3078,7 @@ function NeuronGroup({
 
                             const hasHotkeyAccess = neuron.permissions?.some(p => {
                                 const permPrincipal = safePrincipalString(p.principal);
-                                if (!permPrincipal || permPrincipal !== identity.getPrincipal().toString()) return false;
+                                if (!permPrincipal || !myPrincipalText || permPrincipal !== myPrincipalText) return false;
                                 const permTypes = safePermissionType(p);
                                 return permTypes.includes(4);
                             });

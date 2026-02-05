@@ -116,6 +116,15 @@ const serializeForDB = (obj) => {
 const deserializeFromDB = (obj) => {
     if (!obj) return obj;
     
+    const safePrincipalFromText = (value) => {
+        if (!value) return null;
+        try {
+            return Principal.fromText(value);
+        } catch {
+            return value;
+        }
+    };
+
     const revive = (value) => {
         if (value && typeof value === 'object') {
             if (value.__type) {
@@ -123,7 +132,7 @@ const deserializeFromDB = (obj) => {
                     case 'BigInt':
                         return BigInt(value.value);
                     case 'Principal':
-                        return Principal.fromText(value.value);
+                        return safePrincipalFromText(value.value);
                     case 'Map':
                         return new Map(value.value.map(([k, v]) => [k, revive(v)]));
                     case 'Set':
@@ -254,7 +263,13 @@ const migrateFromLocalStorage = async (principalId) => {
                 if (value && typeof value === 'object' && value.__type) {
                     switch (value.__type) {
                         case 'BigInt': return BigInt(value.value);
-                        case 'Principal': return Principal.fromText(value.value);
+                        case 'Principal': {
+                            try {
+                                return Principal.fromText(value.value);
+                            } catch {
+                                return value.value;
+                            }
+                        }
                         case 'Map': return new Map(value.value);
                         case 'Set': return new Set(value.value);
                         case 'TypedArray':

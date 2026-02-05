@@ -1845,6 +1845,9 @@ function Feed() {
     const getPrincipalObject = (principal) => {
         try {
             const principalStr = principalToText(principal);
+            if (!principalStr || !principalStr.trim()) {
+                return null;
+            }
             return Principal.fromText(principalStr);
         } catch (e) {
             console.warn('Failed to convert principal:', principal, e);

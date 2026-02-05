@@ -29,13 +29,14 @@ function SendLiquidityPositionModal({ show, onClose, onSend, liquidityPosition }
   const handleSend = async () => {
     setErrorText('');
 
-    if (recipient == "") {
+    const trimmedRecipient = recipient.trim();
+    if (trimmedRecipient == "") {
       setErrorText("Please enter a recipient address first!");
       return;
     }
     
     try {
-      var p = Principal.fromText(recipient);
+      Principal.fromText(trimmedRecipient);
     } catch {
       setErrorText("Invalid recipient address! Please enter a valid recipient address.");
       return;
@@ -45,7 +46,7 @@ function SendLiquidityPositionModal({ show, onClose, onSend, liquidityPosition }
       try {
         setIsLoading(true);
         setErrorText('');
-        await onSend(liquidityPosition, recipient);
+        await onSend(liquidityPosition, trimmedRecipient);
         // Only close on success
         setIsLoading(false);
         onClose();
@@ -60,7 +61,7 @@ function SendLiquidityPositionModal({ show, onClose, onSend, liquidityPosition }
     const explanation = isBackendTransfer 
       ? ' This will transfer backend ownership while keeping the position locked.' 
       : '';
-    setConfirmMessage(`You are about to ${action} position #${liquidityPosition.id.toString()} of ${liquidityPosition.symbols} to ${recipient}.${explanation}`);
+    setConfirmMessage(`You are about to ${action} position #${liquidityPosition.id.toString()} of ${liquidityPosition.symbols} to ${trimmedRecipient}.${explanation}`);
     setShowConfirmModal(true);
   };
 

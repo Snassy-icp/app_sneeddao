@@ -442,7 +442,12 @@ const PrincipalInput = ({
     // Update encoded account from split values
     const updateEncodedFromSplit = (principal, subHex) => {
         try {
-            const p = Principal.fromText(principal.trim());
+            const principalText = principal?.trim?.() || '';
+            if (!principalText) {
+                setDialogEncodedAccount('');
+                return;
+            }
+            const p = Principal.fromText(principalText);
             const subBytes = subHex.trim() ? hexToBytes(subHex) : null;
             const encoded = encodeIcrcAccount({
                 owner: p,

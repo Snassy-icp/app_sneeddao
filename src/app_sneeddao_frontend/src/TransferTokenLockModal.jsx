@@ -46,13 +46,14 @@ function TransferTokenLockModal({ show, onClose, onTransfer, tokenLock, token })
   const handleTransfer = async () => {
     setErrorText('');
 
-    if (recipient === "") {
+    const trimmedRecipient = recipient.trim();
+    if (trimmedRecipient === "") {
       setErrorText("Please enter a recipient address first!");
       return;
     }
     
     try {
-      var p = Principal.fromText(recipient);
+      Principal.fromText(trimmedRecipient);
     } catch {
       setErrorText("Invalid recipient address! Please enter a valid recipient address.");
       return;
@@ -68,7 +69,7 @@ function TransferTokenLockModal({ show, onClose, onTransfer, tokenLock, token })
       try {
         setIsLoading(true);
         setErrorText('');
-        await onTransfer(tokenLock, recipient);
+        await onTransfer(tokenLock, trimmedRecipient);
         // Only close on success
         setIsLoading(false);
         onClose();
@@ -85,7 +86,7 @@ function TransferTokenLockModal({ show, onClose, onTransfer, tokenLock, token })
       ? ` (including 1 tx fee to prepare your backend subaccount for the transfer)`
       : ` (drawn from your backend liquid balance)`;
     
-    setConfirmMessage(`You are about to transfer ownership of lock #${tokenLock.lock_id} (${lockAmount} ${token.symbol}, expires ${dateToReadable(tokenLock.expiry)}) to ${recipient}. This will cost ${feeAmount} ${token.symbol} in transaction fees${feeExplanation}. The lock will remain active and ownership will be transferred to the recipient.`);
+    setConfirmMessage(`You are about to transfer ownership of lock #${tokenLock.lock_id} (${lockAmount} ${token.symbol}, expires ${dateToReadable(tokenLock.expiry)}) to ${trimmedRecipient}. This will cost ${feeAmount} ${token.symbol} in transaction fees${feeExplanation}. The lock will remain active and ownership will be transferred to the recipient.`);
     setShowConfirmModal(true);
   };
 

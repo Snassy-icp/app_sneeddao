@@ -120,6 +120,16 @@ function SendTokenModal({ show, onClose, onSend, token }) {
     return resolveSubaccount({ type: subaccountType, value: subaccountValue });
   }, [showSubaccountInput, subaccountType, subaccountValue]);
 
+  const reviewPrincipalObj = useMemo(() => {
+    const principalText = reviewData?.principal?.trim?.() || reviewData?.principal;
+    if (!principalText) return null;
+    try {
+      return Principal.fromText(principalText);
+    } catch {
+      return null;
+    }
+  }, [reviewData]);
+
   const handleSetMax = () => {
     const willNeedSplit = token.available > token.balance;
     const feesNeeded = willNeedSplit ? 2n * token.fee : token.fee;
@@ -149,7 +159,11 @@ function SendTokenModal({ show, onClose, onSend, token }) {
   const handleConvertToExplicit = () => {
     if (!extendedAddressDetected) return;
 
-    const principalText = extendedAddressDetected.principal.toText();
+    const principalText = extendedAddressDetected?.principal?.toText?.();
+    if (!principalText) {
+      setErrorText('Invalid principal in extended address');
+      return;
+    }
     setRecipient(principalText);
     
     if (extendedAddressDetected.subaccount) {
@@ -458,12 +472,18 @@ function SendTokenModal({ show, onClose, onSend, token }) {
               borderRadius: '6px',
               marginBottom: '8px'
             }}>
-              <PrincipalDisplay
-                principal={Principal.fromText(reviewData.principal)}
-                showCopyButton={true}
-                noLink={true}
-                style={{ fontSize: '0.85rem' }}
-              />
+              {reviewPrincipalObj ? (
+                <PrincipalDisplay
+                  principal={reviewPrincipalObj}
+                  showCopyButton={true}
+                  noLink={true}
+                  style={{ fontSize: '0.85rem' }}
+                />
+              ) : (
+                <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>
+                  {reviewData.principal}
+                </div>
+              )}
             </div>
 
             {/* Expandable Details */}
