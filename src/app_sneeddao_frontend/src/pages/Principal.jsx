@@ -29,9 +29,12 @@ import {
     isOfferPastExpiration,
     getOfferStateString,
     getBidStateString,
-    getAssetType
+    getAssetType,
+    formatUsd,
+    calculateUsdValue
 } from '../utils/SneedexUtils';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
+import { get_token_conversion_rate } from '../utils/TokenUtils';
 
 // Helper to determine if a principal is a canister (shorter) or user (longer)
 const isCanisterPrincipal = (principalStr) => {
@@ -170,6 +173,8 @@ export default function PrincipalPage() {
     const [scanProgress, setScanProgress] = useState({ current: 0, total: 0, found: 0 });
     const [scanError, setScanError] = useState('');
     const [scannedTokens, setScannedTokens] = useState([]);
+    const [neuronUsdTotal, setNeuronUsdTotal] = useState(0);
+    const [neuronUsdRates, setNeuronUsdRates] = useState({});
     
     // Message dialog state
     const [messageDialogOpen, setMessageDialogOpen] = useState(false);
@@ -444,6 +449,7 @@ export default function PrincipalPage() {
                 result.push({
                     rootCanisterId: snsInfo.rootCanisterId,
                     governanceId: governanceId,
+                    ledgerId: snsInfo.canisters?.ledger,
                     name: snsInfo.name || 'Unknown SNS',
                     logo: snsInfo.logo,
                     neuronCount: neuronsList.length,
@@ -460,6 +466,96 @@ export default function PrincipalPage() {
         });
         
         return result;
+    }, [principalNeuronCache]);
+
+    const tokenUsdTotal = React.useMemo(() => {
+        return scannedTokens.reduce((sum, token) => sum + (token.usdValue || 0), 0);
+    }, [scannedTokens]);
+
+    const grandTotalUsd = tokenUsdTotal + neuronUsdTotal;
+
+    const activeSnsSummary = React.useMemo(() => {
+        const active = snsesWithNeurons.find(sns => sns.rootCanisterId === activeNeuronSns);
+        if (!active) return null;
+        const ledgerId = active.ledgerId?.toString?.() || active.ledgerId;
+        const rate = ledgerId ? (neuronUsdRates[ledgerId] || 0) : 0;
+        const usdValue = active.totalStake ? calculateUsdValue(active.totalStake, 8, rate) : 0;
+        return { ...active, usdValue };
+    }, [snsesWithNeurons, activeNeuronSns, neuronUsdRates]);
+
+    const activeNeuronLedgerId = React.useMemo(() => {
+        const active = snsesWithNeurons.find(sns => sns.rootCanisterId === activeNeuronSns);
+        return active?.ledgerId?.toString?.() || active?.ledgerId || '';
+    }, [snsesWithNeurons, activeNeuronSns]);
+
+    const activeNeuronUsdRate = activeNeuronLedgerId ? (neuronUsdRates[activeNeuronLedgerId] || 0) : 0;
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const computeNeuronUsdTotals = async () => {
+            if (!principalNeuronCache || principalNeuronCache.size === 0) {
+                setNeuronUsdTotal(0);
+                setNeuronUsdRates({});
+                return;
+            }
+
+            const allSnses = getAllSnses();
+            const govToLedger = new Map();
+            allSnses.forEach(sns => {
+                const govId = sns.canisters?.governance?.toString?.() || sns.canisters?.governance;
+                const ledgerId = sns.canisters?.ledger?.toString?.() || sns.canisters?.ledger;
+                if (govId && ledgerId) {
+                    govToLedger.set(govId, ledgerId);
+                }
+            });
+
+            const totalsByLedger = new Map();
+            principalNeuronCache.forEach((neuronsList, governanceId) => {
+                if (!neuronsList || neuronsList.length === 0) return;
+                const govId = governanceId?.toString?.() || governanceId;
+                const ledgerId = govToLedger.get(govId);
+                if (!ledgerId) return;
+
+                const totalStake = neuronsList.reduce(
+                    (sum, n) => sum + BigInt(n.cached_neuron_stake_e8s || 0),
+                    0n
+                );
+
+                if (totalStake > 0n) {
+                    totalsByLedger.set(
+                        ledgerId,
+                        (totalsByLedger.get(ledgerId) || 0n) + totalStake
+                    );
+                }
+            });
+
+            const rateEntries = await Promise.all(
+                [...totalsByLedger.keys()].map(async ledgerId => {
+                    const rate = await get_token_conversion_rate(ledgerId, 8);
+                    return [ledgerId, rate];
+                })
+            );
+
+            const rateMap = {};
+            rateEntries.forEach(([ledgerId, rate]) => {
+                rateMap[ledgerId] = rate;
+            });
+
+            let totalUsd = 0;
+            totalsByLedger.forEach((amount, ledgerId) => {
+                const rate = rateMap[ledgerId] || 0;
+                totalUsd += calculateUsdValue(amount, 8, rate);
+            });
+
+            if (!cancelled) {
+                setNeuronUsdRates(rateMap);
+                setNeuronUsdTotal(totalUsd);
+            }
+        };
+
+        computeNeuronUsdTotals();
+        return () => { cancelled = true; };
     }, [principalNeuronCache]);
 
     // Helper to check if a neuron is empty (0 stake and 0 maturity)
@@ -1071,12 +1167,15 @@ export default function PrincipalPage() {
                             logo = 'icp_symbol.svg';
                         }
 
+                        const usdRate = await get_token_conversion_rate(ledgerId, decimals);
+                        const usdValue = calculateUsdValue(balance, decimals, usdRate);
+
                         foundCount++;
                         setScannedTokens(prev => {
                             if (prev.some(token => token.ledgerId === ledgerId)) return prev;
                             return [
                                 ...prev,
-                                { ledgerId, symbol, decimals, name, logo, balance: BigInt(balance) }
+                                { ledgerId, symbol, decimals, name, logo, balance: BigInt(balance), usdValue }
                             ];
                         });
                     }
@@ -2001,6 +2100,36 @@ export default function PrincipalPage() {
                                             Neurons
                                         </div>
                                     </div>
+                                    <div style={{
+                                        background: theme.colors.tertiaryBg,
+                                        borderRadius: '12px',
+                                        padding: '0.75rem',
+                                        textAlign: 'center',
+                                        transition: 'all 0.2s ease',
+                                        border: `1px solid transparent`,
+                                        cursor: 'pointer'
+                                    }}
+                                    onClick={() => setActiveTab('balances')}
+                                    onMouseEnter={(e) => e.currentTarget.style.borderColor = principalPrimary}
+                                    onMouseLeave={(e) => e.currentTarget.style.borderColor = 'transparent'}
+                                    >
+                                        <div style={{ 
+                                            color: principalPrimary, 
+                                            fontSize: '1.1rem', 
+                                            fontWeight: '700',
+                                            marginBottom: '0.25rem'
+                                        }}>
+                                            {formatUsd(grandTotalUsd)}
+                                        </div>
+                                        <div style={{ 
+                                            color: theme.colors.mutedText, 
+                                            fontSize: '0.7rem', 
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.5px'
+                                        }}>
+                                            Total Value
+                                        </div>
+                                    </div>
                                 </div>
                                 
                                 {/* Link to /canister page for canisters */}
@@ -2786,6 +2915,16 @@ export default function PrincipalPage() {
                                             {snsesWithNeurons.reduce((sum, s) => sum + s.neuronCount, 0)} total
                                         </div>
                                     )}
+                                    <div style={{ 
+                                        fontSize: '0.85rem', 
+                                        color: theme.colors.secondaryText,
+                                        background: theme.colors.tertiaryBg,
+                                        padding: '0.35rem 0.75rem',
+                                        borderRadius: '8px',
+                                        fontWeight: '600'
+                                    }}>
+                                        {formatUsd(neuronUsdTotal)}
+                                    </div>
                                 </div>
                             </div>
 
@@ -2845,6 +2984,50 @@ export default function PrincipalPage() {
                                             </button>
                                         );
                                     })}
+                                </div>
+                            )}
+
+                            {activeSnsSummary && (
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: '0.75rem',
+                                    flexWrap: 'wrap',
+                                    marginBottom: '1rem',
+                                    padding: '0.75rem 1rem',
+                                    borderRadius: '12px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    background: theme.colors.primaryBg
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                        <TokenIcon 
+                                            logo={activeSnsSummary.logo} 
+                                            size={18} 
+                                            fallbackIcon={<FaBrain size={12} />}
+                                            fallbackColor={principalAccent}
+                                            rounded={false}
+                                        />
+                                        <span style={{ color: theme.colors.primaryText, fontWeight: '600' }}>
+                                            {activeSnsSummary.name}
+                                        </span>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem' }}>
+                                        <span style={{ 
+                                            color: theme.colors.secondaryText, 
+                                            fontSize: '0.95rem',
+                                            fontWeight: '700'
+                                        }}>
+                                            {formatAmount(activeSnsSummary.totalStake, 8)} {tokenSymbol}
+                                        </span>
+                                        <span style={{ 
+                                            color: theme.colors.mutedText, 
+                                            fontSize: '0.85rem',
+                                            fontWeight: '600'
+                                        }}>
+                                            {formatUsd(activeSnsSummary.usdValue || 0)}
+                                        </span>
+                                    </div>
                                 </div>
                             )}
 
@@ -3047,6 +3230,14 @@ export default function PrincipalPage() {
                                                             whiteSpace: 'nowrap'
                                                         }}>
                                                             {formatE8s(activeGroup.totalStake)} {tokenSymbol}
+                                                            <span style={{ 
+                                                                marginLeft: '0.5rem',
+                                                                color: theme.colors.mutedText,
+                                                                fontSize: '0.85rem',
+                                                                fontWeight: '600'
+                                                            }}>
+                                                                {formatUsd(calculateUsdValue(activeGroup.totalStake, 8, activeNeuronUsdRate))}
+                                                            </span>
                                                         </div>
                                                     </div>
                                                 );
@@ -3245,6 +3436,14 @@ export default function PrincipalPage() {
                                 <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '1.1rem' }}>
                                     Token Balances
                                 </span>
+                                <span style={{ 
+                                    marginLeft: 'auto',
+                                    color: theme.colors.secondaryText, 
+                                    fontSize: '0.95rem',
+                                    fontWeight: '600'
+                                }}>
+                                    {formatUsd(tokenUsdTotal)}
+                                </span>
                             </div>
 
                             <div style={{
@@ -3363,6 +3562,14 @@ export default function PrincipalPage() {
                                                         fontSize: '0.75rem'
                                                     }}>
                                                         ({token.balance.toString()})
+                                                    </span>
+                                                    <span style={{ 
+                                                        marginLeft: 'auto',
+                                                        color: theme.colors.primaryText, 
+                                                        fontSize: '0.8rem',
+                                                        fontWeight: '600'
+                                                    }}>
+                                                        {formatUsd(token.usdValue || 0)}
                                                     </span>
                                                 </div>
                                             </div>
