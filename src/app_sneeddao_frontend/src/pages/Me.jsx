@@ -11,7 +11,6 @@ import {
     fetchUserNeuronsForSns, 
     formatE8s, 
     getDissolveState, 
-    formatNeuronIdLink,
     uint8ArrayToHex,
     getOwnerPrincipals,
     safePrincipalString,
@@ -38,6 +37,7 @@ import { Link } from 'react-router-dom';
 import ConfirmationModal from '../ConfirmationModal';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import TransactionList from '../components/TransactionList';
+import NeuronDisplay from '../components/NeuronDisplay';
 import { useSns } from '../contexts/SnsContext';
 import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
 import { 
@@ -3095,14 +3095,7 @@ function NeuronCard({
 }) {
     const displayName = name || nickname;
     const [isExpanded, setIsExpanded] = useState(false);
-    const [copied, setCopied] = useState(false);
     const showDetails = isExpanded || editingName === neuronId;
-    const handleCopy = (event) => {
-        event.stopPropagation();
-        navigator.clipboard.writeText(neuronId);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1200);
-    };
 
     return (
         <div style={{
@@ -3135,59 +3128,17 @@ function NeuronCard({
                     </div>
                 </div>
 
-                {name && (
-                    <div style={{ 
-                        color: mePrimary,
-                        fontSize: '1.1rem',
-                        fontWeight: '600',
-                        marginBottom: '0.25rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.35rem'
-                    }}>
-                        {name}
-                        {isVerified && <FaCheckCircle size={14} color={mePrimary} title="Verified name" />}
-                    </div>
-                )}
-                {nickname && (
-                    <div style={{ 
-                        color: theme.colors.mutedText,
-                        fontSize: '0.95rem',
-                        fontStyle: 'italic',
-                        marginBottom: '0.25rem'
-                    }}>
-                        {nickname}
-                    </div>
-                )}
-
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    <Link
-                        to={`/neuron?neuronid=${neuronId}&sns=${selectedSnsRoot}`}
-                        onClick={(event) => event.stopPropagation()}
-                        style={{ 
-                            fontFamily: 'monospace',
-                            color: theme.colors.mutedText,
-                            fontSize: '0.85rem',
-                            textDecoration: 'none'
-                        }}
-                        title={neuronId}
-                    >
-                        {`${neuronId.slice(0, 6)}...${neuronId.slice(-6)}`}
-                    </Link>
-                    <button
-                        onClick={handleCopy}
-                        style={{
-                            background: 'none',
-                            border: 'none',
-                            padding: '0.25rem',
-                            cursor: 'pointer',
-                            color: copied ? theme.colors.primaryText : theme.colors.mutedText,
-                            fontSize: '0.85rem'
-                        }}
-                        title="Copy neuron ID"
-                    >
-                        {copied ? <FaCheckCircle size={12} /> : <FaCopy size={12} />}
-                    </button>
+                    <div onClick={(event) => event.stopPropagation()} style={{ flex: '1 1 auto', minWidth: '120px' }}>
+                        <NeuronDisplay
+                            neuronId={neuronId}
+                            snsRoot={selectedSnsRoot}
+                            displayInfo={{ name, nickname, isVerified }}
+                            showCopyButton={true}
+                            enableContextMenu={true}
+                            isAuthenticated={Boolean(identity)}
+                        />
+                    </div>
                     {hasHotkeyAccess && (
                         <button
                             onClick={(e) => {

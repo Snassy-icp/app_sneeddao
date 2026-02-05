@@ -10,13 +10,14 @@ import PrincipalInput from '../components/PrincipalInput';
 import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalColor, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import ConfirmationModal from '../ConfirmationModal';
-import { fetchPrincipalNeuronsForSns, getOwnerPrincipals, formatNeuronIdLink, safePrincipalString, safePermissionType } from '../utils/NeuronUtils';
+import { fetchPrincipalNeuronsForSns, getOwnerPrincipals, safePrincipalString, safePermissionType } from '../utils/NeuronUtils';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { getSnsById, fetchAndCacheSnsData, fetchSnsLogo, getAllSnses } from '../utils/SnsUtils';
 import { formatE8s, getDissolveState, uint8ArrayToHex } from '../utils/NeuronUtils';
 import { HttpAgent } from '@dfinity/agent';
 import TransactionList from '../components/TransactionList';
 import TokenIcon from '../components/TokenIcon';
+import NeuronDisplay from '../components/NeuronDisplay';
 import { useNaming } from '../NamingContext';
 import usePremiumStatus, { PremiumBadge } from '../hooks/usePremiumStatus';
 import MarkdownBody from '../components/MarkdownBody';
@@ -480,6 +481,7 @@ export default function PrincipalPage() {
     const walletLoading = scanningTokens;
     const displayTokenUsdTotal = formatUsd(Number.isFinite(tokenUsdTotal) ? tokenUsdTotal : 0);
     const displayNeuronUsdTotal = formatUsd(Number.isFinite(neuronUsdTotal) ? neuronUsdTotal : 0);
+    const displayGrandTotalUsd = formatUsd(Number.isFinite(grandTotalUsd) ? grandTotalUsd : 0);
 
     const activeSnsSummary = React.useMemo(() => {
         const active = snsesWithNeurons.find(sns => sns.rootCanisterId === activeNeuronSns);
@@ -1983,37 +1985,54 @@ export default function PrincipalPage() {
                                     
                                     {/* Name & Badge Row */}
                                     <div style={{ flex: 1, minWidth: '150px', paddingBottom: '4px' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                                            <h2 style={{ 
-                                                color: theme.colors.primaryText,
-                                                margin: '0',
-                                                fontSize: '1.5rem',
-                                                fontWeight: '700',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '0.5rem'
-                                            }}>
-                                                {principalInfo?.name || (isCanisterPrincipal(stablePrincipalId.current?.toString() || '') ? 'Canister' : 'Anonymous')}
-                                                {principalInfo?.isVerified && (
-                                                    <FaCheckCircle size={16} color={principalPrimary} title="Verified name" />
-                                                )}
-                                            </h2>
-                                            {isCanisterPrincipal(stablePrincipalId.current?.toString() || '') && (
-                                                <span style={{
-                                                    background: `${principalAccent}20`,
-                                                    color: principalAccent,
-                                                    padding: '4px 10px',
-                                                    borderRadius: '12px',
-                                                    fontSize: '0.75rem',
-                                                    fontWeight: '600',
-                                                    display: 'inline-flex',
+                                        <div style={{ 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            gap: '0.75rem', 
+                                            flexWrap: 'wrap',
+                                            justifyContent: 'space-between'
+                                        }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                                                <h2 style={{ 
+                                                    color: theme.colors.primaryText,
+                                                    margin: '0',
+                                                    fontSize: '1.5rem',
+                                                    fontWeight: '700',
+                                                    display: 'flex',
                                                     alignItems: 'center',
-                                                    gap: '4px'
+                                                    gap: '0.5rem'
                                                 }}>
-                                                    <FaCube size={10} />
-                                                    Canister
-                                                </span>
-                                            )}
+                                                    {principalInfo?.name || (isCanisterPrincipal(stablePrincipalId.current?.toString() || '') ? 'Canister' : 'Anonymous')}
+                                                    {principalInfo?.isVerified && (
+                                                        <FaCheckCircle size={16} color={principalPrimary} title="Verified name" />
+                                                    )}
+                                                </h2>
+                                                {isCanisterPrincipal(stablePrincipalId.current?.toString() || '') && (
+                                                    <span style={{
+                                                        background: `${principalAccent}20`,
+                                                        color: principalAccent,
+                                                        padding: '4px 10px',
+                                                        borderRadius: '12px',
+                                                        fontSize: '0.75rem',
+                                                        fontWeight: '600',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px'
+                                                    }}>
+                                                        <FaCube size={10} />
+                                                        Canister
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <span style={{
+                                                marginLeft: 'auto',
+                                                color: theme.colors.primaryText,
+                                                fontSize: '1.1rem',
+                                                fontWeight: '700',
+                                                whiteSpace: 'nowrap'
+                                            }}>
+                                                {displayGrandTotalUsd}
+                                            </span>
                                         </div>
                                     </div>
                                 </div>
@@ -2143,36 +2162,6 @@ export default function PrincipalPage() {
                                             letterSpacing: '0.5px'
                                         }}>
                                             Neurons
-                                        </div>
-                                    </div>
-                                    <div style={{
-                                        background: theme.colors.tertiaryBg,
-                                        borderRadius: '12px',
-                                        padding: '0.75rem',
-                                        textAlign: 'center',
-                                        transition: 'all 0.2s ease',
-                                        border: `1px solid transparent`,
-                                        cursor: 'pointer'
-                                    }}
-                                    onClick={() => setActiveTab('balances')}
-                                    onMouseEnter={(e) => e.currentTarget.style.borderColor = principalPrimary}
-                                    onMouseLeave={(e) => e.currentTarget.style.borderColor = 'transparent'}
-                                    >
-                                        <div style={{ 
-                                            color: principalPrimary, 
-                                            fontSize: '1.1rem', 
-                                            fontWeight: '700',
-                                            marginBottom: '0.25rem'
-                                        }}>
-                                            {formatUsd(grandTotalUsd)}
-                                        </div>
-                                        <div style={{ 
-                                            color: theme.colors.mutedText, 
-                                            fontSize: '0.7rem', 
-                                            textTransform: 'uppercase',
-                                            letterSpacing: '0.5px'
-                                        }}>
-                                            Total Value
                                         </div>
                                     </div>
                                 </div>
@@ -3399,7 +3388,13 @@ export default function PrincipalPage() {
                                                                             style={{ marginTop: '0.5rem' }}
                                                                             onClick={(event) => event.stopPropagation()}
                                                                         >
-                                                                            {formatNeuronIdLink(neuronId, activeNeuronSns || selectedSnsRoot || SNEED_SNS_ROOT)}
+                                                                            <NeuronDisplay
+                                                                                neuronId={neuronId}
+                                                                                snsRoot={activeNeuronSns || selectedSnsRoot || SNEED_SNS_ROOT}
+                                                                                showCopyButton={true}
+                                                                                enableContextMenu={true}
+                                                                                isAuthenticated={isAuthenticated}
+                                                                            />
                                                                         </div>
                                                                     </div>
                                                                 </div>
