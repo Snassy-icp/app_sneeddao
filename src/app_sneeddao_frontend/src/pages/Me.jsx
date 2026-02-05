@@ -56,7 +56,7 @@ import ThemeToggle from '../components/ThemeToggle';
 import TokenIcon from '../components/TokenIcon';
 import { Principal } from '@dfinity/principal';
 import { createSneedexActor } from '../utils/SneedexUtils';
-import { FaUser, FaCrown, FaKey, FaWallet, FaComments, FaCoins, FaEnvelope, FaGift, FaLock, FaServer, FaAddressBook, FaCog, FaBrain, FaExchangeAlt, FaCheckCircle, FaBell, FaPalette, FaGavel, FaShareAlt, FaExternalLinkAlt, FaCopy, FaPen, FaChevronRight } from 'react-icons/fa';
+import { FaUser, FaCrown, FaKey, FaWallet, FaComments, FaCoins, FaEnvelope, FaGift, FaLock, FaServer, FaAddressBook, FaCog, FaBrain, FaExchangeAlt, FaCheckCircle, FaBell, FaPalette, FaGavel, FaShareAlt, FaExternalLinkAlt, FaCopy, FaPen, FaChevronRight, FaChevronDown } from 'react-icons/fa';
 
 // Custom CSS for animations
 const customStyles = `
