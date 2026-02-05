@@ -3350,7 +3350,8 @@ export default function PrincipalPage() {
                                                 <div style={{ 
                                                     display: 'grid',
                                                     gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-                                                    gap: '1rem'
+                                                    gap: '1rem',
+                                                    alignItems: 'start'
                                                 }}>
                                                     {neuronsToShow.map((neuron) => {
                                                         const neuronId = uint8ArrayToHex(neuron.id[0]?.id);
@@ -3367,13 +3368,17 @@ export default function PrincipalPage() {
                                                                     border: `1px solid ${theme.colors.border}`
                                                                 }}
                                                             >
-                                                                <div style={{ 
-                                                                    display: 'flex',
-                                                                    alignItems: 'flex-start',
-                                                                    justifyContent: 'space-between',
-                                                                    gap: '0.75rem',
-                                                                    marginBottom: '0.75rem'
-                                                                }}>
+                                                                <div
+                                                                    onClick={() => toggleNeuronCard(neuronId)}
+                                                                    style={{ 
+                                                                        display: 'flex',
+                                                                        alignItems: 'flex-start',
+                                                                        justifyContent: 'space-between',
+                                                                        gap: '0.75rem',
+                                                                        marginBottom: '0.5rem',
+                                                                        cursor: 'pointer'
+                                                                    }}
+                                                                >
                                                                     <div>
                                                                         <div style={{ 
                                                                             fontSize: '1.5rem',
@@ -3390,24 +3395,13 @@ export default function PrincipalPage() {
                                                                         }}>
                                                                             {formatUsd(calculateUsdValue(neuron.cached_neuron_stake_e8s || 0, 8, activeNeuronUsdRate))}
                                                                         </div>
+                                                                        <div
+                                                                            style={{ marginTop: '0.5rem' }}
+                                                                            onClick={(event) => event.stopPropagation()}
+                                                                        >
+                                                                            {formatNeuronIdLink(neuronId, activeNeuronSns || selectedSnsRoot || SNEED_SNS_ROOT)}
+                                                                        </div>
                                                                     </div>
-                                                                    <button
-                                                                        onClick={() => toggleNeuronCard(neuronId)}
-                                                                        style={{
-                                                                            background: 'none',
-                                                                            border: 'none',
-                                                                            padding: '0.25rem',
-                                                                            cursor: 'pointer',
-                                                                            color: theme.colors.secondaryText
-                                                                        }}
-                                                                        aria-label={isExpanded ? 'Collapse neuron card' : 'Expand neuron card'}
-                                                                    >
-                                                                        {isExpanded ? <FaChevronDown size={14} /> : <FaChevronRight size={14} />}
-                                                                    </button>
-                                                                </div>
-
-                                                                <div style={{ marginBottom: isExpanded ? '1rem' : 0 }}>
-                                                                    {formatNeuronIdLink(neuronId, activeNeuronSns || selectedSnsRoot || SNEED_SNS_ROOT)}
                                                                 </div>
 
                                                                 {isExpanded && (

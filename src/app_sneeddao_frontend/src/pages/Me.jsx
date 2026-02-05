@@ -54,7 +54,7 @@ import ThemeToggle from '../components/ThemeToggle';
 import TokenIcon from '../components/TokenIcon';
 import { Principal } from '@dfinity/principal';
 import { createSneedexActor } from '../utils/SneedexUtils';
-import { FaUser, FaCrown, FaKey, FaWallet, FaComments, FaCoins, FaEnvelope, FaGift, FaLock, FaServer, FaAddressBook, FaCog, FaChevronRight, FaChevronDown, FaBrain, FaExchangeAlt, FaCheckCircle, FaBell, FaPalette, FaGavel, FaShareAlt, FaExternalLinkAlt } from 'react-icons/fa';
+import { FaUser, FaCrown, FaKey, FaWallet, FaComments, FaCoins, FaEnvelope, FaGift, FaLock, FaServer, FaAddressBook, FaCog, FaBrain, FaExchangeAlt, FaCheckCircle, FaBell, FaPalette, FaGavel, FaShareAlt, FaExternalLinkAlt, FaCopy, FaPen } from 'react-icons/fa';
 
 // Custom CSS for animations
 const customStyles = `
@@ -2538,7 +2538,8 @@ export default function Me() {
                                                     <div style={{
                                                         display: 'grid',
                                                         gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-                                                        gap: '1rem'
+                                                        gap: '1rem',
+                                                        alignItems: 'start'
                                                     }}>
                                                         {group.neurons.map((neuron) => {
                                                             const neuronId = uint8ArrayToHex(neuron.id[0]?.id);
@@ -3019,7 +3020,8 @@ function NeuronGroup({
                     <div style={{
                         display: 'grid',
                         gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-                        gap: '1rem'
+                        gap: '1rem',
+                        alignItems: 'start'
                     }}>
                         {group.neurons.map((neuron) => {
                             const neuronId = uint8ArrayToHex(neuron.id[0]?.id);
@@ -3093,7 +3095,14 @@ function NeuronCard({
 }) {
     const displayName = name || nickname;
     const [isExpanded, setIsExpanded] = useState(false);
+    const [copied, setCopied] = useState(false);
     const showDetails = isExpanded || editingName === neuronId;
+    const handleCopy = (event) => {
+        event.stopPropagation();
+        navigator.clipboard.writeText(neuronId);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1200);
+    };
 
     return (
         <div style={{
@@ -3106,7 +3115,10 @@ function NeuronCard({
             overflow: 'hidden'
         }}>
             {/* Header */}
-            <div style={{ marginBottom: showDetails ? '1rem' : '0.5rem' }}>
+            <div
+                onClick={() => setIsExpanded(prev => !prev)}
+                style={{ marginBottom: showDetails ? '1rem' : '0.5rem', cursor: 'pointer' }}
+            >
                 <div style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
@@ -3121,19 +3133,6 @@ function NeuronCard({
                     }}>
                         {formatE8s(neuron.cached_neuron_stake_e8s)} {tokenSymbol}
                     </div>
-                    <button
-                        onClick={() => setIsExpanded(prev => !prev)}
-                        style={{
-                            background: 'none',
-                            border: 'none',
-                            padding: '0.25rem',
-                            cursor: 'pointer',
-                            color: theme.colors.secondaryText
-                        }}
-                        aria-label={isExpanded ? 'Collapse neuron card' : 'Expand neuron card'}
-                    >
-                        {isExpanded ? <FaChevronDown size={14} /> : <FaChevronRight size={14} />}
-                    </button>
                 </div>
 
                 {name && (
@@ -3164,6 +3163,7 @@ function NeuronCard({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                     <Link
                         to={`/neuron?neuronid=${neuronId}&sns=${selectedSnsRoot}`}
+                        onClick={(event) => event.stopPropagation()}
                         style={{ 
                             fontFamily: 'monospace',
                             color: theme.colors.mutedText,
@@ -3175,21 +3175,18 @@ function NeuronCard({
                         {`${neuronId.slice(0, 6)}...${neuronId.slice(-6)}`}
                     </Link>
                     <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            navigator.clipboard.writeText(neuronId);
-                        }}
+                        onClick={handleCopy}
                         style={{
                             background: 'none',
                             border: 'none',
                             padding: '0.25rem',
                             cursor: 'pointer',
-                            color: theme.colors.mutedText,
+                            color: copied ? theme.colors.primaryText : theme.colors.mutedText,
                             fontSize: '0.85rem'
                         }}
                         title="Copy neuron ID"
                     >
-                        📋
+                        {copied ? <FaCheckCircle size={12} /> : <FaCopy size={12} />}
                     </button>
                     {hasHotkeyAccess && (
                         <button
@@ -3209,11 +3206,12 @@ function NeuronCard({
                             }}
                             title="Edit neuron name"
                         >
-                            ✏️
+                            <FaPen size={12} />
                         </button>
                     )}
                     <Link
                         to={`/neuron?neuronid=${neuronId}&sns=${selectedSnsRoot}`}
+                        onClick={(event) => event.stopPropagation()}
                         style={{
                             marginLeft: 'auto',
                             background: `${mePrimary}15`,
@@ -3230,7 +3228,8 @@ function NeuronCard({
                             gap: '0.35rem'
                         }}
                     >
-                        ⚙️ Manage
+                        <FaCog size={12} />
+                        Manage
                     </Link>
                 </div>
             </div>
