@@ -151,7 +151,7 @@ export default function PrincipalPage() {
         // Default to transactions tab if a subaccount is in the URL
         const urlSubaccount = new URLSearchParams(window.location.search).get('subaccount');
         return urlSubaccount ? 'transactions' : 'posts';
-    }); // 'posts', 'neurons', 'transactions', 'trades'
+    }); // 'posts', 'neurons', 'transactions', 'trades', 'balances'
     const [postsActiveTab, setPostsActiveTab] = useState('posts');
     const [tradesActiveTab, setTradesActiveTab] = useState('offers'); // 'offers' or 'bids'
     const [showOnlyActiveOffers, setShowOnlyActiveOffers] = useState(false);
@@ -2409,6 +2409,33 @@ export default function PrincipalPage() {
                         />
                         <span>Transactions</span>
                     </button>
+                    <button
+                        onClick={() => setActiveTab('balances')}
+                        style={{
+                            flex: '1 1 auto',
+                            minWidth: '100px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '0.5rem',
+                            padding: '0.75rem 0.75rem',
+                            borderRadius: '12px',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontWeight: '600',
+                            fontSize: '0.9rem',
+                            transition: 'all 0.2s ease',
+                            background: activeTab === 'balances' 
+                                ? `linear-gradient(135deg, ${principalPrimary}, ${principalAccent})`
+                                : 'transparent',
+                            color: activeTab === 'balances' 
+                                ? 'white' 
+                                : theme.colors.secondaryText,
+                        }}
+                    >
+                        <FaCoins size={14} />
+                        <span>Balances</span>
+                    </button>
                 </div>
 
                 {/* Tab Content */}
@@ -3173,7 +3200,53 @@ export default function PrincipalPage() {
                                 </span>
                             </div>
 
-                            {/* Token Scan */}
+                            <TransactionList 
+                                snsRootCanisterId={searchParams.get('sns') || selectedSnsRoot || SNEED_SNS_ROOT}
+                                principalId={stablePrincipalId.current?.toString()}
+                                showHeader={false}
+                                embedded={true}
+                                showSubaccountFilter={true}
+                                initialSubaccountFilter={searchParams.get('subaccount') || null}
+                                onSubaccountFilterChange={(subaccountHex) => {
+                                    // Update URL with subaccount param for shareability
+                                    const newParams = new URLSearchParams(searchParams);
+                                    if (subaccountHex) {
+                                        newParams.set('subaccount', subaccountHex);
+                                    } else {
+                                        newParams.delete('subaccount');
+                                    }
+                                    setSearchParams(newParams, { replace: true });
+                                }}
+                            />
+                        </div>
+                    )}
+
+                    {/* Balances Tab */}
+                    {activeTab === 'balances' && (
+                        <div style={{ padding: '1rem' }}>
+                            <div style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '0.75rem',
+                                marginBottom: '1rem'
+                            }}>
+                                <div style={{
+                                    width: '40px',
+                                    height: '40px',
+                                    borderRadius: '12px',
+                                    background: `linear-gradient(135deg, ${principalPrimary}25, ${principalAccent}15)`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: principalPrimary
+                                }}>
+                                    <FaCoins size={18} />
+                                </div>
+                                <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '1.1rem' }}>
+                                    Token Balances
+                                </span>
+                            </div>
+
                             <div style={{
                                 display: 'flex',
                                 flexWrap: 'wrap',
@@ -3181,7 +3254,7 @@ export default function PrincipalPage() {
                                 gap: '0.75rem',
                                 marginBottom: '1rem',
                                 padding: '0.75rem 0.9rem',
-                                borderRadius: '10px',
+                                borderRadius: '12px',
                                 border: `1px solid ${theme.colors.border}`,
                                 background: theme.colors.tertiaryBg
                             }}>
@@ -3189,11 +3262,11 @@ export default function PrincipalPage() {
                                     onClick={handleScanForTokens}
                                     disabled={scanningTokens || !stablePrincipalId.current}
                                     style={{
-                                        background: `${principalPrimary}15`,
+                                        background: `linear-gradient(135deg, ${principalPrimary}25, ${principalAccent}20)`,
                                         color: principalPrimary,
                                         border: `1px solid ${principalPrimary}30`,
-                                        borderRadius: '8px',
-                                        padding: '0.45rem 0.75rem',
+                                        borderRadius: '999px',
+                                        padding: '0.45rem 0.9rem',
                                         cursor: scanningTokens ? 'not-allowed' : 'pointer',
                                         fontSize: '0.85rem',
                                         fontWeight: '600',
@@ -3224,8 +3297,8 @@ export default function PrincipalPage() {
                             {scannedTokens.length > 0 && (
                                 <div style={{
                                     display: 'grid',
-                                    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-                                    gap: '0.6rem',
+                                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                                    gap: '0.7rem',
                                     marginBottom: '1.25rem'
                                 }}>
                                     {scannedTokens.map(token => (
@@ -3234,30 +3307,33 @@ export default function PrincipalPage() {
                                             style={{
                                                 display: 'flex',
                                                 alignItems: 'center',
-                                                gap: '0.6rem',
-                                                padding: '0.5rem 0.7rem',
-                                                borderRadius: '8px',
+                                                gap: '0.7rem',
+                                                padding: '0.65rem 0.9rem',
+                                                borderRadius: '999px',
                                                 border: `1px solid ${theme.colors.border}`,
-                                                background: theme.colors.secondaryBg
+                                                background: `linear-gradient(135deg, ${theme.colors.secondaryBg}, ${theme.colors.tertiaryBg})`,
+                                                maxWidth: '360px',
+                                                width: '100%'
                                             }}
                                         >
                                             <TokenIcon 
                                                 logo={token.logo} 
                                                 alt={token.symbol} 
-                                                size={20} 
+                                                size={22} 
                                                 fallbackColor={principalPrimary} 
                                             />
-                                            <div style={{ minWidth: 0 }}>
+                                            <div style={{ minWidth: 0, flex: 1 }}>
                                                 <div style={{ 
                                                     display: 'flex', 
-                                                    alignItems: 'baseline', 
-                                                    gap: '0.4rem',
+                                                    alignItems: 'center', 
+                                                    gap: '0.45rem',
                                                     flexWrap: 'wrap'
                                                 }}>
                                                     <span style={{ 
-                                                        fontWeight: '600', 
+                                                        fontWeight: '700', 
                                                         color: theme.colors.primaryText,
-                                                        fontSize: '0.9rem'
+                                                        fontSize: '0.92rem',
+                                                        letterSpacing: '0.2px'
                                                     }}>
                                                         {token.symbol}
                                                     </span>
@@ -3269,12 +3345,6 @@ export default function PrincipalPage() {
                                                             {token.name}
                                                         </span>
                                                     )}
-                                                    <span style={{ 
-                                                        color: theme.colors.mutedText, 
-                                                        fontSize: '0.7rem'
-                                                    }}>
-                                                        {token.ledgerId}
-                                                    </span>
                                                 </div>
                                                 <div style={{ 
                                                     display: 'flex',
@@ -3283,8 +3353,8 @@ export default function PrincipalPage() {
                                                 }}>
                                                     <span style={{ 
                                                         color: theme.colors.secondaryText, 
-                                                        fontSize: '0.85rem',
-                                                        fontWeight: '600'
+                                                        fontSize: '0.9rem',
+                                                        fontWeight: '700'
                                                     }}>
                                                         {formatAmount(token.balance, token.decimals)}
                                                     </span>
@@ -3300,25 +3370,6 @@ export default function PrincipalPage() {
                                     ))}
                                 </div>
                             )}
-
-                            <TransactionList 
-                                snsRootCanisterId={searchParams.get('sns') || selectedSnsRoot || SNEED_SNS_ROOT}
-                                principalId={stablePrincipalId.current?.toString()}
-                                showHeader={false}
-                                embedded={true}
-                                showSubaccountFilter={true}
-                                initialSubaccountFilter={searchParams.get('subaccount') || null}
-                                onSubaccountFilterChange={(subaccountHex) => {
-                                    // Update URL with subaccount param for shareability
-                                    const newParams = new URLSearchParams(searchParams);
-                                    if (subaccountHex) {
-                                        newParams.set('subaccount', subaccountHex);
-                                    } else {
-                                        newParams.delete('subaccount');
-                                    }
-                                    setSearchParams(newParams, { replace: true });
-                                }}
-                            />
                         </div>
                     )}
 
