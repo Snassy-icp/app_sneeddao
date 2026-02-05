@@ -40,6 +40,8 @@ import TransactionList from '../components/TransactionList';
 import NeuronDisplay from '../components/NeuronDisplay';
 import { useSns } from '../contexts/SnsContext';
 import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
+import { formatUsd, calculateUsdValue } from '../utils/SneedexUtils';
+import { get_token_conversion_rate } from '../utils/TokenUtils';
 import { 
     getNeuronManagerSettings, 
     saveNeuronManagerSettings, 
@@ -140,6 +142,8 @@ export default function Me() {
     const [activeNeuronGroup, setActiveNeuronGroup] = useState('self'); // Track active neuron group tab
     const [activeNeuronSns, setActiveNeuronSns] = useState(null); // Track active SNS in neurons tab
     const [tokenSymbol, setTokenSymbol] = useState('SNS');
+    const [activeNeuronUsdRate, setActiveNeuronUsdRate] = useState(0);
+    const [activeNeuronUsdLoading, setActiveNeuronUsdLoading] = useState(false);
     const [editingName, setEditingName] = useState(null);
     const [nameInput, setNameInput] = useState('');
     const [inputError, setInputError] = useState('');
@@ -741,6 +745,46 @@ export default function Me() {
         };
         fetchNeurons();
     }, [identity, activeNeuronSns, getNeuronsForGovernance, cacheCheckComplete]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const fetchUsdRate = async () => {
+            if (!activeNeuronSns) {
+                setActiveNeuronUsdRate(0);
+                setActiveNeuronUsdLoading(false);
+                return;
+            }
+
+            const selectedSns = getSnsById(activeNeuronSns);
+            const ledgerId = selectedSns?.canisters?.ledger?.toString?.() || selectedSns?.canisters?.ledger;
+            if (!ledgerId) {
+                setActiveNeuronUsdRate(0);
+                setActiveNeuronUsdLoading(false);
+                return;
+            }
+
+            setActiveNeuronUsdLoading(true);
+            try {
+                const rate = await get_token_conversion_rate(ledgerId, 8);
+                if (!cancelled) {
+                    setActiveNeuronUsdRate(rate || 0);
+                }
+            } catch (error) {
+                console.warn('[Me Neurons] Failed to fetch USD rate:', error?.message || error);
+                if (!cancelled) {
+                    setActiveNeuronUsdRate(0);
+                }
+            } finally {
+                if (!cancelled) {
+                    setActiveNeuronUsdLoading(false);
+                }
+            }
+        };
+
+        fetchUsdRate();
+        return () => { cancelled = true; };
+    }, [activeNeuronSns]);
 
     useEffect(() => {
         if (identity) {
@@ -2578,6 +2622,8 @@ export default function Me() {
                                                                     handleNameSubmit={handleNameSubmit}
                                                                     isSubmitting={isSubmitting}
                                                                     nervousSystemParameters={nervousSystemParameters}
+                                                                    activeNeuronUsdRate={activeNeuronUsdRate}
+                                                                    activeNeuronUsdLoading={activeNeuronUsdLoading}
                                                                 />
                                                             );
                                                         })}
@@ -2940,7 +2986,9 @@ function NeuronGroup({
     validateNameInput, 
     handleNameSubmit, 
     isSubmitting,
-    nervousSystemParameters 
+    nervousSystemParameters,
+    activeNeuronUsdRate,
+    activeNeuronUsdLoading
 }) {
     return (
         <div style={{
@@ -3060,6 +3108,8 @@ function NeuronGroup({
                                     handleNameSubmit={handleNameSubmit}
                                     isSubmitting={isSubmitting}
                                     nervousSystemParameters={nervousSystemParameters}
+                                    activeNeuronUsdRate={activeNeuronUsdRate}
+                                    activeNeuronUsdLoading={activeNeuronUsdLoading}
                                 />
                             );
                         })}
@@ -3127,6 +3177,16 @@ function NeuronCard({
                     }}>
                         {formatE8s(neuron.cached_neuron_stake_e8s)} {tokenSymbol}
                     </div>
+                <div style={{
+                    color: theme.colors.mutedText,
+                    fontSize: '0.9rem',
+                    fontWeight: '600',
+                    marginTop: '0.35rem'
+                }}>
+                    {activeNeuronUsdLoading
+                        ? '...'
+                        : formatUsd(calculateUsdValue(neuron.cached_neuron_stake_e8s || 0, 8, activeNeuronUsdRate))}
+                </div>
                 </div>
 
                 {name && (
