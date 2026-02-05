@@ -1798,7 +1798,7 @@ export default function Premium() {
                                                 <FaCube style={{ color: '#8e44ad', fontSize: '10px' }} />
                                             </div>
                                             <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.9rem' }}>
-                                                Dapp Manager
+                                                App Manager
                                             </span>
                                         </div>
                                         <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>

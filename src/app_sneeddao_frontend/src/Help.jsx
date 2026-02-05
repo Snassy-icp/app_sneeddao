@@ -79,7 +79,7 @@ const helpTopics = [
     {
         path: '/help/dapp-manager',
         icon: FaCubes,
-        title: 'Dapp Manager',
+        title: 'App Manager',
         description: 'Track, organize, and monitor all your Internet Computer canisters',
         color: '#ec4899',
     },

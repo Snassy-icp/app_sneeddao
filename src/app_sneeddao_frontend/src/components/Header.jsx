@@ -414,7 +414,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Posts', path: '/posts' },
                 { name: 'Tips', path: '/tips' },
                 { name: 'Rewards', path: '/rewards' },
-                { name: 'Canisters', path: '/canisters' },
+                { name: 'Apps', path: '/canisters' },
                 { name: 'Address Book', path: '/names' },
                 { name: 'Premium', path: '/premium' }
             ]

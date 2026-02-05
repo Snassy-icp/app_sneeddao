@@ -1985,9 +1985,9 @@ export default function Me() {
                                     />
                                 </SettingsSection>
 
-                                {/* Dapp Manager Settings */}
+                                {/* App Manager Settings */}
                                 <SettingsSection
-                                    title="Dapp Manager Settings"
+                                    title="App Manager Settings"
                                     icon={<FaServer size={16} />}
                                     expanded={canisterManagerSettingsExpanded}
                                     onToggle={() => setCanisterManagerSettingsExpanded(!canisterManagerSettingsExpanded)}
@@ -1996,7 +1996,7 @@ export default function Me() {
                                     <CycleThresholdSettings
                                         theme={theme}
                                         title="Canister Cycle Thresholds"
-                                        description="Configure cycle warning thresholds for canisters in Wallet and Dapp Manager."
+                                        description="Configure cycle warning thresholds for canisters in Wallet and App Manager."
                                         redValue={canisterCycleThresholdRed}
                                         orangeValue={canisterCycleThresholdOrange}
                                         onRedChange={(v) => { setCanisterCycleThresholdRed(v); setCanisterSettingsSaved(false); }}
