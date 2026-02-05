@@ -2942,6 +2942,9 @@ export default function PrincipalPage() {
                                 }}>
                                     {snsesWithNeurons.map(sns => {
                                         const isActive = activeNeuronSns === sns.rootCanisterId;
+                                        const snsLedgerId = sns.ledgerId?.toString?.() || sns.ledgerId;
+                                        const snsUsdRate = snsLedgerId ? (neuronUsdRates[snsLedgerId] || 0) : 0;
+                                        const snsUsdValue = sns.totalStake ? calculateUsdValue(sns.totalStake, 8, snsUsdRate) : 0;
                                         return (
                                             <button
                                                 key={sns.rootCanisterId}
@@ -2980,6 +2983,13 @@ export default function PrincipalPage() {
                                                     borderRadius: '4px'
                                                 }}>
                                                     {sns.neuronCount}
+                                                </span>
+                                                <span style={{ 
+                                                    fontSize: '0.75rem',
+                                                    fontWeight: '600',
+                                                    color: isActive ? 'rgba(255,255,255,0.9)' : theme.colors.mutedText
+                                                }}>
+                                                    {formatUsd(snsUsdValue)}
                                                 </span>
                                             </button>
                                         );
@@ -3274,9 +3284,17 @@ export default function PrincipalPage() {
                                                                     fontSize: '1.5rem',
                                                                     fontWeight: '700',
                                                                     color: principalAccent,
-                                                                    marginBottom: '1rem'
+                                                                    marginBottom: '0.6rem'
                                                                 }}>
                                                                     {formatE8s(neuron.cached_neuron_stake_e8s)} {tokenSymbol}
+                                                                </div>
+                                                                <div style={{
+                                                                    color: theme.colors.mutedText,
+                                                                    fontSize: '0.9rem',
+                                                                    fontWeight: '600',
+                                                                    marginBottom: '1rem'
+                                                                }}>
+                                                                    {formatUsd(calculateUsdValue(neuron.cached_neuron_stake_e8s || 0, 8, activeNeuronUsdRate))}
                                                                 </div>
 
                                                                 <div style={{ 
