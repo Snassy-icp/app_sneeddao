@@ -5879,7 +5879,7 @@ function Wallet() {
                             </Link>
                         </div>
 
-                        {/* ICP Neuron Managers Section */}
+                        {/* ICP Staking Bots Section */}
                         <div style={{ 
                             backgroundColor: theme.colors.secondaryBg, 
                             borderRadius: '12px', 
@@ -5907,7 +5907,7 @@ function Wallet() {
                                 }}>
                                     {neuronManagersExpanded ? <FaChevronDown size={12} /> : <FaChevronRight size={12} />}
                                     <FaBrain size={16} color="#8b5cf6" />
-                                    ICP Neuron Managers
+                                    ICP Staking Bots
                                     {neuronManagers.length > 0 && (
                                         <span style={{ color: '#8b5cf6', fontWeight: '500' }}>
                                             ({neuronManagers.length})
@@ -6085,7 +6085,7 @@ function Wallet() {
                                 textAlign: 'center'
                             }}>
                                 <p style={{ color: theme.colors.mutedText, marginBottom: '16px' }}>
-                                    No ICP Neuron Managers found.
+                                    No ICP Staking Bots found.
                                 </p>
                                 <Link 
                                     to="/create_icp_neuron"
@@ -7233,11 +7233,11 @@ function Wallet() {
                                                                 />
                                                             </span>
                                                         </div>
-                                                        {/* Row 2: ICP Neuron Manager label + actions */}
+                                                        {/* Row 2: ICP Staking Bot label + actions */}
                                                         <div className="header-row-2">
                                                             <div className="amount-symbol">
                                                                 <span className="token-amount" style={{ color: '#8b5cf6' }}>
-                                                                    ICP Neuron Manager
+                                                                    ICP Staking Bot
                                                                 </span>
                                                             </div>
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto' }}>
@@ -8321,7 +8321,7 @@ function Wallet() {
                                     fontSize: '1.1rem',
                                     fontWeight: '600'
                                 }}>
-                                    <FaExclamationTriangle size={14} style={{ marginRight: '8px', color: '#f59e0b' }} /> Transfer Neuron Manager
+                                    <FaExclamationTriangle size={14} style={{ marginRight: '8px', color: '#f59e0b' }} /> Transfer Staking Bot
                                 </h3>
                                 <button
                                     onClick={() => {

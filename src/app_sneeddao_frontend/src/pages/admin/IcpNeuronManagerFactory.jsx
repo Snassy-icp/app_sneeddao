@@ -1567,7 +1567,7 @@ export default function IcpNeuronManagerFactoryAdmin() {
       }}>
         <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '15px' }}>Manager WASM Module</h3>
         <p style={{ color: '#888', fontSize: '14px', marginBottom: '15px' }}>
-          Upload the ICP Neuron Manager WASM module. This WASM is used when creating new manager canisters.
+          Upload the ICP Staking Bot WASM module. This WASM is used when creating new manager canisters.
         </p>
         
         {/* Current Status */}
@@ -2601,7 +2601,7 @@ export default function IcpNeuronManagerFactoryAdmin() {
       <div className='page-container'>
         <Header />
         <div style={{ padding: '40px 20px', textAlign: 'center', color: '#ffffff' }}>
-          <h2>Please log in to access ICP Neuron Manager Factory Admin</h2>
+          <h2>Please log in to access ICP Staking Bot Factory Admin</h2>
         </div>
       </div>
     );
@@ -2622,7 +2622,7 @@ export default function IcpNeuronManagerFactoryAdmin() {
           marginBottom: '10px',
           color: '#ffffff'
         }}>
-          ICP Neuron Manager Factory Admin
+          ICP Staking Bot Factory Admin
         </h1>
         <p style={{ color: '#888', marginBottom: '10px' }}>
           Manage factory settings, admins, and operations

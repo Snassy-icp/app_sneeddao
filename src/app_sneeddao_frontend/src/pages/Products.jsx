@@ -795,7 +795,7 @@ function Products() {
                         
                         <p style={styles.description}>
                             A trustless marketplace for trading unique Internet Computer assets.
-                            Trade canisters, SNS neurons, ICP Neuron Managers, and tokens through secure escrow auctions.
+                            Trade apps, SNS neurons, ICP Staking Bots, and tokens through secure escrow auctions.
                         </p>
                         
                         <div style={styles.statsSection}>
@@ -959,7 +959,7 @@ function Products() {
                                 }}>
                                     <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>🧠</div>
                                     <div style={{ color: theme.colors.secondaryText, fontSize: '0.75rem', fontWeight: '500' }}>
-                                        ICP Neuron Managers
+                                        ICP Staking Bots
                                     </div>
                                 </div>
                                 <div style={{

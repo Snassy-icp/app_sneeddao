@@ -2722,7 +2722,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                                       </span>
                                                   ) : null}
                                                   {cycles === null && memory === null && (
-                                                      <span>{isNeuronManager ? 'Neuron Manager' : 'Canister'}</span>
+                                                      <span>{isNeuronManager ? 'Staking Bot' : 'App'}</span>
                                                   )}
                                               </span>
                                           </div>

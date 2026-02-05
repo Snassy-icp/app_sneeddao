@@ -306,7 +306,7 @@ function HelpSneedex() {
                             Apps
                         </h4>
                         <p style={{ ...styles.paragraph, marginBottom: 0 }}>
-                            Sell complete IC apps including code, state, and cycles. ICP Neuron Manager app canisters 
+                            Sell complete IC apps including code, state, and cycles. ICP Staking Bot app canisters 
                             show detailed neuron information including stake, maturity, and dissolve status.
                         </p>
                     </div>
@@ -497,7 +497,7 @@ function HelpSneedex() {
                     
                     <h4 style={styles.subsubheading}>How do I know if an app is verified?</h4>
                     <p style={styles.paragraph}>
-                        For ICP Neuron Manager app canisters, Sneedex verifies the WASM hash against known official versions. 
+                        For ICP Staking Bot app canisters, Sneedex verifies the WASM hash against known official versions. 
                         A green checkmark indicates verified code.
                     </p>
                     
@@ -518,7 +518,7 @@ function HelpSneedex() {
                     </div>
                     <ul style={styles.list}>
                         <li style={styles.listItem}>
-                            <Link to="/help/icp-neuron-manager" style={styles.link}>ICP Neuron Manager Canisters</Link> — Create and manage neuron manager canisters
+                            <Link to="/help/icp-neuron-manager" style={styles.link}>ICP Staking Bot App Canisters</Link> — Create and manage staking bot app canisters
                         </li>
                         <li style={styles.listItem}>
                             <Link to="/help/neurons" style={styles.link}>Understanding SNS Neurons</Link> — SNS neuron management and hotkeys

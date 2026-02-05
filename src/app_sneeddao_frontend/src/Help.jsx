@@ -72,7 +72,7 @@ const helpTopics = [
     {
         path: '/help/icp-neuron-manager',
         icon: FaServer,
-        title: 'ICP Neuron Manager App Canisters',
+        title: 'ICP Staking Bot App Canisters',
         description: 'Create and manage dedicated app canisters for your ICP neurons',
         color: '#3b82f6',
     },

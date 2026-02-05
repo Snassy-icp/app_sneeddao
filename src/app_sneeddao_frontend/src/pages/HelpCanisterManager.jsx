@@ -281,7 +281,7 @@ function HelpCanisterManager() {
                         <FaStar size={16} color={canisterPrimary} style={{ flexShrink: 0, marginTop: '2px' }} />
                         <p style={{ ...styles.paragraph, marginBottom: 0 }}>
                             <strong style={styles.strong}>Premium Feature:</strong> Full custom app tracking is available 
-                            exclusively to Sneed DAO staking members. ICP Neuron Managers are always visible to all users.
+                            exclusively to Sneed DAO staking members. ICP Staking Bots are always visible to all users.
                         </p>
                     </div>
                 </div>
@@ -302,7 +302,7 @@ function HelpCanisterManager() {
                         </h4>
                         <p style={{ ...styles.paragraph, marginBottom: '0.5rem' }}>Main dashboard showing all tracked apps:</p>
                         <ul style={{ ...styles.list, marginBottom: 0 }}>
-                            <li style={styles.listItem}>ICP Neuron Managers section with version tracking</li>
+                            <li style={styles.listItem}>ICP Staking Bots section with version tracking</li>
                             <li style={styles.listItem}>Custom Apps with folder organization</li>
                             <li style={styles.listItem}>Health status indicators (cycle monitoring)</li>
                         </ul>
@@ -484,7 +484,7 @@ function HelpCanisterManager() {
                     
                     <h4 style={styles.subsubheading}>Why is Custom Apps a premium feature?</h4>
                     <p style={styles.paragraph}>
-                        It helps support Sneed Hub development. ICP Neuron Managers are always accessible to all users.
+                        It helps support Sneed Hub development. ICP Staking Bots are always accessible to all users.
                     </p>
                 </div>
 
@@ -498,7 +498,7 @@ function HelpCanisterManager() {
                     </div>
                     <ul style={styles.list}>
                         <li style={styles.listItem}>
-                            <Link to="/help/icp-neuron-manager" style={styles.link}>ICP Neuron Manager Help</Link> — Managing ICP neurons through app canisters
+                            <Link to="/help/icp-neuron-manager" style={styles.link}>ICP Staking Bot Help</Link> — Managing ICP neurons through app canisters
                         </li>
                         <li style={styles.listItem}>
                             <Link to="/help/wallet" style={styles.link}>Wallet Help</Link> — Understanding the Sneed Wallet

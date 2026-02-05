@@ -560,7 +560,7 @@ function CreateIcpNeuron() {
                                 margin: 0,
                                 letterSpacing: '-0.5px'
                             }}>
-                                ICP Neuron Manager
+                                ICP Staking Bot
                             </h1>
                             <p style={{
                                 color: theme.colors.secondaryText,
@@ -689,7 +689,7 @@ function CreateIcpNeuron() {
                 {isAuthenticated && !loadingSneedVP && !hasAccess && (
                     <SneedMemberGateMessage 
                         gateType={GATE_TYPES.BETA}
-                        featureName="The ICP Neuron Manager"
+                        featureName="The ICP Staking Bot"
                     >
                         {/* Countdown Timer - rendered inside gate message after "Coming Soon" */}
                         {timeUntilPublic && (
@@ -780,7 +780,7 @@ function CreateIcpNeuron() {
 
                 {/* Beta Warning Banner - only show during beta for members */}
                 {isAuthenticated && !loadingSneedVP && isSneedMember && !isBetaEnded && (
-                    <BetaWarningBanner featureName="The ICP Neuron Manager" />
+                    <BetaWarningBanner featureName="The ICP Staking Bot" />
                 )}
 
                 {/* Create Manager Section - Show Wizard or Launch Button */}
@@ -827,7 +827,7 @@ function CreateIcpNeuron() {
                                     <FaPlus style={{ color: neuronPrimary, fontSize: '24px' }} />
                                 </div>
                                 <h3 style={{ color: theme.colors.primaryText, marginBottom: '0.75rem', fontSize: '1.2rem', fontWeight: '600' }}>
-                                    Create New Neuron Manager
+                                    Create New Staking Bot
                                 </h3>
                                 <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', marginBottom: '1.5rem', maxWidth: '400px', margin: '0 auto 1.5rem' }}>
                                     Create a dedicated canister to manage your ICP neurons with full control.
@@ -850,7 +850,7 @@ function CreateIcpNeuron() {
                                     onClick={() => setShowWizard(true)}
                                 >
                                     <FaPlus size={14} />
-                                    Create Neuron Manager
+                                    Create Staking Bot
                                 </button>
                                 
                                 {/* Quick info */}
@@ -890,7 +890,7 @@ function CreateIcpNeuron() {
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.75rem' }}>
                                     <FaCheckCircle style={{ color: theme.colors.success || '#22c55e', fontSize: '20px' }} />
                                     <h3 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '1rem', fontWeight: '600' }}>
-                                        ✨ Neuron Manager Created
+                                        ✨ Staking Bot Created
                                     </h3>
                                 </div>
                                 <div style={{ color: theme.colors.secondaryText, fontSize: '0.85rem', marginBottom: '0.75rem' }}>
@@ -1029,7 +1029,7 @@ function CreateIcpNeuron() {
                                 fontWeight: '600'
                             }}>
                                 <FaBrain style={{ color: neuronPrimary }} />
-                                Your Neuron Managers {managers.length > 0 && (
+                                Your Staking Bots {managers.length > 0 && (
                                     <span style={{
                                         background: `${neuronPrimary}20`,
                                         color: neuronPrimary,
@@ -1370,7 +1370,7 @@ function CreateIcpNeuron() {
                             <Link to="/canisters" style={{ color: neuronPrimary, fontWeight: '500' }}>Canisters Page</Link> – Track all your canisters, monitor cycles, and organize them into groups
                         </li>
                         <li>
-                            <span style={{ color: theme.colors.primaryText }}>This page</span> – View and manage all your ICP Neuron Managers
+                            <span style={{ color: theme.colors.primaryText }}>This page</span> – View and manage all your ICP Staking Bots
                         </li>
                     </ul>
                 </div>

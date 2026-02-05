@@ -264,7 +264,7 @@ function Admin() {
                         onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.02)'}
                         onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
                     >
-                        <h2 style={{ margin: 0 }}>ICP Neuron Manager Factory</h2>
+                        <h2 style={{ margin: 0 }}>ICP Staking Bot Factory</h2>
                         <p style={{ color: '#888', margin: 0 }}>Manage factory settings, fees, and created managers</p>
                     </Link>
 

@@ -276,7 +276,7 @@ function HelpIcpNeuronManager() {
                                 color: theme.colors.primaryText,
                                 margin: 0,
                             }}>
-                                ICP Neuron Manager Canisters
+                                ICP Staking Bot App Canisters
                             </h1>
                         </div>
                     </div>
@@ -287,7 +287,7 @@ function HelpIcpNeuronManager() {
                         maxWidth: '600px',
                         lineHeight: '1.6',
                     }}>
-                        Create and manage dedicated canisters for secure, decentralized ICP neuron control
+                        Create and manage dedicated app canisters for secure, decentralized ICP neuron control
                     </p>
                 </div>
             </div>
@@ -298,32 +298,32 @@ function HelpIcpNeuronManager() {
                     Back to Help Center
                 </Link>
 
-                {/* What is an ICP Neuron Manager */}
+                {/* What is an ICP Staking Bot */}
                 <div style={styles.section} className="icp-help-fade-in">
                     <div style={styles.sectionHeader}>
                         <div style={styles.sectionIcon()}>
                             <FaServer size={20} color={icpPrimary} />
                         </div>
-                        <h2 style={styles.subheading}>What is an ICP Neuron Manager?</h2>
+                        <h2 style={styles.subheading}>What is an ICP Staking Bot?</h2>
                     </div>
                     <p style={styles.paragraph}>
-                        An ICP Neuron Manager is a smart contract (canister) deployed on the Internet Computer that acts as 
+                        An ICP Staking Bot is a smart contract (app canister) deployed on the Internet Computer that acts as 
                         the controller of your ICP neurons. Instead of your personal wallet directly controlling neurons, 
-                        the canister becomes the neuron controller, and you control the canister.
+                        the app canister becomes the neuron controller, and you control the app canister.
                     </p>
                     
                     {/* Diagram */}
                     <div style={styles.diagramBox}>
                         <div style={styles.diagramItem}>
                             <div style={{ color: icpPrimary, fontWeight: 'bold' }}>Your Wallet</div>
-                            <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>(Controller of Canister)</div>
+                            <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>(Controller of App Canister)</div>
                         </div>
                         <div style={styles.diagramArrow}>
                             <div style={{ fontSize: '0.8rem' }}>controls</div>
                             <div style={{ fontSize: '1.5rem' }}>↓</div>
                         </div>
                         <div style={styles.diagramItem}>
-                            <div style={{ color: icpPrimary, fontWeight: 'bold' }}>ICP Neuron Manager</div>
+                            <div style={{ color: icpPrimary, fontWeight: 'bold' }}>ICP Staking Bot</div>
                             <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>(On-chain smart contract)</div>
                         </div>
                         <div style={styles.diagramArrow}>
@@ -340,9 +340,9 @@ function HelpIcpNeuronManager() {
                         <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>Key Benefits</h4>
                         <ul style={{ ...styles.list, marginBottom: 0 }}>
                             <li style={styles.listItem}><strong style={styles.strong}>Decentralized Control:</strong> Neurons controlled by on-chain code, not centralized services</li>
-                            <li style={styles.listItem}><strong style={styles.strong}>Multi-Controller:</strong> Multiple wallets can control the same canister and neurons</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Multi-Controller:</strong> Multiple wallets can control the same app canister and neurons</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Programmable:</strong> Automate neuron management with custom logic</li>
-                            <li style={styles.listItem}><strong style={styles.strong}>Upgradeable:</strong> Update canister code while preserving neurons</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Upgradeable:</strong> Update app canister code while preserving neurons</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Transparent:</strong> All operations are on-chain and auditable</li>
                         </ul>
                     </div>
@@ -354,17 +354,17 @@ function HelpIcpNeuronManager() {
                         <div style={styles.sectionIcon('#10b981')}>
                             <FaRocket size={20} color="#10b981" />
                         </div>
-                        <h2 style={styles.subheading}>Creating a Neuron Manager</h2>
+                        <h2 style={styles.subheading}>Creating a Staking Bot</h2>
                     </div>
                     <ol style={styles.stepList}>
                         <li style={styles.stepItem}>Navigate to the <Link to="/create_icp_neuron" style={styles.link}>Create ICP Neuron</Link> page</li>
                         <li style={styles.stepItem}>Click "Pay" to send the required ICP creation fee</li>
-                        <li style={styles.stepItem}>Once payment is confirmed, click "Create" to deploy your canister</li>
-                        <li style={styles.stepItem}>Your canister is created with you as the controller, funded with cycles</li>
+                        <li style={styles.stepItem}>Once payment is confirmed, click "Create" to deploy your app canister</li>
+                        <li style={styles.stepItem}>Your app canister is created with you as the controller, funded with cycles</li>
                     </ol>
                     <div style={styles.tipBox}>
                         <p style={{ ...styles.paragraph, marginBottom: 0 }}>
-                            <strong style={styles.strong}>What You Get:</strong> A dedicated canister you fully control, pre-funded 
+                            <strong style={styles.strong}>What You Get:</strong> A dedicated app canister you fully control, pre-funded 
                             with cycles and ready to create/manage ICP neurons immediately.
                         </p>
                     </div>
@@ -453,7 +453,7 @@ function HelpIcpNeuronManager() {
                         <h2 style={styles.subheading}>Controllers and Security</h2>
                     </div>
                     <p style={styles.paragraph}>
-                        The canister uses the IC's built-in controller system for access control. Only listed controllers 
+                        The app canister uses the IC's built-in controller system for access control. Only listed controllers 
                         can perform management operations.
                     </p>
                     
@@ -486,7 +486,7 @@ function HelpIcpNeuronManager() {
                         <h2 style={styles.subheading}>Cycles and Maintenance</h2>
                     </div>
                     <p style={styles.paragraph}>
-                        Like all IC canisters, your neuron manager requires cycles to operate. Monitor your cycles balance 
+                        Like all IC app canisters, your staking bot requires cycles to operate. Monitor your cycles balance 
                         and top up as needed.
                     </p>
                     <div style={styles.infoBox}>
@@ -506,23 +506,23 @@ function HelpIcpNeuronManager() {
                         <h2 style={styles.subheading}>Common Questions</h2>
                     </div>
                     
-                    <h4 style={styles.subsubheading}>What if my canister runs out of cycles?</h4>
+                    <h4 style={styles.subsubheading}>What if my app canister runs out of cycles?</h4>
                     <div style={styles.successBox}>
                         <p style={{ ...styles.paragraph, marginBottom: '0.5rem' }}>
                             <strong style={styles.strong}>Your neurons are completely safe.</strong> Neurons are stored on the NNS, 
-                            not in your canister—your canister is just a "remote control."
+                            not in your app canister—your app canister is just a "remote control."
                         </p>
                         <ul style={{ ...styles.list, marginBottom: 0 }}>
-                            <li style={styles.listItem}>You remain the controller even if the canister freezes</li>
+                            <li style={styles.listItem}>You remain the controller even if the app canister freezes</li>
                             <li style={styles.listItem}>Top up cycles anytime to unfreeze</li>
-                            <li style={styles.listItem}>No important state is stored in the canister</li>
+                            <li style={styles.listItem}>No important state is stored in the app canister</li>
                         </ul>
                     </div>
                     
-                    <h4 style={styles.subsubheading}>Why use a canister instead of controlling neurons directly?</h4>
+                    <h4 style={styles.subsubheading}>Why use an app canister instead of controlling neurons directly?</h4>
                     <p style={styles.paragraph}>
                         Multi-controller support, potential automation, upgradeability, and transferring control of all neurons 
-                        by changing canister controllers rather than each neuron individually.
+                        by changing app canister controllers rather than each neuron individually.
                     </p>
                     
                     <h4 style={styles.subsubheading}>Can I have multiple neuron managers?</h4>
@@ -533,7 +533,7 @@ function HelpIcpNeuronManager() {
                     <h4 style={styles.subsubheading}>Is my data safe during upgrades?</h4>
                     <p style={styles.paragraph}>
                         Yes! "Upgrade" mode preserves stable memory. Neurons are on the NNS, so they're always safe regardless 
-                        of what happens to the canister.
+                        of what happens to the app canister.
                     </p>
                 </div>
 
@@ -547,7 +547,7 @@ function HelpIcpNeuronManager() {
                     </div>
                     <div style={styles.successBox}>
                         <ol style={{ ...styles.stepList, marginBottom: 0 }}>
-                            <li style={styles.stepItem}><strong style={styles.strong}>Create a Manager:</strong> Visit <Link to="/create_icp_neuron" style={styles.link}>Create ICP Neuron</Link></li>
+                            <li style={styles.stepItem}><strong style={styles.strong}>Create a Bot:</strong> Visit <Link to="/create_icp_neuron" style={styles.link}>Create ICP Neuron</Link></li>
                             <li style={styles.stepItem}><strong style={styles.strong}>Create Neurons:</strong> Stake ICP directly from your wallet</li>
                             <li style={styles.stepItem}><strong style={styles.strong}>Set Up Following:</strong> Configure automatic voting for rewards</li>
                             <li style={styles.stepItem}><strong style={styles.strong}>Participate:</strong> Vote on proposals and watch your rewards grow!</li>

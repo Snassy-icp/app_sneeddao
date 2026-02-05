@@ -12,7 +12,7 @@ export const CANISTER_KIND_ICP_NEURON_MANAGER = 1;
 // Canister kind names for display
 export const CANISTER_KIND_NAMES = {
     [CANISTER_KIND_UNKNOWN]: 'Generic Canister',
-    [CANISTER_KIND_ICP_NEURON_MANAGER]: 'ICP Neuron Manager',
+    [CANISTER_KIND_ICP_NEURON_MANAGER]: 'ICP Staking Bot',
 };
 
 // Validation constants (must match backend)

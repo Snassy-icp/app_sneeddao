@@ -2126,9 +2126,9 @@ export default function Me() {
                                     </SettingItem>
                                 </SettingsSection>
 
-                                {/* ICP Neuron Manager Settings */}
+                                {/* ICP Staking Bot Settings */}
                                 <SettingsSection
-                                    title="ICP Neuron Manager Settings"
+                                    title="ICP Staking Bot Settings"
                                     icon={<FaBrain size={16} />}
                                     expanded={neuronManagerSettingsExpanded}
                                     onToggle={() => setNeuronManagerSettingsExpanded(!neuronManagerSettingsExpanded)}
@@ -2136,8 +2136,8 @@ export default function Me() {
                                 >
                                     <CycleThresholdSettings
                                         theme={theme}
-                                        title="ICP Neuron Manager Cycle Thresholds"
-                                        description="Configure cycle warning thresholds for your ICP Neuron Manager app canisters."
+                                        title="ICP Staking Bot Cycle Thresholds"
+                                        description="Configure cycle warning thresholds for your ICP Staking Bot app canisters."
                                         redValue={cycleThresholdRed}
                                         orangeValue={cycleThresholdOrange}
                                         onRedChange={(v) => { setCycleThresholdRed(v); setSettingsSaved(false); }}

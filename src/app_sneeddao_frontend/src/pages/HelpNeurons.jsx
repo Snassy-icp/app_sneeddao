@@ -648,7 +648,7 @@ function HelpNeurons() {
                             <Link to="/help/wallet" style={styles.link}>Understanding Your Wallet</Link> — Manage tokens, positions, and neurons
                         </li>
                         <li style={styles.listItem}>
-                            <Link to="/help/icp-neuron-manager" style={styles.link}>ICP Neuron Manager Canisters</Link> — Dedicated canisters for ICP neurons
+                            <Link to="/help/icp-neuron-manager" style={styles.link}>ICP Staking Bot App Canisters</Link> — Dedicated app canisters for ICP neurons
                         </li>
                         <li style={styles.listItem}>
                             <Link to="/forum" style={styles.link}>Forum</Link> — Ask questions and discuss with other users

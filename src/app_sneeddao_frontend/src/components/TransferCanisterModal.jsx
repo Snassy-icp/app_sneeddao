@@ -229,7 +229,7 @@ const TransferCanisterModal = ({
                         gap: '8px',
                     }}>
                         <FaExclamationTriangle size={14} style={{ color: '#f59e0b' }} />
-                        Transfer {isNeuronManager ? 'Neuron Manager' : 'Canister'}
+                        Transfer {isNeuronManager ? 'Staking Bot' : 'App'}
                     </h3>
                     <button
                         onClick={onClose}
@@ -280,7 +280,7 @@ const TransferCanisterModal = ({
                             display: 'block',
                             marginBottom: '6px',
                         }}>
-                            {isNeuronManager ? 'Neuron Manager' : 'Canister'} to Transfer
+                            {isNeuronManager ? 'Staking Bot' : 'App'} to Transfer
                         </label>
                         <div style={{
                             backgroundColor: theme.colors.secondaryBg,

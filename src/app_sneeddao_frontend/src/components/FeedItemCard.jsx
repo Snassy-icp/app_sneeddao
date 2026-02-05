@@ -680,7 +680,7 @@ function FeedItemCard({
                                                                 <span style={{ color: theme.colors.primaryText }}>
                                                                     {asset.cached_total_stake_e8s 
                                                                         ? `${formatAmount(asset.cached_total_stake_e8s)} ICP`
-                                                                        : asset.title || 'ICP Neuron Manager'
+                                                                        : asset.title || 'ICP Staking Bot'
                                                                     }
                                                                 </span>
                                                             </>
@@ -688,7 +688,7 @@ function FeedItemCard({
                                                             <>
                                                                 <FaCube style={{ color: feedBlue, fontSize: '14px' }} />
                                                                 <span style={{ color: theme.colors.primaryText }}>
-                                                                    {asset.title || 'Canister'}
+                                                                    {asset.title || 'App'}
                                                                 </span>
                                                             </>
                                                         )}

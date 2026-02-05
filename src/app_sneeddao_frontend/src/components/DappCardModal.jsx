@@ -236,7 +236,7 @@ const DappCardModal = ({
                                 fontSize: '12px',
                                 fontWeight: '500',
                             }}>
-                                {isNeuronManager ? 'ICP Neuron Manager' : 'Canister'}
+                                {isNeuronManager ? 'ICP Staking Bot' : 'App'}
                             </div>
                         </div>
                     </div>

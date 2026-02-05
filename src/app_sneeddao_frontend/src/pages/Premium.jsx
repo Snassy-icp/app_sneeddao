@@ -1313,7 +1313,7 @@ export default function Premium() {
                                         </div>
                                         <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                             <p style={{ color: theme.colors.secondaryText, fontSize: '0.8rem', marginBottom: '0.25rem', lineHeight: '1.4' }}>
-                                                Trade canisters, SNS neurons, ICP Neuron Managers, and tokens through trustless escrow auctions.
+                                                Trade apps, SNS neurons, ICP Staking Bots, and tokens through trustless escrow auctions.
                                             </p>
                                             {Number(premiumPricing.sneedex.regularCreationFeeE8s) > 0 && (
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
@@ -1366,7 +1366,7 @@ export default function Premium() {
                                     </div>
                                 )}
                                 
-                                {/* ICP Neuron Manager Section */}
+                                {/* ICP Staking Bot Section */}
                                 {premiumPricing.neuronManager && 
                                  Number(premiumPricing.neuronManager.regularFeeE8s) > Number(premiumPricing.neuronManager.premiumFeeE8s) && (
                                     <div style={{
@@ -1396,7 +1396,7 @@ export default function Premium() {
                                                 <FaBrain style={{ color: '#9b59b6', fontSize: '10px' }} />
                                             </div>
                                             <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.9rem' }}>
-                                                ICP Neuron Manager
+                                                ICP Staking Bot
                                             </span>
                                         </div>
                                         <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>

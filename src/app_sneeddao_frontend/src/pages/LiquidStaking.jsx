@@ -296,13 +296,13 @@ export default function LiquidStaking() {
                                 lineHeight: '1.5',
                                 border: `1px solid ${theme.colors.warning}20`
                             }}>
-                                💡 <strong>Important:</strong> You must create new neurons through your Neuron Manager canister. 
+                                💡 <strong>Important:</strong> You must create new neurons through your Staking Bot app canister. 
                                 Existing neurons in your NNS wallet cannot be transferred into a manager.
                             </div>
                             
                             <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 1rem 0' }}>
                                 {[
-                                    'Deploy your own Neuron Manager canister in seconds',
+                                    'Deploy your own Staking Bot app canister in seconds',
                                     'Stake ICP and manage multiple neurons from one place',
                                     'Trade your entire staking position by transferring the canister',
                                     'Full NNS governance: vote, set dissolve delay, spawn maturity',
@@ -335,7 +335,7 @@ export default function LiquidStaking() {
                                     fontWeight: '600',
                                     fontSize: '0.85rem',
                                 }}>
-                                    Create ICP Neuron Manager <FaArrowRight size={11} />
+                                    Create ICP Staking Bot <FaArrowRight size={11} />
                                 </Link>
                                 <Link to="/help/icp-neuron-manager" style={{
                                     display: 'inline-flex',
@@ -513,7 +513,7 @@ export default function LiquidStaking() {
                     </div>
                     <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', lineHeight: '1.6', marginBottom: '1.25rem' }}>
                         <strong style={{ color: theme.colors.primaryText }}>Sneedex</strong> is Sneed DAO's on-chain escrow marketplace where you can buy and sell 
-                        staking positions securely. List your ICP Neuron Manager canisters or SNS neurons, 
+                        staking positions securely. List your ICP Staking Bot app canisters or SNS neurons, 
                         set your price, and trade with confidence — all transactions are secured by smart contract escrow.
                     </p>
                     <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>

@@ -1214,7 +1214,7 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
                     disabled={!canCreate}
                 >
                     <FaRocket />
-                    Create Neuron Manager
+                    Create Staking Bot
                 </button>
             </div>
         </>
@@ -1225,7 +1225,7 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
         <div style={styles.progressOverlay}>
             <div style={styles.progressCard}>
                 <h3 style={{ color: theme.colors.primaryText, marginBottom: '1.5rem', textAlign: 'center' }}>
-                    {creationComplete ? '🎉 Success!' : '⏳ Creating Your Neuron Manager...'}
+                    {creationComplete ? '🎉 Success!' : '⏳ Creating Your Staking Bot...'}
                 </h3>
                 
                 {/* Show canister ID as soon as we have it - even during progress */}

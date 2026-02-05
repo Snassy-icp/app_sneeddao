@@ -1723,7 +1723,7 @@ function SneedexOffers() {
                                 >
                                     <option value="all">All Assets</option>
                                     <option value="canister">Apps</option>
-                                    <option value="neuron_manager">ICP Neuron Managers</option>
+                                    <option value="neuron_manager">ICP Staking Bots</option>
                                     <option value="neuron">SNS Neurons</option>
                                     <option value="token">ICRC1 Tokens</option>
                                 </select>
@@ -1809,7 +1809,7 @@ function SneedexOffers() {
                                         </button>
                                         {assetTokenFilter === ICP_LEDGER_ID && (
                                             <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>
-                                                Includes ICP Neuron Managers
+                                                Includes ICP Staking Bots
                                             </span>
                                         )}
                                     </div>
@@ -2198,13 +2198,13 @@ function SneedexOffers() {
                                                     const titleLine = details.title ? `${details.title}\n` : '';
                                                     // Use cached value if available
                                                     if (details.cached_total_stake_e8s !== null) {
-                                                            return `${titleLine}ICP Neuron Manager\nApp canister id: ${details.canister_id}\nStaked: ${(details.cached_total_stake_e8s / 1e8).toFixed(4)} ICP`;
+                                                            return `${titleLine}ICP Staking Bot\nApp canister id: ${details.canister_id}\nStaked: ${(details.cached_total_stake_e8s / 1e8).toFixed(4)} ICP`;
                                                     }
                                                     const mInfo = neuronManagerInfo[details.canister_id];
                                                     if (mInfo) {
-                                                            return `${titleLine}ICP Neuron Manager\nApp canister id: ${details.canister_id}\n\nStake: ${mInfo.totalStake.toFixed(4)} ICP\nMaturity: ${mInfo.totalMaturity.toFixed(4)} ICP\nStaked Maturity: ${mInfo.totalStakedMaturity.toFixed(4)} ICP\nTotal: ${mInfo.totalIcp.toFixed(4)} ICP\n\nNeurons: ${mInfo.neuronCount}`;
+                                                            return `${titleLine}ICP Staking Bot\nApp canister id: ${details.canister_id}\n\nStake: ${mInfo.totalStake.toFixed(4)} ICP\nMaturity: ${mInfo.totalMaturity.toFixed(4)} ICP\nStaked Maturity: ${mInfo.totalStakedMaturity.toFixed(4)} ICP\nTotal: ${mInfo.totalIcp.toFixed(4)} ICP\n\nNeurons: ${mInfo.neuronCount}`;
                                                     }
-                                                        return `${titleLine}ICP Neuron Manager\nApp canister id: ${details.canister_id}`;
+                                                        return `${titleLine}ICP Staking Bot\nApp canister id: ${details.canister_id}`;
                                                 }
                                                 if (details.type === 'Canister') {
                                                     const titleLine = details.title ? `${details.title}\n` : '';
@@ -2252,7 +2252,7 @@ function SneedexOffers() {
                                                                     ? `${neuronManagerInfo[details.canister_id].totalIcp.toFixed(2)} ICP`
                                                                     : details.escrowed 
                                                                         ? 'Loading...'
-                                                                        : 'Neuron Manager'
+                                                                        : 'Staking Bot'
                                                             }
                                                         </>
                                                     )}

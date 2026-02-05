@@ -1267,7 +1267,7 @@ export default function CanistersPage() {
             const canisters = await getTrackedCanisters(identity);
             setTrackedCanisters(canisters.map(p => p.toText()));
             
-            setSuccessMessage(destination === 'neuron_managers' ? 'App moved to Neuron Managers' : 'App moved to groups');
+            setSuccessMessage(destination === 'neuron_managers' ? 'App moved to Staking Bots' : 'App moved to groups');
         } catch (err) {
             console.error('Error moving canister from wallet:', err);
             setError('Failed to move app: ' + (err.message || 'Unknown error'));
@@ -1311,7 +1311,7 @@ export default function CanistersPage() {
             }
             await saveCanisterGroups(newGroups);
             
-            setSuccessMessage(destination === 'wallet' ? 'App moved to Wallet' : 'App moved to Neuron Managers');
+            setSuccessMessage(destination === 'wallet' ? 'App moved to Wallet' : 'App moved to Staking Bots');
         } catch (err) {
             console.error('Error moving canister from groups:', err);
             setError('Failed to move app: ' + (err.message || 'Unknown error'));
@@ -4509,7 +4509,7 @@ export default function CanistersPage() {
                                     )}
                                 </DroppableSection>
 
-                                {/* ICP Neuron Managers Subsection - Drop Zone */}
+                                {/* ICP Staking Bots Subsection - Drop Zone */}
                                 <DroppableSection
                                     targetType="neuron_managers"
                                     onDrop={handleDndDrop}
@@ -4538,7 +4538,7 @@ export default function CanistersPage() {
                                 >
                                     <div style={{ ...styles.sectionTitle, fontSize: '14px' }}>
                                         {neuronManagersExpanded ? <FaChevronDown size={12} /> : <FaChevronRight size={12} />}
-                                        {/* Neuron Managers health lamp */}
+                                        {/* Staking Bots health lamp */}
                                         {(() => {
                                             const stats = getManagersHealthStats(neuronManagers, neuronManagerCycleSettings);
                                             if (stats.total === 0) return null;
@@ -4553,12 +4553,12 @@ export default function CanistersPage() {
                                                         boxShadow: stats.overallStatus !== 'unknown' ? `0 0 6px ${lampColor}` : 'none',
                                                         flexShrink: 0,
                                                     }}
-                                                    title={`Neuron Managers health: ${stats.overallStatus}`}
+                                                    title={`Staking Bots health: ${stats.overallStatus}`}
                                                 />
                                             );
                                         })()}
                                         <FaBrain style={{ color: '#8b5cf6' }} />
-                                        ICP Neuron Managers
+                                        ICP Staking Bots
                                         {neuronManagers.length > 0 && (
                                             <span style={{ ...styles.sectionCount, fontSize: '11px' }}>{neuronManagers.length}</span>
                                         )}
@@ -4641,7 +4641,7 @@ export default function CanistersPage() {
                                 ) : neuronManagers.length === 0 ? (
                                     <div style={styles.emptyState}>
                                         <div style={styles.emptyIcon}>🧠</div>
-                                        <div style={styles.emptyText}>No ICP Neuron Managers</div>
+                                        <div style={styles.emptyText}>No ICP Staking Bots</div>
                                         <div style={styles.emptySubtext}>
                                             <Link to="/create_icp_neuron" style={{ color: theme.colors.accent }}>
                                                 Create your first neuron manager →

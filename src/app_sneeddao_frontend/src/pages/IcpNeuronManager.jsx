@@ -403,7 +403,7 @@ function IcpNeuronManager() {
                 console.warn('getVersion failed:', versionErr.message);
                 managerMethodsFailed = true;
                 if (versionErr.message?.includes('has no query method')) {
-                    failureReason = 'This canister does not appear to be an ICP Neuron Manager (missing getVersion method).';
+                    failureReason = 'This app canister does not appear to be an ICP Staking Bot (missing getVersion method).';
                 } else {
                     failureReason = `Could not get version: ${versionErr.message || 'Unknown error'}`;
                 }
@@ -416,7 +416,7 @@ function IcpNeuronManager() {
                 if (!managerMethodsFailed) {
                     managerMethodsFailed = true;
                     if (neuronsErr.message?.includes('has no query method')) {
-                        failureReason = 'This canister does not appear to be an ICP Neuron Manager (missing getNeuronIds method).';
+                        failureReason = 'This app canister does not appear to be an ICP Staking Bot (missing getNeuronIds method).';
                     } else {
                         failureReason = `Could not get neurons: ${neuronsErr.message || 'Unknown error'}`;
                     }
@@ -2185,7 +2185,7 @@ function IcpNeuronManager() {
                             🧠
                         </div>
                         <h2 style={{ color: theme.colors.primaryText, marginBottom: '0.75rem', fontSize: '1.5rem' }}>
-                            ICP Neuron Manager
+                            ICP Staking Bot
                         </h2>
                         <p style={{ color: theme.colors.secondaryText, marginBottom: '1.5rem', fontSize: '1rem' }}>
                             Please log in to manage your neuron.
@@ -2379,7 +2379,7 @@ function IcpNeuronManager() {
                                     margin: 0,
                                     letterSpacing: '-0.5px'
                                 }}>
-                                    ICP Neuron Manager
+                                    ICP Staking Bot
                                 </h1>
                                 {managerInfo?.version && (
                                     <span style={{
@@ -2657,14 +2657,14 @@ function IcpNeuronManager() {
                                     <span style={{ fontSize: '24px' }}>⚠️</span>
                                     <div>
                                         <div style={{ fontWeight: '600', marginBottom: '8px', color: theme.colors.primaryText }}>
-                                            Canister Not Recognized as ICP Neuron Manager
+                                            App Canister Not Recognized as ICP Staking Bot
                                         </div>
                                         <div style={{ fontSize: '13px', marginBottom: '12px' }}>
-                                            {invalidManagerReason || 'This canister does not respond to expected Neuron Manager methods.'}
+                                            {invalidManagerReason || 'This app canister does not respond to expected Staking Bot methods.'}
                                         </div>
                                         <div style={{ fontSize: '12px', color: theme.colors.mutedText }}>
                                             💡 If you are a controller of this canister, you can try to <strong style={{ color: theme.colors.primaryText }}>reinstall</strong> it 
-                                            with the latest official Neuron Manager WASM using the Canister section below. 
+                                            with the latest official Staking Bot WASM using the Canister section below. 
                                             This will overwrite the existing code but preserve data (if compatible).
                                         </div>
                                     </div>

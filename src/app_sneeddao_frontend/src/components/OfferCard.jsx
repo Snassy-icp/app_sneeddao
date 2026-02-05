@@ -286,17 +286,17 @@ function OfferCard({
                 if (details.type === 'Canister' && details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER) {
                     const titleLine = details.title ? `${details.title}\n` : '';
                     if (details.cached_total_stake_e8s !== null) {
-                        return `${titleLine}ICP Neuron Manager\nCanister: ${details.canister_id}\nStaked: ${(details.cached_total_stake_e8s / 1e8).toFixed(4)} ICP`;
+                        return `${titleLine}ICP Staking Bot\nApp canister id: ${details.canister_id}\nStaked: ${(details.cached_total_stake_e8s / 1e8).toFixed(4)} ICP`;
                     }
                     const mInfo = neuronManagerInfo[details.canister_id];
                     if (mInfo) {
-                        return `${titleLine}ICP Neuron Manager\nCanister: ${details.canister_id}\n\nStake: ${mInfo.totalStake.toFixed(4)} ICP\nMaturity: ${mInfo.totalMaturity.toFixed(4)} ICP\nStaked Maturity: ${mInfo.totalStakedMaturity.toFixed(4)} ICP\nTotal: ${mInfo.totalIcp.toFixed(4)} ICP\n\nNeurons: ${mInfo.neuronCount}`;
+                        return `${titleLine}ICP Staking Bot\nApp canister id: ${details.canister_id}\n\nStake: ${mInfo.totalStake.toFixed(4)} ICP\nMaturity: ${mInfo.totalMaturity.toFixed(4)} ICP\nStaked Maturity: ${mInfo.totalStakedMaturity.toFixed(4)} ICP\nTotal: ${mInfo.totalIcp.toFixed(4)} ICP\n\nNeurons: ${mInfo.neuronCount}`;
                     }
-                    return `${titleLine}ICP Neuron Manager\nCanister: ${details.canister_id}`;
+                    return `${titleLine}ICP Staking Bot\nApp canister id: ${details.canister_id}`;
                 }
                 if (details.type === 'Canister') {
                     const titleLine = details.title ? `${details.title}\n` : '';
-                    return `${titleLine}Canister: ${details.canister_id}`;
+                    return `${titleLine}App canister id: ${details.canister_id}`;
                 }
                 if (details.type === 'SNSNeuron') {
                     const stakeValue = details.cached_stake_e8s !== null 
@@ -338,7 +338,7 @@ function OfferCard({
                                     ? `${neuronManagerInfo[details.canister_id].totalIcp.toFixed(2)} ICP`
                                     : details.escrowed 
                                         ? 'Loading...'
-                                        : 'Neuron Manager'
+                                        : 'Staking Bot'
                             }
                         </>
                     )}

@@ -1188,7 +1188,7 @@ function SneedexCreate() {
         try {
             if (newAssetType === 'canister' || newAssetType === 'neuron_manager') {
                 if (!newAssetCanisterId.trim()) {
-                    setError(newAssetType === 'neuron_manager' ? 'Please enter an ICP Neuron Manager app canister id' : 'Please enter an app canister id');
+                    setError(newAssetType === 'neuron_manager' ? 'Please enter an ICP Staking Bot app canister id' : 'Please enter an app canister id');
                     return;
                 }
                 // Validate principal
@@ -1196,7 +1196,7 @@ function SneedexCreate() {
                 
                 // For neuron_manager type, verification is required
                 if (newAssetType === 'neuron_manager' && !canisterKindVerified?.verified) {
-                    setError('Please verify the app canister is an ICP Neuron Manager first');
+                    setError('Please verify the app canister is an ICP Staking Bot first');
                     return;
                 }
                 
@@ -1221,9 +1221,9 @@ function SneedexCreate() {
                 }
                 
                 const displayName = (newAssetType === 'neuron_manager' && totalIcpE8s)
-                    ? `${(Number(totalIcpE8s) / 1e8).toFixed(2)} ICP (Neuron Manager)`
+                    ? `${(Number(totalIcpE8s) / 1e8).toFixed(2)} ICP (Staking Bot)`
                     : newAssetType === 'neuron_manager' 
-                        ? `ICP Neuron Manager: ${displayTitle}`
+                    ? `ICP Staking Bot: ${displayTitle}`
                         : `App: ${displayTitle}`;
                 
                 asset = { 
@@ -3073,7 +3073,7 @@ function SneedexCreate() {
                                                             <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                                 {asset.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER && (
                                                                     <span style={{ color: theme.colors.accent, fontSize: '0.75rem' }}>
-                                                                        Neuron Manager •
+                                                                        Staking Bot •
                                                                     </span>
                                                                 )}
                                                                 <PrincipalDisplay 
@@ -3270,7 +3270,7 @@ function SneedexCreate() {
                                     }}>
                                     {[
                                         { type: 'canister', icon: FaServer, label: 'App', gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
-                                        { type: 'neuron_manager', icon: FaRobot, label: 'ICP Neuron Manager', gradient: 'linear-gradient(135deg, #f5af19 0%, #f12711 100%)' },
+                                        { type: 'neuron_manager', icon: FaRobot, label: 'ICP Staking Bot', gradient: 'linear-gradient(135deg, #f5af19 0%, #f12711 100%)' },
                                         { type: 'neuron', icon: FaBrain, label: 'SNS Neuron', gradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
                                         { type: 'token', icon: FaCoins, label: 'ICRC1 Token', gradient: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' },
                                     ].map(({ type, icon: Icon, label, gradient }) => {
@@ -3360,7 +3360,7 @@ function SneedexCreate() {
                                 {(newAssetType === 'canister' || newAssetType === 'neuron_manager') && (
                                     <div style={styles.formGroup}>
                                         <label style={styles.label}>
-                                            {newAssetType === 'neuron_manager' ? 'Select ICP Neuron Manager' : 'Select App'}
+                                            {newAssetType === 'neuron_manager' ? 'Select ICP Staking Bot' : 'Select App'}
                                         </label>
                                         
                                         {loadingCanisters ? (
@@ -3406,7 +3406,7 @@ function SneedexCreate() {
                                                         fontSize: '0.8rem', 
                                                         color: theme.colors.mutedText 
                                                     }}>
-                                                        Or enter an ICP Neuron Manager app canister id manually:
+                                                        Or enter an ICP Staking Bot app canister id manually:
                                                     </div>
                                                     <input
                                                         type="text"
@@ -3430,7 +3430,7 @@ function SneedexCreate() {
                                                         fontSize: '0.85rem',
                                                         color: theme.colors.secondaryText,
                                                     }}>
-                                                        <strong style={{ color: theme.colors.accent }}>💡 Tip:</strong> You don't have any ICP Neuron Managers registered yet.
+                                                        <strong style={{ color: theme.colors.accent }}>💡 Tip:</strong> You don't have any ICP Staking Bots registered yet.
                                                         Create one on the{' '}
                                                         <Link to="/canisters" style={{ color: theme.colors.accent }}>Apps page</Link>{' '}
                                                         or enter an existing one manually below.
@@ -3602,7 +3602,7 @@ function SneedexCreate() {
                                                                 fontSize: '0.9rem',
                                                                 marginBottom: '8px',
                                                             }}>
-                                                                <FaCheck /> Verified as ICP Neuron Manager
+                                                                <FaCheck /> Verified as ICP Staking Bot
                                                             </div>
                                                             <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText }}>
                                                                 <div>Version: <strong>{canisterKindVerified.versionStr}</strong></div>
@@ -3660,7 +3660,7 @@ function SneedexCreate() {
                                                             opacity: (!newAssetCanisterId || verifyingCanisterKind) ? 0.5 : 1,
                                                         }}
                                                     >
-                                                                <FaRobot /> Verify as Neuron Manager
+                                                                <FaRobot /> Verify as Staking Bot
                                                     </button>
                                             )}
                                         </div>
@@ -4547,7 +4547,7 @@ function SneedexCreate() {
                                                         <div style={styles.assetType}>
                                                             {asset.type === 'canister' && (
                                                                 asset.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER && asset.totalIcpE8s
-                                                                    ? `${(Number(asset.totalIcpE8s) / 1e8).toFixed(2)} ICP (Neuron Manager)`
+                                                                    ? `${(Number(asset.totalIcpE8s) / 1e8).toFixed(2)} ICP (Staking Bot)`
                                                                     : (asset.title || asset.display)
                                                             )}
                                                             {asset.type === 'neuron' && (
@@ -4641,7 +4641,7 @@ function SneedexCreate() {
                                                             {asset.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER && (
                                                                 <div style={{ display: 'flex', gap: '8px' }}>
                                                                     <span style={{ color: theme.colors.mutedText, minWidth: '100px' }}>Type:</span>
-                                                                    <span style={{ color: theme.colors.accent }}>ICP Neuron Manager</span>
+                                                                    <span style={{ color: theme.colors.accent }}>ICP Staking Bot</span>
                                                                 </div>
                                                             )}
                                                             {asset.title && (

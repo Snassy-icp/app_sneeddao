@@ -142,7 +142,7 @@ const CANISTERS = {
     },
     neuron_manager_factory: {
         id: factoryCanisterId,
-        name: 'Neuron Manager Factory',
+        name: 'Staking Bot Factory',
         icon: FaBrain,
         color: '#8b5cf6',
         getActor: (identity) => createFactoryActor(factoryCanisterId, { agentOptions: { identity, host: getHost() } }),

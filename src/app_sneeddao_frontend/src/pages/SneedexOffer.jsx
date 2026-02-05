@@ -2693,7 +2693,7 @@ function SneedexOffer() {
                                                             {details.type === 'Canister' && (
                                                                 details.title 
                                                                     ? details.title 
-                                                                    : (details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER ? 'ICP Neuron Manager' : 'App')
+                                                                    : (details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER ? 'ICP Staking Bot' : 'App')
                                                             )}
                                                             {details.type === 'SNSNeuron' && (() => {
                                                                 // Find SNS name from snsData
@@ -3448,7 +3448,7 @@ function SneedexOffer() {
                                                         color: theme.colors.accent,
                                                         fontWeight: '600',
                                                     }}>
-                                                        <FaRobot /> ICP Neuron Manager Details
+                                                        <FaRobot /> ICP Staking Bot Details
                                                     </div>
                                                     
                                                     {loadingNeuronManagerInfo[idx] ? (

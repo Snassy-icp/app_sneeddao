@@ -126,8 +126,8 @@ function Sneedex() {
         },
         {
             icon: '🏛️',
-            title: 'ICP Neuron Managers',
-            description: 'Trade ICP neurons via manager canisters. Full NNS voting power, liquid ownership.',
+            title: 'ICP Staking Bots',
+            description: 'Trade ICP neurons via staking bot app canisters. Full NNS voting power, liquid ownership.',
             color: '#3b82f6',
         },
         {
@@ -268,7 +268,7 @@ function Sneedex() {
                                 maxWidth: '600px',
                                 lineHeight: '1.6',
                             }}>
-                                Trade apps, SNS neurons, ICP Neuron Managers, and ICRC1 tokens through trustless escrow auctions.
+                                Trade apps, SNS neurons, ICP Staking Bots, and ICRC1 tokens through trustless escrow auctions.
                             </p>
                         </div>
                         

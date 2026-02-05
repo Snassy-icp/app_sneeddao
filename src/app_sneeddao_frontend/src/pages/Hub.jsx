@@ -940,7 +940,7 @@ function Hub() {
         {
             title: 'Liquid Staking',
             icon: <FaCoins size={28} />,
-            desc: 'Make your staking positions tradable! Create ICP Neuron Manager canisters or stake SNS tokens in a way that keeps them transferable and sellable on Sneedex.',
+            desc: 'Make your staking positions tradable! Create ICP Staking Bot app canisters or stake SNS tokens in a way that keeps them transferable and sellable on Sneedex.',
             path: '/liquid_staking',
             cta: 'Start Staking',
             color: theme.colors.success,

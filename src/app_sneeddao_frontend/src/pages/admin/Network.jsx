@@ -1034,7 +1034,7 @@ export default function NetworkAdmin() {
                                         { name: 'Sneed Lock', id: sneedLockCanisterId, icon: <FaLock size={12} /> },
                                         { name: 'SNS Forum', id: forumCanisterId, icon: <FaComments size={12} /> },
                                         { name: 'SMS', id: smsCanisterId, icon: <FaEnvelope size={12} /> },
-                                        { name: 'Neuron Manager Factory', id: factoryCanisterId, icon: <FaRobot size={12} /> },
+                                        { name: 'Staking Bot Factory', id: factoryCanisterId, icon: <FaRobot size={12} /> },
                                         { name: 'Sneedex', id: sneedexCanisterId, icon: <FaExchangeAlt size={12} /> },
                                         { name: 'Rewards (RLL)', id: rllCanisterId, icon: <FaGift size={12} /> },
                                     ].map(({ name, id, icon }) => (
@@ -1312,7 +1312,7 @@ export default function NetworkAdmin() {
                         <div style={styles.cardHeader}>
                             <FaRobot style={styles.cardIcon} />
                             <div>
-                                <div style={styles.cardTitle}>Neuron Manager Factory</div>
+                                <div style={styles.cardTitle}>Staking Bot Factory</div>
                                 <div style={styles.cardSubtitle}>{factoryCanisterId}</div>
                             </div>
                         </div>
@@ -1349,7 +1349,7 @@ export default function NetworkAdmin() {
                                 {renderSetting('sneedex', 'backend_canister_id', 'Backend Canister ID', 
                                     networkSettings.sneedex.backend_canister_id,
                                     'For wallet canister registrations')}
-                                {renderSetting('sneedex', 'neuron_manager_factory_canister_id', 'Neuron Manager Factory ID', 
+                                {renderSetting('sneedex', 'neuron_manager_factory_canister_id', 'Staking Bot Factory ID', 
                                     networkSettings.sneedex.neuron_manager_factory_canister_id,
                                     'For manager registrations')}
                                 {renderSetting('sneedex', 'sneed_sms_canister_id', 'Sneed SMS Canister ID', 

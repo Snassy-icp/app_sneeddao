@@ -830,8 +830,8 @@ export default function SneedexAdmin() {
             const result = await actor.setNeuronManagerFactoryCanisterId(principal);
             if ('ok' in result) {
                 showInfo('Success', principal.length > 0 
-                    ? 'Neuron Manager Factory canister ID set successfully' 
-                    : 'Neuron Manager Factory canister ID cleared', 'success');
+                    ? 'Staking Bot Factory canister ID set successfully' 
+                    : 'Staking Bot Factory canister ID cleared', 'success');
                 setFactoryCanisterId(principal.length > 0 ? principal[0] : null);
                 setNewFactoryCanisterId('');
             } else {
@@ -2168,9 +2168,9 @@ export default function SneedexAdmin() {
                             </div>
                         </div>
                         
-                        {/* Neuron Manager Factory Canister ID */}
+                        {/* Staking Bot Factory Canister ID */}
                         <div style={{ padding: '1rem', background: theme.colors.tertiaryBg, borderRadius: '10px' }}>
-                            <label style={styles.label}>Neuron Manager Factory Canister ID</label>
+                            <label style={styles.label}>Staking Bot Factory Canister ID</label>
                             <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '0.75rem' }}>
                                 Used for registering ICP neuron managers to users
                             </p>

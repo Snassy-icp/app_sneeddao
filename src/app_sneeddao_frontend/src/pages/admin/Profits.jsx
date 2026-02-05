@@ -539,7 +539,7 @@ export default function ProfitsAdmin() {
         <div style={styles.card}>
             <h3 style={styles.cardTitle}>
                 <FaCube style={styles.cardIcon} />
-                ICP Neuron Manager Factory
+                ICP Staking Bot Factory
             </h3>
             {loadingFactory ? (
                 <p style={styles.loadingText}>Loading...</p>

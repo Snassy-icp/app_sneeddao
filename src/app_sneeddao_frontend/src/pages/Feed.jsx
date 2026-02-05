@@ -706,11 +706,11 @@ function Feed() {
             if (asset.type === 'SNSNeuron') {
                 title = 'SNS Neuron for Sale';
             } else if (asset.type === 'Canister') {
-                // Check if it's an ICP Neuron Manager (canister_kind === 1)
+                // Check if it's an ICP Staking Bot (canister_kind === 1)
                 if (asset.canister_kind === 1) {
-                    title = asset.title || 'ICP Neuron Manager for Sale';
+                    title = asset.title || 'ICP Staking Bot for Sale';
                 } else {
-                    title = asset.title || 'Canister for Sale';
+                    title = asset.title || 'App for Sale';
                 }
             } else if (asset.type === 'ICRC1Token') {
                 title = 'Token Lot for Sale';
@@ -2226,7 +2226,7 @@ function Feed() {
                                                                     <span style={{ color: theme.colors.primaryText }}>
                                                                         {asset.cached_total_stake_e8s 
                                                                             ? `${formatAmount(asset.cached_total_stake_e8s)} ICP`
-                                                                            : asset.title || 'ICP Neuron Manager'
+                                                                            : asset.title || 'ICP Staking Bot'
                                                                         }
                                                                     </span>
                                                                 </>
@@ -2234,7 +2234,7 @@ function Feed() {
                                                                 <>
                                                                     <FaCube style={{ color: feedBlue, fontSize: '14px' }} />
                                                                     <span style={{ color: theme.colors.primaryText }}>
-                                                                        {asset.title || 'Canister'}
+                                                                        {asset.title || 'App'}
                                                                     </span>
                                                                 </>
                                                             )}
