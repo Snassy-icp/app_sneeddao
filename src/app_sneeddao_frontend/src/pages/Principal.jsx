@@ -175,6 +175,8 @@ export default function PrincipalPage() {
     const [scannedTokens, setScannedTokens] = useState([]);
     const [neuronUsdTotal, setNeuronUsdTotal] = useState(0);
     const [neuronUsdRates, setNeuronUsdRates] = useState({});
+    const [neuronUsdLoading, setNeuronUsdLoading] = useState(false);
+    const [expandedNeuronCards, setExpandedNeuronCards] = useState(new Set());
     
     // Message dialog state
     const [messageDialogOpen, setMessageDialogOpen] = useState(false);
@@ -199,6 +201,7 @@ export default function PrincipalPage() {
     const stableIdentity = useRef(identity);
     const stablePrincipalId = useRef(null);
     const searchContainerRef = useRef(null);
+    const autoScanKeyRef = useRef(null);
 
     const principalParam = searchParams.get('id');
     
@@ -473,6 +476,8 @@ export default function PrincipalPage() {
     }, [scannedTokens]);
 
     const grandTotalUsd = tokenUsdTotal + neuronUsdTotal;
+    const neuronsLoading = loadingAllNeurons || loadingNeurons || loadingReachable || neuronUsdLoading;
+    const walletLoading = scanningTokens;
 
     const activeSnsSummary = React.useMemo(() => {
         const active = snsesWithNeurons.find(sns => sns.rootCanisterId === activeNeuronSns);
@@ -497,8 +502,11 @@ export default function PrincipalPage() {
             if (!principalNeuronCache || principalNeuronCache.size === 0) {
                 setNeuronUsdTotal(0);
                 setNeuronUsdRates({});
+                setNeuronUsdLoading(false);
                 return;
             }
+
+            setNeuronUsdLoading(true);
 
             const allSnses = getAllSnses();
             const govToLedger = new Map();
@@ -530,27 +538,33 @@ export default function PrincipalPage() {
                 }
             });
 
-            const rateEntries = await Promise.all(
-                [...totalsByLedger.keys()].map(async ledgerId => {
-                    const rate = await get_token_conversion_rate(ledgerId, 8);
-                    return [ledgerId, rate];
-                })
-            );
+            if (totalsByLedger.size === 0) {
+                if (!cancelled) {
+                    setNeuronUsdRates({});
+                    setNeuronUsdTotal(0);
+                    setNeuronUsdLoading(false);
+                }
+                return;
+            }
 
             const rateMap = {};
-            rateEntries.forEach(([ledgerId, rate]) => {
-                rateMap[ledgerId] = rate;
-            });
+            let runningTotal = 0;
 
-            let totalUsd = 0;
-            totalsByLedger.forEach((amount, ledgerId) => {
-                const rate = rateMap[ledgerId] || 0;
-                totalUsd += calculateUsdValue(amount, 8, rate);
-            });
+            for (const [ledgerId, amount] of totalsByLedger.entries()) {
+                try {
+                    const rate = await get_token_conversion_rate(ledgerId, 8);
+                    if (cancelled) return;
+                    rateMap[ledgerId] = rate;
+                    runningTotal += calculateUsdValue(amount, 8, rate);
+                    setNeuronUsdRates({ ...rateMap });
+                    setNeuronUsdTotal(runningTotal);
+                } catch (error) {
+                    console.warn(`[Principal Neurons] Failed USD rate for ${ledgerId}:`, error?.message || error);
+                }
+            }
 
             if (!cancelled) {
-                setNeuronUsdRates(rateMap);
-                setNeuronUsdTotal(totalUsd);
+                setNeuronUsdLoading(false);
             }
         };
 
@@ -563,6 +577,18 @@ export default function PrincipalPage() {
         const stake = BigInt(neuron.cached_neuron_stake_e8s || 0);
         const maturity = BigInt(neuron.maturity_e8s_equivalent || 0);
         return stake === 0n && maturity === 0n;
+    }, []);
+
+    const toggleNeuronCard = useCallback((neuronId) => {
+        setExpandedNeuronCards(prev => {
+            const next = new Set(prev);
+            if (next.has(neuronId)) {
+                next.delete(neuronId);
+            } else {
+                next.add(neuronId);
+            }
+            return next;
+        });
     }, []);
 
     // Group neurons by owner (for reachable neurons display)
@@ -1208,6 +1234,25 @@ export default function PrincipalPage() {
             setScanningTokens(false);
         }
     };
+
+    useEffect(() => {
+        const principalKey = principalParam || '';
+        if (activeTab !== 'balances') return;
+        if (!principalKey || scanningTokens) return;
+        if (!whitelistedTokens || whitelistedTokens.length === 0) return;
+        if (scannedTokens.length > 0) return;
+        if (autoScanKeyRef.current === principalKey) return;
+
+        autoScanKeyRef.current = principalKey;
+        handleScanForTokens();
+    }, [
+        activeTab,
+        principalParam,
+        scannedTokens.length,
+        scanningTokens,
+        whitelistedTokens,
+        handleScanForTokens
+    ]);
 
     // Get asset icons for offer display
     const getOfferAssetIcons = (assets) => {
@@ -2493,6 +2538,20 @@ export default function PrincipalPage() {
                     >
                         <FaBrain size={14} />
                         <span>Neurons</span>
+                        {neuronsLoading && (
+                            <span
+                                className="principal-spin"
+                                style={{
+                                    width: '12px',
+                                    height: '12px',
+                                    border: `2px solid ${activeTab === 'neurons' ? 'rgba(255,255,255,0.6)' : theme.colors.border}`,
+                                    borderTopColor: activeTab === 'neurons' ? 'white' : principalAccent,
+                                    borderRadius: '50%',
+                                    display: 'inline-block'
+                                }}
+                                title="Loading neurons"
+                            />
+                        )}
                         {snsesWithNeurons.length > 0 && (
                             <span style={{
                                 fontSize: '0.75rem',
@@ -2564,6 +2623,20 @@ export default function PrincipalPage() {
                     >
                         <FaCoins size={14} />
                         <span>Wallet</span>
+                        {walletLoading && (
+                            <span
+                                className="principal-spin"
+                                style={{
+                                    width: '12px',
+                                    height: '12px',
+                                    border: `2px solid ${activeTab === 'balances' ? 'rgba(255,255,255,0.6)' : theme.colors.border}`,
+                                    borderTopColor: activeTab === 'balances' ? 'white' : principalPrimary,
+                                    borderRadius: '50%',
+                                    display: 'inline-block'
+                                }}
+                                title="Loading balances"
+                            />
+                        )}
                     </button>
                 </div>
 
@@ -2921,9 +2994,26 @@ export default function PrincipalPage() {
                                         background: theme.colors.tertiaryBg,
                                         padding: '0.35rem 0.75rem',
                                         borderRadius: '8px',
-                                        fontWeight: '600'
+                                        fontWeight: '600',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.4rem'
                                     }}>
                                         {formatUsd(neuronUsdTotal)}
+                                        {neuronUsdLoading && (
+                                            <span
+                                                className="principal-spin"
+                                                style={{
+                                                    width: '12px',
+                                                    height: '12px',
+                                                    border: `2px solid ${theme.colors.border}`,
+                                                    borderTopColor: principalAccent,
+                                                    borderRadius: '50%',
+                                                    display: 'inline-block'
+                                                }}
+                                                title="Updating USD total"
+                                            />
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -3265,6 +3355,7 @@ export default function PrincipalPage() {
                                                     {neuronsToShow.map((neuron) => {
                                                         const neuronId = uint8ArrayToHex(neuron.id[0]?.id);
                                                         if (!neuronId) return null;
+                                                        const isExpanded = expandedNeuronCards.has(neuronId);
 
                                                         return (
                                                             <div
@@ -3276,95 +3367,121 @@ export default function PrincipalPage() {
                                                                     border: `1px solid ${theme.colors.border}`
                                                                 }}
                                                             >
-                                                                <div style={{ marginBottom: '1rem' }}>
+                                                                <div style={{ 
+                                                                    display: 'flex',
+                                                                    alignItems: 'flex-start',
+                                                                    justifyContent: 'space-between',
+                                                                    gap: '0.75rem',
+                                                                    marginBottom: '0.75rem'
+                                                                }}>
+                                                                    <div>
+                                                                        <div style={{ 
+                                                                            fontSize: '1.5rem',
+                                                                            fontWeight: '700',
+                                                                            color: principalAccent,
+                                                                            marginBottom: '0.4rem'
+                                                                        }}>
+                                                                            {formatE8s(neuron.cached_neuron_stake_e8s)} {tokenSymbol}
+                                                                        </div>
+                                                                        <div style={{
+                                                                            color: theme.colors.mutedText,
+                                                                            fontSize: '0.9rem',
+                                                                            fontWeight: '600'
+                                                                        }}>
+                                                                            {formatUsd(calculateUsdValue(neuron.cached_neuron_stake_e8s || 0, 8, activeNeuronUsdRate))}
+                                                                        </div>
+                                                                    </div>
+                                                                    <button
+                                                                        onClick={() => toggleNeuronCard(neuronId)}
+                                                                        style={{
+                                                                            background: 'none',
+                                                                            border: 'none',
+                                                                            padding: '0.25rem',
+                                                                            cursor: 'pointer',
+                                                                            color: theme.colors.secondaryText
+                                                                        }}
+                                                                        aria-label={isExpanded ? 'Collapse neuron card' : 'Expand neuron card'}
+                                                                    >
+                                                                        {isExpanded ? <FaChevronDown size={14} /> : <FaChevronRight size={14} />}
+                                                                    </button>
+                                                                </div>
+
+                                                                <div style={{ marginBottom: isExpanded ? '1rem' : 0 }}>
                                                                     {formatNeuronIdLink(neuronId, activeNeuronSns || selectedSnsRoot || SNEED_SNS_ROOT)}
                                                                 </div>
 
-                                                                <div style={{ 
-                                                                    fontSize: '1.5rem',
-                                                                    fontWeight: '700',
-                                                                    color: principalAccent,
-                                                                    marginBottom: '0.6rem'
-                                                                }}>
-                                                                    {formatE8s(neuron.cached_neuron_stake_e8s)} {tokenSymbol}
-                                                                </div>
-                                                                <div style={{
-                                                                    color: theme.colors.mutedText,
-                                                                    fontSize: '0.9rem',
-                                                                    fontWeight: '600',
-                                                                    marginBottom: '1rem'
-                                                                }}>
-                                                                    {formatUsd(calculateUsdValue(neuron.cached_neuron_stake_e8s || 0, 8, activeNeuronUsdRate))}
-                                                                </div>
-
-                                                                <div style={{ 
-                                                                    display: 'grid',
-                                                                    gridTemplateColumns: '1fr 1fr',
-                                                                    gap: '1rem',
-                                                                    fontSize: '0.85rem'
-                                                                }}>
-                                                                    <div>
-                                                                        <div style={{ color: theme.colors.mutedText, marginBottom: '2px' }}>Created</div>
-                                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
-                                                                            {new Date(Number(neuron.created_timestamp_seconds) * 1000).toLocaleDateString()}
-                                                                        </div>
-                                                                    </div>
-                                                                    <div>
-                                                                        <div style={{ color: theme.colors.mutedText, marginBottom: '2px' }}>Dissolve State</div>
-                                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{getDissolveState(neuron)}</div>
-                                                                    </div>
-                                                                    <div>
-                                                                        <div style={{ color: theme.colors.mutedText, marginBottom: '2px' }}>Maturity</div>
-                                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{formatE8s(neuron.maturity_e8s_equivalent)} {tokenSymbol}</div>
-                                                                    </div>
-                                                                    <div>
-                                                                        <div style={{ color: theme.colors.mutedText, marginBottom: '2px' }}>Voting Power</div>
-                                                                        <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{(Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2)}x</div>
-                                                                    </div>
-                                                                </div>
-
-                                                                {/* Permissions */}
-                                                                <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: `1px solid ${theme.colors.border}` }}>
-                                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginBottom: '0.5rem' }}>Permissions</div>
-                                                                    {getOwnerPrincipals(neuron).length > 0 && (
+                                                                {isExpanded && (
+                                                                    <>
                                                                         <div style={{ 
-                                                                            display: 'flex',
-                                                                            alignItems: 'center',
-                                                                            gap: '8px',
-                                                                            marginBottom: '6px'
+                                                                            display: 'grid',
+                                                                            gridTemplateColumns: '1fr 1fr',
+                                                                            gap: '1rem',
+                                                                            fontSize: '0.85rem'
                                                                         }}>
-                                                                            <FaCrown size={12} style={{ color: theme.colors.secondaryText }} title="Owner" />
-                                                                            <PrincipalDisplay 
-                                                                                principal={Principal.fromText(getOwnerPrincipals(neuron)[0])}
-                                                                                displayInfo={principalDisplayInfo.get(getOwnerPrincipals(neuron)[0])}
-                                                                                showCopyButton={false}
-                                                                                isAuthenticated={isAuthenticated}
-                                                                            />
+                                                                            <div>
+                                                                                <div style={{ color: theme.colors.mutedText, marginBottom: '2px' }}>Created</div>
+                                                                                <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
+                                                                                    {new Date(Number(neuron.created_timestamp_seconds) * 1000).toLocaleDateString()}
+                                                                                </div>
+                                                                            </div>
+                                                                            <div>
+                                                                                <div style={{ color: theme.colors.mutedText, marginBottom: '2px' }}>Dissolve State</div>
+                                                                                <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{getDissolveState(neuron)}</div>
+                                                                            </div>
+                                                                            <div>
+                                                                                <div style={{ color: theme.colors.mutedText, marginBottom: '2px' }}>Maturity</div>
+                                                                                <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{formatE8s(neuron.maturity_e8s_equivalent)} {tokenSymbol}</div>
+                                                                            </div>
+                                                                            <div>
+                                                                                <div style={{ color: theme.colors.mutedText, marginBottom: '2px' }}>Voting Power</div>
+                                                                                <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{(Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2)}x</div>
+                                                                            </div>
                                                                         </div>
-                                                                    )}
-                                                                    {neuron.permissions
-                                                                        .filter(p => !getOwnerPrincipals(neuron).includes(safePrincipalString(p.principal)))
-                                                                        .map((p, index) => {
-                                                                            const principalStr = safePrincipalString(p.principal);
-                                                                            return (
-                                                                                <div key={index} style={{ 
+
+                                                                        {/* Permissions */}
+                                                                        <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: `1px solid ${theme.colors.border}` }}>
+                                                                            <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginBottom: '0.5rem' }}>Permissions</div>
+                                                                            {getOwnerPrincipals(neuron).length > 0 && (
+                                                                                <div style={{ 
                                                                                     display: 'flex',
                                                                                     alignItems: 'center',
                                                                                     gap: '8px',
                                                                                     marginBottom: '6px'
                                                                                 }}>
-                                                                                    <FaKey size={12} style={{ color: theme.colors.secondaryText }} title="Hotkey" />
+                                                                                    <FaCrown size={12} style={{ color: theme.colors.secondaryText }} title="Owner" />
                                                                                     <PrincipalDisplay 
-                                                                                        principal={p.principal}
-                                                                                        displayInfo={principalDisplayInfo.get(principalStr)}
+                                                                                        principal={Principal.fromText(getOwnerPrincipals(neuron)[0])}
+                                                                                        displayInfo={principalDisplayInfo.get(getOwnerPrincipals(neuron)[0])}
                                                                                         showCopyButton={false}
                                                                                         isAuthenticated={isAuthenticated}
                                                                                     />
                                                                                 </div>
-                                                                            );
-                                                                        })
-                                                                    }
-                                                                </div>
+                                                                            )}
+                                                                            {neuron.permissions
+                                                                                .filter(p => !getOwnerPrincipals(neuron).includes(safePrincipalString(p.principal)))
+                                                                                .map((p, index) => {
+                                                                                    const principalStr = safePrincipalString(p.principal);
+                                                                                    return (
+                                                                                        <div key={index} style={{ 
+                                                                                            display: 'flex',
+                                                                                            alignItems: 'center',
+                                                                                            gap: '8px',
+                                                                                            marginBottom: '6px'
+                                                                                        }}>
+                                                                                            <FaKey size={12} style={{ color: theme.colors.secondaryText }} title="Hotkey" />
+                                                                                            <PrincipalDisplay 
+                                                                                                principal={p.principal}
+                                                                                                displayInfo={principalDisplayInfo.get(principalStr)}
+                                                                                                showCopyButton={false}
+                                                                                                isAuthenticated={isAuthenticated}
+                                                                                            />
+                                                                                        </div>
+                                                                                    );
+                                                                                })
+                                                                            }
+                                                                        </div>
+                                                                    </>
+                                                                )}
                                                             </div>
                                                         );
                                                     })}

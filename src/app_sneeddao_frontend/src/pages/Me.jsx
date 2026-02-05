@@ -3092,6 +3092,8 @@ function NeuronCard({
     nervousSystemParameters 
 }) {
     const displayName = name || nickname;
+    const [isExpanded, setIsExpanded] = useState(false);
+    const showDetails = isExpanded || editingName === neuronId;
 
     return (
         <div style={{
@@ -3104,8 +3106,62 @@ function NeuronCard({
             overflow: 'hidden'
         }}>
             {/* Header */}
-            <div style={{ marginBottom: '1rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+            <div style={{ marginBottom: showDetails ? '1rem' : '0.5rem' }}>
+                <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'space-between',
+                    gap: '0.5rem',
+                    marginBottom: '0.5rem'
+                }}>
+                    <div style={{ 
+                        fontSize: '1.5rem',
+                        fontWeight: '700',
+                        color: mePrimary
+                    }}>
+                        {formatE8s(neuron.cached_neuron_stake_e8s)} {tokenSymbol}
+                    </div>
+                    <button
+                        onClick={() => setIsExpanded(prev => !prev)}
+                        style={{
+                            background: 'none',
+                            border: 'none',
+                            padding: '0.25rem',
+                            cursor: 'pointer',
+                            color: theme.colors.secondaryText
+                        }}
+                        aria-label={isExpanded ? 'Collapse neuron card' : 'Expand neuron card'}
+                    >
+                        {isExpanded ? <FaChevronDown size={14} /> : <FaChevronRight size={14} />}
+                    </button>
+                </div>
+
+                {name && (
+                    <div style={{ 
+                        color: mePrimary,
+                        fontSize: '1.1rem',
+                        fontWeight: '600',
+                        marginBottom: '0.25rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem'
+                    }}>
+                        {name}
+                        {isVerified && <FaCheckCircle size={14} color={mePrimary} title="Verified name" />}
+                    </div>
+                )}
+                {nickname && (
+                    <div style={{ 
+                        color: theme.colors.mutedText,
+                        fontSize: '0.95rem',
+                        fontStyle: 'italic',
+                        marginBottom: '0.25rem'
+                    }}>
+                        {nickname}
+                    </div>
+                )}
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                     <Link
                         to={`/neuron?neuronid=${neuronId}&sns=${selectedSnsRoot}`}
                         style={{ 
@@ -3139,6 +3195,7 @@ function NeuronCard({
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
+                                setIsExpanded(true);
                                 setEditingName(neuronId);
                                 setNameInput(displayName || '');
                             }}
@@ -3170,95 +3227,55 @@ function NeuronCard({
                             textDecoration: 'none',
                             display: 'inline-flex',
                             alignItems: 'center',
-                            gap: '0.35rem',
+                            gap: '0.35rem'
                         }}
                     >
                         ⚙️ Manage
                     </Link>
                 </div>
-                
-                {name && (
-                    <div style={{ 
-                        color: mePrimary,
-                        fontSize: '1.1rem',
-                        fontWeight: '600',
-                        marginBottom: '0.25rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.35rem'
-                    }}>
-                        {name}
-                        {isVerified && <FaCheckCircle size={14} color={mePrimary} title="Verified name" />}
-                    </div>
-                )}
-                {nickname && (
-                    <div style={{ 
-                        color: theme.colors.mutedText,
-                        fontSize: '0.95rem',
-                        fontStyle: 'italic',
-                        marginBottom: '0.25rem'
-                    }}>
-                        {nickname}
-                    </div>
-                )}
-                
-                {editingName === neuronId && (
-                    <div style={{ 
-                        marginTop: '0.75rem',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '0.5rem'
-                    }}>
-                        <input
-                            type="text"
-                            value={nameInput}
-                            onChange={(e) => {
-                                const newValue = e.target.value;
-                                setNameInput(newValue);
-                                setInputError(validateNameInput(newValue));
-                            }}
-                            maxLength={32}
-                            placeholder="Enter neuron name (max 32 chars)"
-                            style={{
-                                backgroundColor: theme.colors.tertiaryBg,
-                                border: `1px solid ${inputError ? theme.colors.error : theme.colors.border}`,
-                                borderRadius: '8px',
-                                color: theme.colors.primaryText,
-                                padding: '0.6rem 0.75rem',
-                                width: '100%',
-                                fontSize: '0.9rem',
-                                boxSizing: 'border-box'
-                            }}
-                        />
-                        {inputError && (
-                            <div style={{ color: theme.colors.error, fontSize: '0.8rem' }}>
-                                {inputError}
-                            </div>
-                        )}
-                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                            <button
-                                onClick={() => handleNameSubmit(neuronId, true)}
-                                disabled={isSubmitting}
-                                style={{
-                                    backgroundColor: theme.colors.mutedText,
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    padding: '0.4rem 0.75rem',
-                                    cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                                    fontSize: '0.8rem',
-                                    fontWeight: '500',
-                                    opacity: isSubmitting ? 0.7 : 1
+            </div>
+
+            {showDetails && (
+                <>
+                    {editingName === neuronId && (
+                        <div style={{ 
+                            marginTop: '0.75rem',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '0.5rem'
+                        }}>
+                            <input
+                                type="text"
+                                value={nameInput}
+                                onChange={(e) => {
+                                    const newValue = e.target.value;
+                                    setNameInput(newValue);
+                                    setInputError(validateNameInput(newValue));
                                 }}
-                            >
-                                Set Nickname
-                            </button>
-                            {hasHotkeyAccess && (
+                                maxLength={32}
+                                placeholder="Enter neuron name (max 32 chars)"
+                                style={{
+                                    backgroundColor: theme.colors.tertiaryBg,
+                                    border: `1px solid ${inputError ? theme.colors.error : theme.colors.border}`,
+                                    borderRadius: '8px',
+                                    color: theme.colors.primaryText,
+                                    padding: '0.6rem 0.75rem',
+                                    width: '100%',
+                                    fontSize: '0.9rem',
+                                    boxSizing: 'border-box'
+                                }}
+                            />
+                            {inputError && (
+                                <div style={{ color: theme.colors.error, fontSize: '0.8rem' }}>
+                                    {inputError}
+                                </div>
+                            )}
+                            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                                 <button
-                                    onClick={() => handleNameSubmit(neuronId, false)}
+                                    onClick={() => handleNameSubmit(neuronId, true)}
                                     disabled={isSubmitting}
                                     style={{
-                                        background: `linear-gradient(135deg, ${mePrimary}, ${meSecondary})`,
+                                        backgroundColor: theme.colors.mutedText,
                                         color: 'white',
                                         border: 'none',
                                         borderRadius: '6px',
@@ -3269,106 +3286,117 @@ function NeuronCard({
                                         opacity: isSubmitting ? 0.7 : 1
                                     }}
                                 >
-                                    Set Name
+                                    Set Nickname
                                 </button>
-                            )}
-                            <button
-                                onClick={() => {
-                                    setEditingName(null);
-                                    setNameInput('');
-                                }}
-                                disabled={isSubmitting}
-                                style={{
-                                    backgroundColor: theme.colors.error,
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    padding: '0.4rem 0.75rem',
-                                    cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                                    fontSize: '0.8rem',
-                                    fontWeight: '500'
-                                }}
-                            >
-                                Cancel
-                            </button>
+                                {hasHotkeyAccess && (
+                                    <button
+                                        onClick={() => handleNameSubmit(neuronId, false)}
+                                        disabled={isSubmitting}
+                                        style={{
+                                            background: `linear-gradient(135deg, ${mePrimary}, ${meSecondary})`,
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '6px',
+                                            padding: '0.4rem 0.75rem',
+                                            cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                                            fontSize: '0.8rem',
+                                            fontWeight: '500',
+                                            opacity: isSubmitting ? 0.7 : 1
+                                        }}
+                                    >
+                                        Set Name
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => {
+                                        setEditingName(null);
+                                        setNameInput('');
+                                    }}
+                                    disabled={isSubmitting}
+                                    style={{
+                                        backgroundColor: theme.colors.error,
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '0.4rem 0.75rem',
+                                        cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                                        fontSize: '0.8rem',
+                                        fontWeight: '500'
+                                    }}
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Stats Grid */}
+                    <div style={{ 
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: '0.75rem',
+                        fontSize: '0.85rem',
+                        marginTop: editingName === neuronId ? '1rem' : '0.5rem'
+                    }}>
+                        <div>
+                            <div style={{ color: theme.colors.mutedText, marginBottom: '0.2rem' }}>Created</div>
+                            <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
+                                {new Date(Number(neuron.created_timestamp_seconds) * 1000).toLocaleDateString()}
+                            </div>
+                        </div>
+                        <div>
+                            <div style={{ color: theme.colors.mutedText, marginBottom: '0.2rem' }}>Dissolve State</div>
+                            <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{getDissolveState(neuron)}</div>
+                        </div>
+                        <div>
+                            <div style={{ color: theme.colors.mutedText, marginBottom: '0.2rem' }}>Maturity</div>
+                            <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{formatE8s(neuron.maturity_e8s_equivalent)} {tokenSymbol}</div>
+                        </div>
+                        <div>
+                            <div style={{ color: theme.colors.mutedText, marginBottom: '0.2rem' }}>Voting Power</div>
+                            <div style={{ color: mePrimary, fontWeight: '600' }}>
+                                {nervousSystemParameters ? 
+                                    formatVotingPower(calculateVotingPower(neuron, nervousSystemParameters)) :
+                                    (Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2) + 'x'
+                                }
+                            </div>
                         </div>
                     </div>
-                )}
-                
-                <div style={{ 
-                    fontSize: '1.5rem',
-                    fontWeight: '700',
-                    color: mePrimary,
-                    marginTop: '0.5rem'
-                }}>
-                    {formatE8s(neuron.cached_neuron_stake_e8s)} {tokenSymbol}
-                </div>
-            </div>
 
-            {/* Stats Grid */}
-            <div style={{ 
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '0.75rem',
-                fontSize: '0.85rem'
-            }}>
-                <div>
-                    <div style={{ color: theme.colors.mutedText, marginBottom: '0.2rem' }}>Created</div>
-                    <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
-                        {new Date(Number(neuron.created_timestamp_seconds) * 1000).toLocaleDateString()}
-                    </div>
-                </div>
-                <div>
-                    <div style={{ color: theme.colors.mutedText, marginBottom: '0.2rem' }}>Dissolve State</div>
-                    <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{getDissolveState(neuron)}</div>
-                </div>
-                <div>
-                    <div style={{ color: theme.colors.mutedText, marginBottom: '0.2rem' }}>Maturity</div>
-                    <div style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{formatE8s(neuron.maturity_e8s_equivalent)} {tokenSymbol}</div>
-                </div>
-                <div>
-                    <div style={{ color: theme.colors.mutedText, marginBottom: '0.2rem' }}>Voting Power</div>
-                    <div style={{ color: mePrimary, fontWeight: '600' }}>
-                        {nervousSystemParameters ? 
-                            formatVotingPower(calculateVotingPower(neuron, nervousSystemParameters)) :
-                            (Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2) + 'x'
-                        }
-                    </div>
-                </div>
-            </div>
-
-            {/* Permissions */}
-            <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: `1px solid ${theme.colors.border}` }}>
-                <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginBottom: '0.5rem' }}>Permissions</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                    {getOwnerPrincipals(neuron).filter(ownerStr => ownerStr && ownerStr.includes('-')).map((ownerStr) => (
-                        <div key={ownerStr} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
-                            <FaCrown size={12} title="Owner" />
-                            <PrincipalDisplay
-                                principal={Principal.fromText(ownerStr)}
-                                displayInfo={principalDisplayInfo.get(ownerStr)}
-                                showCopyButton={false}
-                            />
-                        </div>
-                    ))}
-                    {neuron.permissions
-                        .filter(p => !getOwnerPrincipals(neuron).includes(safePrincipalString(p.principal)))
-                        .map((p, index) => {
-                            const principalStr = safePrincipalString(p.principal);
-                            return (
-                                <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
-                                    <FaKey size={12} title="Hotkey" />
-                                    <PrincipalDisplay 
-                                        principal={p.principal}
-                                        displayInfo={principalDisplayInfo.get(principalStr)}
+                    {/* Permissions */}
+                    <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: `1px solid ${theme.colors.border}` }}>
+                        <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginBottom: '0.5rem' }}>Permissions</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                            {getOwnerPrincipals(neuron).filter(ownerStr => ownerStr && ownerStr.includes('-')).map((ownerStr) => (
+                                <div key={ownerStr} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
+                                    <FaCrown size={12} title="Owner" />
+                                    <PrincipalDisplay
+                                        principal={Principal.fromText(ownerStr)}
+                                        displayInfo={principalDisplayInfo.get(ownerStr)}
                                         showCopyButton={false}
                                     />
                                 </div>
-                            );
-                        })
-                    }
-                </div>
-            </div>
+                            ))}
+                            {neuron.permissions
+                                .filter(p => !getOwnerPrincipals(neuron).includes(safePrincipalString(p.principal)))
+                                .map((p, index) => {
+                                    const principalStr = safePrincipalString(p.principal);
+                                    return (
+                                        <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
+                                            <FaKey size={12} title="Hotkey" />
+                                            <PrincipalDisplay 
+                                                principal={p.principal}
+                                                displayInfo={principalDisplayInfo.get(principalStr)}
+                                                showCopyButton={false}
+                                            />
+                                        </div>
+                                    );
+                                })
+                            }
+                        </div>
+                    </div>
+                </>
+            )}
         </div>
     );
 }
