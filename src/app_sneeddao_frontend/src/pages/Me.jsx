@@ -3141,7 +3141,9 @@ function NeuronCard({
     validateNameInput, 
     handleNameSubmit, 
     isSubmitting,
-    nervousSystemParameters 
+    nervousSystemParameters,
+    activeNeuronUsdRate,
+    activeNeuronUsdLoading
 }) {
     const displayName = name || nickname;
     const [isExpanded, setIsExpanded] = useState(false);
