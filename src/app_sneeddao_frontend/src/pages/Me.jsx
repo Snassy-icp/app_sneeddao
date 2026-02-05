@@ -3096,6 +3096,7 @@ function NeuronCard({
     const displayName = name || nickname;
     const [isExpanded, setIsExpanded] = useState(false);
     const showDetails = isExpanded || editingName === neuronId;
+    const editTitle = hasHotkeyAccess ? 'Edit neuron name' : 'Edit neuron nickname';
 
     return (
         <div style={{
@@ -3165,27 +3166,25 @@ function NeuronCard({
                             isAuthenticated={Boolean(identity)}
                         />
                     </div>
-                    {hasHotkeyAccess && (
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                setIsExpanded(true);
-                                setEditingName(neuronId);
-                                setNameInput(displayName || '');
-                            }}
-                            style={{
-                                background: 'none',
-                                border: 'none',
-                                padding: '0.25rem',
-                                cursor: 'pointer',
-                                color: theme.colors.mutedText,
-                                fontSize: '0.85rem'
-                            }}
-                            title="Edit neuron name"
-                        >
-                            <FaPen size={12} />
-                        </button>
-                    )}
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setIsExpanded(true);
+                            setEditingName(neuronId);
+                            setNameInput(displayName || '');
+                        }}
+                        style={{
+                            background: 'none',
+                            border: 'none',
+                            padding: '0.25rem',
+                            cursor: 'pointer',
+                            color: theme.colors.mutedText,
+                            fontSize: '0.85rem'
+                        }}
+                        title={editTitle}
+                    >
+                        <FaPen size={12} />
+                    </button>
                     <Link
                         to={`/neuron?neuronid=${neuronId}&sns=${selectedSnsRoot}`}
                         onClick={(event) => event.stopPropagation()}

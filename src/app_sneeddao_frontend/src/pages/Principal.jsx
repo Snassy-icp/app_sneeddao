@@ -3347,6 +3347,8 @@ export default function PrincipalPage() {
                                                         if (!neuronId) return null;
                                                         const isExpanded = expandedNeuronCards.has(neuronId);
 
+                                                        const { name, nickname, isVerified } = getDisplayName(neuronId);
+
                                                         return (
                                                             <div
                                                                 key={neuronId}
@@ -3384,6 +3386,31 @@ export default function PrincipalPage() {
                                                                         }}>
                                                                             {formatUsd(calculateUsdValue(neuron.cached_neuron_stake_e8s || 0, 8, activeNeuronUsdRate))}
                                                                         </div>
+                                                                        {name && (
+                                                                            <div style={{ 
+                                                                                color: principalAccent,
+                                                                                fontSize: '1.05rem',
+                                                                                fontWeight: '600',
+                                                                                marginTop: '0.5rem',
+                                                                                marginBottom: '0.2rem',
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                gap: '0.35rem'
+                                                                            }}>
+                                                                                {name}
+                                                                                {isVerified && <FaCheckCircle size={14} color={principalAccent} title="Verified name" />}
+                                                                            </div>
+                                                                        )}
+                                                                        {nickname && (
+                                                                            <div style={{ 
+                                                                                color: theme.colors.mutedText,
+                                                                                fontSize: '0.95rem',
+                                                                                fontStyle: 'italic',
+                                                                                marginBottom: '0.25rem'
+                                                                            }}>
+                                                                                {nickname}
+                                                                            </div>
+                                                                        )}
                                                                         <div
                                                                             style={{ marginTop: '0.5rem' }}
                                                                             onClick={(event) => event.stopPropagation()}
@@ -3393,6 +3420,7 @@ export default function PrincipalPage() {
                                                                                 snsRoot={activeNeuronSns || selectedSnsRoot || SNEED_SNS_ROOT}
                                                                                 variant="compact"
                                                                                 showCopyButton={true}
+                                                                                displayInfo={{ name, nickname, isVerified }}
                                                                                 enableContextMenu={true}
                                                                                 isAuthenticated={isAuthenticated}
                                                                             />
