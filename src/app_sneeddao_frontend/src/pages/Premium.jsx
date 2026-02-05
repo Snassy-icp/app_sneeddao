@@ -1822,7 +1822,7 @@ export default function Premium() {
                                             )}
                                             {premiumPricing.canisterGroups.premiumMaxPerGroup > premiumPricing.canisterGroups.regularMaxPerGroup && (
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
-                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.8rem' }}>Canisters per Folder</span>
+                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.8rem' }}>Apps per Folder</span>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                         <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.75rem' }}>
                                                             {premiumPricing.canisterGroups.regularMaxPerGroup}
@@ -1835,7 +1835,7 @@ export default function Premium() {
                                             )}
                                             {premiumPricing.canisterGroups.premiumMaxTotal > premiumPricing.canisterGroups.regularMaxTotal && (
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
-                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.8rem' }}>Total Canisters</span>
+                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.8rem' }}>Total Apps</span>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                         <span style={{ color: theme.colors.mutedText, textDecoration: 'line-through', fontSize: '0.75rem' }}>
                                                             {premiumPricing.canisterGroups.regularMaxTotal}

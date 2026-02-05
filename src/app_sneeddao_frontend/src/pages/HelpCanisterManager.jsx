@@ -264,7 +264,7 @@ function HelpCanisterManager() {
                         maxWidth: '600px',
                         lineHeight: '1.6',
                     }}>
-                        Track, organize, and monitor all your Internet Computer canisters
+                        Track, organize, and monitor all your Internet Computer apps
                     </p>
                 </div>
             </div>
@@ -280,7 +280,7 @@ function HelpCanisterManager() {
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
                         <FaStar size={16} color={canisterPrimary} style={{ flexShrink: 0, marginTop: '2px' }} />
                         <p style={{ ...styles.paragraph, marginBottom: 0 }}>
-                            <strong style={styles.strong}>Premium Feature:</strong> Custom canister tracking is available 
+                            <strong style={styles.strong}>Premium Feature:</strong> Full custom app tracking is available 
                             exclusively to Sneed DAO staking members. ICP Neuron Managers are always visible to all users.
                         </p>
                     </div>
@@ -300,10 +300,10 @@ function HelpCanisterManager() {
                             <FaFolderOpen size={14} color={canisterPrimary} />
                             <Link to="/canisters" style={styles.link}>App Manager</Link> (/canisters)
                         </h4>
-                        <p style={{ ...styles.paragraph, marginBottom: '0.5rem' }}>Main dashboard showing all tracked canisters:</p>
+                        <p style={{ ...styles.paragraph, marginBottom: '0.5rem' }}>Main dashboard showing all tracked apps:</p>
                         <ul style={{ ...styles.list, marginBottom: 0 }}>
                             <li style={styles.listItem}>ICP Neuron Managers section with version tracking</li>
-                            <li style={styles.listItem}>Custom Canisters with folder organization</li>
+                            <li style={styles.listItem}>Custom Apps with folder organization</li>
                             <li style={styles.listItem}>Health status indicators (cycle monitoring)</li>
                         </ul>
                     </div>
@@ -311,9 +311,9 @@ function HelpCanisterManager() {
                     <div style={styles.featureCard}>
                         <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
                             <FaEye size={14} color="#3b82f6" />
-                            <Link to="/canister" style={styles.link}>Canister Details</Link> (/canister?id=...)
+                            <Link to="/canister" style={styles.link}>App Details</Link> (/canister?id=...)
                         </h4>
-                        <p style={{ ...styles.paragraph, marginBottom: '0.5rem' }}>Detailed view for individual canisters:</p>
+                        <p style={{ ...styles.paragraph, marginBottom: '0.5rem' }}>Detailed view for individual apps:</p>
                         <ul style={{ ...styles.list, marginBottom: 0 }}>
                             <li style={styles.listItem}>Status (running/stopped/stopping)</li>
                             <li style={styles.listItem}>Cycles balance and memory usage</li>
@@ -332,7 +332,7 @@ function HelpCanisterManager() {
                         <h2 style={styles.subheading}>Health Status Indicators</h2>
                     </div>
                     <p style={styles.paragraph}>
-                        Colored status lamps help you quickly identify canisters that need attention:
+                        Colored status lamps help you quickly identify apps that need attention:
                     </p>
                     
                     <div style={styles.infoBox}>
@@ -358,26 +358,26 @@ function HelpCanisterManager() {
                     
                     <div style={styles.tipBox}>
                         <p style={{ ...styles.paragraph, marginBottom: 0 }}>
-                            <strong style={styles.strong}>Folder Status:</strong> Folders display the worst status of all canisters 
-                            they contain. A red folder means at least one canister inside needs attention!
+                            <strong style={styles.strong}>Folder Status:</strong> Folders display the worst status of all apps 
+                            they contain. A red folder means at least one app inside needs attention!
                         </p>
                     </div>
                 </div>
 
-                {/* Custom Canisters */}
+                {/* Custom Apps */}
                 <div style={styles.section} className="canister-help-fade-in">
                     <div style={styles.sectionHeader}>
                         <div style={styles.sectionIcon('#8b5cf6')}>
                             <FaPlus size={20} color="#8b5cf6" />
                         </div>
-                        <h2 style={styles.subheading}>Custom Canisters</h2>
+                        <h2 style={styles.subheading}>Custom Apps</h2>
                     </div>
                     
-                    <h4 style={styles.subsubheading}>Adding Canisters</h4>
+                    <h4 style={styles.subsubheading}>Adding Apps</h4>
                     <ol style={styles.stepList}>
-                        <li style={styles.stepItem}>Enter a valid canister ID in the "Add Canister" field</li>
+                        <li style={styles.stepItem}>Enter a valid app canister id in the "Add App" field</li>
                         <li style={styles.stepItem}>Click "Add" or press Enter</li>
-                        <li style={styles.stepItem}>The canister appears in "Ungrouped" or your chosen folder</li>
+                        <li style={styles.stepItem}>The app appears in "Ungrouped" or your chosen folder</li>
                     </ol>
                     
                     <h4 style={styles.subsubheading}>Organizing with Folders</h4>
@@ -385,18 +385,18 @@ function HelpCanisterManager() {
                         <li style={styles.listItem}><strong style={styles.strong}>Create Folder:</strong> Click "New Group" for top-level folders</li>
                         <li style={styles.listItem}><strong style={styles.strong}>Create Subfolder:</strong> Click folder icon on any folder for nested folders</li>
                         <li style={styles.listItem}><strong style={styles.strong}>Rename:</strong> Click edit icon to rename</li>
-                        <li style={styles.listItem}><strong style={styles.strong}>Delete:</strong> Click trash icon (canisters move to Ungrouped)</li>
-                        <li style={styles.listItem}><strong style={styles.strong}>Move Canisters:</strong> Use "Move to..." dropdown to relocate</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Delete:</strong> Click trash icon (apps move to Ungrouped)</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Move Apps:</strong> Use "Move to..." dropdown to relocate</li>
                     </ul>
                 </div>
 
-                {/* Individual Canister View */}
+                {/* Individual App View */}
                 <div style={styles.section} className="canister-help-fade-in">
                     <div style={styles.sectionHeader}>
                         <div style={styles.sectionIcon('#3b82f6')}>
                             <FaCogs size={20} color="#3b82f6" />
                         </div>
-                        <h2 style={styles.subheading}>Individual Canister View</h2>
+                        <h2 style={styles.subheading}>Individual App View</h2>
                     </div>
                     
                     <h4 style={styles.subsubheading}>Information</h4>
@@ -450,10 +450,10 @@ function HelpCanisterManager() {
                             <strong style={styles.strong}>Organize by Purpose:</strong> Use folders for project, environment (dev/staging/prod), or function
                         </li>
                         <li style={styles.listItem}>
-                            <strong style={styles.strong}>Backup Controllers:</strong> Add a backup principal for important canisters
+                            <strong style={styles.strong}>Backup Controllers:</strong> Add a backup principal for important app canisters
                         </li>
                         <li style={styles.listItem}>
-                            <strong style={styles.strong}>Use Naming:</strong> Give canisters meaningful nicknames for easier navigation
+                            <strong style={styles.strong}>Use Naming:</strong> Give apps meaningful nicknames for easier navigation
                         </li>
                     </ul>
                 </div>
@@ -467,22 +467,22 @@ function HelpCanisterManager() {
                         <h2 style={styles.subheading}>Common Questions</h2>
                     </div>
                     
-                    <h4 style={styles.subsubheading}>Why can't I see cycle balances for some canisters?</h4>
+                    <h4 style={styles.subsubheading}>Why can't I see cycle balances for some apps?</h4>
                     <p style={styles.paragraph}>
-                        You can only see detailed status for canisters where you're a controller. Others show "unknown" status.
+                        You can only see detailed status for app canisters where you're a controller. Others show "unknown" status.
                     </p>
                     
-                    <h4 style={styles.subsubheading}>What happens if I remove a canister from tracking?</h4>
+                    <h4 style={styles.subsubheading}>What happens if I remove an app from tracking?</h4>
                     <p style={styles.paragraph}>
-                        It only removes from your tracking list—the actual canister on the IC is unaffected. Add it back anytime with the ID.
+                        It only removes from your tracking list—the actual app canister on the IC is unaffected. Add it back anytime with the app canister id.
                     </p>
                     
-                    <h4 style={styles.subsubheading}>Can I track canisters I don't control?</h4>
+                    <h4 style={styles.subsubheading}>Can I track apps I don't control?</h4>
                     <p style={styles.paragraph}>
-                        Yes! You can track any canister by ID, but you'll only see limited information and can't perform management actions.
+                        Yes! You can track any app canister by id, but you'll only see limited information and can't perform management actions.
                     </p>
                     
-                    <h4 style={styles.subsubheading}>Why is Custom Canisters a premium feature?</h4>
+                    <h4 style={styles.subsubheading}>Why is Custom Apps a premium feature?</h4>
                     <p style={styles.paragraph}>
                         It helps support Sneed Hub development. ICP Neuron Managers are always accessible to all users.
                     </p>
@@ -498,7 +498,7 @@ function HelpCanisterManager() {
                     </div>
                     <ul style={styles.list}>
                         <li style={styles.listItem}>
-                            <Link to="/help/icp-neuron-manager" style={styles.link}>ICP Neuron Manager Help</Link> — Managing ICP neurons through canisters
+                            <Link to="/help/icp-neuron-manager" style={styles.link}>ICP Neuron Manager Help</Link> — Managing ICP neurons through app canisters
                         </li>
                         <li style={styles.listItem}>
                             <Link to="/help/wallet" style={styles.link}>Wallet Help</Link> — Understanding the Sneed Wallet

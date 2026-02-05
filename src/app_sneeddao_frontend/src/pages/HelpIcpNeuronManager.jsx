@@ -568,7 +568,7 @@ function HelpIcpNeuronManager() {
                             <Link to="/help/neurons" style={styles.link}>Understanding SNS Neurons</Link> — Comparison with DAO-specific neurons
                         </li>
                         <li style={styles.listItem}>
-                            <Link to="/help/dapp-manager" style={styles.link}>App Manager</Link> — Track and organize all your canisters
+                            <Link to="/help/dapp-manager" style={styles.link}>App Manager</Link> — Track and organize all your apps
                         </li>
                         <li style={styles.listItem}>
                             <Link to="/forum" style={styles.link}>Forum</Link> — Ask questions and discuss with other users

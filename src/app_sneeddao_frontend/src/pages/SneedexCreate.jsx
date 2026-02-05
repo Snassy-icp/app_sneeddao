@@ -1738,7 +1738,7 @@ function SneedexCreate() {
         const actor = createSneedexActor(identity);
         const result = await actor.escrowCanister(offerId, BigInt(assetIndex));
         if ('err' in result) {
-            throw new Error(`Failed to escrow canister: ${getErrorMessage(result.err)}`);
+            throw new Error(`Failed to escrow app: ${getErrorMessage(result.err)}`);
         }
     };
     
@@ -3573,7 +3573,7 @@ function SneedexCreate() {
                                                     <>
                                                         <FaExclamationTriangle style={{ color: theme.colors.warning }} />
                                                         <span style={{ color: theme.colors.warning }}>
-                                                            You are not a controller of this canister. Only canisters you control can be added to offers.
+                                                            You are not a controller of this app canister. Only app canisters you control can be added to offers.
                                                         </span>
                                                     </>
                                                 ) : (
@@ -3683,7 +3683,7 @@ function SneedexCreate() {
                                             </label>
                                             <input
                                                 type="text"
-                                                placeholder="Give your canister a name"
+                                                placeholder="Give your app a name"
                                                 maxLength={MAX_CANISTER_TITLE_LENGTH}
                                                 value={newAssetCanisterTitle}
                                                 onChange={(e) => setNewAssetCanisterTitle(e.target.value)}
@@ -3707,7 +3707,7 @@ function SneedexCreate() {
                                             <textarea
                                                 placeholder={newAssetType === 'neuron_manager' 
                                                     ? "Describe your neuron manager, specific notes, and why it's valuable..."
-                                                    : "Describe what this canister does, its features, why it's valuable..."
+                                                    : "Describe what this app does, its features, why it's valuable..."
                                                 }
                                                 maxLength={MAX_CANISTER_DESCRIPTION_LENGTH}
                                                 value={newAssetCanisterDescription}
@@ -4939,7 +4939,7 @@ function SneedexCreate() {
                             }}>
                                 <strong>🚫 Cannot create offer yet.</strong> All assets must be ready for escrow before creating an offer. Please ensure:
                                 <ul style={{ margin: '0.5rem 0 0 1.5rem', padding: 0 }}>
-                                    <li>For canisters: You must be a controller</li>
+                                    <li>For apps: You must be a controller of the app canister</li>
                                     <li>For neurons: You must have a hotkey with ManagePrincipals permission</li>
                                     <li>For tokens: You must have sufficient balance (amount + fee)</li>
                                 </ul>

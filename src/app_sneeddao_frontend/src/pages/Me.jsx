@@ -2137,7 +2137,7 @@ export default function Me() {
                                     <CycleThresholdSettings
                                         theme={theme}
                                         title="ICP Neuron Manager Cycle Thresholds"
-                                        description="Configure cycle warning thresholds for your ICP Neuron Manager canisters."
+                                        description="Configure cycle warning thresholds for your ICP Neuron Manager app canisters."
                                         redValue={cycleThresholdRed}
                                         orangeValue={cycleThresholdOrange}
                                         onRedChange={(v) => { setCycleThresholdRed(v); setSettingsSaved(false); }}
@@ -2198,8 +2198,8 @@ export default function Me() {
                                 >
                                     <CycleThresholdSettings
                                         theme={theme}
-                                        title="Canister Cycle Thresholds"
-                                        description="Configure cycle warning thresholds for canisters in Wallet and App Manager."
+                                        title="App Cycle Thresholds"
+                                        description="Configure cycle warning thresholds for apps in Wallet and App Manager."
                                         redValue={canisterCycleThresholdRed}
                                         orangeValue={canisterCycleThresholdOrange}
                                         onRedChange={(v) => { setCanisterCycleThresholdRed(v); setCanisterSettingsSaved(false); }}

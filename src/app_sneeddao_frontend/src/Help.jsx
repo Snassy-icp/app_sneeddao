@@ -72,15 +72,15 @@ const helpTopics = [
     {
         path: '/help/icp-neuron-manager',
         icon: FaServer,
-        title: 'ICP Neuron Manager Canisters',
-        description: 'Create and manage dedicated canisters for your ICP neurons',
+        title: 'ICP Neuron Manager App Canisters',
+        description: 'Create and manage dedicated app canisters for your ICP neurons',
         color: '#3b82f6',
     },
     {
         path: '/help/dapp-manager',
         icon: FaCubes,
         title: 'App Manager',
-        description: 'Track, organize, and monitor all your Internet Computer canisters',
+        description: 'Track, organize, and monitor all your Internet Computer apps',
         color: '#ec4899',
     },
     {
