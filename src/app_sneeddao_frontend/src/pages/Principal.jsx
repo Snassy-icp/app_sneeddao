@@ -119,7 +119,7 @@ export default function PrincipalPage() {
     const { theme } = useTheme();
     const { identity, isAuthenticated } = useAuth();
     const { selectedSnsRoot, SNEED_SNS_ROOT } = useSns();
-    const { principalNames, principalNicknames } = useNaming();
+    const { principalNames, principalNicknames, neuronNames, neuronNicknames, verifiedNames } = useNaming();
     const { createForumActor } = useForum();
     const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
@@ -205,6 +205,16 @@ export default function PrincipalPage() {
     const autoScanKeyRef = useRef(null);
 
     const principalParam = searchParams.get('id');
+
+    const getNeuronDisplayName = useCallback((neuronId, snsRootId) => {
+        if (!neuronId || !snsRootId) return { name: null, nickname: null, isVerified: false };
+        const mapKey = `${snsRootId}:${neuronId}`;
+        return {
+            name: neuronNames?.get(mapKey) || null,
+            nickname: neuronNicknames?.get(mapKey) || null,
+            isVerified: verifiedNames?.get(mapKey) || false
+        };
+    }, [neuronNames, neuronNicknames, verifiedNames]);
     
     // Check premium status for the viewed principal
     const { isPremium: viewedUserIsPremium, loading: premiumLoading } = usePremiumStatus(
@@ -3347,7 +3357,8 @@ export default function PrincipalPage() {
                                                         if (!neuronId) return null;
                                                         const isExpanded = expandedNeuronCards.has(neuronId);
 
-                                                        const { name, nickname, isVerified } = getDisplayName(neuronId);
+                                                        const neuronSnsRoot = activeNeuronSns || selectedSnsRoot || SNEED_SNS_ROOT;
+                                                        const { name, nickname, isVerified } = getNeuronDisplayName(neuronId, neuronSnsRoot);
 
                                                         return (
                                                             <div
@@ -3417,7 +3428,7 @@ export default function PrincipalPage() {
                                                                         >
                                                                             <NeuronDisplay
                                                                                 neuronId={neuronId}
-                                                                                snsRoot={activeNeuronSns || selectedSnsRoot || SNEED_SNS_ROOT}
+                                                                                snsRoot={neuronSnsRoot}
                                                                                 variant="compact"
                                                                                 showCopyButton={true}
                                                                                 displayInfo={{ name, nickname, isVerified }}
