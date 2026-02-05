@@ -166,6 +166,10 @@ export default function PrincipalPage() {
     const [userPosts, setUserPosts] = useState([]);
     const [userThreads, setUserThreads] = useState([]);
     const [loadingPosts, setLoadingPosts] = useState(false);
+    const [scanningTokens, setScanningTokens] = useState(false);
+    const [scanProgress, setScanProgress] = useState({ current: 0, total: 0, found: 0 });
+    const [scanError, setScanError] = useState('');
+    const [scannedTokens, setScannedTokens] = useState([]);
     
     // Message dialog state
     const [messageDialogOpen, setMessageDialogOpen] = useState(false);
@@ -209,6 +213,14 @@ export default function PrincipalPage() {
         if (principalParam) {
             setSearchInput(principalParam);
         }
+    }, [principalParam]);
+
+    // Reset scan state when principal changes
+    useEffect(() => {
+        setScanProgress({ current: 0, total: 0, found: 0 });
+        setScanError('');
+        setScannedTokens([]);
+        setScanningTokens(false);
     }, [principalParam]);
 
     // Click outside handler for search results
@@ -971,6 +983,95 @@ export default function PrincipalPage() {
         }
         return { symbol: 'TOKEN', decimals: 8 };
     }, [whitelistedTokens]);
+
+    const getWhitelistedTokenInfo = useCallback((ledgerId) => {
+        const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
+        if (token) {
+            return {
+                ledgerId,
+                symbol: token.symbol || 'TOKEN',
+                decimals: token.decimals || 8,
+                logo: token.logo || token.logo_url || token.icon || ''
+            };
+        }
+        return { ledgerId, symbol: 'TOKEN', decimals: 8, logo: '' };
+    }, [whitelistedTokens]);
+
+    // Scan for tokens - check all whitelisted tokens for balances
+    const handleScanForTokens = async () => {
+        if (!stablePrincipalId.current || scanningTokens) return;
+        if (!whitelistedTokens || whitelistedTokens.length === 0) {
+            setScanError('No whitelisted tokens available to scan yet.');
+            return;
+        }
+
+        setScanningTokens(true);
+        setScanError('');
+        setScanProgress({ current: 0, total: whitelistedTokens.length, found: 0 });
+
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://icp0.io' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ 
+                host,
+                ...(identity ? { identity } : {})
+            });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+
+            let foundCount = 0;
+            let completedCount = 0;
+            const results = [];
+            const queue = whitelistedTokens.map(t => t.ledger_id?.toString?.() || String(t.ledger_id));
+            const maxConcurrency = 8;
+
+            const runScanForLedger = async (ledgerId) => {
+                try {
+                    const ledgerActor = createIcrc1Actor(ledgerId, { agent });
+                    const balance = await ledgerActor.icrc1_balance_of({ 
+                        owner: stablePrincipalId.current, 
+                        subaccount: [] 
+                    });
+
+                    if (BigInt(balance) > 0n) {
+                        const info = getWhitelistedTokenInfo(ledgerId);
+                        results.push({ ...info, balance: BigInt(balance) });
+                        foundCount++;
+                    }
+                } catch (err) {
+                    console.warn(`[Principal Scan] Failed to check ${ledgerId}:`, err?.message || err);
+                } finally {
+                    completedCount++;
+                    setScanProgress(prev => ({ 
+                        ...prev, 
+                        current: completedCount, 
+                        found: foundCount 
+                    }));
+                }
+            };
+
+            const workerCount = Math.min(maxConcurrency, queue.length);
+            const workers = Array.from({ length: workerCount }, async () => {
+                while (queue.length > 0) {
+                    const ledgerId = queue.shift();
+                    if (!ledgerId) break;
+                    await runScanForLedger(ledgerId);
+                }
+            });
+
+            await Promise.all(workers);
+
+            results.sort((a, b) => (b.balance > a.balance ? 1 : -1));
+            setScannedTokens(results);
+        } catch (error) {
+            console.error('Error scanning for tokens:', error);
+            setScanError(error?.message || 'Error scanning for tokens');
+        } finally {
+            setScanningTokens(false);
+        }
+    };
 
     // Get asset icons for offer display
     const getOfferAssetIcons = (assets) => {
@@ -3034,6 +3135,112 @@ export default function PrincipalPage() {
                                     {snsInfo?.name || 'DAO'} Transactions
                                 </span>
                             </div>
+
+                            {/* Token Scan */}
+                            <div style={{
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                alignItems: 'center',
+                                gap: '0.75rem',
+                                marginBottom: '1rem',
+                                padding: '0.75rem 0.9rem',
+                                borderRadius: '10px',
+                                border: `1px solid ${theme.colors.border}`,
+                                background: theme.colors.tertiaryBg
+                            }}>
+                                <button
+                                    onClick={handleScanForTokens}
+                                    disabled={scanningTokens || !stablePrincipalId.current}
+                                    style={{
+                                        background: `${principalPrimary}15`,
+                                        color: principalPrimary,
+                                        border: `1px solid ${principalPrimary}30`,
+                                        borderRadius: '8px',
+                                        padding: '0.45rem 0.75rem',
+                                        cursor: scanningTokens ? 'not-allowed' : 'pointer',
+                                        fontSize: '0.85rem',
+                                        fontWeight: '600',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.4rem',
+                                        transition: 'all 0.2s ease',
+                                        opacity: scanningTokens ? 0.6 : 1
+                                    }}
+                                    title="Scan all whitelisted tokens for balances"
+                                >
+                                    <FaSearch size={12} style={{ animation: scanningTokens ? 'spin 1s linear infinite' : 'none' }} />
+                                    {scanningTokens 
+                                        ? `Scanning ${scanProgress.current}/${scanProgress.total}${scanProgress.found > 0 ? ` (${scanProgress.found} found)` : ''}`
+                                        : 'Scan Tokens'
+                                    }
+                                </button>
+                                {scanError && (
+                                    <span style={{ color: '#ef4444', fontSize: '0.85rem' }}>{scanError}</span>
+                                )}
+                                {!scanningTokens && scannedTokens.length > 0 && (
+                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>
+                                        Found {scannedTokens.length} token{scannedTokens.length === 1 ? '' : 's'} with balance
+                                    </span>
+                                )}
+                            </div>
+
+                            {scannedTokens.length > 0 && (
+                                <div style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                                    gap: '0.6rem',
+                                    marginBottom: '1.25rem'
+                                }}>
+                                    {scannedTokens.map(token => (
+                                        <div
+                                            key={token.ledgerId}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.6rem',
+                                                padding: '0.5rem 0.7rem',
+                                                borderRadius: '8px',
+                                                border: `1px solid ${theme.colors.border}`,
+                                                background: theme.colors.secondaryBg
+                                            }}
+                                        >
+                                            <TokenIcon 
+                                                logo={token.logo} 
+                                                alt={token.symbol} 
+                                                size={18} 
+                                                fallbackColor={principalPrimary} 
+                                            />
+                                            <div style={{ minWidth: 0 }}>
+                                                <div style={{ 
+                                                    display: 'flex', 
+                                                    alignItems: 'baseline', 
+                                                    gap: '0.5rem' 
+                                                }}>
+                                                    <span style={{ 
+                                                        fontWeight: '600', 
+                                                        color: theme.colors.primaryText,
+                                                        fontSize: '0.9rem'
+                                                    }}>
+                                                        {token.symbol}
+                                                    </span>
+                                                    <span style={{ 
+                                                        color: theme.colors.mutedText, 
+                                                        fontSize: '0.75rem'
+                                                    }}>
+                                                        {token.ledgerId}
+                                                    </span>
+                                                </div>
+                                                <div style={{ 
+                                                    color: theme.colors.secondaryText, 
+                                                    fontSize: '0.8rem'
+                                                }}>
+                                                    balance: {token.balance.toString()}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
 
                             <TransactionList 
                                 snsRootCanisterId={searchParams.get('sns') || selectedSnsRoot || SNEED_SNS_ROOT}

@@ -4619,13 +4619,12 @@ function Wallet() {
             }
             
             let foundCount = 0;
+            let completedCount = 0;
             const newLedgers = [];
-            
-            // Check balance on each ledger
-            for (let i = 0; i < ledgersToScan.length; i++) {
-                const ledgerId = ledgersToScan[i];
-                setScanProgress(prev => ({ ...prev, current: i + 1 }));
-                
+            const queue = [...ledgersToScan];
+            const maxConcurrency = 8;
+
+            const runScanForLedger = async (ledgerId) => {
                 try {
                     const ledgerActor = createLedgerActor(ledgerId, { agent });
                     const balance = await ledgerActor.icrc1_balance_of({ 
@@ -4639,13 +4638,30 @@ function Wallet() {
                         await backendActor.register_ledger_canister_id(Principal.fromText(ledgerId));
                         newLedgers.push(ledgerId);
                         foundCount++;
-                        setScanProgress(prev => ({ ...prev, found: foundCount }));
                     }
                 } catch (err) {
                     // Skip ledgers that fail (might be unavailable)
                     console.warn(`[Scan] Failed to check ${ledgerId}:`, err.message || err);
+                } finally {
+                    completedCount++;
+                    setScanProgress(prev => ({ 
+                        ...prev, 
+                        current: completedCount, 
+                        found: foundCount 
+                    }));
                 }
-            }
+            };
+
+            const workerCount = Math.min(maxConcurrency, queue.length);
+            const workers = Array.from({ length: workerCount }, async () => {
+                while (queue.length > 0) {
+                    const ledgerId = queue.shift();
+                    if (!ledgerId) break;
+                    await runScanForLedger(ledgerId);
+                }
+            });
+
+            await Promise.all(workers);
             
             // Refresh tokens to show newly added ones
             if (newLedgers.length > 0) {
@@ -5616,7 +5632,7 @@ function Wallet() {
                                     transition: 'all 0.2s ease',
                                     opacity: scanningTokens ? 0.6 : 1
                                 }}
-                                title="Scan all known SNS tokens to find tokens with balance"
+                                title="Scan all whitelisted tokens to find balances"
                             >
                                 <FaSearch size={12} style={{ animation: scanningTokens ? 'walletPulse 1s ease-in-out infinite' : 'none' }} />
                                 {scanningTokens 
