@@ -8,7 +8,7 @@ import { useNaming } from './NamingContext';
 import { useAuth } from './AuthContext';
 import { Principal } from '@dfinity/principal';
 import { Link } from 'react-router-dom';
-import { FaBriefcase, FaLock, FaSync, FaCoins, FaArrowDown, FaQuestionCircle, FaExternalLinkAlt, FaCheck, FaCopy, FaInfoCircle, FaUnlock, FaTimes, FaWater, FaDollarSign, FaChevronDown, FaChevronRight, FaExpandAlt } from 'react-icons/fa';
+import { FaBriefcase, FaLock, FaSync, FaCoins, FaArrowDown, FaArrowUp, FaQuestionCircle, FaExternalLinkAlt, FaCheck, FaCopy, FaInfoCircle, FaUnlock, FaTimes, FaWater, FaDollarSign, FaChevronDown, FaChevronRight, FaExpandAlt } from 'react-icons/fa';
 
 // Countdown timer component for position locks expiring within 1 hour
 const PositionLockCountdown = ({ expiryNanos }) => {
@@ -201,6 +201,35 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                             </span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            {!hideButtons && openSendLiquidityPositionModal && (!isLockedPosition(positionDetails) || (isLockedPosition(positionDetails) && !positionDetails.frontendOwnership && handleTransferPositionOwnership)) && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        openSendLiquidityPositionModal({
+                                            swapCanisterId: position.swapCanisterId,
+                                            id: positionDetails.positionId,
+                                            frontendOwnership: positionDetails.frontendOwnership,
+                                            symbols: position.token0Symbol + '/' + position.token1Symbol,
+                                            ...(isLockedPosition(positionDetails) && !positionDetails.frontendOwnership ? { isBackendTransfer: true } : {})
+                                        });
+                                    }}
+                                    style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        padding: '4px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        color: theme.colors.mutedText,
+                                        transition: 'color 0.2s ease'
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.color = theme.colors.accent}
+                                    onMouseLeave={(e) => e.currentTarget.style.color = theme.colors.mutedText}
+                                    title={isLockedPosition(positionDetails) && !positionDetails.frontendOwnership ? 'Transfer' : 'Send'}
+                                >
+                                    <FaArrowUp size={12} />
+                                </button>
+                            )}
                             {onOpenDetailModal && (
                                 <button
                                     onClick={(e) => {

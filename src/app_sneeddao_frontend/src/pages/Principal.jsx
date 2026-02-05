@@ -478,6 +478,8 @@ export default function PrincipalPage() {
     const grandTotalUsd = tokenUsdTotal + neuronUsdTotal;
     const neuronsLoading = loadingAllNeurons || loadingNeurons || loadingReachable || neuronUsdLoading;
     const walletLoading = scanningTokens;
+    const displayTokenUsdTotal = formatUsd(Number.isFinite(tokenUsdTotal) ? tokenUsdTotal : 0);
+    const displayNeuronUsdTotal = formatUsd(Number.isFinite(neuronUsdTotal) ? neuronUsdTotal : 0);
 
     const activeSnsSummary = React.useMemo(() => {
         const active = snsesWithNeurons.find(sns => sns.rootCanisterId === activeNeuronSns);
@@ -1237,7 +1239,6 @@ export default function PrincipalPage() {
 
     useEffect(() => {
         const principalKey = principalParam || '';
-        if (activeTab !== 'balances') return;
         if (!principalKey || scanningTokens) return;
         if (!whitelistedTokens || whitelistedTokens.length === 0) return;
         if (scannedTokens.length > 0) return;
@@ -1246,7 +1247,6 @@ export default function PrincipalPage() {
         autoScanKeyRef.current = principalKey;
         handleScanForTokens();
     }, [
-        activeTab,
         principalParam,
         scannedTokens.length,
         scanningTokens,
@@ -2997,11 +2997,11 @@ export default function PrincipalPage() {
                                 alignItems: 'center',
                                 gap: '0.4rem',
                                 marginBottom: '0.75rem',
-                                color: theme.colors.secondaryText,
+                                color: theme.colors.primaryText,
                                 fontSize: '0.9rem',
-                                fontWeight: '600'
+                                fontWeight: '700'
                             }}>
-                                {formatUsd(neuronUsdTotal)}
+                                {displayNeuronUsdTotal}
                                 {neuronUsdLoading && (
                                     <span
                                         className="principal-spin"
@@ -3567,11 +3567,11 @@ export default function PrincipalPage() {
                                 </span>
                                 <span style={{ 
                                     marginLeft: 'auto',
-                                    color: theme.colors.secondaryText, 
+                                    color: theme.colors.primaryText, 
                                     fontSize: '0.95rem',
-                                    fontWeight: '600'
+                                    fontWeight: '700'
                                 }}>
-                                    {formatUsd(tokenUsdTotal)}
+                                    {displayTokenUsdTotal}
                                 </span>
                             </div>
 

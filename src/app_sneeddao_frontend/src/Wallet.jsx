@@ -60,7 +60,7 @@ import { getCyclesColor, formatCyclesCompact, formatMemory, getNeuronManagerSett
 import { PERM } from './utils/NeuronPermissionUtils.jsx';
 import { Actor } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
-import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle, FaTint, FaSeedling, FaGift, FaHourglassHalf, FaWater, FaUnlock, FaCheck, FaExclamationTriangle, FaCrown, FaBox, FaDatabase, FaCog, FaExternalLinkAlt, FaTimes, FaLightbulb, FaArrowRight, FaDollarSign, FaChartBar, FaBullseye, FaMoneyBillWave, FaBug, FaCopy, FaExpandAlt, FaSearch } from 'react-icons/fa';
+import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle, FaTint, FaSeedling, FaGift, FaHourglassHalf, FaWater, FaUnlock, FaCheck, FaExclamationTriangle, FaCrown, FaBox, FaDatabase, FaCog, FaExternalLinkAlt, FaTimes, FaLightbulb, FaArrowRight, FaDollarSign, FaChartBar, FaBullseye, FaMoneyBillWave, FaBug, FaCopy, FaExpandAlt, FaSearch, FaArrowUp } from 'react-icons/fa';
 
 // Custom CSS for Wallet page animations
 const walletCustomStyles = `
@@ -6165,7 +6165,7 @@ function Wallet() {
                                                     )}
                                                 </div>
                                                 <div className="header-content-column">
-                                                    {/* Row 1: Name, USD value, and Refresh */}
+                                                    {/* Row 1: Name and USD value */}
                                                     <div className="header-row-1" style={{ minWidth: 0 }}>
                                                         <span className="token-name">
                                                             <PrincipalDisplay
@@ -6181,62 +6181,8 @@ function Wallet() {
                                                                 `$${(managerTotalIcp * icpPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                                                             }
                                                         </span>
-                                                        <button
-                                                            onClick={async (e) => {
-                                                                e.stopPropagation();
-                                                                await handleRefreshManagerCard(canisterId);
-                                                            }}
-                                                            disabled={refreshingManagerCard === canisterId}
-                                                            style={{
-                                                                background: 'none',
-                                                                border: 'none',
-                                                                cursor: refreshingManagerCard === canisterId ? 'default' : 'pointer',
-                                                                padding: '4px',
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                color: theme.colors.mutedText,
-                                                                fontSize: '1.2rem',
-                                                                transition: 'color 0.2s ease',
-                                                                opacity: refreshingManagerCard === canisterId ? 0.6 : 1
-                                                            }}
-                                                            onMouseEnter={(e) => refreshingManagerCard !== canisterId && (e.target.style.color = theme.colors.primaryText)}
-                                                            onMouseLeave={(e) => refreshingManagerCard !== canisterId && (e.target.style.color = theme.colors.mutedText)}
-                                                            title="Refresh manager data"
-                                                        >
-                                                            <FaSync size={12} style={{ animation: refreshingManagerCard === canisterId ? 'spin 1s linear infinite' : 'none' }} />
-                                                        </button>
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                openDappDetailModal({
-                                                                    canisterId,
-                                                                    isNeuronManager: true,
-                                                                    neuronManagerVersion: manager.version,
-                                                                    neuronCount: neuronCount || 0,
-                                                                    cycles: neuronManagerCycles[canisterId],
-                                                                    memory: neuronManagerMemory[canisterId],
-                                                                    isController: neuronManagerIsController[canisterId] ?? true,
-                                                                    neuronsData: neuronsData,
-                                                                });
-                                                            }}
-                                                            style={{
-                                                                background: 'none',
-                                                                border: 'none',
-                                                                cursor: 'pointer',
-                                                                padding: '4px',
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                color: theme.colors.mutedText,
-                                                                transition: 'color 0.2s ease',
-                                                            }}
-                                                            onMouseEnter={(e) => e.target.style.color = theme.colors.primaryText}
-                                                            onMouseLeave={(e) => e.target.style.color = theme.colors.mutedText}
-                                                            title="Open in dialog"
-                                                        >
-                                                            <FaExpandAlt size={14} />
-                                                        </button>
                                                     </div>
-                                                    {/* Row 2: Total ICP amount */}
+                                                    {/* Row 2: Total ICP amount + actions */}
                                                     <div className="header-row-2">
                                                         <div className="amount-symbol">
                                                             <span className="token-amount">
@@ -6245,6 +6191,89 @@ function Wallet() {
                                                                     : `${neuronCount || 0} neuron${neuronCount !== 1 ? 's' : ''}`
                                                                 }
                                                             </span>
+                                                        </div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto' }}>
+                                                            {neuronManagerIsController[canisterId] && (
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setTransferTargetManager(manager);
+                                                                        setTransferRecipient('');
+                                                                        setTransferError('');
+                                                                        setTransferSuccess('');
+                                                                        setTransferModalOpen(true);
+                                                                    }}
+                                                                    style={{
+                                                                        background: 'none',
+                                                                        border: 'none',
+                                                                        cursor: 'pointer',
+                                                                        padding: '4px',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        color: theme.colors.mutedText,
+                                                                        transition: 'color 0.2s ease'
+                                                                    }}
+                                                                    onMouseEnter={(e) => e.currentTarget.style.color = theme.colors.primaryText}
+                                                                    onMouseLeave={(e) => e.currentTarget.style.color = theme.colors.mutedText}
+                                                                    title="Send (transfer control)"
+                                                                >
+                                                                    <FaArrowUp size={12} />
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                onClick={async (e) => {
+                                                                    e.stopPropagation();
+                                                                    await handleRefreshManagerCard(canisterId);
+                                                                }}
+                                                                disabled={refreshingManagerCard === canisterId}
+                                                                style={{
+                                                                    background: 'none',
+                                                                    border: 'none',
+                                                                    cursor: refreshingManagerCard === canisterId ? 'default' : 'pointer',
+                                                                    padding: '4px',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    color: theme.colors.mutedText,
+                                                                    fontSize: '1.2rem',
+                                                                    transition: 'color 0.2s ease',
+                                                                    opacity: refreshingManagerCard === canisterId ? 0.6 : 1
+                                                                }}
+                                                                onMouseEnter={(e) => refreshingManagerCard !== canisterId && (e.currentTarget.style.color = theme.colors.primaryText)}
+                                                                onMouseLeave={(e) => refreshingManagerCard !== canisterId && (e.currentTarget.style.color = theme.colors.mutedText)}
+                                                                title="Refresh manager data"
+                                                            >
+                                                                <FaSync size={12} style={{ animation: refreshingManagerCard === canisterId ? 'spin 1s linear infinite' : 'none' }} />
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    openDappDetailModal({
+                                                                        canisterId,
+                                                                        isNeuronManager: true,
+                                                                        neuronManagerVersion: manager.version,
+                                                                        neuronCount: neuronCount || 0,
+                                                                        cycles: neuronManagerCycles[canisterId],
+                                                                        memory: neuronManagerMemory[canisterId],
+                                                                        isController: neuronManagerIsController[canisterId] ?? true,
+                                                                        neuronsData: neuronsData,
+                                                                    });
+                                                                }}
+                                                                style={{
+                                                                    background: 'none',
+                                                                    border: 'none',
+                                                                    cursor: 'pointer',
+                                                                    padding: '4px',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    color: theme.colors.mutedText,
+                                                                    transition: 'color 0.2s ease',
+                                                                }}
+                                                                onMouseEnter={(e) => e.currentTarget.style.color = theme.colors.primaryText}
+                                                                onMouseLeave={(e) => e.currentTarget.style.color = theme.colors.mutedText}
+                                                                title="Open in dialog"
+                                                            >
+                                                                <FaExpandAlt size={14} />
+                                                            </button>
                                                         </div>
                                                     </div>
                                                     {/* Row 3: Version, cycles, and icons */}
@@ -7183,7 +7212,7 @@ function Wallet() {
                                                         )}
                                                     </div>
                                                     <div className="header-content-column">
-                                                        {/* Row 1: Name and Refresh */}
+                                                        {/* Row 1: Name */}
                                                         <div className="header-row-1" style={{ minWidth: 0 }}>
                                                             <span className="token-name">
                                                                 <PrincipalDisplay
@@ -7194,64 +7223,93 @@ function Wallet() {
                                                                     noLink={true}
                                                                 />
                                                             </span>
-                                                            <button
-                                                                onClick={async (e) => {
-                                                                    e.stopPropagation();
-                                                                    await handleRefreshCanisterCard(canisterId);
-                                                                }}
-                                                                disabled={refreshingCanisterCard === canisterId}
-                                                                style={{
-                                                                    background: 'none',
-                                                                    border: 'none',
-                                                                    cursor: refreshingCanisterCard === canisterId ? 'default' : 'pointer',
-                                                                    padding: '4px',
-                                                                    display: 'flex',
-                                                                    alignItems: 'center',
-                                                                    color: theme.colors.mutedText,
-                                                                    fontSize: '1.2rem',
-                                                                    transition: 'color 0.2s ease',
-                                                                    opacity: refreshingCanisterCard === canisterId ? 0.6 : 1
-                                                                }}
-                                                                title="Refresh data"
-                                                            >
-                                                                <FaSync size={12} style={{ animation: refreshingCanisterCard === canisterId ? 'spin 1s linear infinite' : 'none' }} />
-                                                            </button>
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    openDappDetailModal({
-                                                                        canisterId,
-                                                                        isNeuronManager: true,
-                                                                        neuronManagerVersion: managerVersion,
-                                                                        neuronCount: managerNeuronCount,
-                                                                        cycles: managerCycles,
-                                                                        memory: status?.memory,
-                                                                        isController: managerIsController,
-                                                                    });
-                                                                }}
-                                                                style={{
-                                                                    background: 'none',
-                                                                    border: 'none',
-                                                                    cursor: 'pointer',
-                                                                    padding: '4px',
-                                                                    display: 'flex',
-                                                                    alignItems: 'center',
-                                                                    color: theme.colors.mutedText,
-                                                                    transition: 'color 0.2s ease',
-                                                                }}
-                                                                onMouseEnter={(e) => e.target.style.color = theme.colors.primaryText}
-                                                                onMouseLeave={(e) => e.target.style.color = theme.colors.mutedText}
-                                                                title="Open in dialog"
-                                                            >
-                                                                <FaExpandAlt size={14} />
-                                                            </button>
                                                         </div>
-                                                        {/* Row 2: ICP Neuron Manager label */}
+                                                        {/* Row 2: ICP Neuron Manager label + actions */}
                                                         <div className="header-row-2">
                                                             <div className="amount-symbol">
                                                                 <span className="token-amount" style={{ color: '#8b5cf6' }}>
                                                                     ICP Neuron Manager
                                                                 </span>
+                                                            </div>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto' }}>
+                                                                {managerIsController && (
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setTransferTargetCanister(canisterId);
+                                                                            setTransferCanisterRecipient('');
+                                                                            setTransferCanisterError('');
+                                                                            setTransferCanisterSuccess('');
+                                                                            setTransferCanisterModalOpen(true);
+                                                                        }}
+                                                                        style={{
+                                                                            background: 'none',
+                                                                            border: 'none',
+                                                                            cursor: 'pointer',
+                                                                            padding: '4px',
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            color: theme.colors.mutedText,
+                                                                            transition: 'color 0.2s ease',
+                                                                        }}
+                                                                        onMouseEnter={(e) => e.currentTarget.style.color = theme.colors.primaryText}
+                                                                        onMouseLeave={(e) => e.currentTarget.style.color = theme.colors.mutedText}
+                                                                        title="Send (transfer control)"
+                                                                    >
+                                                                        <FaArrowUp size={12} />
+                                                                    </button>
+                                                                )}
+                                                                <button
+                                                                    onClick={async (e) => {
+                                                                        e.stopPropagation();
+                                                                        await handleRefreshCanisterCard(canisterId);
+                                                                    }}
+                                                                    disabled={refreshingCanisterCard === canisterId}
+                                                                    style={{
+                                                                        background: 'none',
+                                                                        border: 'none',
+                                                                        cursor: refreshingCanisterCard === canisterId ? 'default' : 'pointer',
+                                                                        padding: '4px',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        color: theme.colors.mutedText,
+                                                                        fontSize: '1.2rem',
+                                                                        transition: 'color 0.2s ease',
+                                                                        opacity: refreshingCanisterCard === canisterId ? 0.6 : 1
+                                                                    }}
+                                                                    title="Refresh data"
+                                                                >
+                                                                    <FaSync size={12} style={{ animation: refreshingCanisterCard === canisterId ? 'spin 1s linear infinite' : 'none' }} />
+                                                                </button>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        openDappDetailModal({
+                                                                            canisterId,
+                                                                            isNeuronManager: true,
+                                                                            neuronManagerVersion: managerVersion,
+                                                                            neuronCount: managerNeuronCount,
+                                                                            cycles: managerCycles,
+                                                                            memory: status?.memory,
+                                                                            isController: managerIsController,
+                                                                        });
+                                                                    }}
+                                                                    style={{
+                                                                        background: 'none',
+                                                                        border: 'none',
+                                                                        cursor: 'pointer',
+                                                                        padding: '4px',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        color: theme.colors.mutedText,
+                                                                        transition: 'color 0.2s ease',
+                                                                    }}
+                                                                    onMouseEnter={(e) => e.currentTarget.style.color = theme.colors.primaryText}
+                                                                    onMouseLeave={(e) => e.currentTarget.style.color = theme.colors.mutedText}
+                                                                    title="Open in dialog"
+                                                                >
+                                                                    <FaExpandAlt size={14} />
+                                                                </button>
                                                             </div>
                                                         </div>
                                                         {/* Row 3: Version, Neurons, Cycles badges */}
@@ -7485,7 +7543,7 @@ function Wallet() {
                                                         </span>
                                                     </div>
                                                     <div className="header-content-column">
-                                                        {/* Row 1: Name and Refresh */}
+                                                        {/* Row 1: Name */}
                                                         <div className="header-row-1" style={{ minWidth: 0 }}>
                                                             <span className="token-name">
                                                                 <PrincipalDisplay
@@ -7496,42 +7554,71 @@ function Wallet() {
                                                                     noLink={true}
                                                                 />
                                                             </span>
-                                                            <button
-                                                                onClick={async (e) => {
-                                                                    e.stopPropagation();
-                                                                    // Clear detection to allow re-detection on refresh
-                                                                    setDetectedNeuronManagers(prev => {
-                                                                        const newState = { ...prev };
-                                                                        delete newState[canisterId];
-                                                                        return newState;
-                                                                    });
-                                                                    await handleRefreshCanisterCard(canisterId);
-                                                                }}
-                                                                disabled={refreshingCanisterCard === canisterId}
-                                                                style={{
-                                                                    background: 'none',
-                                                                    border: 'none',
-                                                                    cursor: refreshingCanisterCard === canisterId ? 'default' : 'pointer',
-                                                                    padding: '4px',
-                                                                    display: 'flex',
-                                                                    alignItems: 'center',
-                                                                    color: theme.colors.mutedText,
-                                                                    fontSize: '1.2rem',
-                                                                    transition: 'color 0.2s ease',
-                                                                    opacity: refreshingCanisterCard === canisterId ? 0.6 : 1
-                                                                }}
-                                                                title="Refresh data"
-                                                            >
-                                                                <FaSync size={12} style={{ animation: refreshingCanisterCard === canisterId ? 'spin 1s linear infinite' : 'none' }} />
-                                                            </button>
                                                         </div>
-                                                        {/* Row 2: Warning label */}
+                                                        {/* Row 2: Warning label + actions */}
                                                         <div className="header-row-2">
                                                             <div className="amount-symbol">
                                                                 <span className="token-amount" style={{ color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                                     <FaExclamationTriangle size={12} />
                                                                     Incompatible Manager
                                                                 </span>
+                                                            </div>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto' }}>
+                                                                {managerIsController && (
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setTransferTargetCanister(canisterId);
+                                                                            setTransferCanisterRecipient('');
+                                                                            setTransferCanisterError('');
+                                                                            setTransferCanisterSuccess('');
+                                                                            setTransferCanisterModalOpen(true);
+                                                                        }}
+                                                                        style={{
+                                                                            background: 'none',
+                                                                            border: 'none',
+                                                                            cursor: 'pointer',
+                                                                            padding: '4px',
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            color: theme.colors.mutedText,
+                                                                            transition: 'color 0.2s ease',
+                                                                        }}
+                                                                        onMouseEnter={(e) => e.currentTarget.style.color = theme.colors.primaryText}
+                                                                        onMouseLeave={(e) => e.currentTarget.style.color = theme.colors.mutedText}
+                                                                        title="Send (transfer control)"
+                                                                    >
+                                                                        <FaArrowUp size={12} />
+                                                                    </button>
+                                                                )}
+                                                                <button
+                                                                    onClick={async (e) => {
+                                                                        e.stopPropagation();
+                                                                        // Clear detection to allow re-detection on refresh
+                                                                        setDetectedNeuronManagers(prev => {
+                                                                            const newState = { ...prev };
+                                                                            delete newState[canisterId];
+                                                                            return newState;
+                                                                        });
+                                                                        await handleRefreshCanisterCard(canisterId);
+                                                                    }}
+                                                                    disabled={refreshingCanisterCard === canisterId}
+                                                                    style={{
+                                                                        background: 'none',
+                                                                        border: 'none',
+                                                                        cursor: refreshingCanisterCard === canisterId ? 'default' : 'pointer',
+                                                                        padding: '4px',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        color: theme.colors.mutedText,
+                                                                        fontSize: '1.2rem',
+                                                                        transition: 'color 0.2s ease',
+                                                                        opacity: refreshingCanisterCard === canisterId ? 0.6 : 1
+                                                                    }}
+                                                                    title="Refresh data"
+                                                                >
+                                                                    <FaSync size={12} style={{ animation: refreshingCanisterCard === canisterId ? 'spin 1s linear infinite' : 'none' }} />
+                                                                </button>
                                                             </div>
                                                         </div>
                                                         {/* Row 3: Cycles badge only */}
@@ -7691,7 +7778,7 @@ function Wallet() {
                                                     )}
                                                 </div>
                                                 <div className="header-content-column">
-                                                    {/* Row 1: Name and Refresh */}
+                                                    {/* Row 1: Name */}
                                                     <div className="header-row-1" style={{ minWidth: 0 }}>
                                                         <span className="token-name">
                                                             <PrincipalDisplay
@@ -7702,66 +7789,95 @@ function Wallet() {
                                                                 noLink={true}
                                                             />
                                                         </span>
-                                                        <button
-                                                            onClick={async (e) => {
-                                                                e.stopPropagation();
-                                                                await handleRefreshCanisterCard(canisterId);
-                                                            }}
-                                                            disabled={refreshingCanisterCard === canisterId}
-                                                            style={{
-                                                                background: 'none',
-                                                                border: 'none',
-                                                                cursor: refreshingCanisterCard === canisterId ? 'default' : 'pointer',
-                                                                padding: '4px',
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                color: theme.colors.mutedText,
-                                                                fontSize: '1.2rem',
-                                                                transition: 'color 0.2s ease',
-                                                                opacity: refreshingCanisterCard === canisterId ? 0.6 : 1
-                                                            }}
-                                                            onMouseEnter={(e) => refreshingCanisterCard !== canisterId && (e.target.style.color = theme.colors.primaryText)}
-                                                            onMouseLeave={(e) => refreshingCanisterCard !== canisterId && (e.target.style.color = theme.colors.mutedText)}
-                                                            title="Refresh canister data"
-                                                        >
-                                                            <FaSync size={12} style={{ animation: refreshingCanisterCard === canisterId ? 'spin 1s linear infinite' : 'none' }} />
-                                                        </button>
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                openDappDetailModal({
-                                                                    canisterId,
-                                                                    isNeuronManager: false,
-                                                                    neuronManagerVersion: null,
-                                                                    neuronCount: 0,
-                                                                    cycles,
-                                                                    memory,
-                                                                    isController,
-                                                                });
-                                                            }}
-                                                            style={{
-                                                                background: 'none',
-                                                                border: 'none',
-                                                                cursor: 'pointer',
-                                                                padding: '4px',
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                color: theme.colors.mutedText,
-                                                                transition: 'color 0.2s ease',
-                                                            }}
-                                                            onMouseEnter={(e) => e.target.style.color = theme.colors.primaryText}
-                                                            onMouseLeave={(e) => e.target.style.color = theme.colors.mutedText}
-                                                            title="Open in dialog"
-                                                        >
-                                                            <FaExpandAlt size={14} />
-                                                        </button>
                                                     </div>
-                                                    {/* Row 2: Status indicator */}
+                                                    {/* Row 2: Status indicator + actions */}
                                                     <div className="header-row-2">
                                                         <div className="amount-symbol">
                                                             <span className="token-amount">
                                                                 {isController ? 'Controller' : 'Tracked'}
                                                             </span>
+                                                        </div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto' }}>
+                                                            {isController && (
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setTransferTargetCanister(canisterId);
+                                                                        setTransferCanisterRecipient('');
+                                                                        setTransferCanisterError('');
+                                                                        setTransferCanisterSuccess('');
+                                                                        setTransferCanisterModalOpen(true);
+                                                                    }}
+                                                                    style={{
+                                                                        background: 'none',
+                                                                        border: 'none',
+                                                                        cursor: 'pointer',
+                                                                        padding: '4px',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        color: theme.colors.mutedText,
+                                                                        transition: 'color 0.2s ease',
+                                                                    }}
+                                                                    onMouseEnter={(e) => e.currentTarget.style.color = theme.colors.primaryText}
+                                                                    onMouseLeave={(e) => e.currentTarget.style.color = theme.colors.mutedText}
+                                                                    title="Send (transfer control)"
+                                                                >
+                                                                    <FaArrowUp size={12} />
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                onClick={async (e) => {
+                                                                    e.stopPropagation();
+                                                                    await handleRefreshCanisterCard(canisterId);
+                                                                }}
+                                                                disabled={refreshingCanisterCard === canisterId}
+                                                                style={{
+                                                                    background: 'none',
+                                                                    border: 'none',
+                                                                    cursor: refreshingCanisterCard === canisterId ? 'default' : 'pointer',
+                                                                    padding: '4px',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    color: theme.colors.mutedText,
+                                                                    fontSize: '1.2rem',
+                                                                    transition: 'color 0.2s ease',
+                                                                    opacity: refreshingCanisterCard === canisterId ? 0.6 : 1
+                                                                }}
+                                                                onMouseEnter={(e) => refreshingCanisterCard !== canisterId && (e.currentTarget.style.color = theme.colors.primaryText)}
+                                                                onMouseLeave={(e) => refreshingCanisterCard !== canisterId && (e.currentTarget.style.color = theme.colors.mutedText)}
+                                                                title="Refresh canister data"
+                                                            >
+                                                                <FaSync size={12} style={{ animation: refreshingCanisterCard === canisterId ? 'spin 1s linear infinite' : 'none' }} />
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    openDappDetailModal({
+                                                                        canisterId,
+                                                                        isNeuronManager: false,
+                                                                        neuronManagerVersion: null,
+                                                                        neuronCount: 0,
+                                                                        cycles,
+                                                                        memory,
+                                                                        isController,
+                                                                    });
+                                                                }}
+                                                                style={{
+                                                                    background: 'none',
+                                                                    border: 'none',
+                                                                    cursor: 'pointer',
+                                                                    padding: '4px',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    color: theme.colors.mutedText,
+                                                                    transition: 'color 0.2s ease',
+                                                                }}
+                                                                onMouseEnter={(e) => e.currentTarget.style.color = theme.colors.primaryText}
+                                                                onMouseLeave={(e) => e.currentTarget.style.color = theme.colors.mutedText}
+                                                                title="Open in dialog"
+                                                            >
+                                                                <FaExpandAlt size={14} />
+                                                            </button>
                                                         </div>
                                                     </div>
                                                     {/* Row 3: Cycles & Memory badges */}

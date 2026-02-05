@@ -1249,6 +1249,29 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             )}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            {!hideButtons && openSendModal && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        openSendModal(token);
+                                    }}
+                                    style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        padding: '4px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        color: theme.colors.mutedText,
+                                        transition: 'color 0.2s ease'
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.color = theme.colors.accent}
+                                    onMouseLeave={(e) => e.currentTarget.style.color = theme.colors.mutedText}
+                                    title="Send"
+                                >
+                                    <FaArrowUp size={12} />
+                                </button>
+                            )}
                             {/* Expand to dialog button - only show if handler provided */}
                             {onOpenDetailModal && (
                                 <button
