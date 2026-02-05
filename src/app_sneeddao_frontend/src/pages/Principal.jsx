@@ -21,7 +21,7 @@ import { useNaming } from '../NamingContext';
 import usePremiumStatus, { PremiumBadge } from '../hooks/usePremiumStatus';
 import MarkdownBody from '../components/MarkdownBody';
 import MessageDialog from '../components/MessageDialog';
-import { FaUser, FaSearch, FaEdit, FaPen, FaComments, FaNewspaper, FaCoins, FaExchangeAlt, FaChevronDown, FaChevronUp, FaEnvelope, FaCrown, FaKey, FaCheckCircle, FaTimesCircle, FaCopy, FaCheck, FaArrowUp, FaArrowDown, FaNetworkWired, FaCube, FaExternalLinkAlt, FaBrain, FaGavel, FaHandHoldingUsd, FaClock, FaTimes } from 'react-icons/fa';
+import { FaUser, FaSearch, FaEdit, FaPen, FaComments, FaNewspaper, FaCoins, FaExchangeAlt, FaChevronDown, FaChevronUp, FaChevronRight, FaEnvelope, FaCrown, FaKey, FaCheckCircle, FaTimesCircle, FaCopy, FaCheck, FaArrowUp, FaArrowDown, FaNetworkWired, FaCube, FaExternalLinkAlt, FaBrain, FaGavel, FaHandHoldingUsd, FaClock, FaTimes } from 'react-icons/fa';
 import { 
     createSneedexActor, 
     formatAmount, 
@@ -2988,34 +2988,34 @@ export default function PrincipalPage() {
                                             {snsesWithNeurons.reduce((sum, s) => sum + s.neuronCount, 0)} total
                                         </div>
                                     )}
-                                    <div style={{ 
-                                        fontSize: '0.85rem', 
-                                        color: theme.colors.secondaryText,
-                                        background: theme.colors.tertiaryBg,
-                                        padding: '0.35rem 0.75rem',
-                                        borderRadius: '8px',
-                                        fontWeight: '600',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '0.4rem'
-                                    }}>
-                                        {formatUsd(neuronUsdTotal)}
-                                        {neuronUsdLoading && (
-                                            <span
-                                                className="principal-spin"
-                                                style={{
-                                                    width: '12px',
-                                                    height: '12px',
-                                                    border: `2px solid ${theme.colors.border}`,
-                                                    borderTopColor: principalAccent,
-                                                    borderRadius: '50%',
-                                                    display: 'inline-block'
-                                                }}
-                                                title="Updating USD total"
-                                            />
-                                        )}
-                                    </div>
                                 </div>
+                            </div>
+
+                            <div style={{
+                                display: 'flex',
+                                justifyContent: 'flex-end',
+                                alignItems: 'center',
+                                gap: '0.4rem',
+                                marginBottom: '0.75rem',
+                                color: theme.colors.secondaryText,
+                                fontSize: '0.9rem',
+                                fontWeight: '600'
+                            }}>
+                                {formatUsd(neuronUsdTotal)}
+                                {neuronUsdLoading && (
+                                    <span
+                                        className="principal-spin"
+                                        style={{
+                                            width: '12px',
+                                            height: '12px',
+                                            border: `2px solid ${theme.colors.border}`,
+                                            borderTopColor: principalAccent,
+                                            borderRadius: '50%',
+                                            display: 'inline-block'
+                                        }}
+                                        title="Updating USD total"
+                                    />
+                                )}
                             </div>
 
                             {/* SNS Subtabs */}
