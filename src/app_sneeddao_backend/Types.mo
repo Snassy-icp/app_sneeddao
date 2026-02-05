@@ -35,6 +35,35 @@ module {
         principal_tracked_canisters: PrincipalTrackedCanisterMap;
     };
 
+    // User settings (each setting stored separately in backend)
+    public type UserSettings = {
+        principal_color_coding: Bool;
+        neuron_color_coding: Bool;
+        show_vp_bar: Bool;
+        show_header_notifications: Bool;
+        collectibles_threshold: Float;
+        expand_quick_links_on_desktop: Bool;
+        particle_effects_enabled: Bool;
+        neuron_manager_cycle_threshold_red: Nat;
+        neuron_manager_cycle_threshold_orange: Nat;
+        canister_manager_cycle_threshold_red: Nat;
+        canister_manager_cycle_threshold_orange: Nat;
+    };
+
+    public type UserSettingsUpdate = {
+        principal_color_coding: ?Bool;
+        neuron_color_coding: ?Bool;
+        show_vp_bar: ?Bool;
+        show_header_notifications: ?Bool;
+        collectibles_threshold: ?Float;
+        expand_quick_links_on_desktop: ?Bool;
+        particle_effects_enabled: ?Bool;
+        neuron_manager_cycle_threshold_red: ?Nat;
+        neuron_manager_cycle_threshold_orange: ?Nat;
+        canister_manager_cycle_threshold_red: ?Nat;
+        canister_manager_cycle_threshold_orange: ?Nat;
+    };
+
     // token metadata types
     public type TokenMetaValue = { #Int : Int; #Nat : Nat; #Blob : Blob; #Text : Text };
     public type TokenMeta = {

@@ -12,6 +12,46 @@ export const createBackendActor = (identity) => {
     });
 };
 
+const toOptional = (value) => (value === undefined || value === null ? [] : [value]);
+
+// User settings
+export const getMySettings = async (identity) => {
+    if (!identity) return null;
+
+    try {
+        const actor = createBackendActor(identity);
+        return await actor.get_my_settings();
+    } catch (error) {
+        console.error('Error getting user settings:', error);
+        return null;
+    }
+};
+
+export const setMySettings = async (identity, updates) => {
+    if (!identity) return null;
+
+    try {
+        const actor = createBackendActor(identity);
+        const payload = {
+            principal_color_coding: toOptional(updates.principal_color_coding),
+            neuron_color_coding: toOptional(updates.neuron_color_coding),
+            show_vp_bar: toOptional(updates.show_vp_bar),
+            show_header_notifications: toOptional(updates.show_header_notifications),
+            collectibles_threshold: toOptional(updates.collectibles_threshold),
+            expand_quick_links_on_desktop: toOptional(updates.expand_quick_links_on_desktop),
+            particle_effects_enabled: toOptional(updates.particle_effects_enabled),
+            neuron_manager_cycle_threshold_red: toOptional(updates.neuron_manager_cycle_threshold_red),
+            neuron_manager_cycle_threshold_orange: toOptional(updates.neuron_manager_cycle_threshold_orange),
+            canister_manager_cycle_threshold_red: toOptional(updates.canister_manager_cycle_threshold_red),
+            canister_manager_cycle_threshold_orange: toOptional(updates.canister_manager_cycle_threshold_orange),
+        };
+        return await actor.set_my_settings(payload);
+    } catch (error) {
+        console.error('Error setting user settings:', error);
+        throw error;
+    }
+};
+
 // Helper function to convert hex string to Uint8Array
 const hexToUint8Array = (hex) => {
     if (!hex) return null;

@@ -40,6 +40,8 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   type NeuronName = T.NeuronName;
   type NeuronNickname = T.NeuronNickname;
   type NeuronNameKey = T.NeuronNameKey;
+  type UserSettings = T.UserSettings;
+  type UserSettingsUpdate = T.UserSettingsUpdate;
 
   // Partner types
   type Partner = T.Partner;
@@ -111,6 +113,19 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   stable var stable_whitelisted_tokens : [WhitelistedToken] = [];
   stable var stable_admins : [Principal] = [deployer.caller];
   stable var stable_blacklisted_words : [(Text, Bool)] = [];
+
+  // Stable storage for user settings (per-setting maps)
+  stable var stable_user_setting_principal_color_coding : [(Principal, Bool)] = [];
+  stable var stable_user_setting_neuron_color_coding : [(Principal, Bool)] = [];
+  stable var stable_user_setting_show_vp_bar : [(Principal, Bool)] = [];
+  stable var stable_user_setting_show_header_notifications : [(Principal, Bool)] = [];
+  stable var stable_user_setting_collectibles_threshold : [(Principal, Float)] = [];
+  stable var stable_user_setting_expand_quick_links_on_desktop : [(Principal, Bool)] = [];
+  stable var stable_user_setting_particle_effects_enabled : [(Principal, Bool)] = [];
+  stable var stable_user_setting_neuron_manager_cycle_threshold_red : [(Principal, Nat)] = [];
+  stable var stable_user_setting_neuron_manager_cycle_threshold_orange : [(Principal, Nat)] = [];
+  stable var stable_user_setting_canister_manager_cycle_threshold_red : [(Principal, Nat)] = [];
+  stable var stable_user_setting_canister_manager_cycle_threshold_orange : [(Principal, Nat)] = [];
 
   // Stable storage for neuron names and nicknames
   stable var stable_neuron_names : [(NeuronNameKey, (Text, Bool))] = [];
@@ -208,6 +223,30 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   
   // Authorized callers for "for" methods
   var authorized_for_callers : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(10, Principal.equal, Principal.hash);
+
+  // User settings defaults
+  let default_principal_color_coding : Bool = true;
+  let default_neuron_color_coding : Bool = true;
+  let default_show_vp_bar : Bool = true;
+  let default_show_header_notifications : Bool = true;
+  let default_collectibles_threshold : Float = 1.0;
+  let default_expand_quick_links_on_desktop : Bool = false;
+  let default_particle_effects_enabled : Bool = true;
+  let default_cycle_threshold_red : Nat = 1_000_000_000_000;
+  let default_cycle_threshold_orange : Nat = 5_000_000_000_000;
+
+  // Runtime storage for user settings
+  var user_setting_principal_color_coding : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
+  var user_setting_neuron_color_coding : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
+  var user_setting_show_vp_bar : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
+  var user_setting_show_header_notifications : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
+  var user_setting_collectibles_threshold : HashMap.HashMap<Principal, Float> = HashMap.HashMap<Principal, Float>(100, Principal.equal, Principal.hash);
+  var user_setting_expand_quick_links_on_desktop : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
+  var user_setting_particle_effects_enabled : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
+  var user_setting_neuron_manager_cycle_threshold_red : HashMap.HashMap<Principal, Nat> = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
+  var user_setting_neuron_manager_cycle_threshold_orange : HashMap.HashMap<Principal, Nat> = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
+  var user_setting_canister_manager_cycle_threshold_red : HashMap.HashMap<Principal, Nat> = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
+  var user_setting_canister_manager_cycle_threshold_orange : HashMap.HashMap<Principal, Nat> = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
 
   // Add after other runtime variables
   private var blacklisted_words = HashMap.fromIter<Text, Bool>(
@@ -320,6 +359,131 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     } else {
       (stable_max_neuron_nicknames, stable_max_principal_nicknames)
     }
+  };
+
+  // User settings helpers
+  private func get_user_settings(user : Principal) : UserSettings {
+    {
+      principal_color_coding = switch (user_setting_principal_color_coding.get(user)) {
+        case (?value) value;
+        case null default_principal_color_coding;
+      };
+      neuron_color_coding = switch (user_setting_neuron_color_coding.get(user)) {
+        case (?value) value;
+        case null default_neuron_color_coding;
+      };
+      show_vp_bar = switch (user_setting_show_vp_bar.get(user)) {
+        case (?value) value;
+        case null default_show_vp_bar;
+      };
+      show_header_notifications = switch (user_setting_show_header_notifications.get(user)) {
+        case (?value) value;
+        case null default_show_header_notifications;
+      };
+      collectibles_threshold = switch (user_setting_collectibles_threshold.get(user)) {
+        case (?value) value;
+        case null default_collectibles_threshold;
+      };
+      expand_quick_links_on_desktop = switch (user_setting_expand_quick_links_on_desktop.get(user)) {
+        case (?value) value;
+        case null default_expand_quick_links_on_desktop;
+      };
+      particle_effects_enabled = switch (user_setting_particle_effects_enabled.get(user)) {
+        case (?value) value;
+        case null default_particle_effects_enabled;
+      };
+      neuron_manager_cycle_threshold_red = switch (user_setting_neuron_manager_cycle_threshold_red.get(user)) {
+        case (?value) value;
+        case null default_cycle_threshold_red;
+      };
+      neuron_manager_cycle_threshold_orange = switch (user_setting_neuron_manager_cycle_threshold_orange.get(user)) {
+        case (?value) value;
+        case null default_cycle_threshold_orange;
+      };
+      canister_manager_cycle_threshold_red = switch (user_setting_canister_manager_cycle_threshold_red.get(user)) {
+        case (?value) value;
+        case null default_cycle_threshold_red;
+      };
+      canister_manager_cycle_threshold_orange = switch (user_setting_canister_manager_cycle_threshold_orange.get(user)) {
+        case (?value) value;
+        case null default_cycle_threshold_orange;
+      };
+    }
+  };
+
+  private func apply_user_settings_update(user : Principal, update : UserSettingsUpdate) {
+    switch (update.principal_color_coding) {
+      case (?value) { user_setting_principal_color_coding.put(user, value) };
+      case null {};
+    };
+    switch (update.neuron_color_coding) {
+      case (?value) { user_setting_neuron_color_coding.put(user, value) };
+      case null {};
+    };
+    switch (update.show_vp_bar) {
+      case (?value) { user_setting_show_vp_bar.put(user, value) };
+      case null {};
+    };
+    switch (update.show_header_notifications) {
+      case (?value) { user_setting_show_header_notifications.put(user, value) };
+      case null {};
+    };
+    switch (update.collectibles_threshold) {
+      case (?value) { user_setting_collectibles_threshold.put(user, value) };
+      case null {};
+    };
+    switch (update.expand_quick_links_on_desktop) {
+      case (?value) { user_setting_expand_quick_links_on_desktop.put(user, value) };
+      case null {};
+    };
+    switch (update.particle_effects_enabled) {
+      case (?value) { user_setting_particle_effects_enabled.put(user, value) };
+      case null {};
+    };
+    switch (update.neuron_manager_cycle_threshold_red) {
+      case (?value) { user_setting_neuron_manager_cycle_threshold_red.put(user, value) };
+      case null {};
+    };
+    switch (update.neuron_manager_cycle_threshold_orange) {
+      case (?value) { user_setting_neuron_manager_cycle_threshold_orange.put(user, value) };
+      case null {};
+    };
+    switch (update.canister_manager_cycle_threshold_red) {
+      case (?value) { user_setting_canister_manager_cycle_threshold_red.put(user, value) };
+      case null {};
+    };
+    switch (update.canister_manager_cycle_threshold_orange) {
+      case (?value) { user_setting_canister_manager_cycle_threshold_orange.put(user, value) };
+      case null {};
+    };
+  };
+
+  // User settings endpoints
+  public query ({ caller }) func get_my_settings() : async UserSettings {
+    if (Principal.isAnonymous(caller)) {
+      return {
+        principal_color_coding = default_principal_color_coding;
+        neuron_color_coding = default_neuron_color_coding;
+        show_vp_bar = default_show_vp_bar;
+        show_header_notifications = default_show_header_notifications;
+        collectibles_threshold = default_collectibles_threshold;
+        expand_quick_links_on_desktop = default_expand_quick_links_on_desktop;
+        particle_effects_enabled = default_particle_effects_enabled;
+        neuron_manager_cycle_threshold_red = default_cycle_threshold_red;
+        neuron_manager_cycle_threshold_orange = default_cycle_threshold_orange;
+        canister_manager_cycle_threshold_red = default_cycle_threshold_red;
+        canister_manager_cycle_threshold_orange = default_cycle_threshold_orange;
+      };
+    };
+    get_user_settings(caller)
+  };
+
+  public shared ({ caller }) func set_my_settings(update : UserSettingsUpdate) : async Result.Result<UserSettings, Text> {
+    if (Principal.isAnonymous(caller)) {
+      return #err("Anonymous caller not allowed");
+    };
+    apply_user_settings_update(caller, update);
+    #ok(get_user_settings(caller))
   };
 
   // Helper functions for counting canister groups
@@ -3004,6 +3168,19 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     
     // Save authorized_for_callers to stable storage
     stable_authorized_for_callers := Iter.toArray(authorized_for_callers.keys());
+
+    // Save user settings to stable storage
+    stable_user_setting_principal_color_coding := Iter.toArray(user_setting_principal_color_coding.entries());
+    stable_user_setting_neuron_color_coding := Iter.toArray(user_setting_neuron_color_coding.entries());
+    stable_user_setting_show_vp_bar := Iter.toArray(user_setting_show_vp_bar.entries());
+    stable_user_setting_show_header_notifications := Iter.toArray(user_setting_show_header_notifications.entries());
+    stable_user_setting_collectibles_threshold := Iter.toArray(user_setting_collectibles_threshold.entries());
+    stable_user_setting_expand_quick_links_on_desktop := Iter.toArray(user_setting_expand_quick_links_on_desktop.entries());
+    stable_user_setting_particle_effects_enabled := Iter.toArray(user_setting_particle_effects_enabled.entries());
+    stable_user_setting_neuron_manager_cycle_threshold_red := Iter.toArray(user_setting_neuron_manager_cycle_threshold_red.entries());
+    stable_user_setting_neuron_manager_cycle_threshold_orange := Iter.toArray(user_setting_neuron_manager_cycle_threshold_orange.entries());
+    stable_user_setting_canister_manager_cycle_threshold_red := Iter.toArray(user_setting_canister_manager_cycle_threshold_red.entries());
+    stable_user_setting_canister_manager_cycle_threshold_orange := Iter.toArray(user_setting_canister_manager_cycle_threshold_orange.entries());
   };
 
   // initialize ephemeral state and empty stable arrays to save memory
@@ -3135,6 +3312,52 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       for (caller in stable_authorized_for_callers.vals()) {
         authorized_for_callers.put(caller, true);
       };
+
+      // Restore user settings from stable storage
+      for ((user, value) in stable_user_setting_principal_color_coding.vals()) {
+        user_setting_principal_color_coding.put(user, value);
+      };
+      stable_user_setting_principal_color_coding := [];
+      for ((user, value) in stable_user_setting_neuron_color_coding.vals()) {
+        user_setting_neuron_color_coding.put(user, value);
+      };
+      stable_user_setting_neuron_color_coding := [];
+      for ((user, value) in stable_user_setting_show_vp_bar.vals()) {
+        user_setting_show_vp_bar.put(user, value);
+      };
+      stable_user_setting_show_vp_bar := [];
+      for ((user, value) in stable_user_setting_show_header_notifications.vals()) {
+        user_setting_show_header_notifications.put(user, value);
+      };
+      stable_user_setting_show_header_notifications := [];
+      for ((user, value) in stable_user_setting_collectibles_threshold.vals()) {
+        user_setting_collectibles_threshold.put(user, value);
+      };
+      stable_user_setting_collectibles_threshold := [];
+      for ((user, value) in stable_user_setting_expand_quick_links_on_desktop.vals()) {
+        user_setting_expand_quick_links_on_desktop.put(user, value);
+      };
+      stable_user_setting_expand_quick_links_on_desktop := [];
+      for ((user, value) in stable_user_setting_particle_effects_enabled.vals()) {
+        user_setting_particle_effects_enabled.put(user, value);
+      };
+      stable_user_setting_particle_effects_enabled := [];
+      for ((user, value) in stable_user_setting_neuron_manager_cycle_threshold_red.vals()) {
+        user_setting_neuron_manager_cycle_threshold_red.put(user, value);
+      };
+      stable_user_setting_neuron_manager_cycle_threshold_red := [];
+      for ((user, value) in stable_user_setting_neuron_manager_cycle_threshold_orange.vals()) {
+        user_setting_neuron_manager_cycle_threshold_orange.put(user, value);
+      };
+      stable_user_setting_neuron_manager_cycle_threshold_orange := [];
+      for ((user, value) in stable_user_setting_canister_manager_cycle_threshold_red.vals()) {
+        user_setting_canister_manager_cycle_threshold_red.put(user, value);
+      };
+      stable_user_setting_canister_manager_cycle_threshold_red := [];
+      for ((user, value) in stable_user_setting_canister_manager_cycle_threshold_orange.vals()) {
+        user_setting_canister_manager_cycle_threshold_orange.put(user, value);
+      };
+      stable_user_setting_canister_manager_cycle_threshold_orange := [];
 
       // Update next_project_id to be one more than the highest existing ID
       var max_project_id : Nat = 0;

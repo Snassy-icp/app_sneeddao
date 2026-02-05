@@ -7,6 +7,34 @@ type WhitelistedToken =
    standard: text;
    symbol: text;
  };
+type UserSettingsUpdate = 
+ record {
+   canister_manager_cycle_threshold_orange: opt nat;
+   canister_manager_cycle_threshold_red: opt nat;
+   collectibles_threshold: opt float64;
+   expand_quick_links_on_desktop: opt bool;
+   neuron_color_coding: opt bool;
+   neuron_manager_cycle_threshold_orange: opt nat;
+   neuron_manager_cycle_threshold_red: opt nat;
+   particle_effects_enabled: opt bool;
+   principal_color_coding: opt bool;
+   show_header_notifications: opt bool;
+   show_vp_bar: opt bool;
+ };
+type UserSettings = 
+ record {
+   canister_manager_cycle_threshold_orange: nat;
+   canister_manager_cycle_threshold_red: nat;
+   collectibles_threshold: float64;
+   expand_quick_links_on_desktop: bool;
+   neuron_color_coding: bool;
+   neuron_manager_cycle_threshold_orange: nat;
+   neuron_manager_cycle_threshold_red: nat;
+   particle_effects_enabled: bool;
+   principal_color_coding: bool;
+   show_header_notifications: bool;
+   show_vp_bar: bool;
+ };
 type TxIndex = nat;
 type TransferResult = 
  variant {
@@ -61,20 +89,12 @@ type Timestamp = nat64;
 type Result_9 = 
  variant {
    err: text;
-   ok: vec record {
-             principal;
-             int;
-           };
- };
-type Result_8 = 
- variant {
-   err: text;
    ok: record {
          controllers: vec principal;
          module_hash: opt blob;
        };
  };
-type Result_7 = 
+type Result_8 = 
  variant {
    err: text;
    ok: record {
@@ -82,7 +102,7 @@ type Result_7 =
          total: nat;
        };
  };
-type Result_6 = 
+type Result_7 = 
  variant {
    err: text;
    ok:
@@ -96,25 +116,38 @@ type Result_6 =
       unique_users: nat;
     };
  };
-type Result_5 = 
+type Result_6 = 
  variant {
    err: text;
    ok: vec BanLogEntry;
  };
-type Result_4 = 
+type Result_5 = 
  variant {
    err: text;
    ok: vec Neuron;
  };
-type Result_3 = 
+type Result_4 = 
  variant {
    err: text;
    ok: WhitelistedToken;
+ };
+type Result_3 = 
+ variant {
+   err: text;
+   ok: UserSettings;
  };
 type Result_2 = 
  variant {
    err: text;
    ok;
+ };
+type Result_10 = 
+ variant {
+   err: text;
+   ok: vec record {
+             principal;
+             int;
+           };
  };
 type Result_1 = 
  variant {
@@ -274,8 +307,8 @@ type AppSneedDaoBackend =
                                              text;
                                            }) query;
    get_authorized_for_callers: () -> (vec principal) query;
-   get_ban_log: () -> (Result_5) query;
-   get_banned_users: () -> (Result_9) query;
+   get_ban_log: () -> (Result_6) query;
+   get_banned_users: () -> (Result_10) query;
    get_blacklisted_words: () -> (vec text) query;
    get_cached_token_meta: (swap_canister_id: principal) ->
     (opt TokenMeta) query;
@@ -289,7 +322,7 @@ type AppSneedDaoBackend =
        premium_max_canisters_per_group: nat;
        premium_max_total_grouped_canisters: nat;
      }) query;
-   get_canister_info: (canister_id: principal) -> (Result_8);
+   get_canister_info: (canister_id: principal) -> (Result_9);
    get_jailbreak_fee_settings: () ->
     (record {
        fee_account_owner: opt principal;
@@ -298,8 +331,8 @@ type AppSneedDaoBackend =
        fee_regular_e8s: nat;
      }) query;
    get_jailbreak_payment_balance: () -> (nat);
-   get_jailbreak_payment_logs: (offset: nat, limit: nat) -> (Result_7) query;
-   get_jailbreak_payment_stats: () -> (Result_6) query;
+   get_jailbreak_payment_logs: (offset: nat, limit: nat) -> (Result_8) query;
+   get_jailbreak_payment_stats: () -> (Result_7) query;
    get_jailbreak_payment_subaccount: () -> (blob) query;
    get_ledger_canister_ids: () -> (vec principal) query;
    get_my_canister_groups_usage: () ->
@@ -323,6 +356,7 @@ type AppSneedDaoBackend =
        principal_nickname_count: nat;
        principal_nickname_limit: nat;
      });
+   get_my_settings: () -> (UserSettings) query;
    get_neuron_name: (sns_root_canister_id: principal, neuron_id: NeuronId) ->
     (opt record {
            text;
@@ -351,13 +385,13 @@ type AppSneedDaoBackend =
    get_refresh_all_progress: () -> (RefreshAllProgress) query;
    get_swap_canister_ids: () -> (vec principal) query;
    get_tracked_canisters: () -> (vec principal) query;
-   get_user_ban_history: (user: principal) -> (Result_5) query;
-   get_user_neurons: () -> (Result_4);
+   get_user_ban_history: (user: principal) -> (Result_6) query;
+   get_user_neurons: () -> (Result_5);
    get_user_tokens: () -> (vec principal) query;
    get_whitelisted_tokens: () -> (vec WhitelistedToken) query;
    import_whitelist_from_swaprunner: () -> ();
    is_token_whitelisted: (ledger_id: principal) -> (bool) query;
-   refresh_token_metadata: (ledger_id: principal) -> (Result_3);
+   refresh_token_metadata: (ledger_id: principal) -> (Result_4);
    register_ledger_canister_id: (icrc1_ledger_canister_id: principal) -> ();
    register_swap_canister_id: (icrc1_swap_canister_id: principal) -> ();
    register_tracked_canister: (canister_id: principal) -> ();
@@ -382,6 +416,7 @@ type AppSneedDaoBackend =
    set_jailbreak_fee_settings: (fee_premium_e8s: opt nat, fee_regular_e8s:
     opt nat, fee_account_owner: opt opt principal, fee_account_subaccount:
     opt opt blob) -> (Result_2);
+   set_my_settings: (update: UserSettingsUpdate) -> (Result_3);
    set_neuron_name: (sns_root_canister_id: principal, neuron_id: NeuronId,
     name: text) -> (Result_1);
    set_neuron_nickname: (sns_root_canister_id: principal, neuron_id:

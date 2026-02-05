@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../AuthContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Header from '../components/Header';
@@ -26,6 +26,8 @@ import {
     getAllNeuronNicknames,
     setPrincipalName,
     getPrincipalName,
+    getMySettings,
+    setMySettings,
     getPostsByUser,
     getThreadsByUser,
     getTipsGivenByUser,
@@ -195,6 +197,152 @@ export default function Me() {
     const [notifyOnPrivateInvite, setNotifyOnPrivateInvite] = useState(true);
     const [loadingNotificationSettings, setLoadingNotificationSettings] = useState(false);
     const [notificationSettingsSaved, setNotificationSettingsSaved] = useState(false);
+    const collectiblesSaveTimerRef = useRef(null);
+
+    const defaultUserSettings = {
+        principal_color_coding: true,
+        neuron_color_coding: true,
+        show_vp_bar: true,
+        show_header_notifications: true,
+        collectibles_threshold: 1.0,
+        expand_quick_links_on_desktop: false,
+        particle_effects_enabled: true,
+        neuron_manager_cycle_threshold_red: 1_000_000_000_000,
+        neuron_manager_cycle_threshold_orange: 5_000_000_000_000,
+        canister_manager_cycle_threshold_red: 1_000_000_000_000,
+        canister_manager_cycle_threshold_orange: 5_000_000_000_000,
+    };
+
+    const getLocalSettingsForBackend = () => {
+        const readBool = (key, fallback) => {
+            try {
+                const saved = localStorage.getItem(key);
+                return saved !== null ? JSON.parse(saved) : fallback;
+            } catch (error) {
+                return fallback;
+            }
+        };
+
+        const readFloat = (key, fallback) => {
+            try {
+                const saved = localStorage.getItem(key);
+                return saved !== null ? parseFloat(saved) : fallback;
+            } catch (error) {
+                return fallback;
+            }
+        };
+
+        const neuronSettings = getNeuronManagerSettings();
+        const canisterSettings = getCanisterManagerSettings();
+
+        return {
+            principal_color_coding: readBool('principalColorCoding', defaultUserSettings.principal_color_coding),
+            neuron_color_coding: readBool('neuronColorCoding', defaultUserSettings.neuron_color_coding),
+            show_vp_bar: readBool('showVpBar', defaultUserSettings.show_vp_bar),
+            show_header_notifications: readBool('showHeaderNotifications', defaultUserSettings.show_header_notifications),
+            collectibles_threshold: readFloat('collectiblesThreshold', defaultUserSettings.collectibles_threshold),
+            expand_quick_links_on_desktop: readBool('expandQuickLinksOnDesktop', defaultUserSettings.expand_quick_links_on_desktop),
+            particle_effects_enabled: readBool('particleEffectsEnabled', defaultUserSettings.particle_effects_enabled),
+            neuron_manager_cycle_threshold_red: neuronSettings.cycleThresholdRed ?? defaultUserSettings.neuron_manager_cycle_threshold_red,
+            neuron_manager_cycle_threshold_orange: neuronSettings.cycleThresholdOrange ?? defaultUserSettings.neuron_manager_cycle_threshold_orange,
+            canister_manager_cycle_threshold_red: canisterSettings.cycleThresholdRed ?? defaultUserSettings.canister_manager_cycle_threshold_red,
+            canister_manager_cycle_threshold_orange: canisterSettings.cycleThresholdOrange ?? defaultUserSettings.canister_manager_cycle_threshold_orange,
+        };
+    };
+
+    const isDefaultSettings = (settings) => {
+        if (!settings) return true;
+
+        const toNumber = (value) => (typeof value === 'bigint' ? Number(value) : Number(value));
+
+        return (
+            (settings.principal_color_coding ?? defaultUserSettings.principal_color_coding) === defaultUserSettings.principal_color_coding
+            && (settings.neuron_color_coding ?? defaultUserSettings.neuron_color_coding) === defaultUserSettings.neuron_color_coding
+            && (settings.show_vp_bar ?? defaultUserSettings.show_vp_bar) === defaultUserSettings.show_vp_bar
+            && (settings.show_header_notifications ?? defaultUserSettings.show_header_notifications) === defaultUserSettings.show_header_notifications
+            && toNumber(settings.collectibles_threshold ?? defaultUserSettings.collectibles_threshold) === defaultUserSettings.collectibles_threshold
+            && (settings.expand_quick_links_on_desktop ?? defaultUserSettings.expand_quick_links_on_desktop) === defaultUserSettings.expand_quick_links_on_desktop
+            && (settings.particle_effects_enabled ?? defaultUserSettings.particle_effects_enabled) === defaultUserSettings.particle_effects_enabled
+            && toNumber(settings.neuron_manager_cycle_threshold_red ?? defaultUserSettings.neuron_manager_cycle_threshold_red) === defaultUserSettings.neuron_manager_cycle_threshold_red
+            && toNumber(settings.neuron_manager_cycle_threshold_orange ?? defaultUserSettings.neuron_manager_cycle_threshold_orange) === defaultUserSettings.neuron_manager_cycle_threshold_orange
+            && toNumber(settings.canister_manager_cycle_threshold_red ?? defaultUserSettings.canister_manager_cycle_threshold_red) === defaultUserSettings.canister_manager_cycle_threshold_red
+            && toNumber(settings.canister_manager_cycle_threshold_orange ?? defaultUserSettings.canister_manager_cycle_threshold_orange) === defaultUserSettings.canister_manager_cycle_threshold_orange
+        );
+    };
+
+    const updateBackendSettings = async (updates) => {
+        if (!identity) return;
+        try {
+            const result = await setMySettings(identity, updates);
+            if (result && 'err' in result) {
+                console.error('Failed to save settings:', result.err);
+            }
+        } catch (err) {
+            console.error('Failed to save settings:', err);
+        }
+    };
+
+    const applySettingsToLocal = (settings) => {
+        if (!settings) return;
+
+        const principalColorCodingValue = settings.principal_color_coding ?? true;
+        setPrincipalColorCoding(principalColorCodingValue);
+        localStorage.setItem('principalColorCoding', JSON.stringify(principalColorCodingValue));
+
+        const neuronColorCodingValue = settings.neuron_color_coding ?? true;
+        setNeuronColorCoding(neuronColorCodingValue);
+        localStorage.setItem('neuronColorCoding', JSON.stringify(neuronColorCodingValue));
+
+        const showVpBarValue = settings.show_vp_bar ?? true;
+        setShowVpBar(showVpBarValue);
+        localStorage.setItem('showVpBar', JSON.stringify(showVpBarValue));
+        window.dispatchEvent(new CustomEvent('showVpBarChanged', { detail: showVpBarValue }));
+
+        const showHeaderNotificationsValue = settings.show_header_notifications ?? true;
+        setShowHeaderNotifications(showHeaderNotificationsValue);
+        localStorage.setItem('showHeaderNotifications', JSON.stringify(showHeaderNotificationsValue));
+        window.dispatchEvent(new CustomEvent('showHeaderNotificationsChanged', { detail: showHeaderNotificationsValue }));
+
+        const collectiblesThresholdValue = Number(settings.collectibles_threshold ?? 1.0);
+        setCollectiblesThreshold(collectiblesThresholdValue);
+        localStorage.setItem('collectiblesThreshold', collectiblesThresholdValue.toString());
+        window.dispatchEvent(new CustomEvent('collectiblesThresholdChanged', { detail: collectiblesThresholdValue }));
+
+        const expandQuickLinksValue = settings.expand_quick_links_on_desktop ?? false;
+        setExpandQuickLinksOnDesktop(expandQuickLinksValue);
+        localStorage.setItem('expandQuickLinksOnDesktop', JSON.stringify(expandQuickLinksValue));
+        window.dispatchEvent(new CustomEvent('expandQuickLinksOnDesktopChanged', { detail: expandQuickLinksValue }));
+
+        const particleEffectsValue = settings.particle_effects_enabled ?? true;
+        setParticleEffectsEnabled(particleEffectsValue);
+        localStorage.setItem('particleEffectsEnabled', JSON.stringify(particleEffectsValue));
+
+        const neuronRed = settings.neuron_manager_cycle_threshold_red;
+        const neuronOrange = settings.neuron_manager_cycle_threshold_orange;
+        if (neuronRed !== undefined && neuronOrange !== undefined) {
+            const redValue = typeof neuronRed === 'bigint' ? Number(neuronRed) : Number(neuronRed);
+            const orangeValue = typeof neuronOrange === 'bigint' ? Number(neuronOrange) : Number(neuronOrange);
+            saveNeuronManagerSettings({
+                cycleThresholdRed: redValue,
+                cycleThresholdOrange: orangeValue,
+            });
+            setCycleThresholdRed(formatCyclesCompact(redValue));
+            setCycleThresholdOrange(formatCyclesCompact(orangeValue));
+        }
+
+        const canisterRed = settings.canister_manager_cycle_threshold_red;
+        const canisterOrange = settings.canister_manager_cycle_threshold_orange;
+        if (canisterRed !== undefined && canisterOrange !== undefined) {
+            const redValue = typeof canisterRed === 'bigint' ? Number(canisterRed) : Number(canisterRed);
+            const orangeValue = typeof canisterOrange === 'bigint' ? Number(canisterOrange) : Number(canisterOrange);
+            saveCanisterManagerSettings({
+                cycleThresholdRed: redValue,
+                cycleThresholdOrange: orangeValue,
+            });
+            setCanisterCycleThresholdRed(formatCyclesCompact(redValue));
+            setCanisterCycleThresholdOrange(formatCyclesCompact(orangeValue));
+        }
+    };
 
     // Color coding settings
     const [principalColorCoding, setPrincipalColorCoding] = useState(() => {
@@ -298,6 +446,41 @@ export default function Me() {
         setCanisterCycleThresholdRed(formatCyclesCompact(settings.cycleThresholdRed));
         setCanisterCycleThresholdOrange(formatCyclesCompact(settings.cycleThresholdOrange));
     }, []);
+
+    useEffect(() => {
+        return () => {
+            if (collectiblesSaveTimerRef.current) {
+                clearTimeout(collectiblesSaveTimerRef.current);
+            }
+        };
+    }, []);
+
+    // Load backend settings when identity is available
+    useEffect(() => {
+        const loadBackendSettings = async () => {
+            if (!identity) return;
+            try {
+                const settings = await getMySettings(identity);
+                if (!settings) return;
+
+                const localSettings = getLocalSettingsForBackend();
+                const backendLooksDefault = isDefaultSettings(settings);
+                const localHasCustom = !isDefaultSettings(localSettings);
+
+                if (backendLooksDefault && localHasCustom) {
+                    applySettingsToLocal(localSettings);
+                    updateBackendSettings(localSettings);
+                    return;
+                }
+
+                applySettingsToLocal(settings);
+            } catch (err) {
+                console.error('Failed to load backend settings:', err);
+            }
+        };
+
+        loadBackendSettings();
+    }, [identity]);
     
     // Load Sneedex notification settings when identity is available
     useEffect(() => {
@@ -1814,6 +1997,7 @@ export default function Me() {
                                                 const newValue = e.target.checked;
                                                 setPrincipalColorCoding(newValue);
                                                 localStorage.setItem('principalColorCoding', JSON.stringify(newValue));
+                                                updateBackendSettings({ principal_color_coding: newValue });
                                             }}
                                         />
                                     </SettingItem>
@@ -1829,6 +2013,7 @@ export default function Me() {
                                                 const newValue = e.target.checked;
                                                 setNeuronColorCoding(newValue);
                                                 localStorage.setItem('neuronColorCoding', JSON.stringify(newValue));
+                                                updateBackendSettings({ neuron_color_coding: newValue });
                                             }}
                                         />
                                     </SettingItem>
@@ -1845,6 +2030,7 @@ export default function Me() {
                                                 setShowVpBar(newValue);
                                                 localStorage.setItem('showVpBar', JSON.stringify(newValue));
                                                 window.dispatchEvent(new CustomEvent('showVpBarChanged', { detail: newValue }));
+                                                updateBackendSettings({ show_vp_bar: newValue });
                                             }}
                                         />
                                     </SettingItem>
@@ -1861,6 +2047,7 @@ export default function Me() {
                                                 setShowHeaderNotifications(newValue);
                                                 localStorage.setItem('showHeaderNotifications', JSON.stringify(newValue));
                                                 window.dispatchEvent(new CustomEvent('showHeaderNotificationsChanged', { detail: newValue }));
+                                                updateBackendSettings({ show_header_notifications: newValue });
                                             }}
                                         />
                                     </SettingItem>
@@ -1882,6 +2069,12 @@ export default function Me() {
                                                     setCollectiblesThreshold(newValue);
                                                     localStorage.setItem('collectiblesThreshold', newValue.toString());
                                                     window.dispatchEvent(new CustomEvent('collectiblesThresholdChanged', { detail: newValue }));
+                                                    if (collectiblesSaveTimerRef.current) {
+                                                        clearTimeout(collectiblesSaveTimerRef.current);
+                                                    }
+                                                    collectiblesSaveTimerRef.current = setTimeout(() => {
+                                                        updateBackendSettings({ collectibles_threshold: newValue });
+                                                    }, 500);
                                                 }}
                                                 style={{
                                                     width: '80px',
@@ -1910,6 +2103,7 @@ export default function Me() {
                                                 setExpandQuickLinksOnDesktop(newValue);
                                                 localStorage.setItem('expandQuickLinksOnDesktop', JSON.stringify(newValue));
                                                 window.dispatchEvent(new CustomEvent('expandQuickLinksOnDesktopChanged', { detail: newValue }));
+                                                updateBackendSettings({ expand_quick_links_on_desktop: newValue });
                                             }}
                                         />
                                     </SettingItem>
@@ -1926,6 +2120,7 @@ export default function Me() {
                                                 const newValue = e.target.checked;
                                                 setParticleEffectsEnabled(newValue);
                                                 localStorage.setItem('particleEffectsEnabled', JSON.stringify(newValue));
+                                                updateBackendSettings({ particle_effects_enabled: newValue });
                                             }}
                                         />
                                     </SettingItem>
@@ -1965,6 +2160,10 @@ export default function Me() {
                                                 cycleThresholdRed: redValue,
                                                 cycleThresholdOrange: orangeValue,
                                             });
+                                            updateBackendSettings({
+                                                neuron_manager_cycle_threshold_red: redValue,
+                                                neuron_manager_cycle_threshold_orange: orangeValue,
+                                            });
                                             
                                             setCycleThresholdRed(formatCyclesCompact(redValue));
                                             setCycleThresholdOrange(formatCyclesCompact(orangeValue));
@@ -1977,6 +2176,10 @@ export default function Me() {
                                             saveNeuronManagerSettings({
                                                 cycleThresholdRed: 1_000_000_000_000,
                                                 cycleThresholdOrange: 5_000_000_000_000,
+                                            });
+                                            updateBackendSettings({
+                                                neuron_manager_cycle_threshold_red: 1_000_000_000_000,
+                                                neuron_manager_cycle_threshold_orange: 5_000_000_000_000,
                                             });
                                             setSettingsSaved(true);
                                             setTimeout(() => setSettingsSaved(false), 3000);
@@ -2019,6 +2222,10 @@ export default function Me() {
                                                 cycleThresholdRed: redValue,
                                                 cycleThresholdOrange: orangeValue,
                                             });
+                                            updateBackendSettings({
+                                                canister_manager_cycle_threshold_red: redValue,
+                                                canister_manager_cycle_threshold_orange: orangeValue,
+                                            });
                                             
                                             setCanisterCycleThresholdRed(formatCyclesCompact(redValue));
                                             setCanisterCycleThresholdOrange(formatCyclesCompact(orangeValue));
@@ -2031,6 +2238,10 @@ export default function Me() {
                                             saveCanisterManagerSettings({
                                                 cycleThresholdRed: 1_000_000_000_000,
                                                 cycleThresholdOrange: 5_000_000_000_000,
+                                            });
+                                            updateBackendSettings({
+                                                canister_manager_cycle_threshold_red: 1_000_000_000_000,
+                                                canister_manager_cycle_threshold_orange: 5_000_000_000_000,
                                             });
                                             setCanisterSettingsSaved(true);
                                             setTimeout(() => setCanisterSettingsSaved(false), 3000);
