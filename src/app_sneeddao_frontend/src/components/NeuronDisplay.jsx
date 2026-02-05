@@ -17,7 +17,8 @@ export const NeuronDisplay = React.memo(({
     isAuthenticated = false,
     onNicknameUpdate = null,
     style = {},
-    noLink = false
+    noLink = false,
+    variant = 'full'
 }) => {
     const { theme } = useTheme();
     const [contextMenuOpen, setContextMenuOpen] = useState(false);
@@ -75,6 +76,9 @@ export const NeuronDisplay = React.memo(({
     
     // Get consistent color for this neuron ID (or use default if disabled)
     const neuronColor = colorCodingEnabled ? getNeuronColor(displayId) : '#888888';
+    const isCompact = variant === 'compact';
+    const displayColor = isCompact ? theme.colors.mutedText : neuronColor;
+    const idLabel = isCompact ? truncatedId : `[${truncatedId}]`;
 
     // Handle right click (desktop)
     const handleContextMenu = useCallback((e) => {
@@ -145,8 +149,8 @@ export const NeuronDisplay = React.memo(({
         React.createElement('div', {
             style: {
                 display: 'flex',
-                alignItems: 'flex-start',
-                gap: '8px',
+                alignItems: isCompact ? 'center' : 'flex-start',
+                gap: isCompact ? '6px' : '8px',
                 flexWrap: 'wrap',
                 width: '100%',
                 ...style
@@ -157,11 +161,11 @@ export const NeuronDisplay = React.memo(({
                 key: 'link',
                 ...(noLink ? {} : { to: `/neuron?neuronid=${displayId}&sns=${snsRoot}` }),
                 style: {
-                    color: neuronColor,
+                    color: displayColor,
                     textDecoration: 'none',
                     fontFamily: 'monospace',
                     display: 'flex',
-                    alignItems: 'flex-start',
+                    alignItems: isCompact ? 'center' : 'flex-start',
                     gap: '4px',
                     flexWrap: 'wrap',
                     flex: '1'
@@ -180,7 +184,7 @@ export const NeuronDisplay = React.memo(({
                 onTouchMove: handleTouchMove
             }, [
                 // If there's a name, show it with verification badge
-                name && React.createElement('span', {
+                !isCompact && name && React.createElement('span', {
                     key: 'name-container',
                     style: {
                         display: 'flex',
@@ -204,7 +208,7 @@ export const NeuronDisplay = React.memo(({
                 ]),
                 
                 // If there's a nickname and it's different from the name, show it
-                nickname && (!name || nickname !== name) && React.createElement('span', {
+                !isCompact && nickname && (!name || nickname !== name) && React.createElement('span', {
                     key: 'nickname',
                     style: {
                         color: neuronColor,
@@ -216,10 +220,10 @@ export const NeuronDisplay = React.memo(({
                 React.createElement('span', {
                     key: 'id',
                     style: {
-                        color: neuronColor,
-                        opacity: 0.7
+                        color: displayColor,
+                        opacity: isCompact ? 1 : 0.7
                     }
-                }, `[${truncatedId}]`)
+                }, idLabel)
             ]),
             
             // Copy button
@@ -279,7 +283,8 @@ export const NeuronDisplay = React.memo(({
         prevProps.showCopyButton === nextProps.showCopyButton &&
         prevProps.enableContextMenu === nextProps.enableContextMenu &&
         JSON.stringify(prevProps.style) === JSON.stringify(nextProps.style) &&
-        prevProps.noLink === nextProps.noLink
+        prevProps.noLink === nextProps.noLink &&
+        prevProps.variant === nextProps.variant
     );
 });
 

@@ -3128,12 +3128,38 @@ function NeuronCard({
                     </div>
                 </div>
 
+                {name && (
+                    <div style={{ 
+                        color: mePrimary,
+                        fontSize: '1.1rem',
+                        fontWeight: '600',
+                        marginBottom: '0.25rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem'
+                    }}>
+                        {name}
+                        {isVerified && <FaCheckCircle size={14} color={mePrimary} title="Verified name" />}
+                    </div>
+                )}
+                {nickname && (
+                    <div style={{ 
+                        color: theme.colors.mutedText,
+                        fontSize: '0.95rem',
+                        fontStyle: 'italic',
+                        marginBottom: '0.25rem'
+                    }}>
+                        {nickname}
+                    </div>
+                )}
+
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                     <div onClick={(event) => event.stopPropagation()} style={{ flex: '1 1 auto', minWidth: '120px' }}>
                         <NeuronDisplay
                             neuronId={neuronId}
                             snsRoot={selectedSnsRoot}
                             displayInfo={{ name, nickname, isVerified }}
+                            variant="compact"
                             showCopyButton={true}
                             enableContextMenu={true}
                             isAuthenticated={Boolean(identity)}

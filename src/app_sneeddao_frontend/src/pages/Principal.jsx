@@ -3391,6 +3391,7 @@ export default function PrincipalPage() {
                                                                             <NeuronDisplay
                                                                                 neuronId={neuronId}
                                                                                 snsRoot={activeNeuronSns || selectedSnsRoot || SNEED_SNS_ROOT}
+                                                                                variant="compact"
                                                                                 showCopyButton={true}
                                                                                 enableContextMenu={true}
                                                                                 isAuthenticated={isAuthenticated}
