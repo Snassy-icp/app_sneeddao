@@ -541,7 +541,7 @@ export default function CanistersPage() {
                 });
             } catch (err) {
                 console.error('Error loading canister groups:', err);
-                setError('Failed to load canister groups');
+                setError('Failed to load app groups');
             } finally {
                 setLoading(false);
             }
@@ -751,7 +751,7 @@ export default function CanistersPage() {
         try {
             Principal.fromText(newWalletCanisterId.trim());
         } catch (e) {
-            setWalletCanisterError('Invalid canister ID format');
+            setWalletCanisterError('Invalid app canister id format');
             setAddingWalletCanister(false);
             return;
         }
@@ -764,7 +764,7 @@ export default function CanistersPage() {
             setTrackedCanisters(canisters.map(p => p.toText()));
         } catch (err) {
             console.error('Error adding wallet canister:', err);
-            setWalletCanisterError(err.message || 'Failed to add canister');
+            setWalletCanisterError(err.message || 'Failed to add app');
         } finally {
             setAddingWalletCanister(false);
         }
@@ -833,7 +833,7 @@ export default function CanistersPage() {
         try {
             canisterPrincipal = Principal.fromText(newCanisterId.trim());
         } catch (err) {
-            setError('Invalid canister ID format');
+            setError('Invalid app canister id format');
             return;
         }
 
@@ -841,7 +841,7 @@ export default function CanistersPage() {
 
         // Check if already tracked
         if (canisterExistsInGroups(canisterIdStr, canisterGroups)) {
-            setError('This canister is already being tracked');
+            setError('This app is already being tracked');
             return;
         }
 
@@ -863,12 +863,12 @@ export default function CanistersPage() {
             
             await saveCanisterGroups(newGroups);
             setNewCanisterId('');
-            setSuccessMessage('Canister added');
+            setSuccessMessage('App added');
             // Fetch cycles for the new canister asynchronously
             fetchCanisterStatus(canisterIdStr);
         } catch (err) {
             console.error('Error adding canister:', err);
-            setError('Failed to add canister');
+            setError('Failed to add app');
         } finally {
             setAddingCanister(false);
         }
@@ -905,11 +905,11 @@ export default function CanistersPage() {
             }
             
             await saveCanisterGroups(newGroups);
-            setSuccessMessage('Canister removed');
+            setSuccessMessage('App removed');
             setConfirmRemoveCanister(null);
         } catch (err) {
             console.error('Error removing canister:', err);
-            setError('Failed to remove canister');
+            setError('Failed to remove app');
         }
     };
 
@@ -1040,14 +1040,14 @@ export default function CanistersPage() {
         try {
             canisterPrincipal = Principal.fromText(newCanisterForGroup.trim());
         } catch (err) {
-            setError('Invalid canister ID format');
+            setError('Invalid app canister id format');
             return;
         }
 
         const canisterIdStr = canisterPrincipal.toString();
 
         if (canisterExistsInGroups(canisterIdStr, canisterGroups)) {
-            setError('This canister is already being tracked');
+            setError('This app is already being tracked');
             return;
         }
 
@@ -1056,11 +1056,11 @@ export default function CanistersPage() {
             await saveCanisterGroups(newGroups);
             setNewCanisterForGroup('');
             setAddingCanisterToGroupId(null);
-            setSuccessMessage('Canister added to group');
+            setSuccessMessage('App added to group');
             fetchCanisterStatus(canisterIdStr);
         } catch (err) {
             console.error('Error adding canister to group:', err);
-            setError('Failed to add canister');
+            setError('Failed to add app');
         }
     };
 
@@ -1121,10 +1121,10 @@ export default function CanistersPage() {
             }
             
             await saveCanisterGroups(newGroups);
-            setSuccessMessage('Canister moved');
+            setSuccessMessage('App moved');
         } catch (err) {
             console.error('Error moving canister:', err);
-            setError('Failed to move canister');
+            setError('Failed to move app');
         }
     };
 
@@ -1164,7 +1164,7 @@ export default function CanistersPage() {
         try {
             canisterId = Principal.fromText(newManagerId.trim());
         } catch (err) {
-            setManagerError('Invalid canister ID format');
+            setManagerError('Invalid app canister id format');
             return;
         }
 
@@ -1267,10 +1267,10 @@ export default function CanistersPage() {
             const canisters = await getTrackedCanisters(identity);
             setTrackedCanisters(canisters.map(p => p.toText()));
             
-            setSuccessMessage(destination === 'neuron_managers' ? 'Canister moved to Neuron Managers' : 'Canister moved to groups');
+            setSuccessMessage(destination === 'neuron_managers' ? 'App moved to Neuron Managers' : 'App moved to groups');
         } catch (err) {
             console.error('Error moving canister from wallet:', err);
-            setError('Failed to move canister: ' + (err.message || 'Unknown error'));
+            setError('Failed to move app: ' + (err.message || 'Unknown error'));
         }
     };
 
@@ -1311,10 +1311,10 @@ export default function CanistersPage() {
             }
             await saveCanisterGroups(newGroups);
             
-            setSuccessMessage(destination === 'wallet' ? 'Canister moved to Wallet' : 'Canister moved to Neuron Managers');
+            setSuccessMessage(destination === 'wallet' ? 'App moved to Wallet' : 'App moved to Neuron Managers');
         } catch (err) {
             console.error('Error moving canister from groups:', err);
-            setError('Failed to move canister: ' + (err.message || 'Unknown error'));
+            setError('Failed to move app: ' + (err.message || 'Unknown error'));
         }
     };
 
@@ -1358,10 +1358,10 @@ export default function CanistersPage() {
             }
             await fetchNeuronManagers();
             
-            setSuccessMessage(destination === 'wallet' ? 'Canister moved to Wallet' : 'Canister moved to groups');
+            setSuccessMessage(destination === 'wallet' ? 'App moved to Wallet' : 'App moved to groups');
         } catch (err) {
             console.error('Error moving canister from neuron managers:', err);
-            setError('Failed to move canister: ' + (err.message || 'Unknown error'));
+            setError('Failed to move app: ' + (err.message || 'Unknown error'));
         }
     };
 
@@ -1707,7 +1707,7 @@ export default function CanistersPage() {
                                 <button
                                     onClick={() => { setAddingCanisterToGroupId(group.id); setNewCanisterForGroup(''); }}
                                     style={{ padding: '4px 8px', backgroundColor: 'transparent', color: theme.colors.accent, border: 'none', cursor: 'pointer' }}
-                                    title="Add canister to this group"
+                                    title="Add app to this group"
                                 >
                                     <FaCube size={12} />
                                 </button>
@@ -1727,7 +1727,7 @@ export default function CanistersPage() {
                                 </button>
                                 <button
                                     onClick={() => {
-                                        if (window.confirm(`Delete group "${group.name}"? Canisters will be moved to ungrouped.`)) {
+                                        if (window.confirm(`Delete group "${group.name}"? Apps will be moved to ungrouped.`)) {
                                             handleDeleteGroup(group.id);
                                         }
                                     }}
@@ -1744,7 +1744,7 @@ export default function CanistersPage() {
                 {/* Group Contents */}
                 {isExpanded && (
                     <div style={{ marginTop: '8px', marginLeft: '12px' }}>
-                        {/* Add Canister to Group Input */}
+                        {/* Add App to Group Input */}
                         {isAddingCanister && (
                             <div style={{ 
                                 display: 'flex', 
@@ -1759,7 +1759,7 @@ export default function CanistersPage() {
                                 <PrincipalInput
                                     value={newCanisterForGroup}
                                     onChange={setNewCanisterForGroup}
-                                    placeholder="Canister ID"
+                                    placeholder="App canister id"
                                     autoFocus={true}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter') handleAddCanisterToGroup(group.id);
@@ -3065,7 +3065,7 @@ export default function CanistersPage() {
                                 color: theme.colors.secondaryText,
                                 margin: '0.25rem 0 0 0'
                             }}>
-                                Organize and monitor your Internet Computer canisters
+                                Organize and monitor your Internet Computer apps
                             </p>
                         </div>
                     </div>
@@ -3178,8 +3178,8 @@ export default function CanistersPage() {
                                 {groupLimits && (
                                     <>
                                         <div>• Up to <strong style={{ color: theme.colors.success }}>{groupLimits.premiumMaxGroups}</strong> folders (vs {groupLimits.maxGroups})</div>
-                                        <div>• Up to <strong style={{ color: theme.colors.success }}>{groupLimits.premiumMaxPerGroup}</strong> canisters per folder (vs {groupLimits.maxPerGroup})</div>
-                                        <div>• Up to <strong style={{ color: theme.colors.success }}>{groupLimits.premiumMaxTotal}</strong> total canisters (vs {groupLimits.maxTotal})</div>
+                                        <div>• Up to <strong style={{ color: theme.colors.success }}>{groupLimits.premiumMaxPerGroup}</strong> apps per folder (vs {groupLimits.maxPerGroup})</div>
+                                        <div>• Up to <strong style={{ color: theme.colors.success }}>{groupLimits.premiumMaxTotal}</strong> total apps (vs {groupLimits.maxTotal})</div>
                                     </>
                                 )}
                             </div>
@@ -3283,7 +3283,7 @@ export default function CanistersPage() {
                             fontSize: '0.95rem',
                             marginBottom: '4px'
                         }}>
-                            Moving {dropInProgress.itemType === 'group' ? 'folder' : 'canister'}...
+                            Moving {dropInProgress.itemType === 'group' ? 'folder' : 'app'}...
                         </div>
                         <div style={{ 
                             color: theme.colors.mutedText, 
@@ -3367,9 +3367,9 @@ export default function CanistersPage() {
                 {!isAuthenticated ? (
                     <div style={styles.notLoggedIn}>
                         <div style={styles.emptyIcon}>🔒</div>
-                        <div style={styles.emptyText}>Please log in to track canisters</div>
+                        <div style={styles.emptyText}>Please log in to track apps</div>
                         <div style={styles.emptySubtext}>
-                            You can track any canister on the Internet Computer to quickly access its details.
+                            You can track any app canister on the Internet Computer to quickly access its details.
                         </div>
                     </div>
                 ) : (
@@ -3386,14 +3386,14 @@ export default function CanistersPage() {
                             </div>
                         )}
 
-                        {/* Add canister section */}
+                        {/* Add app section */}
                         <div style={styles.addSection}>
-                            <div style={styles.addSectionTitle}>Add a canister to track</div>
+                            <div style={styles.addSectionTitle}>Add an app to track</div>
                             <div style={styles.inputRow}>
                                 <PrincipalInput
                                     value={newCanisterId}
                                     onChange={setNewCanisterId}
-                                    placeholder="Enter canister ID (e.g., ryjl3-tyaaa-aaaaa-aaaba-cai)"
+                                    placeholder="Enter app canister id (e.g., ryjl3-tyaaa-aaaaa-aaaba-cai)"
                                     onKeyDown={(e) => e.key === 'Enter' && handleAddCanister()}
                                     style={{ flex: 1, maxWidth: 'none' }}
                                     inputStyle={{ fontFamily: 'monospace' }}
@@ -3476,7 +3476,7 @@ export default function CanistersPage() {
                                             color: theme.colors.primaryText,
                                             fontSize: '15px',
                                         }}>
-                                            {totalCanisters} {totalCanisters === 1 ? 'Canister' : 'Canisters'} Total
+                                            {totalCanisters} {totalCanisters === 1 ? 'App' : 'Apps'} Total
                                         </span>
                                     </div>
                                     
@@ -3680,7 +3680,7 @@ export default function CanistersPage() {
                                                 }}>{groupUsage.groupCount}</span> / {groupUsage.groupLimit}
                                             </span>
                                             <span style={{ color: theme.colors.secondaryText, fontSize: '0.8rem' }}>
-                                                Canisters: <span style={{ 
+                                                Apps: <span style={{ 
                                                     color: groupUsage.totalCanisters >= groupUsage.totalLimit ? '#ef4444' : theme.colors.primaryText,
                                                     fontWeight: 600 
                                                 }}>{groupUsage.totalCanisters}</span> / {groupUsage.totalLimit}
@@ -3711,9 +3711,9 @@ export default function CanistersPage() {
                                 ) : getAllCanisterIds(canisterGroups).length === 0 && canisterGroups.groups.length === 0 ? (
                                     <div style={{ ...styles.emptyState, marginBottom: '24px' }}>
                                         <div style={styles.emptyIcon}>📦</div>
-                                        <div style={styles.emptyText}>No groups or canisters being tracked</div>
+                                        <div style={styles.emptyText}>No groups or apps being tracked</div>
                                         <div style={styles.emptySubtext}>
-                                            Add a canister ID above to start tracking it, or create a group to organize your canisters.
+                                            Add an app canister id above to start tracking it, or create a group to organize your apps.
                                         </div>
                                     </div>
                                 ) : (
@@ -3764,7 +3764,7 @@ export default function CanistersPage() {
                                                             color: theme.colors.primaryText,
                                                             fontSize: '0.95rem',
                                                         }}>
-                                                            {stats.total} {stats.total === 1 ? 'Canister' : 'Canisters'}
+                                                            {stats.total} {stats.total === 1 ? 'App' : 'Apps'}
                                                         </span>
                                                     </div>
                                                     
@@ -4116,7 +4116,7 @@ export default function CanistersPage() {
                                 >
                                     <div style={{ ...styles.sectionTitle, fontSize: '14px' }}>
                                         {walletCanistersExpanded ? <FaChevronDown size={12} /> : <FaChevronRight size={12} />}
-                                        {/* Canisters health lamp */}
+                                        {/* Apps health lamp */}
                                         {(() => {
                                             const stats = getWalletCanistersStatus(trackedCanisters, canisterStatus, cycleSettings, detectedNeuronManagers, neuronManagerCycleSettings);
                                             if (stats.total === 0) return null;
@@ -4131,12 +4131,12 @@ export default function CanistersPage() {
                                                         boxShadow: stats.overallStatus !== 'unknown' ? `0 0 6px ${lampColor}` : 'none',
                                                         flexShrink: 0,
                                                     }}
-                                                    title={`Canisters health: ${stats.overallStatus}`}
+                                                    title={`Apps health: ${stats.overallStatus}`}
                                                 />
                                             );
                                         })()}
                                         <FaBox style={{ color: theme.colors.accent }} />
-                                        Canisters
+                                        Apps
                                         {trackedCanisters.length > 0 && (
                                             <span style={{ ...styles.sectionCount, fontSize: '11px' }}>{trackedCanisters.length}</span>
                                         )}
@@ -4150,9 +4150,9 @@ export default function CanistersPage() {
                         
                                 {walletCanistersExpanded && (
                             <>
-                                {/* Add canister input */}
+                                {/* Add app input */}
                                 <div style={{ ...styles.addSection, marginBottom: '16px' }}>
-                                    <div style={styles.addSectionTitle}>Add canister to wallet</div>
+                                    <div style={styles.addSectionTitle}>Add app to wallet</div>
                                     <div style={styles.inputRow}>
                                         <PrincipalInput
                                             value={newWalletCanisterId}
@@ -4160,7 +4160,7 @@ export default function CanistersPage() {
                                                 setNewWalletCanisterId(v);
                                                 setWalletCanisterError(null);
                                             }}
-                                            placeholder="Enter canister ID"
+                                            placeholder="Enter app canister id"
                                             onKeyDown={(e) => {
                                                 if (e.key === 'Enter' && newWalletCanisterId.trim()) {
                                                     handleAddWalletCanister();
@@ -4203,9 +4203,9 @@ export default function CanistersPage() {
                                 ) : trackedCanisters.length === 0 ? (
                                     <div style={{ ...styles.emptyState, marginBottom: '24px' }}>
                                         <div style={styles.emptyIcon}>💼</div>
-                                        <div style={styles.emptyText}>No canisters in wallet</div>
+                                        <div style={styles.emptyText}>No apps in wallet</div>
                                         <div style={styles.emptySubtext}>
-                                            Add a canister ID above to track it in your wallet.
+                                            Add an app canister id above to track it in your wallet.
                                         </div>
                                     </div>
                                 ) : (
@@ -4602,7 +4602,7 @@ export default function CanistersPage() {
                                                 setNewManagerId(v);
                                                 setManagerError(null);
                                             }}
-                                            placeholder="Enter neuron manager canister ID"
+                                            placeholder="Enter neuron manager app canister id"
                                             onKeyDown={(e) => e.key === 'Enter' && handleAddManager()}
                                             style={{ flex: 1, maxWidth: 'none' }}
                                             inputStyle={{ fontFamily: 'monospace' }}
@@ -5128,7 +5128,7 @@ export default function CanistersPage() {
                                                                 }}
                                                                 style={styles.removeButton}
                                                                 disabled={removingManager === canisterId}
-                                                                title="Remove from list (does not delete canister)"
+                                                                title="Remove from list (does not delete app canister)"
                                                             >
                                                                 {removingManager === canisterId ? (
                                                                     <FaSpinner className="spin" />
