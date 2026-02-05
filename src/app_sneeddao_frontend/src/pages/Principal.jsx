@@ -2563,7 +2563,7 @@ export default function PrincipalPage() {
                         }}
                     >
                         <FaCoins size={14} />
-                        <span>Balances</span>
+                        <span>Wallet</span>
                     </button>
                 </div>
 
@@ -3412,7 +3412,7 @@ export default function PrincipalPage() {
                         </div>
                     )}
 
-                    {/* Balances Tab */}
+                    {/* Wallet Tab */}
                     {activeTab === 'balances' && (
                         <div style={{ padding: '1rem' }}>
                             <div style={{ 
@@ -3434,7 +3434,7 @@ export default function PrincipalPage() {
                                     <FaCoins size={18} />
                                 </div>
                                 <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '1.1rem' }}>
-                                    Token Balances
+                                    Wallet
                                 </span>
                                 <span style={{ 
                                     marginLeft: 'auto',
@@ -3496,9 +3496,10 @@ export default function PrincipalPage() {
                             {scannedTokens.length > 0 && (
                                 <div style={{
                                     display: 'grid',
-                                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                                    gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
                                     gap: '0.7rem',
-                                    marginBottom: '1.25rem'
+                                    marginBottom: '1.25rem',
+                                    alignItems: 'stretch'
                                 }}>
                                     {scannedTokens.map(token => (
                                         <div
@@ -3511,8 +3512,8 @@ export default function PrincipalPage() {
                                                 borderRadius: '999px',
                                                 border: `1px solid ${theme.colors.border}`,
                                                 background: `linear-gradient(135deg, ${theme.colors.secondaryBg}, ${theme.colors.tertiaryBg})`,
-                                                maxWidth: '360px',
-                                                width: '100%'
+                                                width: '100%',
+                                                boxSizing: 'border-box'
                                             }}
                                         >
                                             <TokenIcon 
@@ -3556,12 +3557,6 @@ export default function PrincipalPage() {
                                                         fontWeight: '700'
                                                     }}>
                                                         {formatAmount(token.balance, token.decimals)}
-                                                    </span>
-                                                    <span style={{ 
-                                                        color: theme.colors.mutedText, 
-                                                        fontSize: '0.75rem'
-                                                    }}>
-                                                        ({token.balance.toString()})
                                                     </span>
                                                     <span style={{ 
                                                         marginLeft: 'auto',
