@@ -3,6 +3,7 @@ import { createActor as createSnsGovernanceActor } from 'external/sns_governance
 import { Principal } from '@dfinity/principal';
 import { HttpAgent } from '@dfinity/agent';
 import { getLogo, setLogo, getLogoSync, hasLogo, clearLogoCache as clearUnifiedLogoCache } from '../hooks/useLogoCache';
+import { normalizeId } from './IdUtils';
 
 const SNS_CACHE_KEY = 'sns_data_cache';
 const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 1 week in milliseconds
@@ -10,26 +11,6 @@ const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 1 week in milliseconds
 // Memory fallback when localStorage fails
 let memoryCache = null;
 
-// Local normalizeId function to handle Principal/string conversion
-function normalizeId(id) {
-    if (!id) return null;
-    
-    // If it's a string, return as-is
-    if (typeof id === 'string') return id;
-    
-    // If it has toText method (Principal object)
-    if (typeof id.toText === 'function') return id.toText();
-    
-    // If it has toString method
-    if (typeof id.toString === 'function') return id.toString();
-    
-    // If it's a serialized Principal object {__type: 'Principal', value: '...'}
-    if (typeof id === 'object' && id.__type === 'Principal' && id.value) {
-        return id.value;
-    }
-    
-    return String(id);
-}
 
 // Prevents multiple simultaneous foreground fetches (race condition fix)
 let foregroundFetchPromise = null;

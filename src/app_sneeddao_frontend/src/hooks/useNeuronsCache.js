@@ -5,6 +5,7 @@ import { HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { getSnsById, getAllSnses } from '../utils/SnsUtils';
 import { uint8ArrayToHex, getNeuronDetails } from '../utils/NeuronUtils';
+import { normalizeId } from '../utils/IdUtils';
 
 // ============================================================================
 // STANDALONE CACHE UTILITIES (for single neuron operations)
@@ -21,48 +22,7 @@ const STORE_NAME = 'neurons';
  * @param {Principal|string|object} canisterId - The canister ID in any format
  * @returns {string} The canister ID as a string
  */
-export const normalizeId = (canisterId) => {
-    if (!canisterId) return '';
-    if (typeof canisterId === 'string') return canisterId;
-    // Handle BigInt (for position IDs)
-    if (typeof canisterId === 'bigint') return canisterId.toString();
-    
-    // Handle object types
-    if (typeof canisterId === 'object') {
-        // Handle Principal objects with toText method
-        if (typeof canisterId.toText === 'function') return canisterId.toText();
-        
-        // Handle objects with a nested principal field
-        if (typeof canisterId.principal === 'string') return canisterId.principal;
-        if (canisterId.principal && typeof canisterId.principal.toText === 'function') {
-            return canisterId.principal.toText();
-        }
-        
-        // Handle dfinity agent's serialized Principal format: {"__principal__":"..."}
-        if (canisterId.__principal__ && typeof canisterId.__principal__ === 'string') {
-            return canisterId.__principal__;
-        }
-        
-        // Handle our custom serialization format: {"__type":"Principal","value":"..."}
-        if (canisterId.__type === 'Principal' && canisterId.value) {
-            return canisterId.value;
-        }
-        
-        // Handle serialized Principal objects that might have a value property
-        if (canisterId.value && typeof canisterId.value === 'string') {
-            return canisterId.value;
-        }
-        
-        // Handle objects with toString (but not plain objects which return "[object Object]")
-        if (typeof canisterId.toString === 'function') {
-            const str = canisterId.toString();
-            if (str !== '[object Object]') return str;
-        }
-    }
-    
-    // Fallback
-    return String(canisterId);
-};
+export { normalizeId };
 
 /**
  * Initialize IndexedDB (standalone version)
