@@ -114,8 +114,8 @@ function Sneedex() {
     const assetTypes = [
         {
             icon: <FaCubes size={28} />,
-            title: 'Canisters',
-            description: 'Trade full Internet Computer canisters. Controllers are transferred atomically through escrow.',
+            title: 'Apps',
+            description: 'Trade full Internet Computer apps. App canister controllers are transferred atomically through escrow.',
             color: sneedexPrimary,
         },
         {
@@ -148,7 +148,7 @@ function Sneedex() {
     const features = [
         { icon: '🔒', title: 'Trustless Escrow', description: 'No middleman, no trust required—just code.' },
         { icon: '⚡', title: 'Atomic Transfers', description: 'All assets change hands simultaneously.' },
-        { icon: '📦', title: 'Asset Bundling', description: 'Combine canisters, neurons, and tokens.' },
+        { icon: '📦', title: 'Asset Bundling', description: 'Combine apps, neurons, and tokens.' },
         { icon: '🎯', title: 'Flexible Pricing', description: 'Auctions, buyouts, or combinations.' },
     ];
 
@@ -268,7 +268,7 @@ function Sneedex() {
                                 maxWidth: '600px',
                                 lineHeight: '1.6',
                             }}>
-                                Trade canisters, SNS neurons, ICP Neuron Managers, and ICRC1 tokens through trustless escrow auctions.
+                                Trade apps, SNS neurons, ICP Neuron Managers, and ICRC1 tokens through trustless escrow auctions.
                             </p>
                         </div>
                         
@@ -531,7 +531,7 @@ function Sneedex() {
                         </div>
                         <p style={{ fontSize: '0.95rem', lineHeight: '1.7', color: theme.colors.secondaryText, margin: 0 }}>
                             Sneedex is a <strong style={{ color: sneedexPrimary }}>trustless marketplace</strong> for trading unique Internet Computer assets. 
-                            Unlike traditional DEXes, Sneedex enables atomic trades of <strong>canisters</strong>, <strong>SNS neurons</strong>, and 
+                            Unlike traditional DEXes, Sneedex enables atomic trades of <strong>apps</strong>, <strong>SNS neurons</strong>, and 
                             <strong> ICRC1 tokens</strong>—all through secure escrow. Create offers with flexible pricing and let buyers compete through trustless bidding.
                         </p>
                     </section>

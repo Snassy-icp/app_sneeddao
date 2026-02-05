@@ -781,7 +781,7 @@ function SneedexCreate() {
         try {
             Principal.fromText(canisterId);
         } catch (e) {
-            setCanisterControllerStatus({ verified: false, message: 'Invalid canister ID format' });
+            setCanisterControllerStatus({ verified: false, message: 'Invalid app canister id format' });
             return;
         }
         
@@ -816,7 +816,7 @@ function SneedexCreate() {
     
     // Verify if a canister is an ICP Neuron Manager with wasm hash verification
     const verifyICPNeuronManager = useCallback(async (canisterId) => {
-        if (!canisterId) return { verified: false, message: 'No canister ID' };
+        if (!canisterId) return { verified: false, message: 'No app canister id' };
         
         try {
             setVerifyingCanisterKind(true);
@@ -1188,7 +1188,7 @@ function SneedexCreate() {
         try {
             if (newAssetType === 'canister' || newAssetType === 'neuron_manager') {
                 if (!newAssetCanisterId.trim()) {
-                    setError(newAssetType === 'neuron_manager' ? 'Please enter a neuron manager canister ID' : 'Please enter a canister ID');
+                    setError(newAssetType === 'neuron_manager' ? 'Please enter an ICP Neuron Manager app canister id' : 'Please enter an app canister id');
                     return;
                 }
                 // Validate principal
@@ -1196,7 +1196,7 @@ function SneedexCreate() {
                 
                 // For neuron_manager type, verification is required
                 if (newAssetType === 'neuron_manager' && !canisterKindVerified?.verified) {
-                    setError('Please verify the canister is an ICP Neuron Manager first');
+                    setError('Please verify the app canister is an ICP Neuron Manager first');
                     return;
                 }
                 
@@ -1224,7 +1224,7 @@ function SneedexCreate() {
                     ? `${(Number(totalIcpE8s) / 1e8).toFixed(2)} ICP (Neuron Manager)`
                     : newAssetType === 'neuron_manager' 
                         ? `ICP Neuron Manager: ${displayTitle}`
-                        : `Canister: ${displayTitle}`;
+                        : `App: ${displayTitle}`;
                 
                 asset = { 
                     type: 'canister', // Always save as 'canister' type in the backend
@@ -1286,7 +1286,7 @@ function SneedexCreate() {
                 };
             }
         } catch (e) {
-            setError('Invalid principal/canister ID format');
+            setError('Invalid principal/app canister id format');
             return;
         }
         
@@ -3047,7 +3047,7 @@ function SneedexCreate() {
                                                         {asset.type === 'canister' && (
                                                             asset.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER && asset.totalIcpE8s
                                                                 ? `${(Number(asset.totalIcpE8s) / 1e8).toFixed(2)} ICP`
-                                                                : (asset.title || 'Canister')
+                                                                : (asset.title || 'App')
                                                         )}
                                                         {asset.type === 'neuron' && (
                                                             asset.stake
@@ -3257,7 +3257,7 @@ function SneedexCreate() {
                                         border: `1px solid ${theme.colors.border}`,
                                     }}>
                                     {[
-                                        { type: 'canister', icon: FaServer, label: 'Canister', gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
+                                        { type: 'canister', icon: FaServer, label: 'App', gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
                                         { type: 'neuron_manager', icon: FaRobot, label: 'ICP Neuron Manager', gradient: 'linear-gradient(135deg, #f5af19 0%, #f12711 100%)' },
                                         { type: 'neuron', icon: FaBrain, label: 'SNS Neuron', gradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
                                         { type: 'token', icon: FaCoins, label: 'ICRC1 Token', gradient: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' },
@@ -3348,7 +3348,7 @@ function SneedexCreate() {
                                 {(newAssetType === 'canister' || newAssetType === 'neuron_manager') && (
                                     <div style={styles.formGroup}>
                                         <label style={styles.label}>
-                                            {newAssetType === 'neuron_manager' ? 'Select ICP Neuron Manager' : 'Select Canister'}
+                                            {newAssetType === 'neuron_manager' ? 'Select ICP Neuron Manager' : 'Select App'}
                                         </label>
                                         
                                         {loadingCanisters ? (
@@ -3359,7 +3359,7 @@ function SneedexCreate() {
                                                 borderRadius: '8px',
                                                 fontSize: '0.9rem'
                                             }}>
-                                                {newAssetType === 'neuron_manager' ? 'Loading your neuron managers...' : 'Loading your canisters...'}
+                                                {newAssetType === 'neuron_manager' ? 'Loading your neuron managers...' : 'Loading your apps...'}
                                             </div>
                                         ) : newAssetType === 'neuron_manager' ? (
                                             // Neuron Manager selection - only show neuron managers
@@ -3394,7 +3394,7 @@ function SneedexCreate() {
                                                         fontSize: '0.8rem', 
                                                         color: theme.colors.mutedText 
                                                     }}>
-                                                        Or enter an ICP Neuron Manager canister ID manually:
+                                                        Or enter an ICP Neuron Manager app canister id manually:
                                                     </div>
                                                     <input
                                                         type="text"
@@ -3420,7 +3420,7 @@ function SneedexCreate() {
                                                     }}>
                                                         <strong style={{ color: theme.colors.accent }}>💡 Tip:</strong> You don't have any ICP Neuron Managers registered yet.
                                                         Create one on the{' '}
-                                                        <Link to="/canisters" style={{ color: theme.colors.accent }}>Canisters page</Link>{' '}
+                                                        <Link to="/canisters" style={{ color: theme.colors.accent }}>Apps page</Link>{' '}
                                                         or enter an existing one manually below.
                                                     </div>
                                                     <input
@@ -3453,10 +3453,10 @@ function SneedexCreate() {
                                                             setCanisterKindVerified(null);
                                                     }}
                                                 >
-                                                    <option value="">Select a canister...</option>
+                                                    <option value="">Select an app...</option>
                                                     
                                                     {userCanisters.filter(id => !neuronManagers.includes(id)).length > 0 && (
-                                                        <optgroup label="📦 Registered Canisters">
+                                                        <optgroup label="📦 Registered Apps">
                                                             {userCanisters
                                                                 .filter(id => !neuronManagers.includes(id))
                                                                 .map(canisterId => (
@@ -3468,7 +3468,7 @@ function SneedexCreate() {
                                                     )}
                                                     
                                                     {walletCanisters.filter(id => !neuronManagers.includes(id)).length > 0 && (
-                                                        <optgroup label="💼 Wallet Canisters">
+                                                        <optgroup label="💼 Wallet Apps">
                                                             {walletCanisters
                                                                 .filter(id => !neuronManagers.includes(id))
                                                                 .map(canisterId => (
@@ -3485,7 +3485,7 @@ function SneedexCreate() {
                                                     fontSize: '0.8rem', 
                                                     color: theme.colors.mutedText 
                                                 }}>
-                                                    Or enter a canister ID manually:
+                                                    Or enter an app canister id manually:
                                                 </div>
                                                 <input
                                                     type="text"
@@ -3505,8 +3505,8 @@ function SneedexCreate() {
                                                     fontSize: '0.85rem',
                                                     color: theme.colors.secondaryText,
                                                 }}>
-                                                    <strong style={{ color: theme.colors.accent }}>💡 Tip:</strong> Register canisters on the{' '}
-                                                    <Link to="/canisters" style={{ color: theme.colors.accent }}>Canisters page</Link>{' '}
+                                                    <strong style={{ color: theme.colors.accent }}>💡 Tip:</strong> Register apps on the{' '}
+                                                    <Link to="/canisters" style={{ color: theme.colors.accent }}>Apps page</Link>{' '}
                                                     to see them here, or enter an ID manually below.
                                                 </div>
                                                 <input
@@ -4618,7 +4618,7 @@ function SneedexCreate() {
                                                     {asset.type === 'canister' && (
                                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                                             <div style={{ display: 'flex', gap: '8px' }}>
-                                                                <span style={{ color: theme.colors.mutedText, minWidth: '100px' }}>Canister ID:</span>
+                                                                <span style={{ color: theme.colors.mutedText, minWidth: '100px' }}>App canister id:</span>
                                                                 <PrincipalDisplay 
                                                                     principal={asset.canister_id}
                                                                     displayInfo={getPrincipalDisplayInfoFromContext(asset.canister_id, principalNames, principalNicknames)}
@@ -5074,7 +5074,7 @@ function SneedexCreate() {
                                 <ol style={{ color: theme.colors.secondaryText, margin: 0, paddingLeft: '1.25rem', lineHeight: '2' }}>
                                     <li><strong>Escrow your assets</strong> - For each asset in your offer:
                                         <ul style={{ marginTop: '0.5rem' }}>
-                                            <li>Canisters: Add <code style={{ background: theme.colors.tertiaryBg, padding: '2px 6px', borderRadius: '4px' }}>{SNEEDEX_CANISTER_ID}</code> as a controller</li>
+                                            <li>Apps: Add <code style={{ background: theme.colors.tertiaryBg, padding: '2px 6px', borderRadius: '4px' }}>{SNEEDEX_CANISTER_ID}</code> as a controller of the app canister</li>
                                             <li>Neurons: Add Sneedex as a hotkey</li>
                                             <li>Tokens: Transfer to the escrow subaccount</li>
                                         </ul>

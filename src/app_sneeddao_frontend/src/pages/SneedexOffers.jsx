@@ -1449,7 +1449,7 @@ function SneedexOffers() {
                                 margin: 0,
                                 maxWidth: '500px'
                             }}>
-                                Trade ICP neurons, SNS neurons, canisters, and tokens
+                                Trade ICP neurons, SNS neurons, apps, and tokens
                             </p>
                         </div>
                         
@@ -1722,7 +1722,7 @@ function SneedexOffers() {
                                     onChange={(e) => setFilterType(e.target.value)}
                                 >
                                     <option value="all">All Assets</option>
-                                    <option value="canister">Canisters</option>
+                                    <option value="canister">Apps</option>
                                     <option value="neuron_manager">ICP Neuron Managers</option>
                                     <option value="neuron">SNS Neurons</option>
                                     <option value="token">ICRC1 Tokens</option>
@@ -2194,21 +2194,21 @@ function SneedexOffers() {
                                             
                                             // Generate tooltip text based on asset type
                                             const getTooltip = () => {
-                                                if (details.type === 'Canister' && details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER) {
+                                                    if (details.type === 'Canister' && details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER) {
                                                     const titleLine = details.title ? `${details.title}\n` : '';
                                                     // Use cached value if available
                                                     if (details.cached_total_stake_e8s !== null) {
-                                                        return `${titleLine}ICP Neuron Manager\nCanister: ${details.canister_id}\nStaked: ${(details.cached_total_stake_e8s / 1e8).toFixed(4)} ICP`;
+                                                            return `${titleLine}ICP Neuron Manager\nApp canister id: ${details.canister_id}\nStaked: ${(details.cached_total_stake_e8s / 1e8).toFixed(4)} ICP`;
                                                     }
                                                     const mInfo = neuronManagerInfo[details.canister_id];
                                                     if (mInfo) {
-                                                        return `${titleLine}ICP Neuron Manager\nCanister: ${details.canister_id}\n\nStake: ${mInfo.totalStake.toFixed(4)} ICP\nMaturity: ${mInfo.totalMaturity.toFixed(4)} ICP\nStaked Maturity: ${mInfo.totalStakedMaturity.toFixed(4)} ICP\nTotal: ${mInfo.totalIcp.toFixed(4)} ICP\n\nNeurons: ${mInfo.neuronCount}`;
+                                                            return `${titleLine}ICP Neuron Manager\nApp canister id: ${details.canister_id}\n\nStake: ${mInfo.totalStake.toFixed(4)} ICP\nMaturity: ${mInfo.totalMaturity.toFixed(4)} ICP\nStaked Maturity: ${mInfo.totalStakedMaturity.toFixed(4)} ICP\nTotal: ${mInfo.totalIcp.toFixed(4)} ICP\n\nNeurons: ${mInfo.neuronCount}`;
                                                     }
-                                                    return `${titleLine}ICP Neuron Manager\nCanister: ${details.canister_id}`;
+                                                        return `${titleLine}ICP Neuron Manager\nApp canister id: ${details.canister_id}`;
                                                 }
                                                 if (details.type === 'Canister') {
                                                     const titleLine = details.title ? `${details.title}\n` : '';
-                                                    return `${titleLine}Canister: ${details.canister_id}`;
+                                                        return `${titleLine}App canister id: ${details.canister_id}`;
                                                 }
                                                 if (details.type === 'SNSNeuron') {
                                                     // Use cached stake if available, otherwise fall back to fetched data
@@ -2263,7 +2263,7 @@ function SneedexOffers() {
                                                                 ? (details.title.length > 12 
                                                                     ? details.title.slice(0, 12) + '…' 
                                                                     : details.title)
-                                                                : 'Canister'
+                                                                : 'App'
                                                             }
                                                         </>
                                                     )}

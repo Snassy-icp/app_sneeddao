@@ -1079,7 +1079,7 @@ export default function Me() {
         { icon: <FaEnvelope size={20} />, label: 'My Messages', to: '/sms', color: '#ec4899' },
         { icon: <FaGift size={20} />, label: 'My Rewards', to: '/rewards', color: '#8b5cf6' },
         { icon: <FaLock size={20} />, label: 'My Locks', to: `/sneedlock_info?owner=${identity?.getPrincipal().toString()}`, color: '#06b6d4' },
-        { icon: <FaServer size={20} />, label: 'My Canisters', to: '/canisters', color: '#14b8a6' },
+        { icon: <FaServer size={20} />, label: 'My Apps', to: '/canisters', color: '#14b8a6' },
         { icon: <FaAddressBook size={20} />, label: 'My Contacts', to: '/names', color: '#f97316' },
     ];
 

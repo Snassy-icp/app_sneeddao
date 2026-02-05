@@ -255,7 +255,7 @@ function HelpSneedex() {
                         maxWidth: '600px',
                         lineHeight: '1.6',
                     }}>
-                        Trade canisters, SNS neurons, and tokens on the decentralized marketplace
+                        Trade apps, SNS neurons, and tokens on the decentralized marketplace
                     </p>
                 </div>
             </div>
@@ -283,7 +283,7 @@ function HelpSneedex() {
                         <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>Key Features</h4>
                         <ul style={{ ...styles.list, marginBottom: 0 }}>
                             <li style={styles.listItem}><strong style={styles.strong}>Trustless Escrow:</strong> Assets held by smart contract—neither party can cheat</li>
-                            <li style={styles.listItem}><strong style={styles.strong}>Multiple Asset Types:</strong> Trade canisters, SNS neurons, and ICRC-1 tokens</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Multiple Asset Types:</strong> Trade apps, SNS neurons, and ICRC-1 tokens</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Flexible Pricing:</strong> Minimum bid, buyout price, or both</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Private Offers:</strong> Restrict offers to specific approved bidders</li>
                             <li style={styles.listItem}><strong style={styles.strong}>Automatic Settlement:</strong> Assets and payments transferred automatically</li>
@@ -303,10 +303,10 @@ function HelpSneedex() {
                     <div style={styles.featureCard}>
                         <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
                             <FaServer size={14} color="#3b82f6" />
-                            Canisters
+                            Apps
                         </h4>
                         <p style={{ ...styles.paragraph, marginBottom: 0 }}>
-                            Sell complete IC canisters including code, state, and cycles. ICP Neuron Manager canisters 
+                            Sell complete IC apps including code, state, and cycles. ICP Neuron Manager app canisters 
                             show detailed neuron information including stake, maturity, and dissolve status.
                         </p>
                     </div>
@@ -362,7 +362,7 @@ function HelpSneedex() {
                     
                     <h4 style={styles.subsubheading}>Step 2: Add Assets</h4>
                     <p style={styles.paragraph}>
-                        Select canisters from your registered/wallet canisters, SNS neurons where you have ManagePrincipals 
+                        Select apps from your registered/wallet apps, SNS neurons where you have ManagePrincipals 
                         permission, or tokens with sufficient balance.
                     </p>
                     
@@ -495,9 +495,9 @@ function HelpSneedex() {
                         Yes, at any time. Existing bidders are automatically refunded when you cancel.
                     </p>
                     
-                    <h4 style={styles.subsubheading}>How do I know if a canister is verified?</h4>
+                    <h4 style={styles.subsubheading}>How do I know if an app is verified?</h4>
                     <p style={styles.paragraph}>
-                        For ICP Neuron Manager canisters, Sneedex verifies the WASM hash against known official versions. 
+                        For ICP Neuron Manager app canisters, Sneedex verifies the WASM hash against known official versions. 
                         A green checkmark indicates verified code.
                     </p>
                     

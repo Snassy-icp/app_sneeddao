@@ -1800,7 +1800,7 @@ function SneedexOffer() {
             const canisterId = details.canister_id;
             
             if (!canisterId) {
-                throw new Error('Could not find canister ID');
+                throw new Error('Could not find app canister id');
             }
             
             const canisterPrincipal = Principal.fromText(canisterId);
@@ -1853,11 +1853,11 @@ function SneedexOffer() {
                 throw new Error(getErrorMessage(result.err));
             }
             
-            showInfo('Canister escrowed successfully! Sneedex is now a controller.', 'success');
+            showInfo('App escrowed successfully! Sneedex is now a controller of the app canister.', 'success');
             await fetchOffer();
         } catch (e) {
             console.error('Failed to escrow canister:', e);
-            setError(e.message || 'Failed to escrow canister. Make sure you are a controller of the canister.');
+            setError(e.message || 'Failed to escrow app. Make sure you are a controller of the app canister.');
         } finally {
             setEscrowingAsset(null);
         }
@@ -2566,7 +2566,7 @@ function SneedexOffer() {
                                 }}>
                                     <strong style={{ color: theme.colors.accent }}>📋 How to Escrow Assets:</strong>
                                     <ul style={{ margin: '0.5rem 0 0 1rem', padding: 0, color: theme.colors.secondaryText, lineHeight: 1.8 }}>
-                                        <li><strong>Canisters:</strong> Add <code style={{ background: theme.colors.tertiaryBg, padding: '2px 6px', borderRadius: '4px', fontSize: '0.8rem' }}>{SNEEDEX_CANISTER_ID}</code> as a controller</li>
+                                        <li><strong>Apps:</strong> Add <code style={{ background: theme.colors.tertiaryBg, padding: '2px 6px', borderRadius: '4px', fontSize: '0.8rem' }}>{SNEEDEX_CANISTER_ID}</code> as a controller of the app canister</li>
                                         <li><strong>SNS Neurons:</strong> Add Sneedex as a hotkey with full permissions</li>
                                         <li><strong>ICRC1 Tokens:</strong> Transfer tokens to the escrow subaccount</li>
                                     </ul>
@@ -2693,7 +2693,7 @@ function SneedexOffer() {
                                                             {details.type === 'Canister' && (
                                                                 details.title 
                                                                     ? details.title 
-                                                                    : (details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER ? 'ICP Neuron Manager' : 'Canister')
+                                                                    : (details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER ? 'ICP Neuron Manager' : 'App')
                                                             )}
                                                             {details.type === 'SNSNeuron' && (() => {
                                                                 // Find SNS name from snsData
@@ -3013,7 +3013,7 @@ function SneedexOffer() {
                                                             gap: '4px',
                                                         }}>
                                                             <FaCheck /> {
-                                                                details.type === 'Canister' ? 'You are a controller - ready to escrow' :
+                                                                details.type === 'Canister' ? 'You are a controller of the app canister - ready to escrow' :
                                                                 details.type === 'SNSNeuron' ? (verificationStatus?.message || 'Has permissions') :
                                                                 details.type === 'ICRC1Token' ? (verificationStatus?.message || 'Sufficient balance') :
                                                                 'Ready'
@@ -3029,7 +3029,7 @@ function SneedexOffer() {
                                                                 gap: '4px',
                                                             }}>
                                                                 <FaTimes /> {
-                                                                    details.type === 'Canister' ? 'You must be a controller to escrow' :
+                                                                    details.type === 'Canister' ? 'You must be a controller of the app canister to escrow' :
                                                                     details.type === 'SNSNeuron' ? (verificationStatus?.message || 'Missing permissions - add hotkey manually') :
                                                                     details.type === 'ICRC1Token' ? (verificationStatus?.message || 'Insufficient balance') :
                                                                     'Cannot auto-escrow'
@@ -3169,7 +3169,7 @@ function SneedexOffer() {
                                                             color: theme.colors.mutedText,
                                                         }}>
                                                             <FaSync style={{ animation: 'spin 1s linear infinite' }} />
-                                                            Loading canister info...
+                                                            Loading app info...
                                                         </div>
                                                     ) : info ? (
                                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -3187,7 +3187,7 @@ function SneedexOffer() {
                                                                     alignItems: 'center',
                                                                     gap: '8px',
                                                                 }}>
-                                                                    <FaMicrochip /> Canister Status
+                                                                    <FaMicrochip /> App Canister Status
                                                                 </h4>
                                                                 <span style={{
                                                                     fontSize: '0.75rem',
@@ -3423,7 +3423,7 @@ function SneedexOffer() {
                                                             textAlign: 'center',
                                                             padding: '1rem',
                                                         }}>
-                                                            Failed to load canister info
+                                                            Failed to load app info
                                                         </div>
                                                     )}
                                                 </div>
@@ -5640,7 +5640,7 @@ function SneedexOffer() {
                                             fontSize: '0.8rem'
                                         }}>
                                             <p style={{ margin: '0 0 0.5rem 0' }}>
-                                                <strong>Canister:</strong> {SNEEDEX_CANISTER_ID}
+                                                <strong>App canister id:</strong> {SNEEDEX_CANISTER_ID}
                                             </p>
                                             <p style={{ margin: '0', wordBreak: 'break-all' }}>
                                                 <strong>Subaccount:</strong><br/>
