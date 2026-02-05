@@ -32,6 +32,12 @@ export const normalizeId = (canisterId) => {
         // Handle Principal objects with toText method
         if (typeof canisterId.toText === 'function') return canisterId.toText();
         
+        // Handle objects with a nested principal field
+        if (typeof canisterId.principal === 'string') return canisterId.principal;
+        if (canisterId.principal && typeof canisterId.principal.toText === 'function') {
+            return canisterId.principal.toText();
+        }
+        
         // Handle dfinity agent's serialized Principal format: {"__principal__":"..."}
         if (canisterId.__principal__ && typeof canisterId.__principal__ === 'string') {
             return canisterId.__principal__;

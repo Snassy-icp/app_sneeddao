@@ -2032,6 +2032,12 @@ export const WalletProvider = ({ children }) => {
     const sendToken = useCallback(async (token, recipient, amount, subaccount = []) => {
         if (!identity) throw new Error('Not authenticated');
 
+        const ledgerCanisterIdText = normalizeId(token?.ledger_canister_id || token?.principal);
+        if (!ledgerCanisterIdText) {
+            throw new Error('Missing ledger canister ID');
+        }
+        const ledgerCanisterId = Principal.fromText(ledgerCanisterIdText);
+
         const decimals = token.decimals || 8;
         const amountFloat = parseFloat(amount);
         const scaledAmount = amountFloat * (10 ** decimals);
@@ -2051,14 +2057,14 @@ export const WalletProvider = ({ children }) => {
             await sneedLockActor.transfer_tokens(
                 recipientPrincipal,
                 subaccount,
-                token.ledger_canister_id,
+                ledgerCanisterId,
                 sendAmounts.send_from_backend
             );
         }
 
         // Send from frontend if needed
         if (sendAmounts.send_from_frontend > 0n) {
-            const ledgerActor = createLedgerActor(token.ledger_canister_id, {
+            const ledgerActor = createLedgerActor(ledgerCanisterId, {
                 agentOptions: { identity }
             });
 

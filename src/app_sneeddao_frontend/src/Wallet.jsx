@@ -3095,6 +3095,12 @@ function Wallet() {
         try {
             const decimals = await token.decimals;
             console.log('Token decimals:', decimals);
+
+            const ledgerCanisterIdText = normalizeId(token?.ledger_canister_id || token?.principal);
+            if (!ledgerCanisterIdText) {
+                throw new Error('Missing ledger canister ID');
+            }
+            const ledgerCanisterId = Principal.fromText(ledgerCanisterIdText);
             
             // Convert to BigInt safely - handle decimal inputs
             const amountFloat = parseFloat(amount);
@@ -3131,7 +3137,7 @@ function Wallet() {
                 const result = await sneedLockActor.transfer_tokens(
                     recipientPrincipal,
                     subaccount,
-                    token.ledger_canister_id,
+                    ledgerCanisterId,
                     send_amounts.send_from_backend
                 );
         
@@ -3148,7 +3154,7 @@ function Wallet() {
             if (send_amounts.send_from_frontend > 0) {
                 console.log('Sending from frontend:', send_amounts.send_from_frontend.toString());
 
-                const actor = createLedgerActor(token.ledger_canister_id, {
+                const actor = createLedgerActor(ledgerCanisterId, {
                     agentOptions: {
                         identity,
                     },
@@ -3180,7 +3186,7 @@ function Wallet() {
             }
 
             console.log('Refreshing token balances...');
-            await fetchBalancesAndLocks(token.ledger_canister_id);
+            await fetchBalancesAndLocks(ledgerCanisterId);
             console.log('=== Wallet.handleSendToken SUCCESS ===');
             
         } catch (error) {
