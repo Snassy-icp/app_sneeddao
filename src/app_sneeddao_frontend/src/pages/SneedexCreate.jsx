@@ -1412,6 +1412,13 @@ function SneedexCreate() {
             setError('You must set either a minimum bid price or a buyout price (or both)');
             return false;
         }
+        if (minBidPrice) {
+            const parsedMinBid = parseFloat(minBidPrice);
+            if (!Number.isFinite(parsedMinBid) || parsedMinBid <= 0) {
+                setError('Minimum bid must be greater than 0. Leave it blank for buyout-only offers.');
+                return false;
+            }
+        }
         if (!hasExpiration && !buyoutPrice) {
             setError('If there is no expiration, you must set a buyout price');
             return false;
@@ -2586,6 +2593,11 @@ function SneedexCreate() {
                                 value={minBidPrice}
                                 onChange={(e) => setMinBidPrice(e.target.value)}
                             />
+                            {minBidPrice && parseFloat(minBidPrice) <= 0 && (
+                                <div style={{ fontSize: '0.8rem', color: theme.colors.error, marginTop: '4px' }}>
+                                    Minimum bid must be greater than 0. Leave it blank for buyout-only offers.
+                                </div>
+                            )}
                             {minBidPrice && paymentTokenPrice && (
                                 <div style={{ fontSize: '0.8rem', color: theme.colors.mutedText, marginTop: '4px' }}>
                                     ≈ {formatUsd(parseFloat(minBidPrice) * paymentTokenPrice)}

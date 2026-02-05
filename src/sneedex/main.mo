@@ -1339,8 +1339,16 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         // Validate min_bid <= buyout (if both set)
         switch (request.min_bid_price, request.buyout_price) {
             case (?minBid, ?buyout) {
+                if (minBid == 0) {
+                    return #err(#InvalidPrice("Minimum bid must be greater than 0 (leave it unset for buyout-only offers)"));
+                };
                 if (minBid > buyout) {
                     return #err(#InvalidPrice("Minimum bid cannot exceed buyout price"));
+                };
+            };
+            case (?minBid, null) {
+                if (minBid == 0) {
+                    return #err(#InvalidPrice("Minimum bid must be greater than 0 (leave it unset for buyout-only offers)"));
                 };
             };
             case (_, _) {};
@@ -2046,6 +2054,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 };
                             };
                             case null {};
+                        };
+
+                        if (amount == 0) {
+                            return #err(#InvalidPrice("Bid amount must be greater than 0"));
                         };
                         
                         // Check minimum bid
