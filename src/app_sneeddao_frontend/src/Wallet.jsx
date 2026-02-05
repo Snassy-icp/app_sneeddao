@@ -1996,6 +1996,9 @@ function Wallet() {
                     fetchDetectedManagerInfo(canisterId, newStatus);
                 }
             }
+            if (contextRefreshTrackedCanisters) {
+                contextRefreshTrackedCanisters();
+            }
         } catch (err) {
             console.error('Error refreshing canister card:', err);
         } finally {
@@ -2062,6 +2065,9 @@ function Wallet() {
             // Refresh neurons data if expanded
             if (expandedManagerCards[canisterId]) {
                 await fetchManagerNeuronsData(canisterId);
+            }
+            if (contextRefreshNeuronManagers) {
+                contextRefreshNeuronManagers();
             }
         } catch (err) {
             console.error('Error refreshing manager card:', err);
@@ -4405,13 +4411,16 @@ function Wallet() {
     };
 
     const handleRefreshToken = async (token) => {
-        const ledgerId = normalizeId(token.ledger_canister_id);
+        const ledgerId = normalizeId(token.ledger_canister_id) || normalizeId(token.principal);
+        const ledgerPrincipal = token.ledger_canister_id instanceof Principal
+            ? token.ledger_canister_id
+            : Principal.fromText(ledgerId);
         // Mark as refreshing
         setRefreshingTokens(prev => new Set(prev).add(ledgerId));
         try {
             // Refresh token balance, locks, and rewards
-            await fetchBalancesAndLocks(ledgerId);
-            await fetchRewardDetails(ledgerId);
+            await fetchBalancesAndLocks(ledgerPrincipal);
+            await fetchRewardDetails(ledgerPrincipal);
             // Note: Neurons are refreshed within TokenCard itself
         } finally {
             // Clear refreshing state

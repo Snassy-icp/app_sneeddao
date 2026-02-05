@@ -1992,7 +1992,9 @@ export const WalletProvider = ({ children }) => {
         setNeuronCache(new Map());
         setNeuronCacheInitialized(false);
         setManagerNeurons({});
-        // Note: Don't clear persistent cache on refresh - it will be updated with fresh data
+        if (principalId) {
+            clearWalletCache(principalId);
+        }
         fetchIcpPrice(); // Refresh ICP price
         fetchCompactWalletTokens();
         fetchCompactPositions(true); // Clear first on explicit refresh
