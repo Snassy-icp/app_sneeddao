@@ -989,13 +989,32 @@ export default function PrincipalPage() {
         if (token) {
             return {
                 ledgerId,
+                name: token.name || token.token_name || '',
                 symbol: token.symbol || 'TOKEN',
                 decimals: token.decimals || 8,
                 logo: token.logo || token.logo_url || token.icon || ''
             };
         }
-        return { ledgerId, symbol: 'TOKEN', decimals: 8, logo: '' };
+        return { ledgerId, name: '', symbol: 'TOKEN', decimals: 8, logo: '' };
     }, [whitelistedTokens]);
+
+    const parseIcrcMetadata = useCallback((metadata) => {
+        const findMeta = (keys) => metadata.find(([key]) => keys.includes(key))?.[1];
+        const toText = (val) => (val && typeof val === 'object' && 'Text' in val ? val.Text : null);
+        const toNat = (val) => (val && typeof val === 'object' && 'Nat' in val ? Number(val.Nat) : null);
+
+        const symbolVal = findMeta(['icrc1:symbol', 'symbol']);
+        const decimalsVal = findMeta(['icrc1:decimals', 'decimals']);
+        const nameVal = findMeta(['icrc1:name', 'name']);
+        const logoVal = findMeta(['icrc1:logo', 'logo']);
+
+        return {
+            symbol: toText(symbolVal),
+            decimals: toNat(decimalsVal),
+            name: toText(nameVal),
+            logo: toText(logoVal)
+        };
+    }, []);
 
     // Scan for tokens - check all whitelisted tokens for balances
     const handleScanForTokens = async () => {
@@ -1023,7 +1042,6 @@ export default function PrincipalPage() {
 
             let foundCount = 0;
             let completedCount = 0;
-            const results = [];
             const queue = whitelistedTokens.map(t => t.ledger_id?.toString?.() || String(t.ledger_id));
             const maxConcurrency = 8;
 
@@ -1036,9 +1054,31 @@ export default function PrincipalPage() {
                     });
 
                     if (BigInt(balance) > 0n) {
-                        const info = getWhitelistedTokenInfo(ledgerId);
-                        results.push({ ...info, balance: BigInt(balance) });
+                        const baseInfo = getWhitelistedTokenInfo(ledgerId);
+                        let metadataInfo = {};
+                        try {
+                            const metadata = await ledgerActor.icrc1_metadata();
+                            metadataInfo = parseIcrcMetadata(metadata);
+                        } catch (err) {
+                            console.warn(`[Principal Scan] Failed to read metadata for ${ledgerId}:`, err?.message || err);
+                        }
+
+                        let symbol = metadataInfo.symbol || baseInfo.symbol;
+                        let decimals = Number.isFinite(metadataInfo.decimals) ? metadataInfo.decimals : baseInfo.decimals;
+                        let name = metadataInfo.name || baseInfo.name;
+                        let logo = metadataInfo.logo || baseInfo.logo;
+                        if (symbol?.toLowerCase() === 'icp' && !logo) {
+                            logo = 'icp_symbol.svg';
+                        }
+
                         foundCount++;
+                        setScannedTokens(prev => {
+                            if (prev.some(token => token.ledgerId === ledgerId)) return prev;
+                            return [
+                                ...prev,
+                                { ledgerId, symbol, decimals, name, logo, balance: BigInt(balance) }
+                            ];
+                        });
                     }
                 } catch (err) {
                     console.warn(`[Principal Scan] Failed to check ${ledgerId}:`, err?.message || err);
@@ -1062,9 +1102,6 @@ export default function PrincipalPage() {
             });
 
             await Promise.all(workers);
-
-            results.sort((a, b) => (b.balance > a.balance ? 1 : -1));
-            setScannedTokens(results);
         } catch (error) {
             console.error('Error scanning for tokens:', error);
             setScanError(error?.message || 'Error scanning for tokens');
@@ -3187,7 +3224,7 @@ export default function PrincipalPage() {
                             {scannedTokens.length > 0 && (
                                 <div style={{
                                     display: 'grid',
-                                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                                    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
                                     gap: '0.6rem',
                                     marginBottom: '1.25rem'
                                 }}>
@@ -3207,14 +3244,15 @@ export default function PrincipalPage() {
                                             <TokenIcon 
                                                 logo={token.logo} 
                                                 alt={token.symbol} 
-                                                size={18} 
+                                                size={20} 
                                                 fallbackColor={principalPrimary} 
                                             />
                                             <div style={{ minWidth: 0 }}>
                                                 <div style={{ 
                                                     display: 'flex', 
                                                     alignItems: 'baseline', 
-                                                    gap: '0.5rem' 
+                                                    gap: '0.4rem',
+                                                    flexWrap: 'wrap'
                                                 }}>
                                                     <span style={{ 
                                                         fontWeight: '600', 
@@ -3223,18 +3261,39 @@ export default function PrincipalPage() {
                                                     }}>
                                                         {token.symbol}
                                                     </span>
+                                                    {token.name && (
+                                                        <span style={{ 
+                                                            color: theme.colors.mutedText, 
+                                                            fontSize: '0.75rem'
+                                                        }}>
+                                                            {token.name}
+                                                        </span>
+                                                    )}
                                                     <span style={{ 
                                                         color: theme.colors.mutedText, 
-                                                        fontSize: '0.75rem'
+                                                        fontSize: '0.7rem'
                                                     }}>
                                                         {token.ledgerId}
                                                     </span>
                                                 </div>
                                                 <div style={{ 
-                                                    color: theme.colors.secondaryText, 
-                                                    fontSize: '0.8rem'
+                                                    display: 'flex',
+                                                    alignItems: 'baseline',
+                                                    gap: '0.4rem'
                                                 }}>
-                                                    balance: {token.balance.toString()}
+                                                    <span style={{ 
+                                                        color: theme.colors.secondaryText, 
+                                                        fontSize: '0.85rem',
+                                                        fontWeight: '600'
+                                                    }}>
+                                                        {formatAmount(token.balance, token.decimals)}
+                                                    </span>
+                                                    <span style={{ 
+                                                        color: theme.colors.mutedText, 
+                                                        fontSize: '0.75rem'
+                                                    }}>
+                                                        ({token.balance.toString()})
+                                                    </span>
                                                 </div>
                                             </div>
                                         </div>
