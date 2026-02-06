@@ -990,20 +990,6 @@ function SneedexOffer() {
         fetchOffer();
     }, [fetchOffer]);
     
-    // Pre-fill bid amount with minimum bid when offer loads
-    useEffect(() => {
-        if (!offer) return;
-        
-        // Only pre-fill if bidAmount is empty (don't override user input)
-        if (bidAmount !== '') return;
-        
-        const minBidE8s = getMinimumBidE8s();
-        if (minBidE8s > 0n) {
-            const formatted = formatAmount(minBidE8s, tokenInfo.decimals);
-            setBidAmount(formatted);
-        }
-    }, [offer, highestBid, tokenInfo.decimals]); // Re-run when offer, highestBid, or token info changes
-    
     // Fetch token prices for USD display
     useEffect(() => {
         const fetchPrices = async () => {
@@ -1215,6 +1201,20 @@ function SneedexOffer() {
     const getMinimumBid = () => {
         return Number(getMinimumBidE8s()) / Math.pow(10, tokenInfo.decimals);
     };
+    
+    // Pre-fill bid amount with minimum bid when offer loads
+    useEffect(() => {
+        if (!offer) return;
+        
+        // Only pre-fill if bidAmount is empty (don't override user input)
+        if (bidAmount !== '') return;
+        
+        const minBidE8s = getMinimumBidE8s();
+        if (minBidE8s > 0n) {
+            const formatted = formatAmount(minBidE8s, tokenInfo.decimals);
+            setBidAmount(formatted);
+        }
+    }, [offer, highestBid, tokenInfo.decimals]); // Re-run when offer, highestBid, or token info changes
     
     const getAssetTypeIcon = (type, canisterKind) => {
         switch (type) {
