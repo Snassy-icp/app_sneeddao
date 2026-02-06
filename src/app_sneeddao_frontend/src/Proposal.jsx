@@ -1700,10 +1700,31 @@ function Proposal() {
                                                                     return principalStr && !principalHasName(principalStr);
                                                                 }) || [];
                                                                 
+                                                                // Determine which principals to show normally (not behind "...")
+                                                                let principalsToShowNormally = namedPrincipals;
+                                                                let hiddenPrincipals = unnamedPrincipals;
+                                                                
+                                                                // If no named principals, show the first owner from unnamed principals
+                                                                if (namedPrincipals.length === 0 && unnamedPrincipals.length > 0) {
+                                                                    // Find first owner (permCount === 10 or 11)
+                                                                    const firstOwner = unnamedPrincipals.find(perm => {
+                                                                        const permCount = perm.permission_type?.length || 0;
+                                                                        return permCount === 10 || permCount === 11;
+                                                                    });
+                                                                    if (firstOwner) {
+                                                                        principalsToShowNormally = [firstOwner];
+                                                                        hiddenPrincipals = unnamedPrincipals.filter(p => p !== firstOwner);
+                                                                    } else {
+                                                                        // No owner found, show first unnamed principal
+                                                                        principalsToShowNormally = [unnamedPrincipals[0]];
+                                                                        hiddenPrincipals = unnamedPrincipals.slice(1);
+                                                                    }
+                                                                }
+                                                                
                                                                 const principalsToShow = isExpanded 
-                                                                    ? [...namedPrincipals, ...unnamedPrincipals]
-                                                                    : namedPrincipals;
-                                                                const hasHiddenPrincipals = unnamedPrincipals.length > 0;
+                                                                    ? [...principalsToShowNormally, ...hiddenPrincipals]
+                                                                    : principalsToShowNormally;
+                                                                const hasHiddenPrincipals = hiddenPrincipals.length > 0;
                                                                 
                                                                 return (
                                                                     <div 
@@ -1834,9 +1855,9 @@ function Proposal() {
                                                                                             cursor: 'pointer',
                                                                                             fontWeight: '500'
                                                                                         }}
-                                                                                        title={isExpanded ? 'Show less' : `Show ${unnamedPrincipals.length} more`}
+                                                                                        title={isExpanded ? 'Show less' : `Show ${hiddenPrincipals.length} more`}
                                                                                     >
-                                                                                        {isExpanded ? '−' : `...${unnamedPrincipals.length}`}
+                                                                                        {isExpanded ? '−' : `...${hiddenPrincipals.length}`}
                                                                                     </button>
                                                                                 )}
                                                                             </div>

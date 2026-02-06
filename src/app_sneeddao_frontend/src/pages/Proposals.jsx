@@ -1804,12 +1804,33 @@ function Proposals() {
                                                 return principalStr && !principalHasName(principalStr);
                                             });
                                             
-                                            // Show named principals first, then unnamed if expanded
-                                            const principalsToShow = isExpanded 
-                                                ? [...namedPrincipals, ...unnamedPrincipals]
-                                                : namedPrincipals;
+                                            // Determine which principals to show normally (not behind "...")
+                                            let principalsToShowNormally = namedPrincipals;
+                                            let hiddenPrincipals = unnamedPrincipals;
                                             
-                                            const hasHiddenPrincipals = unnamedPrincipals.length > 0;
+                                            // If no named principals, show the first owner from unnamed principals
+                                            if (namedPrincipals.length === 0 && unnamedPrincipals.length > 0) {
+                                                // Find first owner (permCount === 10 or 11)
+                                                const firstOwner = unnamedPrincipals.find(perm => {
+                                                    const permCount = perm.permission_type?.length || 0;
+                                                    return permCount === 10 || permCount === 11;
+                                                });
+                                                if (firstOwner) {
+                                                    principalsToShowNormally = [firstOwner];
+                                                    hiddenPrincipals = unnamedPrincipals.filter(p => p !== firstOwner);
+                                                } else {
+                                                    // No owner found, show first unnamed principal
+                                                    principalsToShowNormally = [unnamedPrincipals[0]];
+                                                    hiddenPrincipals = unnamedPrincipals.slice(1);
+                                                }
+                                            }
+                                            
+                                            // Show normally visible principals, then hidden if expanded
+                                            const principalsToShow = isExpanded 
+                                                ? [...principalsToShowNormally, ...hiddenPrincipals]
+                                                : principalsToShowNormally;
+                                            
+                                            const hasHiddenPrincipals = hiddenPrincipals.length > 0;
                                             
                                             return (
                                                 <div 
@@ -1875,9 +1896,9 @@ function Proposals() {
                                                                 cursor: 'pointer',
                                                                 fontWeight: '500'
                                                             }}
-                                                            title={isExpanded ? 'Show less' : `Show ${unnamedPrincipals.length} more`}
+                                                            title={isExpanded ? 'Show less' : `Show ${hiddenPrincipals.length} more`}
                                                         >
-                                                            {isExpanded ? '−' : `...${unnamedPrincipals.length}`}
+                                                            {isExpanded ? '−' : `...${hiddenPrincipals.length}`}
                                                         </button>
                                                     )}
                                                 </div>
