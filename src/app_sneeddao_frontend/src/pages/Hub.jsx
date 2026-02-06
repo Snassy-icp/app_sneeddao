@@ -397,6 +397,7 @@ function Hub() {
     const [activityLoading, setActivityLoading] = useState(true);
     const [snsLogos, setSnsLogos] = useState({});
     const [loadingLogos, setLoadingLogos] = useState(new Set()); // Track which logos are currently loading
+    const [snsSymbols, setSnsSymbols] = useState(new Map()); // governance_id -> symbol
     const [tokenPrices, setTokenPrices] = useState({}); // ledger_id -> USD price
     
     // SNEED tokenomics stats
@@ -519,17 +520,19 @@ function Hub() {
     // Helper to get SNS info by governance ID
     const getSnsInfo = useCallback((governanceId) => {
         const sns = snsList.find(s => s.canisters?.governance === governanceId);
+        // Get symbol from snsSymbols map first (fetched from ledger), fallback to SNS list data
+        const symbol = snsSymbols.get(governanceId) || sns?.token_symbol || sns?.symbol;
         if (sns) {
             return {
                 name: sns.name,
-                symbol: sns.token_symbol || sns.symbol,
+                symbol: symbol || 'Neuron',
                 logo: sns.logo,
                 ledgerId: sns.canisters?.ledger,
                 decimals: sns.decimals || 8,
             };
         }
-        return null;
-    }, [snsList]);
+        return symbol ? { name: 'SNS', symbol, logo: null, ledgerId: null, decimals: 8 } : null;
+    }, [snsList, snsSymbols]);
     
     // Helper to get SNS logo by governance ID
     const getSnsLogo = useCallback((governanceId) => {
@@ -579,6 +582,39 @@ function Hub() {
         }
     }, [identity, snsLogos, loadingLogos]);
     
+    // Function to fetch SNS token symbol from ledger
+    const fetchSnsSymbol = useCallback(async (governanceId) => {
+        if (snsSymbols.has(governanceId)) return;
+        
+        // Find the SNS to get its ledger ID
+        const sns = snsList.find(s => s.canisters?.governance === governanceId);
+        const ledgerId = sns?.canisters?.ledger;
+        if (!ledgerId) return;
+        
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({
+                host,
+                ...(identity && { identity })
+            });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const ledgerActor = createLedgerActor(ledgerId, { agent });
+            const metadata = await ledgerActor.icrc1_metadata();
+            
+            // Find symbol in metadata
+            const symbolEntry = metadata.find(([key]) => key === 'icrc1:symbol');
+            if (symbolEntry && symbolEntry[1]?.Text) {
+                setSnsSymbols(prev => new Map(prev).set(governanceId, symbolEntry[1].Text));
+            }
+        } catch (e) {
+            console.warn('Hub: Failed to fetch SNS token symbol:', e);
+        }
+    }, [snsSymbols, snsList, identity]);
+    
     // Trigger logo loading for feed items when they load
     useEffect(() => {
         if (feedItems.length === 0 || snsList.length === 0) return;
@@ -602,9 +638,9 @@ function Hub() {
         });
     }, [feedItems, snsList, snsLogos, loadingLogos, loadSnsLogo]);
     
-    // Trigger logo loading for offers with SNS neuron assets
+    // Trigger logo and symbol loading for offers with SNS neuron assets
     useEffect(() => {
-        if (offers.length === 0) return;
+        if (offers.length === 0 || snsList.length === 0) return;
         
         // Get unique governance IDs from SNS neurons in offers
         const uniqueGovernanceIds = [];
@@ -619,13 +655,18 @@ function Hub() {
             });
         });
         
-        // Fetch logos for each governance ID that's not already loaded
+        // Fetch logos and symbols for each governance ID that's not already loaded
         uniqueGovernanceIds.forEach(governanceId => {
+            // Fetch logo
             if (!snsLogos[governanceId] && !getLogoSync(governanceId) && !loadingLogos.has(governanceId)) {
                 loadSnsLogo(governanceId);
             }
+            // Fetch symbol
+            if (!snsSymbols.has(governanceId)) {
+                fetchSnsSymbol(governanceId);
+            }
         });
-    }, [offers, snsLogos, loadingLogos, loadSnsLogo]);
+    }, [offers, snsList, snsLogos, loadingLogos, loadSnsLogo, snsSymbols, fetchSnsSymbol]);
     
     // Fetch SNS list on mount - must complete before neurons can load
     useEffect(() => {
