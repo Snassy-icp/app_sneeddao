@@ -1,11 +1,13 @@
 // SendTokenModal.jsx
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import './SendTokenModal.css';
 import { Principal } from "@dfinity/principal";
+import { HttpAgent } from "@dfinity/agent";
 import { formatAmount } from './utils/StringUtils';
 import { useTheme } from './contexts/ThemeContext';
 import PrincipalInput from './components/PrincipalInput';
 import { PrincipalDisplay } from './utils/PrincipalUtils';
+import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import {
   parseAccount,
   parseExtendedAddress,
@@ -20,6 +22,7 @@ import {
 // Wallet accent colors
 const walletPrimary = '#10b981';
 const walletSecondary = '#059669';
+const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
 
 function SendTokenModal({ show, onClose, onSend, token }) {
   const { theme } = useTheme();
@@ -39,6 +42,10 @@ function SendTokenModal({ show, onClose, onSend, token }) {
   const [showReviewScreen, setShowReviewScreen] = useState(false);
   const [reviewData, setReviewData] = useState(null);
   const [showDetailsExpanded, setShowDetailsExpanded] = useState(false);
+
+  // Recipient balance state
+  const [recipientBalance, setRecipientBalance] = useState(null);
+  const [recipientBalanceLoading, setRecipientBalanceLoading] = useState(false);
 
   useEffect(() => {
     if (show) {
@@ -70,6 +77,8 @@ function SendTokenModal({ show, onClose, onSend, token }) {
       setShowReviewScreen(false);
       setReviewData(null);
       setShowDetailsExpanded(false);
+      setRecipientBalance(null);
+      setRecipientBalanceLoading(false);
     }
   }, [show]);
 
@@ -119,6 +128,61 @@ function SendTokenModal({ show, onClose, onSend, token }) {
     }
     return resolveSubaccount({ type: subaccountType, value: subaccountValue });
   }, [showSubaccountInput, subaccountType, subaccountValue]);
+
+  // Fetch recipient balance when parsedAccount changes
+  const fetchRecipientBalance = useCallback(async () => {
+    if (!parsedAccount?.principal || !token?.ledger_canister_id) {
+      setRecipientBalance(null);
+      return;
+    }
+
+    setRecipientBalanceLoading(true);
+    try {
+      const host = getHost();
+      const agent = new HttpAgent({ host });
+      if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+        await agent.fetchRootKey();
+      }
+
+      // Get the ledger ID - handle both Principal objects and strings
+      const ledgerId = typeof token.ledger_canister_id === 'string' 
+        ? token.ledger_canister_id 
+        : token.ledger_canister_id?.toText?.() || token.ledger_canister_id?.toString?.();
+
+      const ledgerActor = createLedgerActor(ledgerId, { agent });
+      
+      // Build the account for the query
+      const account = {
+        owner: parsedAccount.principal,
+        subaccount: parsedAccount.subaccount?.resolved 
+          ? [parsedAccount.subaccount.resolved] 
+          : []
+      };
+
+      const balance = await ledgerActor.icrc1_balance_of(account);
+      setRecipientBalance(balance);
+    } catch (err) {
+      console.error('Failed to fetch recipient balance:', err);
+      setRecipientBalance(null);
+    } finally {
+      setRecipientBalanceLoading(false);
+    }
+  }, [parsedAccount, token?.ledger_canister_id]);
+
+  // Debounce and trigger recipient balance fetch
+  useEffect(() => {
+    if (!show || !parsedAccount?.principal) {
+      setRecipientBalance(null);
+      return;
+    }
+
+    // Small delay to avoid fetching while user is still typing
+    const timeoutId = setTimeout(() => {
+      fetchRecipientBalance();
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [show, parsedAccount, fetchRecipientBalance]);
 
   const reviewPrincipalObj = useMemo(() => {
     const principalText = reviewData?.principal?.trim?.() || reviewData?.principal;
@@ -894,6 +958,37 @@ function SendTokenModal({ show, onClose, onSend, token }) {
               color: theme.colors.success
             }}>
               ✓ Valid principal ID
+            </div>
+          )}
+
+          {/* Recipient balance display */}
+          {parsedAccount && (
+            <div style={{
+              marginTop: '10px',
+              padding: '10px 12px',
+              background: theme.colors.secondaryBg,
+              border: `1px solid ${theme.colors.border}`,
+              borderRadius: '8px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>
+                Recipient's {token?.symbol} balance
+              </span>
+              <span style={{ 
+                color: recipientBalanceLoading ? theme.colors.mutedText : theme.colors.primaryText, 
+                fontWeight: '600', 
+                fontSize: '0.9rem' 
+              }}>
+                {recipientBalanceLoading ? (
+                  '...'
+                ) : recipientBalance !== null ? (
+                  `${formatAmount(recipientBalance, token?.decimals || 8)} ${token?.symbol}`
+                ) : (
+                  '—'
+                )}
+              </span>
             </div>
           )}
         </div>
