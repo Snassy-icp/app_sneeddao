@@ -492,16 +492,22 @@ function OfferCard({
             if (assetDetails.type === 'SNSNeuron') {
                 const snsInfo = getSnsInfo ? getSnsInfo(assetDetails.governance_id) : null;
                 const snsLogo = getSnsLogo ? getSnsLogo(assetDetails.governance_id) : null;
+                // Fallback: get logo from token info if getSnsLogo doesn't return one
+                const snsTokenInfo = snsInfo?.canisters?.ledger && getTokenInfo 
+                    ? getTokenInfo(snsInfo.canisters.ledger) 
+                    : null;
+                const neuronLogo = snsLogo || snsTokenInfo?.logo;
+                const tokenSymbol = snsInfo?.symbol || snsTokenInfo?.symbol || '';
                 const stake = assetDetails.cached_stake_e8s 
-                    ? `${(assetDetails.cached_stake_e8s / 1e8).toFixed(2)} ${snsInfo?.symbol || ''}`
+                    ? `${(assetDetails.cached_stake_e8s / 1e8).toFixed(2)} ${tokenSymbol}`
                     : null;
                 return { 
                     icon: (
                         <span style={{ position: 'relative', display: 'inline-flex' }}>
                             <FaBrain size={16} style={{ color: theme.colors.success }} />
-                            {snsLogo && (
+                            {neuronLogo && (
                                 <img 
-                                    src={snsLogo} 
+                                    src={neuronLogo} 
                                     alt={snsInfo?.name || 'SNS'} 
                                     style={{ 
                                         width: 10, 
@@ -611,13 +617,20 @@ function OfferCard({
                 );
             }
             if (details.type === 'SNSNeuron') {
+                // Get the SNS ledger to find the logo from token info as fallback
+                const snsTokenInfo = snsInfo?.canisters?.ledger && getTokenInfo 
+                    ? getTokenInfo(snsInfo.canisters.ledger) 
+                    : null;
+                const neuronLogo = snsLogo || snsTokenInfo?.logo;
+                const tokenSymbol = snsInfo?.symbol || snsTokenInfo?.symbol || '';
+                
                 return (
                     <span key={idx} style={pillStyle}>
                         <span style={{ position: 'relative', display: 'inline-flex', marginRight: '2px' }}>
                             <FaBrain style={{ color: theme.colors.success, fontSize: '12px' }} />
-                            {snsLogo && (
+                            {neuronLogo && (
                                 <img 
-                                    src={snsLogo} 
+                                    src={neuronLogo} 
                                     alt={snsInfo?.name || 'SNS'} 
                                     style={{ 
                                         width: 8, 
@@ -627,13 +640,14 @@ function OfferCard({
                                         bottom: -1,
                                         right: -3,
                                         border: `1px solid ${theme.colors.tertiaryBg}`,
+                                        background: theme.colors.tertiaryBg,
                                     }}
                                 />
                             )}
                         </span>
                         {details.cached_stake_e8s !== null
-                            ? `${(details.cached_stake_e8s / 1e8).toFixed(2)} ${snsInfo?.symbol || ''}`
-                            : snsInfo?.symbol || 'Neuron'
+                            ? `${(details.cached_stake_e8s / 1e8).toFixed(2)} ${tokenSymbol}`
+                            : tokenSymbol || 'Neuron'
                         }
                     </span>
                 );
@@ -702,17 +716,19 @@ function OfferCard({
                 
                 {/* Content */}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                    {/* Title row */}
+                    {/* Title row with assets */}
                     <div style={{
                         display: 'flex',
-                        alignItems: 'baseline',
+                        alignItems: 'center',
                         gap: '8px',
+                        flexWrap: 'wrap',
                     }}>
                         <span style={{
                             color: sneedexPrimary,
                             fontSize: '0.8rem',
                             fontWeight: '700',
                             fontFamily: 'monospace',
+                            flexShrink: 0,
                         }}>
                             #{Number(offer.id)}
                         </span>
@@ -723,24 +739,12 @@ function OfferCard({
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap',
-                            flex: 1,
-                            minWidth: 0,
                         }}>
                             {assetDisplay.text}
                         </span>
+                        {/* Additional assets as pills inline */}
+                        {additionalAssets.map((asset, idx) => renderCompactAssetPill(asset, idx))}
                     </div>
-                    
-                    {/* Additional assets row */}
-                    {additionalAssets.length > 0 && (
-                        <div style={{
-                            display: 'flex',
-                            flexWrap: 'wrap',
-                            gap: '4px',
-                            marginTop: '4px',
-                        }}>
-                            {additionalAssets.map((asset, idx) => renderCompactAssetPill(asset, idx))}
-                        </div>
-                    )}
                     
                     {/* Price row */}
                     <div style={{
