@@ -2385,7 +2385,7 @@ function SneedexOffers() {
                                         <div style={{
                                             ...styles.priceItem,
                                             background: `linear-gradient(135deg, ${theme.colors.primaryBg}, ${theme.colors.success}08)`,
-                                            ...(isBuyoutOnly ? { flex: 1 } : {}),
+                                            ...(isBuyoutOnly ? { gridColumn: '1 / -1' } : {}),
                                         }}>
                                             <div style={{
                                                 ...styles.priceLabel,

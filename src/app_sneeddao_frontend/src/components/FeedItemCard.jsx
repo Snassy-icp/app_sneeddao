@@ -738,11 +738,16 @@ function FeedItemCard({
                                     return formatAmount(price, decimals);
                                 };
                                 
+                                // Check if buyout-only (has buyout but no min bid)
+                                const isBuyoutOnly = item._buyoutPrice && !item._minBidPrice;
+                                
                                 return (
                                     <>
                                         {item._buyoutPrice && (
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>Buyout:</span>
+                                                <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>
+                                                    {isBuyoutOnly ? 'Buyout Only:' : 'Buyout:'}
+                                                </span>
                                                 {displayLogo && (
                                                     <TokenIcon logo={displayLogo} size={16} borderRadius="4px" />
                                                 )}
