@@ -458,7 +458,25 @@ function OfferCard({
                     ? `${(assetDetails.cached_total_stake_e8s / 1e8).toFixed(2)} ICP`
                     : 'Staking Bot';
                 return { 
-                    icon: <FaRobot size={14} style={{ color: theme.colors.accent }} />, 
+                    icon: (
+                        <span style={{ position: 'relative', display: 'inline-flex' }}>
+                            <FaRobot size={16} style={{ color: theme.colors.accent }} />
+                            <img 
+                                src="/icp_symbol.svg" 
+                                alt="ICP" 
+                                style={{ 
+                                    width: 10, 
+                                    height: 10, 
+                                    borderRadius: '50%',
+                                    position: 'absolute',
+                                    bottom: -2,
+                                    right: -4,
+                                    border: `1px solid ${theme.colors.secondaryBg}`,
+                                    background: theme.colors.secondaryBg,
+                                }}
+                            />
+                        </span>
+                    ), 
                     text: assetDetails.title || stake,
                     subtext: assetDetails.title ? stake : null,
                     color: theme.colors.accent 
@@ -473,20 +491,55 @@ function OfferCard({
             }
             if (assetDetails.type === 'SNSNeuron') {
                 const snsInfo = getSnsInfo ? getSnsInfo(assetDetails.governance_id) : null;
+                const snsLogo = getSnsLogo ? getSnsLogo(assetDetails.governance_id) : null;
                 const stake = assetDetails.cached_stake_e8s 
                     ? `${(assetDetails.cached_stake_e8s / 1e8).toFixed(2)} ${snsInfo?.symbol || ''}`
                     : null;
                 return { 
-                    icon: <FaBrain size={14} style={{ color: theme.colors.success }} />, 
+                    icon: (
+                        <span style={{ position: 'relative', display: 'inline-flex' }}>
+                            <FaBrain size={16} style={{ color: theme.colors.success }} />
+                            {snsLogo && (
+                                <img 
+                                    src={snsLogo} 
+                                    alt={snsInfo?.name || 'SNS'} 
+                                    style={{ 
+                                        width: 10, 
+                                        height: 10, 
+                                        borderRadius: '50%',
+                                        position: 'absolute',
+                                        bottom: -2,
+                                        right: -4,
+                                        border: `1px solid ${theme.colors.secondaryBg}`,
+                                        background: theme.colors.secondaryBg,
+                                    }}
+                                />
+                            )}
+                        </span>
+                    ), 
                     text: stake || `${snsInfo?.name || 'SNS'} Neuron`,
                     color: theme.colors.success 
                 };
             }
             if (assetDetails.type === 'ICRC1Token') {
-                const tokenInfo = getTokenInfo ? getTokenInfo(assetDetails.ledger_id) : null;
+                const assetTokenInfo = getTokenInfo ? getTokenInfo(assetDetails.ledger_id) : null;
+                const tokenLogo = assetTokenInfo?.logo;
                 return { 
-                    icon: <FaCoins size={14} style={{ color: theme.colors.warning }} />, 
-                    text: `${formatAmount(assetDetails.amount, tokenInfo?.decimals || 8)} ${tokenInfo?.symbol || 'TOKEN'}`,
+                    icon: tokenLogo ? (
+                        <img 
+                            src={tokenLogo} 
+                            alt={assetTokenInfo?.symbol || 'Token'} 
+                            style={{ 
+                                width: 18, 
+                                height: 18, 
+                                borderRadius: '50%',
+                            }}
+                            onError={(e) => { e.target.style.display = 'none'; }}
+                        />
+                    ) : (
+                        <FaCoins size={14} style={{ color: theme.colors.warning }} />
+                    ), 
+                    text: `${formatAmount(assetDetails.amount, assetTokenInfo?.decimals || 8)} ${assetTokenInfo?.symbol || 'TOKEN'}`,
                     color: theme.colors.warning 
                 };
             }
@@ -495,12 +548,125 @@ function OfferCard({
         
         const assetDisplay = getAssetDisplay();
         
+        // Render a compact asset pill for additional assets
+        const renderCompactAssetPill = (assetEntry, idx) => {
+            const details = getAssetDetails(assetEntry);
+            
+            const assetTokenInfo = details.type === 'ICRC1Token' && getTokenInfo
+                ? getTokenInfo(details.ledger_id)
+                : null;
+            const snsInfo = details.type === 'SNSNeuron' && getSnsInfo
+                ? getSnsInfo(details.governance_id)
+                : null;
+            const snsLogo = details.type === 'SNSNeuron' && getSnsLogo
+                ? getSnsLogo(details.governance_id)
+                : null;
+            
+            const pillStyle = {
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                background: theme.colors.tertiaryBg,
+                border: `1px solid ${theme.colors.border}`,
+                padding: '3px 8px',
+                borderRadius: '6px',
+                fontSize: '0.7rem',
+                fontWeight: '500',
+                color: theme.colors.primaryText,
+            };
+            
+            if (details.type === 'Canister' && details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER) {
+                return (
+                    <span key={idx} style={pillStyle}>
+                        <span style={{ position: 'relative', display: 'inline-flex', marginRight: '2px' }}>
+                            <FaRobot style={{ color: theme.colors.accent, fontSize: '12px' }} />
+                            <img 
+                                src="/icp_symbol.svg" 
+                                alt="ICP" 
+                                style={{ 
+                                    width: 8, 
+                                    height: 8, 
+                                    borderRadius: '50%',
+                                    position: 'absolute',
+                                    bottom: -1,
+                                    right: -3,
+                                    border: `1px solid ${theme.colors.tertiaryBg}`,
+                                    background: theme.colors.tertiaryBg,
+                                }}
+                            />
+                        </span>
+                        {details.cached_total_stake_e8s !== null
+                            ? `${(details.cached_total_stake_e8s / 1e8).toFixed(2)} ICP`
+                            : 'Staking Bot'
+                        }
+                    </span>
+                );
+            }
+            if (details.type === 'Canister') {
+                return (
+                    <span key={idx} style={pillStyle}>
+                        <FaCubes style={{ color: theme.colors.accent, fontSize: '12px' }} />
+                        {details.title ? (details.title.length > 10 ? details.title.slice(0, 10) + '…' : details.title) : 'Canister'}
+                    </span>
+                );
+            }
+            if (details.type === 'SNSNeuron') {
+                return (
+                    <span key={idx} style={pillStyle}>
+                        <span style={{ position: 'relative', display: 'inline-flex', marginRight: '2px' }}>
+                            <FaBrain style={{ color: theme.colors.success, fontSize: '12px' }} />
+                            {snsLogo && (
+                                <img 
+                                    src={snsLogo} 
+                                    alt={snsInfo?.name || 'SNS'} 
+                                    style={{ 
+                                        width: 8, 
+                                        height: 8, 
+                                        borderRadius: '50%',
+                                        position: 'absolute',
+                                        bottom: -1,
+                                        right: -3,
+                                        border: `1px solid ${theme.colors.tertiaryBg}`,
+                                    }}
+                                />
+                            )}
+                        </span>
+                        {details.cached_stake_e8s !== null
+                            ? `${(details.cached_stake_e8s / 1e8).toFixed(2)} ${snsInfo?.symbol || ''}`
+                            : snsInfo?.symbol || 'Neuron'
+                        }
+                    </span>
+                );
+            }
+            if (details.type === 'ICRC1Token') {
+                return (
+                    <span key={idx} style={pillStyle}>
+                        {assetTokenInfo?.logo ? (
+                            <img 
+                                src={assetTokenInfo.logo} 
+                                alt={assetTokenInfo?.symbol || 'Token'} 
+                                style={{ width: 12, height: 12, borderRadius: '50%' }}
+                                onError={(e) => { e.target.style.display = 'none'; }}
+                            />
+                        ) : (
+                            <FaCoins style={{ color: theme.colors.warning, fontSize: '12px' }} />
+                        )}
+                        {formatAmount(details.amount, assetTokenInfo?.decimals || 8)} {assetTokenInfo?.symbol || 'TOKEN'}
+                    </span>
+                );
+            }
+            return null;
+        };
+        
+        // Get additional assets (all except the first one)
+        const additionalAssets = (offer.assets || []).slice(1);
+        
         return (
             <Link
                 to={`/sneedex_offer/${offer.id}`}
                 style={{
                     display: 'flex',
-                    alignItems: 'center',
+                    alignItems: 'flex-start',
                     gap: '12px',
                     padding: '10px 14px',
                     background: 'transparent',
@@ -529,6 +695,7 @@ function OfferCard({
                     alignItems: 'center',
                     justifyContent: 'center',
                     flexShrink: 0,
+                    marginTop: '2px',
                 }}>
                     {assetDisplay.icon}
                 </div>
@@ -561,18 +728,19 @@ function OfferCard({
                         }}>
                             {assetDisplay.text}
                         </span>
-                        {assetCount > 1 && (
-                            <span style={{
-                                fontSize: '0.7rem',
-                                color: theme.colors.mutedText,
-                                background: theme.colors.tertiaryBg,
-                                padding: '2px 6px',
-                                borderRadius: '4px',
-                            }}>
-                                +{assetCount - 1}
-                            </span>
-                        )}
                     </div>
+                    
+                    {/* Additional assets row */}
+                    {additionalAssets.length > 0 && (
+                        <div style={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: '4px',
+                            marginTop: '4px',
+                        }}>
+                            {additionalAssets.map((asset, idx) => renderCompactAssetPill(asset, idx))}
+                        </div>
+                    )}
                     
                     {/* Price row */}
                     <div style={{
