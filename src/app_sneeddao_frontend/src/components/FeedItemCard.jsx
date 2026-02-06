@@ -738,8 +738,38 @@ function FeedItemCard({
                                     return formatAmount(price, decimals);
                                 };
                                 
-                                // Check if buyout-only (has buyout but no min bid)
-                                const isBuyoutOnly = item._buyoutPrice && !item._minBidPrice;
+                                // Calculate minimum next bid based on bid info
+                                const getMinimumNextBid = () => {
+                                    if (item._bidInfo?.highest_bid) {
+                                        // Calculate minimum increment
+                                        const tokenFee = tokenMeta?.fee || 10000n; // Default 0.0001 ICP fee
+                                        let minIncrement = BigInt(1);
+                                        if (item._minBidIncrementFeeMultiple) {
+                                            minIncrement = BigInt(item._minBidIncrementFeeMultiple) * BigInt(tokenFee);
+                                        }
+                                        const nextBid = BigInt(item._bidInfo.highest_bid.amount) + minIncrement;
+                                        // Cap at buyout if set
+                                        if (item._buyoutPrice && nextBid > BigInt(item._buyoutPrice)) {
+                                            return BigInt(item._buyoutPrice);
+                                        }
+                                        return nextBid;
+                                    }
+                                    // No bids yet - return min_bid_price
+                                    if (item._minBidPrice) {
+                                        return BigInt(item._minBidPrice);
+                                    }
+                                    return null;
+                                };
+                                
+                                const minimumNextBid = getMinimumNextBid();
+                                
+                                // Check if buyout-only:
+                                // 1. Static: has buyout but no min_bid_price
+                                // 2. Dynamic: min next bid >= buyout price
+                                const isBuyoutOnly = item._buyoutPrice && (
+                                    !item._minBidPrice ||
+                                    (minimumNextBid && minimumNextBid >= BigInt(item._buyoutPrice))
+                                );
                                 
                                 return (
                                     <>
@@ -756,14 +786,17 @@ function FeedItemCard({
                                                 </span>
                                             </div>
                                         )}
-                                        {item._minBidPrice && (
+                                        {/* Show min next bid only if not buyout-only */}
+                                        {!isBuyoutOnly && item._minBidPrice && (
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>Min bid:</span>
+                                                <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>
+                                                    {item._bidInfo?.highest_bid ? 'Min Next Bid:' : 'Min Bid:'}
+                                                </span>
                                                 {displayLogo && !item._buyoutPrice && (
                                                     <TokenIcon logo={displayLogo} size={16} borderRadius="4px" />
                                                 )}
                                                 <span style={{ fontSize: '0.85rem', fontWeight: '500', color: theme.colors.primaryText }}>
-                                                    {isLoadingToken ? '...' : formatPrice(item._minBidPrice)} {symbol}
+                                                    {isLoadingToken ? '...' : (minimumNextBid ? formatAmount(minimumNextBid, decimals) : formatPrice(item._minBidPrice))} {symbol}
                                                 </span>
                                             </div>
                                         )}

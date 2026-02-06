@@ -633,6 +633,7 @@ function Feed() {
         }
     });
     const [auctionItems, setAuctionItems] = useState([]); // Raw auction offers
+    const [auctionBidInfo, setAuctionBidInfo] = useState({}); // offerId -> { bids, highest_bid }
     const [loadingAuctions, setLoadingAuctions] = useState(false);
     const [auctionTokenMetadata, setAuctionTokenMetadata] = useState(new Map()); // ledger_id -> { symbol, decimals, logo }
     const [loadingAuctionTokens, setLoadingAuctionTokens] = useState(new Set());
@@ -656,9 +657,9 @@ function Feed() {
         });
     };
 
-    // Fetch active auctions from Sneedex
+    // Fetch active auctions from Sneedex (including bid info)
     const fetchAuctions = async () => {
-        if (!showAuctions) return [];
+        if (!showAuctions) return { offers: [], bidInfo: {} };
         
         try {
             setLoadingAuctions(true);
@@ -686,17 +687,43 @@ function Feed() {
             
             const response = await sneedexActor.getOfferFeed(input);
             console.log('Fetched auctions:', response.offers.length);
-            return response.offers;
+            
+            // Fetch bid info for each auction in parallel
+            const bidInfoPromises = response.offers.map(async (offer) => {
+                try {
+                    const offerView = await sneedexActor.getOfferView(offer.id);
+                    if (offerView && offerView.length > 0) {
+                        return [Number(offer.id), {
+                            bids: offerView[0].bids,
+                            highest_bid: offerView[0].highest_bid[0] || null,
+                        }];
+                    }
+                } catch (e) {
+                    console.warn(`Failed to fetch bid info for offer ${offer.id}:`, e);
+                }
+                return null;
+            });
+            
+            const bidResults = await Promise.all(bidInfoPromises);
+            const bidInfo = {};
+            bidResults.forEach(result => {
+                if (result) {
+                    bidInfo[result[0]] = result[1];
+                }
+            });
+            setAuctionBidInfo(bidInfo);
+            
+            return { offers: response.offers, bidInfo };
         } catch (e) {
             console.error('Failed to fetch auctions:', e);
-            return [];
+            return { offers: [], bidInfo: {} };
         } finally {
             setLoadingAuctions(false);
         }
     };
 
     // Convert auction offer to feed item format
-    const convertAuctionToFeedItem = (offer) => {
+    const convertAuctionToFeedItem = (offer, bidInfo = null) => {
         // Generate a title from assets
         const assets = offer.assets.map(a => getAssetDetails(a));
         let title = '';
@@ -743,9 +770,11 @@ function Feed() {
             _priceTokenLedger: priceTokenLedger,
             _buyoutPrice: offer.buyout_price?.[0] || null,
             _minBidPrice: offer.min_bid_price?.[0] || null,
+            _minBidIncrementFeeMultiple: offer.min_bid_increment_fee_multiple?.[0] || null,
             _expiration: offer.expiration?.[0] || null,
             _isSold: isSold,
             _offerState: getOfferStateString(offer.state),
+            _bidInfo: bidInfo, // Include bid info for buyout-only calculation
             // Compatibility fields (null/empty for auctions)
             sns_root_canister_id: null,
             forum_id: null,
@@ -1383,8 +1412,10 @@ function Feed() {
                 
                 if (shouldFetchAuctions) {
                     try {
-                        const auctions = await fetchAuctions();
-                        auctionsToMerge = auctions.map(convertAuctionToFeedItem);
+                        const { offers: auctions, bidInfo } = await fetchAuctions();
+                        auctionsToMerge = auctions.map(offer => 
+                            convertAuctionToFeedItem(offer, bidInfo[Number(offer.id)] || null)
+                        );
                         setAuctionItems(auctions);
                     } catch (e) {
                         console.warn('Failed to fetch auctions for feed:', e);
@@ -2284,8 +2315,38 @@ function Feed() {
                                         return formatAmount(price, decimals);
                                     };
                                     
-                                    // Check if buyout-only (has buyout but no min bid)
-                                    const isBuyoutOnly = item._buyoutPrice && !item._minBidPrice;
+                                    // Calculate minimum next bid based on bid info
+                                    const getMinimumNextBid = () => {
+                                        if (item._bidInfo?.highest_bid) {
+                                            // Calculate minimum increment
+                                            const tokenFee = tokenMeta?.fee || 10000n; // Default 0.0001 ICP fee
+                                            let minIncrement = BigInt(1);
+                                            if (item._minBidIncrementFeeMultiple) {
+                                                minIncrement = BigInt(item._minBidIncrementFeeMultiple) * BigInt(tokenFee);
+                                            }
+                                            const nextBid = BigInt(item._bidInfo.highest_bid.amount) + minIncrement;
+                                            // Cap at buyout if set
+                                            if (item._buyoutPrice && nextBid > BigInt(item._buyoutPrice)) {
+                                                return BigInt(item._buyoutPrice);
+                                            }
+                                            return nextBid;
+                                        }
+                                        // No bids yet - return min_bid_price
+                                        if (item._minBidPrice) {
+                                            return BigInt(item._minBidPrice);
+                                        }
+                                        return null;
+                                    };
+                                    
+                                    const minimumNextBid = getMinimumNextBid();
+                                    
+                                    // Check if buyout-only:
+                                    // 1. Static: has buyout but no min_bid_price
+                                    // 2. Dynamic: min next bid >= buyout price
+                                    const isBuyoutOnly = item._buyoutPrice && (
+                                        !item._minBidPrice ||
+                                        (minimumNextBid && minimumNextBid >= BigInt(item._buyoutPrice))
+                                    );
                                     
                                     return (
                                         <>
@@ -2302,14 +2363,17 @@ function Feed() {
                                                     </span>
                                                 </div>
                                             )}
-                                            {item._minBidPrice && (
+                                            {/* Show min next bid only if not buyout-only */}
+                                            {!isBuyoutOnly && item._minBidPrice && (
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                    <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>Min bid:</span>
+                                                    <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>
+                                                        {item._bidInfo?.highest_bid ? 'Min Next Bid:' : 'Min Bid:'}
+                                                    </span>
                                                     {displayLogo && !item._buyoutPrice && (
                                                         <TokenIcon logo={displayLogo} size={16} borderRadius="4px" />
                                                     )}
                                                     <span style={{ fontSize: '0.85rem', fontWeight: '500', color: theme.colors.primaryText }}>
-                                                        {isLoadingToken ? '...' : formatPrice(item._minBidPrice)} {symbol}
+                                                        {isLoadingToken ? '...' : (minimumNextBid ? formatAmount(minimumNextBid, decimals) : formatPrice(item._minBidPrice))} {symbol}
                                                     </span>
                                                 </div>
                                             )}

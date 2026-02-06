@@ -394,6 +394,7 @@ function Hub() {
     });
     const [feedItems, setFeedItems] = useState([]);
     const [offers, setOffers] = useState([]);
+    const [offersBidInfo, setOffersBidInfo] = useState({}); // offerId -> { bids, highest_bid }
     const [activityLoading, setActivityLoading] = useState(true);
     const [snsLogos, setSnsLogos] = useState({});
     const [loadingLogos, setLoadingLogos] = useState(new Set()); // Track which logos are currently loading
@@ -792,7 +793,33 @@ function Hub() {
                         }]
                     });
                     if (offerResponse?.offers) {
-                        setOffers(offerResponse.offers.slice(0, 5));
+                        const fetchedOffers = offerResponse.offers.slice(0, 5);
+                        setOffers(fetchedOffers);
+                        
+                        // Fetch bid info for each offer in parallel
+                        const bidInfoPromises = fetchedOffers.map(async (offer) => {
+                            try {
+                                const offerView = await sneedexActor.getOfferView(offer.id);
+                                if (offerView && offerView.length > 0) {
+                                    return [Number(offer.id), {
+                                        bids: offerView[0].bids,
+                                        highest_bid: offerView[0].highest_bid[0] || null,
+                                    }];
+                                }
+                            } catch (err) {
+                                console.warn(`Hub: Failed to fetch bid info for offer ${offer.id}:`, err);
+                            }
+                            return null;
+                        });
+                        
+                        const bidResults = await Promise.all(bidInfoPromises);
+                        const bidInfo = {};
+                        bidResults.forEach(result => {
+                            if (result) {
+                                bidInfo[result[0]] = result[1];
+                            }
+                        });
+                        setOffersBidInfo(bidInfo);
                     }
                 } catch (e) {
                     // Silently fail - offers section will just be empty
@@ -2086,6 +2113,7 @@ function Hub() {
                                         <OfferCard
                                             key={`offer-${offer.id}-${tokenMetadataState.size}-${snsList.length}`}
                                             offer={offer}
+                                            bidInfo={offersBidInfo[Number(offer.id)] || {}}
                                             getTokenInfo={getTokenInfo}
                                             getSnsInfo={getSnsInfo}
                                             getSnsLogo={getSnsLogo}
