@@ -1876,18 +1876,18 @@ function Hub() {
                 }}>
                     {/* Sneed Forum Activity */}
                     <div style={{
-                        background: `linear-gradient(145deg, ${theme.colors.secondaryBg} 0%, ${theme.colors.primaryBg} 100%)`,
+                        background: theme.colors.secondaryBg,
                         border: `1px solid ${theme.colors.border}`,
-                        borderRadius: '24px',
+                        borderRadius: '16px',
                         overflow: 'hidden',
-                        boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+                        boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
                     }}>
                         {/* Branded Header - Clickable to expand/collapse */}
                         <div 
                             onClick={() => setFeedExpanded(!feedExpanded)}
                             style={{
                                 background: 'linear-gradient(135deg, #f97316 0%, #ea580c 50%, #dc2626 100%)',
-                                padding: '18px 24px',
+                                padding: '14px 18px',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'space-between',
@@ -1895,22 +1895,22 @@ function Hub() {
                                 transition: 'filter 0.2s ease',
                             }}
                         >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                 <div style={{
-                                    width: '48px',
-                                    height: '48px',
-                                    borderRadius: '14px',
+                                    width: '38px',
+                                    height: '38px',
+                                    borderRadius: '10px',
                                     background: 'rgba(255,255,255,0.2)',
                                     backdropFilter: 'blur(10px)',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                 }}>
-                                    <FaComments size={22} style={{ color: 'white' }} />
+                                    <FaComments size={18} style={{ color: 'white' }} />
                                 </div>
                                 <div>
-                                    <div style={{ color: 'white', fontWeight: '800', fontSize: '1.2rem', letterSpacing: '-0.01em' }}>Sneed Forum</div>
-                                    <div className="hub-card-subtitle" style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.8rem', fontWeight: '500' }}>Latest discussions</div>
+                                    <div style={{ color: 'white', fontWeight: '700', fontSize: '1.05rem', letterSpacing: '-0.01em' }}>Sneed Forum</div>
+                                    <div className="hub-card-subtitle" style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.75rem', fontWeight: '500' }}>Latest discussions</div>
                                 </div>
                             </div>
                             <Link 
@@ -1919,28 +1919,28 @@ function Hub() {
                                 style={{ 
                                     color: 'white', 
                                     textDecoration: 'none', 
-                                    fontSize: '0.9rem',
+                                    fontSize: '0.8rem',
                                     fontWeight: '600',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '8px',
-                                    background: 'rgba(255,255,255,0.2)',
+                                    gap: '6px',
+                                    background: 'rgba(255,255,255,0.18)',
                                     backdropFilter: 'blur(10px)',
-                                    padding: '10px 18px',
-                                    borderRadius: '10px',
+                                    padding: '8px 14px',
+                                    borderRadius: '8px',
                                     transition: 'all 0.2s ease',
                                 }}
                             >
                                 <span className="hub-link-full">View All</span>
                                 <span className="hub-link-short" style={{ display: 'none' }}>All</span>
-                                <FaArrowRight size={12} />
+                                <FaArrowRight size={10} />
                             </Link>
                         </div>
 
                         {/* Feed Items */}
                         <div style={{ 
-                            padding: '16px',
-                            maxHeight: feedExpanded ? 'none' : '480px',
+                            padding: '8px 10px',
+                            maxHeight: feedExpanded ? 'none' : '340px',
                             overflow: 'hidden',
                             transition: 'max-height 0.3s ease-out',
                         }}>
@@ -1955,13 +1955,13 @@ function Hub() {
                                     <div>No recent activity</div>
                                 </div>
                             ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                     {feedItems.slice(0, 5).map((item, index) => (
                                         <FeedItemCard
                                             key={`feed-${item.id}-${index}`}
                                             item={item}
                                             index={index}
-                                            compact={false}
+                                            variant="hub"
                                             getSnsInfo={getSnsById}
                                             snsLogos={snsLogos}
                                             loadingLogos={loadingLogos}
@@ -2011,18 +2011,18 @@ function Hub() {
 
                     {/* Sneedex Marketplace - Enhanced Offer Cards */}
                     <div style={{
-                        background: `linear-gradient(145deg, ${theme.colors.secondaryBg} 0%, ${theme.colors.primaryBg} 100%)`,
+                        background: theme.colors.secondaryBg,
                         border: `1px solid ${theme.colors.border}`,
-                        borderRadius: '24px',
+                        borderRadius: '16px',
                         overflow: 'hidden',
-                        boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+                        boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
                     }}>
                         {/* Branded Header - Clickable to expand/collapse */}
                         <div 
                             onClick={() => setOffersExpanded(!offersExpanded)}
                             style={{
                                 background: `linear-gradient(135deg, ${hubPrimary} 0%, ${hubSecondary} 50%, #7c3aed 100%)`,
-                                padding: '18px 24px',
+                                padding: '14px 18px',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'space-between',
@@ -2030,22 +2030,22 @@ function Hub() {
                                 transition: 'filter 0.2s ease',
                             }}
                         >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                 <div style={{
-                                    width: '48px',
-                                    height: '48px',
-                                    borderRadius: '14px',
+                                    width: '38px',
+                                    height: '38px',
+                                    borderRadius: '10px',
                                     background: 'rgba(255,255,255,0.2)',
                                     backdropFilter: 'blur(10px)',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                 }}>
-                                    <FaGavel size={22} style={{ color: 'white' }} />
+                                    <FaGavel size={18} style={{ color: 'white' }} />
                                 </div>
                                 <div>
-                                    <div style={{ color: 'white', fontWeight: '800', fontSize: '1.2rem', letterSpacing: '-0.01em' }}>Sneedex</div>
-                                    <div className="hub-card-subtitle" style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.8rem', fontWeight: '500' }}>Active marketplace offers</div>
+                                    <div style={{ color: 'white', fontWeight: '700', fontSize: '1.05rem', letterSpacing: '-0.01em' }}>Sneedex</div>
+                                    <div className="hub-card-subtitle" style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.75rem', fontWeight: '500' }}>Active marketplace offers</div>
                                 </div>
                             </div>
                             <Link 
@@ -2054,15 +2054,15 @@ function Hub() {
                                 style={{ 
                                     color: 'white', 
                                     textDecoration: 'none', 
-                                    fontSize: '0.9rem',
+                                    fontSize: '0.8rem',
                                     fontWeight: '600',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '8px',
-                                    background: 'rgba(255,255,255,0.2)',
+                                    gap: '6px',
+                                    background: 'rgba(255,255,255,0.18)',
                                     backdropFilter: 'blur(10px)',
-                                    padding: '10px 18px',
-                                    borderRadius: '10px',
+                                    padding: '8px 14px',
+                                    borderRadius: '8px',
                                     transition: 'all 0.2s ease',
                                 }}
                             >
@@ -2074,8 +2074,8 @@ function Hub() {
 
                         {/* Enhanced Offer Cards */}
                         <div style={{ 
-                            padding: '16px',
-                            maxHeight: offersExpanded ? 'none' : '480px',
+                            padding: '8px 10px',
+                            maxHeight: offersExpanded ? 'none' : '340px',
                             overflow: 'hidden',
                             transition: 'max-height 0.3s ease-out',
                         }}>
@@ -2108,7 +2108,7 @@ function Hub() {
                                     </Link>
                                 </div>
                             ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                     {offers.map((offer) => (
                                         <OfferCard
                                             key={`offer-${offer.id}-${tokenMetadataState.size}-${snsList.length}`}
@@ -2120,7 +2120,7 @@ function Hub() {
                                             tokenPrices={tokenPrices}
                                             icpPrice={prices.icpUsd}
                                             getOfferEstimatedValue={getOfferEstimatedValue}
-                                            compact={true}
+                                            variant="hub"
                                         />
                                     ))}
                                 </div>

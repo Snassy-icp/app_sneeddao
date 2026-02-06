@@ -115,6 +115,7 @@ const getFeedTypeIcon = (itemType) => {
  * @param {Object} props.item - The feed item data
  * @param {number} props.index - Item index for animation delay
  * @param {boolean} props.compact - Use compact display mode (for Hub)
+ * @param {string} props.variant - Display variant: 'default' | 'hub' (elegant compact for Hub page)
  * @param {Function} props.getSnsInfo - Function to get SNS info by root ID
  * @param {Object} props.snsLogos - Map of SNS logos by governance ID or root ID
  * @param {Set} props.loadingLogos - Set of governance IDs currently loading logos
@@ -131,6 +132,7 @@ function FeedItemCard({
     item,
     index = 0,
     compact = false,
+    variant = 'default',
     getSnsInfo,
     snsLogos = {},
     loadingLogos = new Set(),
@@ -332,7 +334,127 @@ function FeedItemCard({
         },
     };
 
-    // Compact mode for Hub
+    // Hub variant - elegant compact design for front page
+    if (variant === 'hub') {
+        if (!item) return null;
+        
+        const bodyText = item.body ? (Array.isArray(item.body) ? item.body[0] : item.body) : '';
+        const isAuction = item._isAuction;
+        
+        return (
+            <Link
+                to={navigationUrl}
+                style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    padding: '10px 14px',
+                    background: 'transparent',
+                    borderRadius: '10px',
+                    textDecoration: 'none',
+                    transition: 'all 0.15s ease',
+                    borderLeft: `3px solid transparent`,
+                }}
+                onMouseEnter={(e) => {
+                    e.currentTarget.style.background = `${typeColor}08`;
+                    e.currentTarget.style.borderLeftColor = typeColor;
+                }}
+                onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.borderLeftColor = 'transparent';
+                }}
+            >
+                {/* Compact logo/icon */}
+                <div style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '8px',
+                    background: snsLogo ? 'transparent' : `${typeColor}12`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    overflow: 'hidden',
+                }}>
+                    {snsLogo ? (
+                        <img src={snsLogo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '8px' }} />
+                    ) : (
+                        <span style={{ color: typeColor, opacity: 0.8 }}>{getFeedTypeIcon(itemType)}</span>
+                    )}
+                </div>
+                
+                {/* Content */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                    {/* Title/Body row */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'baseline',
+                        gap: '8px',
+                    }}>
+                        <span style={{
+                            color: theme.colors.primaryText,
+                            fontSize: '0.9rem',
+                            fontWeight: '600',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            flex: 1,
+                            minWidth: 0,
+                        }}>
+                            {displayTitle || (bodyText ? bodyText.slice(0, 60) : 'New activity')}
+                        </span>
+                    </div>
+                    
+                    {/* Meta row */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        marginTop: '2px',
+                    }}>
+                        <span style={{
+                            fontSize: '0.7rem',
+                            fontWeight: '600',
+                            color: typeColor,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.3px',
+                        }}>
+                            {typeDisplayText}
+                        </span>
+                        {snsInfo && (
+                            <>
+                                <span style={{ color: theme.colors.mutedText, fontSize: '0.65rem' }}>•</span>
+                                <span style={{
+                                    fontSize: '0.75rem',
+                                    color: theme.colors.secondaryText,
+                                }}>
+                                    {snsInfo.name}
+                                </span>
+                            </>
+                        )}
+                        <span style={{ color: theme.colors.mutedText, fontSize: '0.65rem' }}>•</span>
+                        <span style={{
+                            fontSize: '0.75rem',
+                            color: theme.colors.mutedText,
+                        }}>
+                            {item.created_at ? formatRelativeTime(item.created_at) : ''}
+                        </span>
+                    </div>
+                </div>
+                
+                {/* Arrow indicator */}
+                <div style={{
+                    color: theme.colors.mutedText,
+                    opacity: 0.4,
+                    fontSize: '0.7rem',
+                }}>
+                    →
+                </div>
+            </Link>
+        );
+    }
+
+    // Compact mode for Hub (legacy)
     if (compact) {
         // Safety check for required data
         if (!item) {

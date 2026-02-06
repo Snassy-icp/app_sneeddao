@@ -442,6 +442,233 @@ function OfferCard({
     // Check if past expiration
     const isPastExpiration = offer.expiration?.[0] && isOfferPastExpiration(offer.expiration[0]);
 
+    // Hub variant - elegant compact design for front page
+    if (variant === 'hub') {
+        // Get the primary asset for display
+        const primaryAsset = offer.assets?.[0];
+        const assetDetails = primaryAsset ? getAssetDetails(primaryAsset) : null;
+        const assetCount = offer.assets?.length || 0;
+        
+        // Get asset display info
+        const getAssetDisplay = () => {
+            if (!assetDetails) return { icon: <FaGavel size={14} />, text: 'Offer', color: sneedexPrimary };
+            
+            if (assetDetails.type === 'Canister' && assetDetails.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER) {
+                const stake = assetDetails.cached_total_stake_e8s 
+                    ? `${(assetDetails.cached_total_stake_e8s / 1e8).toFixed(2)} ICP`
+                    : 'Staking Bot';
+                return { 
+                    icon: <FaRobot size={14} style={{ color: theme.colors.accent }} />, 
+                    text: assetDetails.title || stake,
+                    subtext: assetDetails.title ? stake : null,
+                    color: theme.colors.accent 
+                };
+            }
+            if (assetDetails.type === 'Canister') {
+                return { 
+                    icon: <FaCubes size={14} style={{ color: theme.colors.accent }} />, 
+                    text: assetDetails.title || 'Canister',
+                    color: theme.colors.accent 
+                };
+            }
+            if (assetDetails.type === 'SNSNeuron') {
+                const snsInfo = getSnsInfo ? getSnsInfo(assetDetails.governance_id) : null;
+                const stake = assetDetails.cached_stake_e8s 
+                    ? `${(assetDetails.cached_stake_e8s / 1e8).toFixed(2)} ${snsInfo?.symbol || ''}`
+                    : null;
+                return { 
+                    icon: <FaBrain size={14} style={{ color: theme.colors.success }} />, 
+                    text: stake || `${snsInfo?.name || 'SNS'} Neuron`,
+                    color: theme.colors.success 
+                };
+            }
+            if (assetDetails.type === 'ICRC1Token') {
+                const tokenInfo = getTokenInfo ? getTokenInfo(assetDetails.ledger_id) : null;
+                return { 
+                    icon: <FaCoins size={14} style={{ color: theme.colors.warning }} />, 
+                    text: `${formatAmount(assetDetails.amount, tokenInfo?.decimals || 8)} ${tokenInfo?.symbol || 'TOKEN'}`,
+                    color: theme.colors.warning 
+                };
+            }
+            return { icon: <FaGavel size={14} />, text: 'Offer', color: sneedexPrimary };
+        };
+        
+        const assetDisplay = getAssetDisplay();
+        
+        return (
+            <Link
+                to={`/sneedex_offer/${offer.id}`}
+                style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    padding: '10px 14px',
+                    background: 'transparent',
+                    borderRadius: '10px',
+                    textDecoration: 'none',
+                    transition: 'all 0.15s ease',
+                    borderLeft: `3px solid transparent`,
+                    position: 'relative',
+                }}
+                onMouseEnter={(e) => {
+                    e.currentTarget.style.background = `${sneedexPrimary}08`;
+                    e.currentTarget.style.borderLeftColor = sneedexPrimary;
+                }}
+                onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.borderLeftColor = 'transparent';
+                }}
+            >
+                {/* Compact icon */}
+                <div style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '8px',
+                    background: `${assetDisplay.color}12`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                }}>
+                    {assetDisplay.icon}
+                </div>
+                
+                {/* Content */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                    {/* Title row */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'baseline',
+                        gap: '8px',
+                    }}>
+                        <span style={{
+                            color: sneedexPrimary,
+                            fontSize: '0.8rem',
+                            fontWeight: '700',
+                            fontFamily: 'monospace',
+                        }}>
+                            #{Number(offer.id)}
+                        </span>
+                        <span style={{
+                            color: theme.colors.primaryText,
+                            fontSize: '0.9rem',
+                            fontWeight: '600',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            flex: 1,
+                            minWidth: 0,
+                        }}>
+                            {assetDisplay.text}
+                        </span>
+                        {assetCount > 1 && (
+                            <span style={{
+                                fontSize: '0.7rem',
+                                color: theme.colors.mutedText,
+                                background: theme.colors.tertiaryBg,
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                            }}>
+                                +{assetCount - 1}
+                            </span>
+                        )}
+                    </div>
+                    
+                    {/* Price row */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        marginTop: '2px',
+                    }}>
+                        {/* Price display */}
+                        {isBuyoutOnly ? (
+                            <span style={{
+                                fontSize: '0.8rem',
+                                fontWeight: '600',
+                                color: theme.colors.success,
+                            }}>
+                                {formatAmount(offer.buyout_price[0], tokenInfo.decimals)} {tokenInfo.symbol}
+                            </span>
+                        ) : (
+                            <span style={{
+                                fontSize: '0.8rem',
+                                fontWeight: '500',
+                                color: theme.colors.secondaryText,
+                            }}>
+                                {bidInfo.highest_bid 
+                                    ? `${formatAmount(bidInfo.highest_bid.amount, tokenInfo.decimals)}` 
+                                    : minimumNextBid > 0n 
+                                        ? `from ${formatAmount(minimumNextBid, tokenInfo.decimals)}`
+                                        : '—'
+                                } {tokenInfo.symbol}
+                            </span>
+                        )}
+                        
+                        <span style={{ color: theme.colors.mutedText, fontSize: '0.65rem' }}>•</span>
+                        
+                        {/* Status/time */}
+                        {isInactive ? (
+                            <span style={{
+                                fontSize: '0.75rem',
+                                color: theme.colors.mutedText,
+                            }}>
+                                {getOfferStateString(offer.state)}
+                            </span>
+                        ) : (
+                            <span style={{
+                                fontSize: '0.75rem',
+                                color: isPastExpiration ? theme.colors.warning : theme.colors.mutedText,
+                            }}>
+                                {formatTimeRemaining(offer.expiration?.[0])}
+                            </span>
+                        )}
+                        
+                        {bidInfo.bids?.length > 0 && (
+                            <>
+                                <span style={{ color: theme.colors.mutedText, fontSize: '0.65rem' }}>•</span>
+                                <span style={{
+                                    fontSize: '0.75rem',
+                                    color: theme.colors.success,
+                                    fontWeight: '500',
+                                }}>
+                                    {bidInfo.bids.length} bid{bidInfo.bids.length !== 1 ? 's' : ''}
+                                </span>
+                            </>
+                        )}
+                    </div>
+                </div>
+                
+                {/* Status badge for inactive */}
+                {statusBanner && (
+                    <span style={{
+                        fontSize: '0.65rem',
+                        fontWeight: '700',
+                        color: '#fff',
+                        background: statusBanner.color,
+                        padding: '3px 8px',
+                        borderRadius: '4px',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.3px',
+                    }}>
+                        {statusBanner.text}
+                    </span>
+                )}
+                
+                {/* Arrow indicator */}
+                {!statusBanner && (
+                    <div style={{
+                        color: theme.colors.mutedText,
+                        opacity: 0.4,
+                        fontSize: '0.7rem',
+                    }}>
+                        →
+                    </div>
+                )}
+            </Link>
+        );
+    }
+
     return (
         <Link
             to={`/sneedex_offer/${offer.id}`}
