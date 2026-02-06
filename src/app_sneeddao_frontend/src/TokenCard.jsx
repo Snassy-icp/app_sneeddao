@@ -17,7 +17,7 @@ import { useNaming } from './NamingContext';
 import { VotingPowerCalculator } from './utils/VotingPowerUtils';
 import { getUserPermissionIcons, getStateIcon, getOwnershipPriority, PERM } from './utils/NeuronPermissionUtils.jsx';
 import { Link } from 'react-router-dom';
-import { FaDollarSign, FaLock, FaBrain, FaInfoCircle, FaTint, FaSeedling, FaHourglassHalf, FaGift, FaExpandAlt, FaSync, FaQuestionCircle, FaPlus, FaBan, FaPlay, FaStop, FaWallet, FaExchangeAlt, FaArrowDown, FaArrowUp, FaChevronDown, FaChevronRight, FaExclamationTriangle, FaCog, FaClock, FaCut } from 'react-icons/fa';
+import { FaDollarSign, FaLock, FaBrain, FaInfoCircle, FaTint, FaSeedling, FaHourglassHalf, FaGift, FaExpandAlt, FaSync, FaQuestionCircle, FaPlus, FaBan, FaPlay, FaStop, FaWallet, FaExchangeAlt, FaArrowDown, FaArrowUp, FaChevronDown, FaChevronRight, FaExclamationTriangle, FaCog, FaClock, FaCut, FaPaperPlane } from 'react-icons/fa';
 
 // Constants for GLDT and sGLDT canister IDs
 const GLDT_CANISTER_ID = '6c7su-kiaaa-aaaar-qaira-cai';
@@ -1275,7 +1275,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     onMouseLeave={(e) => e.currentTarget.style.color = theme.colors.mutedText}
                                     title="Send"
                                 >
-                                    <FaArrowUp size={12} />
+                                    <FaPaperPlane size={12} />
                                 </button>
                             )}
                             {/* Expand to dialog button - only show if handler provided */}

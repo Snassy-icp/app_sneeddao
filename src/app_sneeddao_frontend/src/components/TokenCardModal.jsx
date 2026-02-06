@@ -257,7 +257,7 @@ const TokenCardModal = ({
                 </div>
 
                 {/* TokenCard wrapper */}
-                <div style={{ padding: '0 8px 8px 8px' }}>
+                <div style={{ padding: '8px 8px 8px 8px' }}>
                     <TokenCard
                         token={normalizedToken}
                         locks={normalizedLocks}
