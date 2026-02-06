@@ -187,7 +187,8 @@ function DepositTokenModal({ show, onClose, onDeposit, token }) {
               gap: '0.75rem'
             }}>
               <input 
-                type="number" 
+                type="text" 
+                inputMode="decimal"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="0.00"

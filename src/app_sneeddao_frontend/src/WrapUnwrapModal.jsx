@@ -274,7 +274,8 @@ function WrapUnwrapModal({ show, onClose, onWrap, onUnwrap, token, gldtToken }) 
             </label>
             <div style={{ display: 'flex', gap: '10px' }}>
               <input 
-                type="number" 
+                type="text" 
+                inputMode="decimal"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 style={{

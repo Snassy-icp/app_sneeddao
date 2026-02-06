@@ -1236,7 +1236,8 @@ const TipModal = ({
                             minWidth: '0'
                         }}>
                             <input
-                                type="number"
+                                type="text"
+                                inputMode="decimal"
                                 value={amount}
                                 onChange={(e) => {
                                     const value = e.target.value;

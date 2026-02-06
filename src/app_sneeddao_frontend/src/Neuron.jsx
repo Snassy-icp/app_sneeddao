@@ -2612,10 +2612,11 @@ function Neuron() {
                             )}
 
                             <input
-                                type="number" value={dissolveDelayInput}
+                                type="text"
+                                inputMode="numeric"
+                                value={dissolveDelayInput}
                                 onChange={(e) => setDissolveDelayInput(e.target.value)}
                                 placeholder={`Days (e.g., ${isIncreasing ? Math.min(180, maxAdditionalDays) : Math.min(180, maxDelayDays)})`}
-                                min="0" max={maxAdditionalDays > 0 ? maxAdditionalDays : undefined}
                                 disabled={actionBusy}
                                 style={{
                                     width: '100%', padding: '0.75rem', borderRadius: '10px',

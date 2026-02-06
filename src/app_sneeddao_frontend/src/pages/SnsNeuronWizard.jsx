@@ -1236,7 +1236,8 @@ export default function SnsNeuronWizard() {
                     <label style={styles.label}>Stake Amount ({tokenSymbol}):</label>
                     <div style={styles.inputRow}>
                         <input
-                            type="number"
+                            type="text"
+                            inputMode="decimal"
                             placeholder={minStakeE8s !== null ? `Min: ${formatAmount(minStakeE8s, tokenDecimals)}` : 'Enter amount'}
                             value={stakeAmount}
                             onChange={(e) => setStakeAmount(e.target.value)}
@@ -1276,12 +1277,12 @@ export default function SnsNeuronWizard() {
                     <label style={styles.label}>Dissolve Delay (days):</label>
                     <div style={styles.inputRow}>
               <input
-                            type="number"
+                            type="text"
+                            inputMode="numeric"
                             placeholder={minDelayDays !== null ? `Min: ${minDelayDays} days` : 'Enter days'}
                             value={dissolveDelayDays}
                             onChange={(e) => setDissolveDelayDays(e.target.value)}
                             style={styles.input}
-                            min="0"
                         />
                         {minDelayDays !== null && (
                   <button

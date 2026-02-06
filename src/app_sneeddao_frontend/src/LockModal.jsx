@@ -636,7 +636,8 @@ function LockModal({ show, onClose, token, locks, onAddLock, identity, isPremium
                         gap: '10px'
                     }}>
                         <input 
-                            type="number"
+                            type="text"
+                            inputMode="decimal"
                             placeholder="Amount"
                             value={newLockAmount}
                             onChange={(e) => setNewLockAmount(e.target.value)}

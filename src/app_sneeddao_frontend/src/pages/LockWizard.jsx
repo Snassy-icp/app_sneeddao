@@ -1553,7 +1553,8 @@ function LockWizard() {
                             <label style={styles.label}>Amount to Lock:</label>
                             <div style={styles.inputRow}>
                                 <input
-                                    type="number"
+                                    type="text"
+                                    inputMode="decimal"
                                     placeholder="Enter amount"
                                     value={lockAmount}
                                     onChange={(e) => setLockAmount(e.target.value)}

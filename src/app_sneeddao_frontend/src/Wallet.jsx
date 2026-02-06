@@ -6950,12 +6950,11 @@ function Wallet() {
                                                             <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch', flexWrap: 'wrap' }}>
                                                                 <div style={{ flex: '1', minWidth: '150px' }}>
                                                                     <input
-                                                                        type="number"
+                                                                        type="text"
+                                                                        inputMode="decimal"
                                                                         placeholder="ICP amount"
                                                                         value={topUpAmount}
                                                                         onChange={(e) => setTopUpAmount(e.target.value)}
-                                                                        step="0.0001"
-                                                                        min="0"
                                                                         style={{
                                                                             width: '100%',
                                                                             padding: '10px 12px',
@@ -8201,13 +8200,12 @@ function Wallet() {
                                                             <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch', flexWrap: 'wrap' }}>
                                                                 <div style={{ flex: '1', minWidth: '150px' }}>
                                                                     <input
-                                                                        type="number"
+                                                                        type="text"
+                                                                        inputMode="decimal"
                                                                         placeholder="ICP amount"
                                                                         value={canisterTopUpAmount}
                                                                         onChange={(e) => setCanisterTopUpAmount(e.target.value)}
                                                                         onClick={(e) => e.stopPropagation()}
-                                                                        step="0.0001"
-                                                                        min="0"
                                                                         style={{
                                                                             width: '100%',
                                                                             padding: '10px 12px',

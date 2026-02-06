@@ -1185,7 +1185,8 @@ function SendTokenModal({ show, onClose, onSend, token }) {
             gap: '10px'
           }}>
             <input
-              type="number"
+              type="text"
+              inputMode="decimal"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               style={{

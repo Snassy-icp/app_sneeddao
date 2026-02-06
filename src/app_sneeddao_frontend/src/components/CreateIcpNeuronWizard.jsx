@@ -882,9 +882,8 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
                     </label>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <input
-                            type="number"
-                            min="0"
-                            step="0.1"
+                            type="text"
+                            inputMode="decimal"
                             placeholder="0"
                             value={extraGasIcp}
                             onChange={(e) => setExtraGasIcp(e.target.value)}
@@ -969,9 +968,8 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
                             <label style={styles.label}>Amount to Stake (min 1 ICP)</label>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                 <input
-                                    type="number"
-                                    min="1"
-                                    step="0.1"
+                                    type="text"
+                                    inputMode="decimal"
                                     placeholder="1"
                                     value={stakeAmount}
                                     onChange={(e) => setStakeAmount(e.target.value)}
@@ -985,9 +983,8 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
                             <label style={styles.label}>Dissolve Delay (days)</label>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                 <input
-                                    type="number"
-                                    min="0"
-                                    max="2922"
+                                    type="text"
+                                    inputMode="numeric"
                                     placeholder="365"
                                     value={dissolveDelayDays}
                                     onChange={(e) => setDissolveDelayDays(e.target.value)}
