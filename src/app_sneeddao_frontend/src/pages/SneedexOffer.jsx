@@ -1186,7 +1186,12 @@ function SneedexOffer() {
                 // Default: 1 smallest unit
                 minIncrement = BigInt(1);
             }
-            return BigInt(highestBid.amount) + minIncrement;
+            const nextBid = BigInt(highestBid.amount) + minIncrement;
+            // Cap at buyout if set
+            if (offer.buyout_price?.[0] && nextBid > BigInt(offer.buyout_price[0])) {
+                return BigInt(offer.buyout_price[0]);
+            }
+            return nextBid;
         }
         if (offer.min_bid_price[0]) {
             return BigInt(offer.min_bid_price[0]);
