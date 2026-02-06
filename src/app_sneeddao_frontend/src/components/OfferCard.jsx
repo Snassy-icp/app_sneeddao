@@ -57,9 +57,36 @@ function OfferCard({
     const tokenInfo = getTokenInfo ? getTokenInfo(offer.price_token_ledger?.toString()) : { symbol: 'TOKEN', decimals: 8, fee: null };
     const paymentTokenPrice = tokenPrices[offer.price_token_ledger?.toString()];
     
+    // Calculate minimum next bid (what a bidder actually needs to pay)
+    const getMinimumNextBid = () => {
+        if (bidInfo.highest_bid) {
+            // Calculate minimum increment
+            let minIncrement = BigInt(1); // Default: 1 smallest unit
+            if (offer.min_bid_increment_fee_multiple?.[0] && tokenInfo.fee) {
+                minIncrement = BigInt(offer.min_bid_increment_fee_multiple[0]) * BigInt(tokenInfo.fee);
+            }
+            const nextBid = BigInt(bidInfo.highest_bid.amount) + minIncrement;
+            // Cap at buyout if set
+            if (offer.buyout_price?.[0] && nextBid > BigInt(offer.buyout_price[0])) {
+                return BigInt(offer.buyout_price[0]);
+            }
+            return nextBid;
+        }
+        // No bids yet - use min_bid_price or fallback to buyout
+        if (offer.min_bid_price?.[0]) {
+            return BigInt(offer.min_bid_price[0]);
+        }
+        if (offer.buyout_price?.[0]) {
+            return BigInt(offer.buyout_price[0]);
+        }
+        return BigInt(0);
+    };
+    
+    const minimumNextBid = getMinimumNextBid();
+    
     // Calculate prices in USD
-    const minBidUsd = offer.min_bid_price?.[0] && paymentTokenPrice
-        ? calculateUsdValue(offer.min_bid_price[0], tokenInfo.decimals, paymentTokenPrice)
+    const minBidUsd = minimumNextBid > 0n && paymentTokenPrice
+        ? calculateUsdValue(minimumNextBid, tokenInfo.decimals, paymentTokenPrice)
         : null;
     const buyoutUsd = offer.buyout_price?.[0] && paymentTokenPrice
         ? calculateUsdValue(offer.buyout_price[0], tokenInfo.decimals, paymentTokenPrice)
@@ -490,9 +517,9 @@ function OfferCard({
                         <div style={{
                             ...styles.priceLabel,
                             color: sneedexPrimary,
-                        }}>Min Bid</div>
+                        }}>{bidInfo.highest_bid ? 'Min Next Bid' : 'Min Bid'}</div>
                         <div style={styles.priceValue}>
-                            {offer.min_bid_price?.[0] ? formatAmount(offer.min_bid_price[0], tokenInfo.decimals) : '—'}
+                            {minimumNextBid > 0n ? formatAmount(minimumNextBid, tokenInfo.decimals) : '—'}
                         </div>
                         <div style={styles.priceToken}>{tokenInfo.symbol}</div>
                         {minBidUsd > 0 && (

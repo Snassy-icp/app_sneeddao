@@ -990,6 +990,20 @@ function SneedexOffer() {
         fetchOffer();
     }, [fetchOffer]);
     
+    // Pre-fill bid amount with minimum bid when offer loads
+    useEffect(() => {
+        if (!offer) return;
+        
+        // Only pre-fill if bidAmount is empty (don't override user input)
+        if (bidAmount !== '') return;
+        
+        const minBidE8s = getMinimumBidE8s();
+        if (minBidE8s > 0n) {
+            const formatted = formatAmount(minBidE8s, tokenInfo.decimals);
+            setBidAmount(formatted);
+        }
+    }, [offer, highestBid, tokenInfo.decimals]); // Re-run when offer, highestBid, or token info changes
+    
     // Fetch token prices for USD display
     useEffect(() => {
         const fetchPrices = async () => {
@@ -4862,8 +4876,9 @@ function SneedexOffer() {
                             {(() => {
                                 const paymentLedger = offer.price_token_ledger.toString();
                                 const paymentPrice = tokenPrices[paymentLedger];
-                                const minBidUsd = offer.min_bid_price[0] && paymentPrice 
-                                    ? calculateUsdValue(offer.min_bid_price[0], tokenInfo.decimals, paymentPrice) : null;
+                                const minimumBidE8s = getMinimumBidE8s();
+                                const minBidUsd = minimumBidE8s > 0n && paymentPrice 
+                                    ? calculateUsdValue(minimumBidE8s, tokenInfo.decimals, paymentPrice) : null;
                                 const buyoutUsd = offer.buyout_price[0] && paymentPrice 
                                     ? calculateUsdValue(offer.buyout_price[0], tokenInfo.decimals, paymentPrice) : null;
                                 const highestBidUsd = highestBid?.amount && paymentPrice 
@@ -4872,9 +4887,9 @@ function SneedexOffer() {
                                 return (
                                     <>
                                         <div style={styles.priceRow}>
-                                            <span style={styles.priceLabel}>Minimum Bid</span>
+                                            <span style={styles.priceLabel}>{highestBid ? 'Min Next Bid' : 'Minimum Bid'}</span>
                                             <span style={styles.priceValue}>
-                                                {offer.min_bid_price[0] ? `${formatAmount(offer.min_bid_price[0], tokenInfo.decimals)} ${tokenInfo.symbol}` : '—'}
+                                                {minimumBidE8s > 0n ? `${formatAmount(minimumBidE8s, tokenInfo.decimals)} ${tokenInfo.symbol}` : '—'}
                                                 {minBidUsd > 0 && (
                                                     <span style={{ color: theme.colors.mutedText, marginLeft: '8px', fontSize: '0.85rem' }}>
                                                         ({formatUsd(minBidUsd)})

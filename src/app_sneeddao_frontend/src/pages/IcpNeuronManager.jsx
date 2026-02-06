@@ -2476,7 +2476,7 @@ function IcpNeuronManager() {
                                 justifyContent: 'center',
                                 fontSize: '14px'
                             }}>🏷️</span>
-                            Name This Manager
+                            Name This Staking Bot
                         </h3>
                         
                         {namingError && (
@@ -2516,7 +2516,7 @@ function IcpNeuronManager() {
                                         type="text"
                                         value={nicknameInput}
                                         onChange={(e) => setNicknameInput(e.target.value)}
-                                        placeholder={displayInfo?.nickname || 'e.g., My Staking Manager'}
+                                        placeholder={displayInfo?.nickname || 'e.g., My Staking Bot'}
                                         style={{
                                             flex: 1,
                                             padding: '10px 12px',
@@ -2571,7 +2571,7 @@ function IcpNeuronManager() {
                                         type="text"
                                         value={publicNameInput}
                                         onChange={(e) => setPublicNameInput(e.target.value)}
-                                        placeholder={displayInfo?.name || 'e.g., Alice\'s NNS Manager'}
+                                        placeholder={displayInfo?.name || 'e.g., Alice\'s Staking Bot'}
                                         style={{
                                             flex: 1,
                                             padding: '10px 12px',
