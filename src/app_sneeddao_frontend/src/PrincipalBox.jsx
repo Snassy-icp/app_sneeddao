@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaCopy, FaCheck, FaWallet, FaPaperPlane, FaKey, FaIdCard, FaExternalLinkAlt, FaSync, FaCoins, FaWater, FaLock, FaBug, FaTimes, FaBrain, FaBox, FaCrown, FaMicrochip } from 'react-icons/fa';
+import { FaCopy, FaCheck, FaWallet, FaPaperPlane, FaKey, FaIdCard, FaExternalLinkAlt, FaSync, FaCoins, FaWater, FaLock, FaBug, FaTimes, FaBrain, FaBox, FaCrown, FaMicrochip, FaChevronDown } from 'react-icons/fa';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { Principal } from '@dfinity/principal';
 import { principalToSubAccount } from '@dfinity/utils';
@@ -56,6 +56,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const [showPopup, setShowPopup] = useState(false);
     const [copyFeedback, setCopyFeedback] = useState('');
     const [copied, setCopied] = useState(false);
+    const [showAccountId, setShowAccountId] = useState(false);
     const [showSendModal, setShowSendModal] = useState(false);
     const [selectedToken, setSelectedToken] = useState(null);
     const [showTokenDetailModal, setShowTokenDetailModal] = useState(false);
@@ -1267,85 +1268,109 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                           </div>
                       </div>
                       
-                      {/* Account ID Card */}
+                      {/* Account ID - Collapsible */}
                       {accountId && (
-                          <div 
-                              onClick={() => handleCopy(accountId, 'accountId')}
-                              style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '12px',
-                                  padding: '12px',
-                                  background: theme.colors.primaryBg,
-                                  borderRadius: '10px',
-                                  cursor: 'pointer',
-                                  marginBottom: '12px',
-                                  transition: 'all 0.2s ease',
-                                  border: `1px solid ${copied && copiedType === 'accountId' ? '#10b981' : 'transparent'}`
-                              }}
-                              onMouseOver={(e) => {
-                                  if (!(copied && copiedType === 'accountId')) {
-                                      e.currentTarget.style.borderColor = theme.colors.border;
-                                  }
-                              }}
-                              onMouseOut={(e) => {
-                                  if (!(copied && copiedType === 'accountId')) {
-                                      e.currentTarget.style.borderColor = 'transparent';
-                                  }
-                              }}
-                          >
-                              <div style={{
-                                  width: '36px',
-                                  height: '36px',
-                                  borderRadius: '8px',
-                                  background: 'linear-gradient(135deg, #3b82f630, #1d4ed820)',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  flexShrink: 0
-                              }}>
-                                  <FaIdCard size={14} color="#3b82f6" />
-                              </div>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ 
-                                      color: theme.colors.mutedText, 
-                                      fontSize: '10px', 
-                                      textTransform: 'uppercase',
-                                      letterSpacing: '0.5px',
-                                      marginBottom: '2px',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '6px'
-                                  }}>
-                                      Account ID
-                                      <span style={{
-                                          background: '#3b82f620',
-                                          color: '#3b82f6',
-                                          fontSize: '8px',
-                                          padding: '2px 5px',
-                                          borderRadius: '4px',
-                                          fontWeight: '600',
-                                          textTransform: 'none'
+                          <>
+                              {!showAccountId ? (
+                                  <button
+                                      onClick={() => setShowAccountId(true)}
+                                      style={{
+                                          background: 'none',
+                                          border: 'none',
+                                          color: theme.colors.mutedText,
+                                          fontSize: '11px',
+                                          cursor: 'pointer',
+                                          padding: '4px 0',
+                                          marginBottom: '8px',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '4px'
+                                      }}
+                                  >
+                                      <FaIdCard size={10} />
+                                      Show Account ID (for CEX)
+                                      <FaChevronDown size={8} />
+                                  </button>
+                              ) : (
+                                  <div 
+                                      onClick={() => handleCopy(accountId, 'accountId')}
+                                      style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '12px',
+                                          padding: '12px',
+                                          background: theme.colors.primaryBg,
+                                          borderRadius: '10px',
+                                          cursor: 'pointer',
+                                          marginBottom: '8px',
+                                          transition: 'all 0.2s ease',
+                                          border: `1px solid ${copied && copiedType === 'accountId' ? '#10b981' : 'transparent'}`
+                                      }}
+                                      onMouseOver={(e) => {
+                                          if (!(copied && copiedType === 'accountId')) {
+                                              e.currentTarget.style.borderColor = theme.colors.border;
+                                          }
+                                      }}
+                                      onMouseOut={(e) => {
+                                          if (!(copied && copiedType === 'accountId')) {
+                                              e.currentTarget.style.borderColor = 'transparent';
+                                          }
+                                      }}
+                                  >
+                                      <div style={{
+                                          width: '36px',
+                                          height: '36px',
+                                          borderRadius: '8px',
+                                          background: 'linear-gradient(135deg, #3b82f630, #1d4ed820)',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          flexShrink: 0
                                       }}>
-                                          CEX
-                                      </span>
+                                          <FaIdCard size={14} color="#3b82f6" />
+                                      </div>
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                          <div style={{ 
+                                              color: theme.colors.mutedText, 
+                                              fontSize: '10px', 
+                                              textTransform: 'uppercase',
+                                              letterSpacing: '0.5px',
+                                              marginBottom: '2px',
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: '6px'
+                                          }}>
+                                              Account ID
+                                              <span style={{
+                                                  background: '#3b82f620',
+                                                  color: '#3b82f6',
+                                                  fontSize: '8px',
+                                                  padding: '2px 5px',
+                                                  borderRadius: '4px',
+                                                  fontWeight: '600',
+                                                  textTransform: 'none'
+                                              }}>
+                                                  CEX
+                                              </span>
+                                          </div>
+                                          <div style={{
+                                              color: theme.colors.primaryText,
+                                              fontSize: '11px',
+                                              fontFamily: 'monospace',
+                                              fontWeight: '500'
+                                          }}>
+                                              {truncateString(accountId, 22, "...", 8, 8)}
+                                          </div>
+                                      </div>
+                                      <div style={{
+                                          color: copied && copiedType === 'accountId' ? '#10b981' : theme.colors.mutedText,
+                                          transition: 'color 0.2s ease'
+                                      }}>
+                                          {copied && copiedType === 'accountId' ? <FaCheck size={14} /> : <FaCopy size={14} />}
+                                      </div>
                                   </div>
-                                  <div style={{
-                                      color: theme.colors.primaryText,
-                                      fontSize: '11px',
-                                      fontFamily: 'monospace',
-                                      fontWeight: '500'
-                                  }}>
-                                      {truncateString(accountId, 22, "...", 8, 8)}
-                                  </div>
-                              </div>
-                              <div style={{
-                                  color: copied && copiedType === 'accountId' ? '#10b981' : theme.colors.mutedText,
-                                  transition: 'color 0.2s ease'
-                              }}>
-                                  {copied && copiedType === 'accountId' ? <FaCheck size={14} /> : <FaCopy size={14} />}
-                              </div>
-                          </div>
+                              )}
+                          </>
                       )}
                       
                       {/* Copy feedback toast */}
