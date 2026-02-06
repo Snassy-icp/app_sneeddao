@@ -10,7 +10,7 @@ import { createActor as createForumActor, canisterId as forumCanisterId } from '
 import { createSneedexActor } from '../utils/SneedexUtils';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
-import { getSnsById, getAllSnses, fetchAndCacheSnsData } from '../utils/SnsUtils';
+import { getSnsById, getAllSnses, fetchAndCacheSnsData, fetchSnsLogo } from '../utils/SnsUtils';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
 import useNeuronsCache from '../hooks/useNeuronsCache';
 import { getLogoSync } from '../hooks/useLogoCache';
@@ -396,6 +396,7 @@ function Hub() {
     const [offers, setOffers] = useState([]);
     const [activityLoading, setActivityLoading] = useState(true);
     const [snsLogos, setSnsLogos] = useState({});
+    const [loadingLogos, setLoadingLogos] = useState(new Set()); // Track which logos are currently loading
     const [tokenPrices, setTokenPrices] = useState({}); // ledger_id -> USD price
     const [feedExpanded, setFeedExpanded] = useState(false);
     const [offersExpanded, setOffersExpanded] = useState(false);
@@ -542,6 +543,63 @@ function Hub() {
         const sns = snsList.find(s => s.canisters?.governance === governanceId);
         return sns?.logo || null;
     }, [snsLogosMap, snsList]);
+    
+    // Function to load a single SNS logo asynchronously
+    const loadSnsLogo = useCallback(async (governanceId) => {
+        // Skip if already loaded or currently loading
+        if (snsLogos[governanceId] || loadingLogos.has(governanceId)) return;
+        
+        setLoadingLogos(prev => new Set([...prev, governanceId]));
+        
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({
+                host,
+                ...(identity && { identity })
+            });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+
+            const logo = await fetchSnsLogo(governanceId, agent);
+            if (logo) {
+                setSnsLogos(prev => ({ ...prev, [governanceId]: logo }));
+            }
+        } catch (error) {
+            console.error(`Hub: Error loading logo for SNS ${governanceId}:`, error);
+        } finally {
+            setLoadingLogos(prev => {
+                const next = new Set(prev);
+                next.delete(governanceId);
+                return next;
+            });
+        }
+    }, [identity, snsLogos, loadingLogos]);
+    
+    // Trigger logo loading for feed items when they load
+    useEffect(() => {
+        if (feedItems.length === 0 || snsList.length === 0) return;
+        
+        // Get unique governance IDs from feed items
+        const uniqueGovernanceIds = [...new Set(feedItems
+            .map(item => {
+                const snsRootId = item.sns_root_canister_id?.[0]?.toString();
+                if (!snsRootId) return null;
+                const snsInfo = getSnsById(snsRootId);
+                return snsInfo?.canisters?.governance;
+            })
+            .filter(Boolean))];
+        
+        // Fetch logos for each governance ID that's not already loaded
+        uniqueGovernanceIds.forEach(governanceId => {
+            // Check both snsLogos and getLogoSync cache
+            if (!snsLogos[governanceId] && !getLogoSync(governanceId) && !loadingLogos.has(governanceId)) {
+                loadSnsLogo(governanceId);
+            }
+        });
+    }, [feedItems, snsList, snsLogos, loadingLogos, loadSnsLogo]);
     
     // Fetch SNS list on mount - must complete before neurons can load
     useEffect(() => {
@@ -1879,6 +1937,7 @@ function Hub() {
                                             compact={false}
                                             getSnsInfo={getSnsById}
                                             snsLogos={snsLogos}
+                                            loadingLogos={loadingLogos}
                                             Principal={Principal}
                                             allSnses={snsList}
                                         />

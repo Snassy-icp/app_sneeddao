@@ -832,7 +832,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
             
             let cycles = null;
             let memory = null;
-            let isController = false;
+            let isController = null; // null means "unknown/unchanged"
             let moduleHash = null;
             
             try {
@@ -849,10 +849,12 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                 cycles = Number(status.cycles);
                 memory = Number(status.memory_size);
                 moduleHash = status.module_hash[0] ? uint8ArrayToHex(status.module_hash[0]) : null;
-                isController = true;
+                isController = true; // Success means we are a controller
             } catch (err) {
-                // Not a controller - try backend fallback for module_hash
-                console.log('[QuickWallet] canister_status failed (may not be controller):', canisterId);
+                // canister_status failed - could be network error or not a controller
+                // Don't assume not a controller - preserve previous value
+                console.log('[QuickWallet] canister_status failed:', canisterId, err.message || err);
+                // Try backend fallback for module_hash
                 try {
                     const result = await getCanisterInfo(identity, canisterId);
                     if (result && 'ok' in result) {
@@ -863,20 +865,25 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                 }
             }
             
-            // Update local status
+            // Update local status - preserve previous isController if we couldn't determine it
             setTrackedCanisterStatus(prev => ({
                 ...prev,
-                [canisterId]: { cycles, memory, isController, moduleHash }
+                [canisterId]: { 
+                    cycles: cycles ?? prev?.[canisterId]?.cycles, 
+                    memory: memory ?? prev?.[canisterId]?.memory, 
+                    isController: isController ?? prev?.[canisterId]?.isController, 
+                    moduleHash: moduleHash ?? prev?.[canisterId]?.moduleHash 
+                }
             }));
             
-            // Update modal with new data - always update even if values are null
+            // Update modal with new data - preserve previous values if new ones are null
             setDetailDapp(prev => {
                 if (!prev) return null;
                 return {
                     ...prev,
-                    cycles,
-                    memory,
-                    isController,
+                    cycles: cycles ?? prev.cycles,
+                    memory: memory ?? prev.memory,
+                    isController: isController ?? prev.isController,
                 };
             });
             
@@ -2466,7 +2473,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                               neuronCount: neurons.length,
                                               cycles: null, // Will be fetched on modal open via auto-refresh
                                               memory: null,
-                                              isController: neuronManagerIsController[canisterIdStr] ?? false,
+                                              isController: neuronManagerIsController[canisterIdStr] ?? true, // Default to true like Wallet.jsx
                                           })}
                                           style={{
                                               display: 'flex',
