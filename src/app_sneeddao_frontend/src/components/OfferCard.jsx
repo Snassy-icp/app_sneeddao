@@ -492,22 +492,16 @@ function OfferCard({
             if (assetDetails.type === 'SNSNeuron') {
                 const snsInfo = getSnsInfo ? getSnsInfo(assetDetails.governance_id) : null;
                 const snsLogo = getSnsLogo ? getSnsLogo(assetDetails.governance_id) : null;
-                // Fallback: get logo from token info if getSnsLogo doesn't return one
-                const snsTokenInfo = snsInfo?.canisters?.ledger && getTokenInfo 
-                    ? getTokenInfo(snsInfo.canisters.ledger) 
-                    : null;
-                const neuronLogo = snsLogo || snsTokenInfo?.logo;
-                const tokenSymbol = snsInfo?.symbol || snsTokenInfo?.symbol || '';
                 const stake = assetDetails.cached_stake_e8s 
-                    ? `${(assetDetails.cached_stake_e8s / 1e8).toFixed(2)} ${tokenSymbol}`
+                    ? `${(assetDetails.cached_stake_e8s / 1e8).toFixed(2)} ${snsInfo?.symbol || 'Neuron'}`
                     : null;
                 return { 
                     icon: (
                         <span style={{ position: 'relative', display: 'inline-flex' }}>
                             <FaBrain size={16} style={{ color: theme.colors.success }} />
-                            {neuronLogo && (
+                            {snsLogo && (
                                 <img 
-                                    src={neuronLogo} 
+                                    src={snsLogo} 
                                     alt={snsInfo?.name || 'SNS'} 
                                     style={{ 
                                         width: 10, 
@@ -617,20 +611,13 @@ function OfferCard({
                 );
             }
             if (details.type === 'SNSNeuron') {
-                // Get the SNS ledger to find the logo from token info as fallback
-                const snsTokenInfo = snsInfo?.canisters?.ledger && getTokenInfo 
-                    ? getTokenInfo(snsInfo.canisters.ledger) 
-                    : null;
-                const neuronLogo = snsLogo || snsTokenInfo?.logo;
-                const tokenSymbol = snsInfo?.symbol || snsTokenInfo?.symbol || '';
-                
                 return (
                     <span key={idx} style={pillStyle}>
                         <span style={{ position: 'relative', display: 'inline-flex', marginRight: '2px' }}>
                             <FaBrain style={{ color: theme.colors.success, fontSize: '12px' }} />
-                            {neuronLogo && (
+                            {snsLogo && (
                                 <img 
-                                    src={neuronLogo} 
+                                    src={snsLogo} 
                                     alt={snsInfo?.name || 'SNS'} 
                                     style={{ 
                                         width: 8, 
@@ -646,8 +633,8 @@ function OfferCard({
                             )}
                         </span>
                         {details.cached_stake_e8s !== null
-                            ? `${(details.cached_stake_e8s / 1e8).toFixed(2)} ${tokenSymbol}`
-                            : tokenSymbol || 'Neuron'
+                            ? `${(details.cached_stake_e8s / 1e8).toFixed(2)} ${snsInfo?.symbol || 'Neuron'}`
+                            : snsInfo?.symbol || 'Neuron'
                         }
                     </span>
                 );

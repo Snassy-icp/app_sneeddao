@@ -7,7 +7,7 @@ import { FaExchangeAlt, FaCoins, FaLock, FaComments, FaWallet, FaServer, FaNewsp
 import { HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
-import { createSneedexActor } from '../utils/SneedexUtils';
+import { createSneedexActor, getAssetDetails } from '../utils/SneedexUtils';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { getSnsById, getAllSnses, fetchAndCacheSnsData, fetchSnsLogo } from '../utils/SnsUtils';
@@ -383,7 +383,6 @@ function Hub() {
     
     // SNS data for other features (not needed for Sneed neuron count)
     const [snsList, setSnsList] = useState([]);
-    const [snsLogosMap, setSnsLogosMap] = useState(new Map());
     
     // Dynamic data state
     const [prices, setPrices] = useState({
@@ -534,14 +533,17 @@ function Hub() {
     
     // Helper to get SNS logo by governance ID
     const getSnsLogo = useCallback((governanceId) => {
-        // First check the logos map
-        const mapLogo = snsLogosMap.get(governanceId);
-        if (mapLogo) return mapLogo;
+        // First check the async-loaded logos object
+        if (snsLogos[governanceId]) return snsLogos[governanceId];
+        
+        // Check the sync cache
+        const cachedLogo = getLogoSync(governanceId);
+        if (cachedLogo) return cachedLogo;
         
         // Fallback to logo from SNS list
         const sns = snsList.find(s => s.canisters?.governance === governanceId);
         return sns?.logo || null;
-    }, [snsLogosMap, snsList]);
+    }, [snsLogos, snsList]);
     
     // Function to load a single SNS logo asynchronously
     const loadSnsLogo = useCallback(async (governanceId) => {
@@ -599,6 +601,31 @@ function Hub() {
             }
         });
     }, [feedItems, snsList, snsLogos, loadingLogos, loadSnsLogo]);
+    
+    // Trigger logo loading for offers with SNS neuron assets
+    useEffect(() => {
+        if (offers.length === 0) return;
+        
+        // Get unique governance IDs from SNS neurons in offers
+        const uniqueGovernanceIds = [];
+        offers.forEach(offer => {
+            (offer.assets || []).forEach(assetEntry => {
+                const details = getAssetDetails(assetEntry);
+                if (details.type === 'SNSNeuron' && details.governance_id) {
+                    if (!uniqueGovernanceIds.includes(details.governance_id)) {
+                        uniqueGovernanceIds.push(details.governance_id);
+                    }
+                }
+            });
+        });
+        
+        // Fetch logos for each governance ID that's not already loaded
+        uniqueGovernanceIds.forEach(governanceId => {
+            if (!snsLogos[governanceId] && !getLogoSync(governanceId) && !loadingLogos.has(governanceId)) {
+                loadSnsLogo(governanceId);
+            }
+        });
+    }, [offers, snsLogos, loadingLogos, loadSnsLogo]);
     
     // Fetch SNS list on mount - must complete before neurons can load
     useEffect(() => {
