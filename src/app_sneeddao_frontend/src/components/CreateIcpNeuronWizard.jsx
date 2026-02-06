@@ -250,7 +250,7 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
             updateLastProgress('complete');
             
             // Step 2: Create neuron manager
-            addProgress('Creating your neuron manager canister...', 'active');
+            addProgress('Creating your ICP staking bot canister...', 'active');
             
             const createResult = await factory.createNeuronManager();
             
@@ -367,17 +367,17 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
                     console.error('Staking error:', stakeErr);
                     updateLastProgress('error');
                     addProgress(`⚠️ Staking failed: ${stakeErr.message}`, 'warning');
-                    addProgress('You can stake ICP later from your neuron manager.', 'info');
+                    addProgress('You can stake ICP later from your ICP staking bot.', 'info');
                 }
             }
             
             // Done!
-            addProgress('✅ Neuron manager created successfully!', 'complete');
+            addProgress('✅ ICP staking bot created successfully!', 'complete');
             setCreationComplete(true);
             
         } catch (err) {
             console.error('Creation error:', err);
-            setCreationError(err.message || 'Failed to create neuron manager');
+            setCreationError(err.message || 'Failed to create ICP staking bot');
             updateLastProgress('error');
         } finally {
             setIsCreating(false);
@@ -659,7 +659,7 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
                     Fund Your Wallet
                 </h2>
                 <p style={styles.subtitle}>
-                    Make sure you have enough ICP to create your neuron manager
+                    Make sure you have enough ICP to create your ICP staking bot
                 </p>
             </div>
 
@@ -1043,7 +1043,7 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
                             Stake Later
                         </div>
                         <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>
-                            Create only the neuron manager. You can stake ICP anytime later.
+                            Create only the ICP staking bot. You can stake ICP anytime later.
                         </div>
                     </div>
                     {stakingChoice === 'later' && <FaCheck style={{ color: theme.colors.accent }} />}
@@ -1087,7 +1087,7 @@ function CreateIcpNeuronWizard({ onComplete, onCancel }) {
                     Confirm & Create
                 </h2>
                 <p style={styles.subtitle}>
-                    Review your configuration and create your neuron manager
+                    Review your configuration and create your ICP staking bot
                 </p>
             </div>
 

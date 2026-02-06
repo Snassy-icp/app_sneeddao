@@ -977,7 +977,7 @@ function SneedexCreate() {
             });
             
         } catch (e) {
-            console.error('Failed to fetch neuron manager info:', e);
+            console.error('Failed to fetch ICP staking bot info:', e);
             setNeuronManagerInfo(null);
         } finally {
             setLoadingNeuronManagerInfo(false);
@@ -3367,7 +3367,7 @@ function SneedexCreate() {
                                                 borderRadius: '8px',
                                                 fontSize: '0.9rem'
                                             }}>
-                                                {newAssetType === 'neuron_manager' ? 'Loading your neuron managers...' : 'Loading your apps...'}
+                                                {newAssetType === 'neuron_manager' ? 'Loading your ICP Staking Bots...' : 'Loading your apps...'}
                                             </div>
                                         ) : newAssetType === 'neuron_manager' ? (
                                             // Neuron Manager selection - only show neuron managers
@@ -3389,7 +3389,7 @@ function SneedexCreate() {
                                                             }
                                                         }}
                                                     >
-                                                        <option value="">Select a neuron manager...</option>
+                                                        <option value="">Select an ICP Staking Bot...</option>
                                                         {neuronManagers.map(canisterId => (
                                                             <option key={canisterId} value={canisterId}>
                                                                 {getCanisterName(canisterId)}
@@ -3702,7 +3702,7 @@ function SneedexCreate() {
                                             </label>
                                             <textarea
                                                 placeholder={newAssetType === 'neuron_manager' 
-                                                    ? "Describe your neuron manager, specific notes, and why it's valuable..."
+                                                    ? "Describe your ICP Staking Bot, specific notes, and why it's valuable..."
                                                     : "Describe what this app does, its features, why it's valuable..."
                                                 }
                                                 maxLength={MAX_CANISTER_DESCRIPTION_LENGTH}

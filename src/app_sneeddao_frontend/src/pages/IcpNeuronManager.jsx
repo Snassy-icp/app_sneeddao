@@ -3766,9 +3766,9 @@ function IcpNeuronManager() {
                                     View Only Mode
                                 </h3>
                                 <p style={{ color: theme.colors.secondaryText, margin: 0, fontSize: '0.9rem', lineHeight: '1.6' }}>
-                                    You are not a controller of this neuron manager canister.
+                                    You are not a controller of this ICP staking bot canister.
                                     <br />
-                                    Only controllers can view neurons, manage stakes, and withdraw tokens.
+                                    Only controllers can view ICP neurons, manage stakes, and withdraw tokens.
                                 </p>
                             </div>
                         )}

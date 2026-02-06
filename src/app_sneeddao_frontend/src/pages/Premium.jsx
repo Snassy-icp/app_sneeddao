@@ -262,7 +262,7 @@ export default function Premium() {
                             };
                         }
                     } catch (err) {
-                        console.warn('Failed to fetch neuron manager factory fees:', err);
+                        console.warn('Failed to fetch ICP staking bot factory fees:', err);
                     }
                 }
                 

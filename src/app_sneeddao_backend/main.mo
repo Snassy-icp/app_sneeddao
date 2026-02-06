@@ -204,7 +204,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   stable var stable_premium_max_total_grouped_canisters : Nat = 500;
 
   // Runtime hashmaps for neuron names and nicknames
-  var neuron_names = HashMap.HashMap<NeuronNameKey, (Text, Bool)>(100, func(k1: NeuronNameKey, k2: NeuronNameKey) : Bool {
+  transient var neuron_names = HashMap.HashMap<NeuronNameKey, (Text, Bool)>(100, func(k1: NeuronNameKey, k2: NeuronNameKey) : Bool {
     Principal.equal(k1.sns_root_canister_id, k2.sns_root_canister_id) and Blob.equal(k1.neuron_id.id, k2.neuron_id.id)
   }, func(k: NeuronNameKey) : Nat32 {
     let h1 = Principal.hash(k.sns_root_canister_id);
@@ -212,44 +212,44 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     h1 ^ h2
   });
 
-  var neuron_nicknames = HashMap.HashMap<Principal, HashMap.HashMap<NeuronNameKey, Text>>(100, Principal.equal, Principal.hash);
+  transient var neuron_nicknames = HashMap.HashMap<Principal, HashMap.HashMap<NeuronNameKey, Text>>(100, Principal.equal, Principal.hash);
 
-  var cached_token_meta : HashMap.HashMap<Principal, T.TokenMeta> = HashMap.HashMap<Principal, T.TokenMeta>(100, Principal.equal, Principal.hash);
-  var whitelisted_tokens : HashMap.HashMap<Principal, WhitelistedToken> = HashMap.HashMap<Principal, WhitelistedToken>(10, Principal.equal, Principal.hash);
-  var admins : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(10, Principal.equal, Principal.hash);
+  transient var cached_token_meta : HashMap.HashMap<Principal, T.TokenMeta> = HashMap.HashMap<Principal, T.TokenMeta>(100, Principal.equal, Principal.hash);
+  transient var whitelisted_tokens : HashMap.HashMap<Principal, WhitelistedToken> = HashMap.HashMap<Principal, WhitelistedToken>(10, Principal.equal, Principal.hash);
+  transient var admins : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(10, Principal.equal, Principal.hash);
   
   // User token registrations (user -> list of ledger IDs they've registered)
-  var user_tokens : HashMap.HashMap<Principal, [Principal]> = HashMap.HashMap<Principal, [Principal]>(100, Principal.equal, Principal.hash);
+  transient var user_tokens : HashMap.HashMap<Principal, [Principal]> = HashMap.HashMap<Principal, [Principal]>(100, Principal.equal, Principal.hash);
   
   // Authorized callers for "for" methods
-  var authorized_for_callers : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(10, Principal.equal, Principal.hash);
+  transient var authorized_for_callers : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(10, Principal.equal, Principal.hash);
 
   // User settings defaults
-  let default_principal_color_coding : Bool = true;
-  let default_neuron_color_coding : Bool = true;
-  let default_show_vp_bar : Bool = true;
-  let default_show_header_notifications : Bool = true;
-  let default_collectibles_threshold : Float = 1.0;
-  let default_expand_quick_links_on_desktop : Bool = false;
-  let default_particle_effects_enabled : Bool = true;
-  let default_cycle_threshold_red : Nat = 1_000_000_000_000;
-  let default_cycle_threshold_orange : Nat = 5_000_000_000_000;
+  transient let default_principal_color_coding : Bool = true;
+  transient let default_neuron_color_coding : Bool = true;
+  transient let default_show_vp_bar : Bool = true;
+  transient let default_show_header_notifications : Bool = true;
+  transient let default_collectibles_threshold : Float = 1.0;
+  transient let default_expand_quick_links_on_desktop : Bool = false;
+  transient let default_particle_effects_enabled : Bool = true;
+  transient let default_cycle_threshold_red : Nat = 1_000_000_000_000;
+  transient let default_cycle_threshold_orange : Nat = 5_000_000_000_000;
 
   // Runtime storage for user settings
-  var user_setting_principal_color_coding : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
-  var user_setting_neuron_color_coding : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
-  var user_setting_show_vp_bar : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
-  var user_setting_show_header_notifications : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
-  var user_setting_collectibles_threshold : HashMap.HashMap<Principal, Float> = HashMap.HashMap<Principal, Float>(100, Principal.equal, Principal.hash);
-  var user_setting_expand_quick_links_on_desktop : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
-  var user_setting_particle_effects_enabled : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
-  var user_setting_neuron_manager_cycle_threshold_red : HashMap.HashMap<Principal, Nat> = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
-  var user_setting_neuron_manager_cycle_threshold_orange : HashMap.HashMap<Principal, Nat> = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
-  var user_setting_canister_manager_cycle_threshold_red : HashMap.HashMap<Principal, Nat> = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
-  var user_setting_canister_manager_cycle_threshold_orange : HashMap.HashMap<Principal, Nat> = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
+  transient var user_setting_principal_color_coding : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
+  transient var user_setting_neuron_color_coding : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
+  transient var user_setting_show_vp_bar : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
+  transient var user_setting_show_header_notifications : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
+  transient var user_setting_collectibles_threshold : HashMap.HashMap<Principal, Float> = HashMap.HashMap<Principal, Float>(100, Principal.equal, Principal.hash);
+  transient var user_setting_expand_quick_links_on_desktop : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
+  transient var user_setting_particle_effects_enabled : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
+  transient var user_setting_neuron_manager_cycle_threshold_red : HashMap.HashMap<Principal, Nat> = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
+  transient var user_setting_neuron_manager_cycle_threshold_orange : HashMap.HashMap<Principal, Nat> = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
+  transient var user_setting_canister_manager_cycle_threshold_red : HashMap.HashMap<Principal, Nat> = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
+  transient var user_setting_canister_manager_cycle_threshold_orange : HashMap.HashMap<Principal, Nat> = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
 
   // Add after other runtime variables
-  private var blacklisted_words = HashMap.fromIter<Text, Bool>(
+  private transient var blacklisted_words = HashMap.fromIter<Text, Bool>(
     stable_blacklisted_words.vals(),
     0,
     Text.equal,
@@ -257,31 +257,31 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   );
 
   // Runtime storage for bans
-  private var ban_log = Buffer.Buffer<BanLogEntry>(0);
-  private var banned_users = HashMap.HashMap<Principal, Int>(0, Principal.equal, Principal.hash);
+  private transient var ban_log = Buffer.Buffer<BanLogEntry>(0);
+  private transient var banned_users = HashMap.HashMap<Principal, Int>(0, Principal.equal, Principal.hash);
 
   // Runtime hashmaps for principal names and nicknames
-  var principal_names = HashMap.HashMap<Principal, (Text, Bool)>(100, Principal.equal, Principal.hash);
-  var principal_nicknames = HashMap.HashMap<Principal, HashMap.HashMap<Principal, Text>>(100, Principal.equal, Principal.hash);
+  transient var principal_names = HashMap.HashMap<Principal, (Text, Bool)>(100, Principal.equal, Principal.hash);
+  transient var principal_nicknames = HashMap.HashMap<Principal, HashMap.HashMap<Principal, Text>>(100, Principal.equal, Principal.hash);
 
   // Runtime storage for partners
-  private var partners = Buffer.Buffer<Partner>(0);
-  private var next_partner_id : Nat = 1;
+  private transient var partners = Buffer.Buffer<Partner>(0);
+  private transient var next_partner_id : Nat = 1;
 
   // Runtime storage for projects
-  private var projects = Buffer.Buffer<Project>(0);
-  private var next_project_id : Nat = 1;
+  private transient var projects = Buffer.Buffer<Project>(0);
+  private transient var next_project_id : Nat = 1;
 
   // Runtime storage for jailbreak configs (user -> configs)
-  private var jailbreak_configs = HashMap.HashMap<Principal, Buffer.Buffer<JailbreakConfig>>(100, Principal.equal, Principal.hash);
-  private var next_jailbreak_config_id : Nat = 1;
+  private transient var jailbreak_configs = HashMap.HashMap<Principal, Buffer.Buffer<JailbreakConfig>>(100, Principal.equal, Principal.hash);
+  private transient var next_jailbreak_config_id : Nat = 1;
   
   // Runtime storage for jailbreak payment logs
-  private var jailbreak_payment_logs = Buffer.Buffer<JailbreakPaymentLog>(100);
-  private var next_jailbreak_payment_log_id : Nat = 1;
+  private transient var jailbreak_payment_logs = Buffer.Buffer<JailbreakPaymentLog>(100);
+  private transient var next_jailbreak_payment_log_id : Nat = 1;
 
   // ephemeral state
-  let state : State = object { 
+  transient let state : State = object { 
     // initialize as empty here, see postupgrade for how to populate from stable memory
     public let principal_swap_canisters: HashMap.HashMap<Principal, List.List<Principal>> = HashMap.HashMap<Principal, List.List<Principal>>(100, Principal.equal, Principal.hash);
     public let principal_ledger_canisters: HashMap.HashMap<Principal, List.List<Principal>> = HashMap.HashMap<Principal, List.List<Principal>>(100, Principal.equal, Principal.hash);
@@ -289,10 +289,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   };
   
   // Canister groups storage (separate from state object for simpler management)
-  private let principal_canister_groups: HashMap.HashMap<Principal, CanisterGroupsRoot> = HashMap.HashMap<Principal, CanisterGroupsRoot>(100, Principal.equal, Principal.hash);
+  private transient let principal_canister_groups: HashMap.HashMap<Principal, CanisterGroupsRoot> = HashMap.HashMap<Principal, CanisterGroupsRoot>(100, Principal.equal, Principal.hash);
 
   // SwapRunner actor
-  let swaprunner = actor(SWAPRUNNER_CANISTER_ID) : actor {
+  transient let swaprunner = actor(SWAPRUNNER_CANISTER_ID) : actor {
     get_whitelisted_tokens : shared query () -> async [(Principal, SwapRunnerTokenMetadata)];
     get_all_tokens : shared query () -> async [(Principal, SwapRunnerTokenMetadata)];
   };

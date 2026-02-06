@@ -930,7 +930,7 @@ function Hub() {
         {
             title: 'Sneedex Marketplace',
             icon: <FaExchangeAlt size={28} />,
-            desc: 'Trade canisters, neurons, tokens, and more through secure on-chain escrow. Buy and sell staking positions, neuron managers, and digital assets with confidence.',
+            desc: 'Trade apps, neurons, tokens, and more through secure on-chain escrow. Buy and sell SNS neurons, ICP staking bots, and digital assets with confidence.',
             path: '/sneedex_offers',
             cta: 'Browse Marketplace',
             color: hubPrimary,

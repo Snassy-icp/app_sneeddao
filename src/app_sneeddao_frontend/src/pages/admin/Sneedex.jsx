@@ -2128,7 +2128,7 @@ export default function SneedexAdmin() {
                     </h2>
                     <p style={{ color: theme.colors.mutedText, marginBottom: '1rem' }}>
                         Configure canister IDs for automatic wallet registration of delivered assets.
-                        When set, Sneedex will automatically register canisters, tokens, and neuron managers 
+                        When set, Sneedex will automatically register canisters, tokens, and ICP staking bots 
                         to buyers' wallets upon delivery. Leave empty to disable.
                     </p>
                     
@@ -2172,7 +2172,7 @@ export default function SneedexAdmin() {
                         <div style={{ padding: '1rem', background: theme.colors.tertiaryBg, borderRadius: '10px' }}>
                             <label style={styles.label}>Staking Bot Factory Canister ID</label>
                             <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '0.75rem' }}>
-                                Used for registering ICP neuron managers to users
+                                Used for registering ICP staking bots to users
                             </p>
                             {factoryCanisterId && (
                                 <div style={{ marginBottom: '0.75rem', padding: '0.5rem', background: theme.colors.secondaryBg, borderRadius: '8px' }}>

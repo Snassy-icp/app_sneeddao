@@ -24,7 +24,7 @@ export function getNeuronManagerSettings() {
             };
         }
     } catch (e) {
-        console.warn('Error reading neuron manager settings:', e);
+        console.warn('Error reading ICP staking bot settings:', e);
     }
     return { ...DEFAULT_SETTINGS };
 }
@@ -40,7 +40,7 @@ export function saveNeuronManagerSettings(settings) {
             cycleThresholdOrange: settings.cycleThresholdOrange,
         }));
     } catch (e) {
-        console.warn('Error saving neuron manager settings:', e);
+        console.warn('Error saving ICP staking bot settings:', e);
     }
 }
 

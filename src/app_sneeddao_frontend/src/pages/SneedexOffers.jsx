@@ -337,7 +337,7 @@ function SneedexOffers() {
                 }));
             }
         } catch (e) {
-            console.warn('Failed to fetch neuron manager info:', e);
+            console.warn('Failed to fetch ICP staking bot info:', e);
         }
     }, [neuronManagerInfo, identity]);
     

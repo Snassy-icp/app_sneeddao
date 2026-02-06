@@ -1656,7 +1656,7 @@ export const WalletProvider = ({ children }) => {
                 setNeuronManagersLoading(false);
             }
         } catch (err) {
-            console.error('Error fetching neuron managers:', err);
+            console.error('Error fetching ICP staking bots:', err);
             if (managersFetchSessionRef.current === sessionId) {
                 setHasFetchedManagers(true);
                 setNeuronManagersLoading(false);

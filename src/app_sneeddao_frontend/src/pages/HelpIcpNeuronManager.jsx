@@ -491,7 +491,7 @@ function HelpIcpNeuronManager() {
                     </p>
                     <div style={styles.infoBox}>
                         <p style={{ ...styles.paragraph, marginBottom: 0 }}>
-                            <strong style={styles.strong}>Top Up:</strong> Navigate to your neuron manager page, find "Top Up Cycles", 
+                            <strong style={styles.strong}>Top Up:</strong> Navigate to your ICP staking bot page, find "Top Up Cycles", 
                             and enter ICP amount. The CMC converts ICP to cycles automatically.
                         </p>
                     </div>

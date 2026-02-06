@@ -329,7 +329,7 @@ export default function CanistersPage() {
             
             const matchedVersion = isKnownNeuronManagerHash(status.moduleHash);
             if (matchedVersion) {
-                console.log(`[NM Detection] Detected neuron manager ${canisterId} (v${matchedVersion.major}.${matchedVersion.minor}.${matchedVersion.patch})`);
+                console.log(`[NM Detection] Detected ICP staking bot ${canisterId} (v${matchedVersion.major}.${matchedVersion.minor}.${matchedVersion.patch})`);
                 fetchDetectedManagerInfo(canisterId, status);
             }
         }
@@ -444,7 +444,7 @@ export default function CanistersPage() {
             
             setNeuronManagers(managersWithInfo);
         } catch (err) {
-            console.error('Error loading neuron managers:', err);
+            console.error('Error loading ICP staking bots:', err);
         } finally {
             setLoadingNeuronManagers(false);
         }
@@ -1360,7 +1360,7 @@ export default function CanistersPage() {
             
             setSuccessMessage(destination === 'wallet' ? 'App moved to Wallet' : 'App moved to groups');
         } catch (err) {
-            console.error('Error moving canister from neuron managers:', err);
+            console.error('Error moving canister from ICP staking bots:', err);
             setError('Failed to move app: ' + (err.message || 'Unknown error'));
         }
     };
@@ -3082,7 +3082,7 @@ export default function CanistersPage() {
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
                             <FaBrain size={14} style={{ color: '#9b59b6' }} />
-                            <span><strong style={{ color: '#9b59b6' }}>{neuronManagers.length}</strong> neuron managers</span>
+                            <span><strong style={{ color: '#9b59b6' }}>{neuronManagers.length}</strong> ICP staking bots</span>
                         </div>
                         <Link 
                             to="/help/dapp-manager" 
@@ -4602,7 +4602,7 @@ export default function CanistersPage() {
                                                 setNewManagerId(v);
                                                 setManagerError(null);
                                             }}
-                                            placeholder="Enter neuron manager app canister id"
+                                            placeholder="Enter ICP staking bot app canister id"
                                             onKeyDown={(e) => e.key === 'Enter' && handleAddManager()}
                                             style={{ flex: 1, maxWidth: 'none' }}
                                             inputStyle={{ fontFamily: 'monospace' }}
@@ -4644,7 +4644,7 @@ export default function CanistersPage() {
                                         <div style={styles.emptyText}>No ICP Staking Bots</div>
                                         <div style={styles.emptySubtext}>
                                             <Link to="/create_icp_neuron" style={{ color: theme.colors.accent }}>
-                                                Create your first neuron manager →
+                                                Create your first ICP staking bot →
                                             </Link>
                                         </div>
                                     </div>
@@ -4830,7 +4830,7 @@ export default function CanistersPage() {
                                                                 showViewProfile={false}
                                                             />
                                                             <div style={{ fontSize: '11px', color: manager.moduleHash ? '#ef4444' : theme.colors.secondaryText, marginTop: '2px' }}>
-                                                                {manager.moduleHash ? '⚠️ WASM mismatch - not a known neuron manager' : '🔒 WASM unknown - need controller access to verify'}
+                                                                {manager.moduleHash ? '⚠️ WASM mismatch - not a known ICP staking bot' : '🔒 WASM unknown - need controller access to verify'}
                                                             </div>
                                                         </div>
                                                         </div>

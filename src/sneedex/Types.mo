@@ -296,9 +296,9 @@ module {
     // Canister asset - stores controllers snapshot when escrowed
     public type CanisterAsset = {
         canister_id : Principal;
-        canister_kind : ?CanisterKindId; // Optional known canister type (0 = unknown, 1 = ICP Neuron Manager, etc.)
+        canister_kind : ?CanisterKindId; // Optional known canister type (0 = unknown, 1 = ICP Staking Bot, etc.)
         controllers_snapshot : ?[Principal]; // Populated when escrowed
-        cached_total_stake_e8s : ?Nat64; // For neuron managers: total staked ICP (no maturity), cached on activation
+        cached_total_stake_e8s : ?Nat64; // For ICP Staking Bots: total staked ICP (no maturity), cached on activation
         title : ?Text; // Optional title for the canister (max 100 chars)
         description : ?Text; // Optional description (max 4000 chars)
     };

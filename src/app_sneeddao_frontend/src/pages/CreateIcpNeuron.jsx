@@ -378,7 +378,7 @@ function CreateIcpNeuron() {
             }
         } catch (err) {
             console.error('Error fetching managers:', err);
-            setError('Failed to load your neuron managers');
+            setError('Failed to load your ICP staking bots');
         } finally {
             setLoading(false);
         }
@@ -659,7 +659,7 @@ function CreateIcpNeuron() {
                     }}>
                         <FaWallet size={40} style={{ color: neuronPrimary, marginBottom: '1rem' }} />
                         <p style={{ color: theme.colors.secondaryText, marginBottom: '1.5rem', fontSize: '1rem' }}>
-                            Please log in to create and manage your ICP neuron managers.
+                            Please log in to create and manage your ICP staking bots.
                         </p>
                         <button 
                             style={{
@@ -1080,10 +1080,10 @@ function CreateIcpNeuron() {
                                         textAlign: 'center'
                                     }}>
                                         <p style={{ color: theme.colors.secondaryText, marginBottom: '0.5rem' }}>
-                                            You haven't created any neuron managers yet.
+                                            You haven't created any ICP staking bots yet.
                                         </p>
                                         <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>
-                                            Use the form above to create your first neuron manager!
+                                            Use the form above to create your first ICP staking bot!
                                         </p>
                                     </div>
                                 ) : (
@@ -1354,7 +1354,7 @@ function CreateIcpNeuron() {
                         📍 Where to Find Your Managers
                     </h4>
                     <p style={{ color: theme.colors.secondaryText, fontSize: '0.85rem', lineHeight: '1.6', marginBottom: '0.75rem' }}>
-                        Your neuron manager canisters are accessible from multiple places:
+                        Your ICP staking bots are accessible from multiple places:
                     </p>
                     <ul style={{ 
                         color: theme.colors.secondaryText, 

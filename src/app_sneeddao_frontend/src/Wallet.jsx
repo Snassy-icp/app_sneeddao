@@ -765,7 +765,7 @@ function Wallet() {
         try {
             localStorage.setItem('neuronManagersExpanded', JSON.stringify(neuronManagersExpanded));
         } catch (error) {
-            console.warn('Could not save neuron managers expanded state to localStorage:', error);
+            console.warn('Could not save ICP staking bot expanded state to localStorage:', error);
         }
     }, [neuronManagersExpanded]);
 
@@ -1072,7 +1072,7 @@ function Wallet() {
         // Manager neurons
         if (managerNeuronsTotal > 0 && icpPrice) {
             lines.push('');
-            lines.push('--- ICP NEURON MANAGERS ---');
+            lines.push('--- ICP STAKING BOTS ---');
             lines.push(`Total ICP: ${managerNeuronsTotal.toFixed(8)}`);
             lines.push(`ICP Price: $${icpPrice}`);
             lines.push(`USD Value: $${(managerNeuronsTotal * icpPrice).toFixed(2)}`);
@@ -1931,7 +1931,7 @@ function Wallet() {
             
             const matchedVersion = isKnownNeuronManagerHash(status.moduleHash);
             if (matchedVersion) {
-                console.log(`[NM Detection] Detected neuron manager ${canisterId} (v${matchedVersion.major}.${matchedVersion.minor}.${matchedVersion.patch})`);
+                console.log(`[NM Detection] Detected ICP staking bot ${canisterId} (v${matchedVersion.major}.${matchedVersion.minor}.${matchedVersion.patch})`);
                 fetchDetectedManagerInfo(canisterId, status);
             }
         }
@@ -4712,7 +4712,7 @@ function Wallet() {
             // Wait a bit for the refresh to complete
             await new Promise(resolve => setTimeout(resolve, 2000));
         } catch (error) {
-            console.error('Error refreshing neuron managers:', error);
+            console.error('Error refreshing ICP staking bots:', error);
         } finally {
             setRefreshingNeuronManagers(false);
         }
@@ -6167,7 +6167,7 @@ function Wallet() {
                                                                 right: 0,
                                                                 color: '#ef4444'
                                                             }}
-                                                            title="WASM hash doesn't match any official neuron manager version"
+                                                            title="WASM hash doesn't match any official ICP staking bot version"
                                                         >
                                                             <FaExclamationTriangle size={14} />
                                                         </span>
@@ -6478,7 +6478,7 @@ function Wallet() {
                                                                 Unable to load neurons
                                                             </span>
                                                             <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
-                                                                This canister may not be a compatible neuron manager
+                                                                This canister may not be a compatible ICP staking bot
                                                             </span>
                                                             <Link 
                                                                 to={`/canister?id=${canisterId}`} 
@@ -7545,7 +7545,7 @@ function Wallet() {
                                                                 right: 0,
                                                                 color: '#ef4444'
                                                             }}
-                                                            title="Canister WASM matches neuron manager but interface is not working"
+                                                            title="Canister WASM matches ICP staking bot but interface is not working"
                                                         >
                                                             <FaExclamationTriangle size={14} />
                                                         </span>
@@ -7672,7 +7672,7 @@ function Wallet() {
                                                             }}>
                                                                 <FaExclamationTriangle size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
                                                                 <span>
-                                                                    This canister's WASM matches a neuron manager version, but its interface is not responding correctly. 
+                                                                    This canister's WASM matches an ICP staking bot version, but its interface is not responding correctly. 
                                                                     It may have been upgraded to different code or is not fully deployed.
                                                                 </span>
                                                             </p>

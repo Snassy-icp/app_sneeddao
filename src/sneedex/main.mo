@@ -45,7 +45,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // Canister kinds registry (for known canister types with enhanced display)
     var canisterKinds : [T.CanisterKind] = [
         { id = T.CANISTER_KIND_UNKNOWN; name = "Unknown"; description = "Generic canister"; active = true },
-        { id = T.CANISTER_KIND_ICP_NEURON_MANAGER; name = "ICP Neuron Manager"; description = "Sneed ICP Neuron Manager canister"; active = true },
+        { id = T.CANISTER_KIND_ICP_NEURON_MANAGER; name = "ICP Staking Bot"; description = "Sneed ICP Staking Bot canister"; active = true },
     ];
     var _nextCanisterKindId : T.CanisterKindId = 2; // 0, 1 are reserved (prefixed with _ to suppress unused warning)
     
@@ -1236,7 +1236,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             let version = await manager.getVersion();
             #Ok(version);
         } catch (_e) {
-            #Err("Failed to verify canister as ICP Neuron Manager. getVersion() call failed.");
+            #Err("Failed to verify canister as ICP Staking Bot. getVersion() call failed.");
         };
     };
     
@@ -1312,7 +1312,7 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 neurons = neurons;
             });
         } catch (_e) {
-            #Err("Failed to get neuron manager info");
+            #Err("Failed to get staking bot info");
         };
     };
     

@@ -512,13 +512,13 @@ function SneedexOffer() {
         
         try {
             const actor = createSneedexActor(identity);
-            console.log('Fetching neuron manager info for canister:', canisterId);
+            console.log('Fetching ICP staking bot info for canister:', canisterId);
             const result = await actor.getNeuronManagerInfo(Principal.fromText(canisterId));
-            console.log('Neuron manager info result:', result);
+            console.log('ICP staking bot info result:', result);
             
             if ('Ok' in result) {
                 const info = result.Ok;
-                console.log('Neuron manager info details:', {
+                console.log('ICP staking bot info details:', {
                     version: info.version,
                     neuron_count: Number(info.neuron_count),
                     neurons: info.neurons,
@@ -618,19 +618,19 @@ function SneedexOffer() {
                     }));
                 }
             } else {
-                console.error('Failed to get neuron manager info:', result.Err);
+                console.error('Failed to get ICP staking bot info:', result.Err);
                 setManagerWasmVerification(prev => ({
                     ...prev,
                     [assetIndex]: {
                         checked: true,
                         verified: false,
                         moduleHash: null,
-                        message: 'Failed to get neuron manager info',
+                        message: 'Failed to get ICP staking bot info',
                     }
                 }));
             }
         } catch (e) {
-            console.error('Failed to fetch neuron manager info:', e);
+            console.error('Failed to fetch ICP staking bot info:', e);
             setManagerWasmVerification(prev => ({
                 ...prev,
                 [assetIndex]: {
@@ -3475,7 +3475,7 @@ function SneedexOffer() {
                                                             color: theme.colors.mutedText,
                                                         }}>
                                                             <FaSync style={{ animation: 'spin 1s linear infinite' }} />
-                                                            Loading neuron manager info...
+                                                            Loading ICP staking bot info...
                                                         </div>
                                                     ) : neuronManagerInfo[idx] ? (
                                                         <div>
@@ -3849,7 +3849,7 @@ function SneedexOffer() {
                                                             textAlign: 'center',
                                                             padding: '1rem',
                                                         }}>
-                                                            Failed to load neuron manager info
+                                                            Failed to load ICP staking bot info
                                                         </div>
                                                     )}
                                                 </div>

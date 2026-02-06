@@ -839,7 +839,7 @@ export default function IcpNeuronManagerFactoryAdmin() {
       }}>
         <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '15px' }}>Payment Requirement</h3>
         <p style={{ color: '#888', fontSize: '14px', marginBottom: '15px' }}>
-          When enabled, users must pay the creation fee to create a new neuron manager.
+          When enabled, users must pay the creation fee to create a new ICP staking bot.
         </p>
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
           <span style={{ color: '#ffffff' }}>
@@ -1036,7 +1036,7 @@ export default function IcpNeuronManagerFactoryAdmin() {
       }}>
         <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '15px' }}>Canister Creation Cycles</h3>
         <p style={{ color: '#888', fontSize: '14px', marginBottom: '15px' }}>
-          Amount of cycles allocated to each new neuron manager canister when created.
+          Amount of cycles allocated to each new ICP staking bot canister when created.
         </p>
         <form onSubmit={handleSetCanisterCreationCycles} style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
           <div style={{ flex: 1, maxWidth: '300px' }}>
