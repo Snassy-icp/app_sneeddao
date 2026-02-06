@@ -447,14 +447,13 @@ export const formatNeuronIdLink = (neuronId, snsRoot, getNeuronDisplayNameFn) =>
     // Get consistent color for this neuron ID
     const neuronColor = getNeuronColor(displayId);
 
-    // Create container div for link and copy button
-    return React.createElement('div', {
+    // Create container span for link and copy button
+    return React.createElement('span', {
         style: {
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: '8px',
-            flexWrap: 'wrap',
-            width: '100%'
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            flexWrap: 'wrap'
         }
     }, [
         // Link with name and truncated ID
@@ -465,11 +464,10 @@ export const formatNeuronIdLink = (neuronId, snsRoot, getNeuronDisplayNameFn) =>
                 color: neuronColor,
                 textDecoration: 'none',
                 fontFamily: 'monospace',
-                display: 'flex',
-                alignItems: 'flex-start',
+                display: 'inline-flex',
+                alignItems: 'center',
                 gap: '4px',
-                flexWrap: 'wrap',
-                flex: '1'
+                flexWrap: 'wrap'
             },
             title: displayId,
             onMouseEnter: (e) => e.target.style.textDecoration = 'underline',
@@ -479,12 +477,11 @@ export const formatNeuronIdLink = (neuronId, snsRoot, getNeuronDisplayNameFn) =>
             name && React.createElement('span', {
                 key: 'name-container',
                 style: {
-                    display: 'flex',
+                    display: 'inline-flex',
                     alignItems: 'center',
                     gap: '4px',
                     color: neuronColor,
-                    fontWeight: 'bold',
-                    flexWrap: 'wrap'
+                    fontWeight: 'bold'
                 }
             }, [
                 isVerified && React.createElement('span', {

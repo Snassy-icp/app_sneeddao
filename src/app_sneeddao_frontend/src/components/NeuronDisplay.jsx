@@ -146,29 +146,27 @@ export const NeuronDisplay = React.memo(({
 
     return React.createElement(React.Fragment, null,
         // Main display container
-        React.createElement('div', {
+        React.createElement('span', {
             style: {
-                display: 'flex',
-                alignItems: isCompact ? 'center' : 'flex-start',
-                gap: isCompact ? '6px' : '8px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: isCompact ? '4px' : '6px',
                 flexWrap: 'wrap',
-                width: '100%',
                 ...style
             }
         }, [
             // Link or div with name and truncated ID
-            React.createElement(noLink ? 'div' : Link, {
+            React.createElement(noLink ? 'span' : Link, {
                 key: 'link',
                 ...(noLink ? {} : { to: `/neuron?neuronid=${displayId}&sns=${snsRoot}` }),
                 style: {
                     color: displayColor,
                     textDecoration: 'none',
                     fontFamily: 'monospace',
-                    display: 'flex',
-                    alignItems: isCompact ? 'center' : 'flex-start',
+                    display: 'inline-flex',
+                    alignItems: 'center',
                     gap: '4px',
-                    flexWrap: 'wrap',
-                    flex: '1'
+                    flexWrap: 'wrap'
                 },
                 title: displayId,
                 ...(noLink ? {} : {
@@ -187,12 +185,11 @@ export const NeuronDisplay = React.memo(({
                 !isCompact && name && React.createElement('span', {
                     key: 'name-container',
                     style: {
-                        display: 'flex',
+                        display: 'inline-flex',
                         alignItems: 'center',
                         gap: '4px',
                         color: neuronColor,
-                        fontWeight: 'bold',
-                        flexWrap: 'wrap'
+                        fontWeight: 'bold'
                     }
                 }, [
                     isVerified && React.createElement('span', {

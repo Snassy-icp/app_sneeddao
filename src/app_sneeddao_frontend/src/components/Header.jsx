@@ -387,6 +387,20 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         return () => window.removeEventListener('scroll', handleScroll);
     }, [isVpBarVisible]);
 
+    // Memoized calculation of total VP for the header bar condition
+    const totalUserVP = useMemo(() => {
+        if (!nervousSystemParameters) return 0;
+        const allNeurons = getAllNeurons();
+        return allNeurons.reduce((total, neuron) => {
+            try {
+                const votingPower = calculateVotingPower(neuron, nervousSystemParameters);
+                return total + votingPower;
+            } catch (error) {
+                return total;
+            }
+        }, 0);
+    }, [userNeurons, nervousSystemParameters]);
+
     const menuSections = {
         'Sneed Hub': {
             icon: <FaNetworkWired size={18} />,
@@ -1280,8 +1294,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             </div>
             )}
 
-            {/* Bottom Row: VP Display - hide if no neurons (don't show loading state if no neurons) */}
-            {!isHeaderCollapsed && showSnsDropdown && isAuthenticated && showVpBarSetting && !neuronsLoading && getAllNeurons().length > 0 && (
+            {/* Bottom Row: VP Display - hide if no neurons or no VP for this SNS */}
+            {!isHeaderCollapsed && showSnsDropdown && isAuthenticated && showVpBarSetting && !neuronsLoading && getAllNeurons().length > 0 && totalUserVP > 0 && (
                 <div style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
