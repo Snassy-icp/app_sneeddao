@@ -5279,8 +5279,8 @@ function SneedexOffer() {
                                                         </span>
                                                     )}
                                                     <input
-                                                        type="number"
-                                                        step={bidInputMode === 'usd' ? '0.01' : '0.0001'}
+                                                        type="text"
+                                                        inputMode="decimal"
                                                         placeholder={bidInputMode === 'usd' ? 'Amount' : 'Amount'}
                                                         style={{
                                                             ...styles.bidInput,

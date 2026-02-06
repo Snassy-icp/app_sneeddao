@@ -2586,8 +2586,8 @@ function SneedexCreate() {
                                 <span style={styles.labelHint}> — Optional, for auction-style offers</span>
                             </label>
                             <input
-                                type="number"
-                                step="0.0001"
+                                type="text"
+                                inputMode="decimal"
                                 placeholder={`e.g., 10 ${priceTokenSymbol}`}
                                 style={styles.input}
                                 value={minBidPrice}
@@ -2611,8 +2611,8 @@ function SneedexCreate() {
                                 <span style={styles.labelHint}> — Optional, for instant purchase</span>
                             </label>
                             <input
-                                type="number"
-                                step="0.0001"
+                                type="text"
+                                inputMode="decimal"
                                 placeholder={`e.g., 50 ${priceTokenSymbol}`}
                                 style={styles.input}
                                 value={buyoutPrice}
@@ -2643,36 +2643,33 @@ function SneedexCreate() {
                                 <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                         <input
-                                            type="number"
+                                            type="text"
+                                            inputMode="numeric"
                                             style={{ ...styles.input, width: '70px', textAlign: 'center' }}
                                             value={expirationDays}
                                             onChange={(e) => setExpirationDays(e.target.value)}
-                                            min="0"
-                                            max="365"
                                             placeholder="0"
                                         />
                                         <span style={{ color: theme.colors.mutedText }}>days</span>
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                         <input
-                                            type="number"
+                                            type="text"
+                                            inputMode="numeric"
                                             style={{ ...styles.input, width: '70px', textAlign: 'center' }}
                                             value={expirationHours}
                                             onChange={(e) => setExpirationHours(e.target.value)}
-                                            min="0"
-                                            max="23"
                                             placeholder="0"
                                         />
                                         <span style={{ color: theme.colors.mutedText }}>hours</span>
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                         <input
-                                            type="number"
+                                            type="text"
+                                            inputMode="numeric"
                                             style={{ ...styles.input, width: '70px', textAlign: 'center' }}
                                             value={expirationMinutes}
                                             onChange={(e) => setExpirationMinutes(e.target.value)}
-                                            min="0"
-                                            max="59"
                                             placeholder="0"
                                         />
                                         <span style={{ color: theme.colors.mutedText }}>min</span>
@@ -2691,7 +2688,8 @@ function SneedexCreate() {
                             </label>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <input
-                                    type="number"
+                                    type="text"
+                                    inputMode="decimal"
                                     style={{ ...styles.input, flex: 1 }}
                                     value={minBidIncrement}
                                     onChange={(e) => setMinBidIncrement(e.target.value)}
@@ -2702,8 +2700,6 @@ function SneedexCreate() {
                                         }
                                     }}
                                     placeholder={suggestedMinBidIncrement}
-                                    min="0"
-                                    step="any"
                                 />
                                 <span style={{ color: theme.colors.primaryText, fontWeight: '500', minWidth: '60px' }}>
                                     {priceTokenSymbol}
@@ -4280,7 +4276,8 @@ function SneedexCreate() {
                                                 {newAssetTokenSymbol && <span style={styles.labelHint}> in {newAssetTokenSymbol}</span>}
                                             </label>
                                             <input
-                                                type="number"
+                                                type="text"
+                                                inputMode="decimal"
                                                 placeholder="e.g., 1000"
                                                 style={styles.input}
                                                 value={newAssetTokenAmount}
