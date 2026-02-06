@@ -84,6 +84,17 @@ function OfferCard({
     
     const minimumNextBid = getMinimumNextBid();
     
+    // Check if this is effectively a buyout-only situation
+    // True if: no min_bid_price, OR min next bid >= buyout price
+    const isBuyoutOnly = (() => {
+        // If there's no buyout price, can't be buyout-only
+        if (!offer.buyout_price?.[0]) return false;
+        // If there's no min_bid_price, it's buyout-only
+        if (!offer.min_bid_price?.[0]) return true;
+        // If min next bid >= buyout, it's effectively buyout-only
+        return minimumNextBid >= BigInt(offer.buyout_price[0]);
+    })();
+    
     // Calculate prices in USD
     const minBidUsd = minimumNextBid > 0n && paymentTokenPrice
         ? calculateUsdValue(minimumNextBid, tokenInfo.decimals, paymentTokenPrice)
@@ -510,37 +521,42 @@ function OfferCard({
                 
                 {/* Price Section */}
                 <div style={styles.priceSection}>
-                    <div style={{
-                        ...styles.priceItem,
-                        background: `linear-gradient(135deg, ${theme.colors.primaryBg}, ${sneedexPrimary}05)`,
-                    }}>
+                    {/* Show min bid only if not buyout-only */}
+                    {!isBuyoutOnly && (
                         <div style={{
-                            ...styles.priceLabel,
-                            color: sneedexPrimary,
-                        }}>{bidInfo.highest_bid ? 'Min Next Bid' : 'Min Bid'}</div>
-                        <div style={styles.priceValue}>
-                            {minimumNextBid > 0n ? formatAmount(minimumNextBid, tokenInfo.decimals) : '—'}
-                        </div>
-                        <div style={styles.priceToken}>{tokenInfo.symbol}</div>
-                        {minBidUsd > 0 && (
-                            <div style={{ 
-                                fontSize: '0.75rem', 
-                                color: theme.colors.mutedText, 
-                                marginTop: '4px',
-                                fontWeight: '500',
-                            }}>
-                                {formatUsd(minBidUsd)}
+                            ...styles.priceItem,
+                            background: `linear-gradient(135deg, ${theme.colors.primaryBg}, ${sneedexPrimary}05)`,
+                        }}>
+                            <div style={{
+                                ...styles.priceLabel,
+                                color: sneedexPrimary,
+                            }}>{bidInfo.highest_bid ? 'Min Next Bid' : 'Min Bid'}</div>
+                            <div style={styles.priceValue}>
+                                {minimumNextBid > 0n ? formatAmount(minimumNextBid, tokenInfo.decimals) : '—'}
                             </div>
-                        )}
-                    </div>
+                            <div style={styles.priceToken}>{tokenInfo.symbol}</div>
+                            {minBidUsd > 0 && (
+                                <div style={{ 
+                                    fontSize: '0.75rem', 
+                                    color: theme.colors.mutedText, 
+                                    marginTop: '4px',
+                                    fontWeight: '500',
+                                }}>
+                                    {formatUsd(minBidUsd)}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    {/* Show buyout - full width if buyout-only */}
                     <div style={{
                         ...styles.priceItem,
                         background: `linear-gradient(135deg, ${theme.colors.primaryBg}, ${theme.colors.success}08)`,
+                        ...(isBuyoutOnly ? { flex: 1 } : {}),
                     }}>
                         <div style={{
                             ...styles.priceLabel,
                             color: theme.colors.success,
-                        }}>Buyout</div>
+                        }}>{isBuyoutOnly ? 'Buyout Only' : 'Buyout'}</div>
                         <div style={{
                             ...styles.priceValue,
                             color: offer.buyout_price?.[0] ? theme.colors.success : theme.colors.mutedText,

@@ -1207,6 +1207,19 @@ function SneedexOffer() {
         return Number(getMinimumBidE8s()) / Math.pow(10, tokenInfo.decimals);
     };
     
+    // Check if this is effectively a buyout-only situation
+    // True if: no min_bid_price, OR min next bid >= buyout price
+    const isBuyoutOnly = (() => {
+        if (!offer) return false;
+        // If there's no buyout price, can't be buyout-only
+        if (!offer.buyout_price?.[0]) return false;
+        // If there's no min_bid_price, it's buyout-only
+        if (!offer.min_bid_price?.[0]) return true;
+        // If min next bid >= buyout, it's effectively buyout-only
+        const minNextBid = getMinimumBidE8s();
+        return minNextBid >= BigInt(offer.buyout_price[0]);
+    })();
+    
     // Pre-fill bid amount with minimum bid when offer loads
     useEffect(() => {
         if (!offer) return;
@@ -4889,6 +4902,23 @@ function SneedexOffer() {
                                 const highestBidUsd = highestBid?.amount && paymentPrice 
                                     ? calculateUsdValue(highestBid.amount, tokenInfo.decimals, paymentPrice) : null;
                                 
+                                // If buyout-only, show just the buyout price
+                                if (isBuyoutOnly) {
+                                    return (
+                                        <div style={styles.priceRow}>
+                                            <span style={styles.priceLabel}>Buyout Price</span>
+                                            <span style={styles.priceValue}>
+                                                {offer.buyout_price[0] ? `${formatAmount(offer.buyout_price[0], tokenInfo.decimals)} ${tokenInfo.symbol}` : '—'}
+                                                {buyoutUsd > 0 && (
+                                                    <span style={{ color: theme.colors.mutedText, marginLeft: '8px', fontSize: '0.85rem' }}>
+                                                        ({formatUsd(buyoutUsd)})
+                                                    </span>
+                                                )}
+                                            </span>
+                                        </div>
+                                    );
+                                }
+                                
                                 return (
                                     <>
                                         <div style={styles.priceRow}>
@@ -5135,8 +5165,8 @@ function SneedexOffer() {
                             
                             {isActive && isAuthenticated && !pendingBid && !isCountdownExpired && !isOfferPastExpiration(offer.expiration?.[0]) && (
                                 <div style={styles.bidSection}>
-                                    {/* Only show bid input if there's a min_bid_price (auction mode) */}
-                                    {offer.min_bid_price[0] ? (
+                                    {/* Only show bid input if there's a min_bid_price (auction mode) and not buyout-only */}
+                                    {offer.min_bid_price[0] && !isBuyoutOnly ? (
                                         <>
                                             <div style={{ 
                                                 display: 'flex', 
