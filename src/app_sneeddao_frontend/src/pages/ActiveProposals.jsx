@@ -303,6 +303,8 @@ function ActiveProposals() {
                     ...prev, 
                     [key]: { loading: false, eligibleCount: 0, totalVP: 0 } 
                 }));
+                // Notify header to refresh votable proposals count immediately
+                window.dispatchEvent(new CustomEvent('votableProposalsRefresh'));
             } else {
                 setQuickVotingStates(prev => ({ ...prev, [key]: 'error' }));
             }
@@ -345,6 +347,8 @@ function ActiveProposals() {
         setVotedProposals(new Set());
         await fetchAllProposals();
         setRefreshing(false);
+        // Notify header to refresh votable proposals count
+        window.dispatchEvent(new CustomEvent('votableProposalsRefresh'));
     };
 
     // Count total votable proposals

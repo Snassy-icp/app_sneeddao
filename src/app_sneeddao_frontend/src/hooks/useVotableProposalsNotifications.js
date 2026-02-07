@@ -38,6 +38,20 @@ export function useVotableProposalsNotifications() {
         checkVotableProposals();
     }, [checkVotableProposals]);
 
+    // Refresh every 5 minutes to catch new proposals
+    useEffect(() => {
+        const intervalMs = 5 * 60 * 1000; // 5 minutes
+        const intervalId = setInterval(checkVotableProposals, intervalMs);
+        return () => clearInterval(intervalId);
+    }, [checkVotableProposals]);
+
+    // Listen for immediate refresh (e.g. after voting on ActiveProposals)
+    useEffect(() => {
+        const handleRefresh = () => checkVotableProposals();
+        window.addEventListener('votableProposalsRefresh', handleRefresh);
+        return () => window.removeEventListener('votableProposalsRefresh', handleRefresh);
+    }, [checkVotableProposals]);
+
     return {
         votableCount,
         loading,
