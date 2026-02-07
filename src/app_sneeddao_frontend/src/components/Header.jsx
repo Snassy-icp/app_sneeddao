@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars, FaComments, FaUnlock, FaCrown, FaGift, FaBrain, FaKey, FaHandPaper, FaBell, FaEnvelope, FaCoins } from 'react-icons/fa';
+import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars, FaComments, FaUnlock, FaCrown, FaGift, FaBrain, FaKey, FaHandPaper, FaBell, FaEnvelope, FaCoins, FaSync } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { headerStyles } from '../styles/HeaderStyles';
@@ -33,6 +33,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const walletContext = useWalletOptional();
     const getCachedNeurons = walletContext?.getCachedNeurons;
     const neuronCacheInitialized = walletContext?.neuronCacheInitialized;
+    const neuronCache = walletContext?.neuronCache;
+    const refreshAllNeurons = walletContext?.refreshAllNeurons;
     
     // Get neurons for the selected SNS from the global cache
     const [userNeurons, setUserNeurons] = useState([]);
@@ -60,7 +62,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             setUserNeurons([]);
             setNeuronsLoading(false);
         }
-    }, [isAuthenticated, identity, selectedSnsRoot, getCachedNeurons, neuronCacheInitialized]);
+    }, [isAuthenticated, identity, selectedSnsRoot, getCachedNeurons, neuronCacheInitialized, neuronCache]);
     
     // Helper functions matching the old NeuronsContext API
     const getAllNeurons = () => userNeurons;
@@ -1456,6 +1458,34 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         })()}
                     </div>
                     
+                    {/* Refresh neurons button - sync cache after transfer, Sneedex, etc. */}
+                    {refreshAllNeurons && (
+                        <button
+                            onClick={async () => {
+                                try {
+                                    await refreshAllNeurons();
+                                } catch (e) {
+                                    console.warn('Failed to refresh neurons:', e);
+                                }
+                            }}
+                            style={{
+                                background: 'none',
+                                border: 'none',
+                                color: theme.colors.mutedText,
+                                cursor: 'pointer',
+                                padding: '4px 6px',
+                                fontSize: '12px',
+                                opacity: 0.6,
+                                transition: 'opacity 0.2s ease',
+                                flexShrink: 0
+                            }}
+                            onMouseEnter={(e) => { e.target.style.opacity = 1; }}
+                            onMouseLeave={(e) => { e.target.style.opacity = 0.6; }}
+                            title="Refresh neurons (e.g. after transfer, Sneedex claim, or permission change)"
+                        >
+                            <FaSync size={12} />
+                        </button>
+                    )}
                     {/* Close button */}
                     <button
                         onClick={() => {

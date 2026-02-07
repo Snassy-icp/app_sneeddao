@@ -859,16 +859,28 @@ export const WalletProvider = ({ children }) => {
     const clearNeuronCache = useCallback((governanceCanisterId = null) => {
         if (governanceCanisterId) {
             const govId = normalizeId(governanceCanisterId);
+            neuronCacheRef.current.delete(govId);
+            neuronFetchPromisesRef.current.delete(govId);
             setNeuronCache(prev => {
                 const newMap = new Map(prev);
                 newMap.delete(govId);
                 return newMap;
             });
         } else {
+            neuronCacheRef.current = new Map();
+            neuronFetchPromisesRef.current.clear();
             setNeuronCache(new Map());
             setNeuronCacheInitialized(false);
         }
     }, []);
+
+    // Refresh neurons for a specific governance (clear + refetch). Use after transfer, escrow, permission changes.
+    const refreshNeuronsForGovernance = useCallback(async (governanceCanisterId) => {
+        if (!governanceCanisterId || !identity) return;
+        const govId = normalizeId(governanceCanisterId);
+        clearNeuronCache(govId);
+        return fetchAndCacheNeurons(govId);
+    }, [identity, clearNeuronCache, fetchAndCacheNeurons]);
 
     // Proactively fetch neurons for ALL SNS tokens on login
     // This is independent of wallet tokens - fetches for all known SNS
@@ -913,6 +925,13 @@ export const WalletProvider = ({ children }) => {
             console.warn('[WalletContext] Error fetching all SNS neurons:', error);
         }
     }, [identity, isAuthenticated, neuronCache, fetchAndCacheNeurons]);
+
+    // Refresh all SNS neurons. Use when we don't know which SNS was affected (e.g. received neuron from Sneedex).
+    const refreshAllNeurons = useCallback(async () => {
+        if (!identity || !isAuthenticated) return;
+        clearNeuronCache();
+        await fetchAllSnsNeurons();
+    }, [identity, isAuthenticated, clearNeuronCache, fetchAllSnsNeurons]);
 
     // Proactively fetch neurons for all SNS on login
     // Wait for cacheCheckComplete to avoid redundant network fetches when cache has data
@@ -2141,6 +2160,8 @@ export const WalletProvider = ({ children }) => {
             getNeuronsForGovernance,
             getCachedNeurons,
             clearNeuronCache,
+            refreshNeuronsForGovernance,
+            refreshAllNeurons,
             fetchAllSnsNeurons,
             // ICP Neuron Managers - shared between quick wallet and /wallet
             neuronManagers,

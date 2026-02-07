@@ -5,6 +5,8 @@ import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'declarations/rll';
 import { useAuth } from './AuthContext';
 import { useSns } from './contexts/SnsContext';
+import { useNeuronsOptional } from './contexts/NeuronsContext';
+import { useWalletOptional } from './contexts/WalletContext';
 import Header from './components/Header';
 import './Wallet.css';
 import { fetchAndCacheSnsData, getSnsById, getAllSnses, clearSnsCache, fetchSnsLogo } from './utils/SnsUtils';
@@ -73,6 +75,8 @@ function Neuron() {
     const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
     const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT } = useSns();
+    const neuronsContext = useNeuronsOptional();
+    const walletContext = useWalletOptional();
     const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
     const [neuronIdInput, setNeuronIdInput] = useState(searchParams.get('neuronid') || '');
@@ -514,9 +518,21 @@ function Neuron() {
                     AddNeuronPermissions: { principal_id: [principal], permissions_to_add: [{ permissions: newPerms }] }
                 });
                 if (!result.ok) { setError(result.err); } 
-                else { await fetchNeuronData(); setManagePrincipalInput(''); setEditingPrincipal(null); resetPermissions(); }
+                else { 
+                    await fetchNeuronData(); 
+                    setManagePrincipalInput(''); setEditingPrincipal(null); resetPermissions();
+                    // Refresh hotkey neuron caches after permission change
+                    if (selectedSns?.canisters?.governance) {
+                        walletContext?.refreshNeuronsForGovernance?.(selectedSns.canisters.governance);
+                        neuronsContext?.refreshNeurons?.(selectedSnsRoot);
+                    }
+                }
             } else if (editingPrincipal) {
                 await fetchNeuronData(); setManagePrincipalInput(''); setEditingPrincipal(null); resetPermissions();
+                if (selectedSns?.canisters?.governance) {
+                    walletContext?.refreshNeuronsForGovernance?.(selectedSns.canisters.governance);
+                    neuronsContext?.refreshNeurons?.(selectedSnsRoot);
+                }
             } else {
                 setError('Please select at least one permission');
             }
@@ -545,7 +561,13 @@ function Neuron() {
             const result = await manageNeuron({
                 RemoveNeuronPermissions: { principal_id: [principal], permissions_to_remove: [{ permissions: perms }] }
             });
-            if (!result.ok) setError(result.err); else await fetchNeuronData();
+            if (!result.ok) setError(result.err); else {
+                await fetchNeuronData();
+                if (selectedSns?.canisters?.governance) {
+                    walletContext?.refreshNeuronsForGovernance?.(selectedSns.canisters.governance);
+                    neuronsContext?.refreshNeurons?.(selectedSnsRoot);
+                }
+            }
         } catch (e) { setError(e.message || String(e)); }
         finally { setActionBusy(false); setActionMsg(''); }
     };

@@ -34,6 +34,9 @@ import { createActor as createNeuronManagerActor } from 'declarations/sneed_icp_
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createGovernanceActor } from 'external/sns_governance';
 import { getAllSnses, startBackgroundSnsFetch, fetchSnsLogo, getSnsById } from '../utils/SnsUtils';
+import { normalizeId } from '../utils/IdUtils';
+import { useWalletOptional } from '../contexts/WalletContext';
+import { useNeuronsOptional } from '../contexts/NeuronsContext';
 import { fetchUserNeuronsForSns, getNeuronId, uint8ArrayToHex } from '../utils/NeuronUtils';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import PrincipalInput from '../components/PrincipalInput';
@@ -116,6 +119,8 @@ const managementIdlFactory = () => {
 function SneedexCreate() {
     const { identity, isAuthenticated } = useAuth();
     const { theme } = useTheme();
+    const walletContext = useWalletOptional();
+    const neuronsContext = useNeuronsOptional();
     const { principalNames, principalNicknames, getNeuronDisplayName: getNeuronNameInfo } = useNaming();
     const navigate = useNavigate();
     
@@ -1771,6 +1776,11 @@ function SneedexCreate() {
         if ('err' in result) {
             throw new Error(`Failed to escrow neuron: ${getErrorMessage(result.err)}`);
         }
+        // Refresh hotkey neuron caches - neuron is now in escrow, no longer in our list
+        walletContext?.refreshNeuronsForGovernance?.(governanceId);
+        const govIdNorm = normalizeId(governanceId);
+        const sns = getAllSnses().find(s => normalizeId(s.canisters?.governance) === govIdNorm);
+        if (sns?.rootCanisterId) neuronsContext?.refreshNeurons?.(sns.rootCanisterId);
     };
     
     // Auto-escrow helper for ICRC1 tokens

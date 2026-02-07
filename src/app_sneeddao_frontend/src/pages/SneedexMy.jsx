@@ -24,6 +24,8 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import priceService from '../services/PriceService';
 import { Principal } from '@dfinity/principal';
 import { fetchAndCacheSnsData, getAllSnses } from '../utils/SnsUtils';
+import { useWalletOptional } from '../contexts/WalletContext';
+import { useNeuronsOptional } from '../contexts/NeuronsContext';
 
 // Generate bid escrow subaccount (matches backend Utils.bidEscrowSubaccount)
 // Structure: byte 0 = principal length, bytes 1-N = principal, byte 23 = 0x42 ('B'), bytes 24-31 = bidId big-endian
@@ -95,6 +97,8 @@ function SneedexMy() {
     const { identity, isAuthenticated } = useAuth();
     const { theme } = useTheme();
     const navigate = useNavigate();
+    const walletContext = useWalletOptional();
+    const neuronsContext = useNeuronsOptional();
     
     const [activeTab, setActiveTab] = useState('offers'); // 'offers' or 'bids'
     const [myOffers, setMyOffers] = useState([]);
@@ -604,6 +608,8 @@ function SneedexMy() {
             }
             
             showInfo('Assets claimed successfully!', 'success');
+            await walletContext?.refreshAllNeurons?.();
+            neuronsContext?.refreshNeurons?.();
             await fetchData();
         } catch (e) {
             console.error('Failed to claim assets:', e);
@@ -630,6 +636,8 @@ function SneedexMy() {
             } else {
                 showInfo('Offer expired. Assets are being returned.', 'success');
             }
+            await walletContext?.refreshAllNeurons?.();
+            neuronsContext?.refreshNeurons?.();
             await fetchData();
         } catch (e) {
             console.error('Failed to process expiration:', e);

@@ -35,6 +35,9 @@ import { createActor as createFactoryActor, canisterId as factoryCanisterId } fr
 import { createActor as createGovernanceActor } from 'external/sns_governance';
 import { createActor as createICRC1Actor } from 'external/icrc1_ledger';
 import { fetchAndCacheSnsData, fetchSnsLogo, getAllSnses } from '../utils/SnsUtils';
+import { useWalletOptional } from '../contexts/WalletContext';
+import { useNeuronsOptional } from '../contexts/NeuronsContext';
+import { normalizeId } from '../utils/IdUtils';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
 import { VotingPowerCalculator } from '../utils/VotingPowerUtils';
 import InfoModal from '../components/InfoModal';
@@ -142,6 +145,8 @@ function SneedexOffer() {
     const { id } = useParams();
     const { identity, isAuthenticated } = useAuth();
     const { theme } = useTheme();
+    const walletContext = useWalletOptional();
+    const neuronsContext = useNeuronsOptional();
     const navigate = useNavigate();
     
     const [offer, setOffer] = useState(null);
@@ -1734,6 +1739,8 @@ function SneedexOffer() {
             }
             
             showInfo('Assets claimed successfully!', 'success');
+            await walletContext?.refreshAllNeurons?.();
+            neuronsContext?.refreshNeurons?.();
             await fetchOffer();
         } catch (e) {
             console.error('Failed to claim assets:', e);
@@ -1786,6 +1793,8 @@ function SneedexOffer() {
             } else {
                 showInfo('Offer expired with no bids. Assets are being returned to the seller.', 'success');
             }
+            await walletContext?.refreshAllNeurons?.();
+            neuronsContext?.refreshNeurons?.();
             await fetchOffer();
         } catch (e) {
             console.error('Failed to process expiration:', e);
@@ -1909,6 +1918,13 @@ function SneedexOffer() {
             }
             
             showInfo('SNS Neuron escrowed successfully!', 'success');
+            const assetEntry = offer.assets?.[assetIndex];
+            const snsNeuron = assetEntry?.asset?.SNSNeuron;
+            if (snsNeuron?.governance_canister_id) {
+                walletContext?.refreshNeuronsForGovernance?.(snsNeuron.governance_canister_id);
+                const sns = getAllSnses().find(s => normalizeId(s.canisters?.governance) === normalizeId(snsNeuron.governance_canister_id));
+                if (sns?.rootCanisterId) neuronsContext?.refreshNeurons?.(sns.rootCanisterId);
+            }
             await fetchOffer();
         } catch (e) {
             console.error('Failed to escrow neuron:', e);

@@ -339,3 +339,7 @@ export function useNeurons() {
     }
     return context;
 }
+
+export function useNeuronsOptional() {
+    return useContext(NeuronsContext);
+}

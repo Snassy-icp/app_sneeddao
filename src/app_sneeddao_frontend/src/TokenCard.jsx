@@ -12,6 +12,7 @@ import { createActor as createSnsGovernanceActor } from 'external/sns_governance
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { NeuronDisplay } from './components/NeuronDisplay';
 import { useWalletOptional } from './contexts/WalletContext';
+import { useNeuronsOptional } from './contexts/NeuronsContext';
 import { fetchUserNeuronsForSns } from './utils/NeuronUtils';
 import { useNaming } from './NamingContext';
 import { VotingPowerCalculator } from './utils/VotingPowerUtils';
@@ -91,7 +92,9 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     const walletContext = useWalletOptional();
     const getNeuronsForGovernance = walletContext?.getNeuronsForGovernance;
     const getCachedNeurons = walletContext?.getCachedNeurons;
+    const refreshNeuronsForGovernance = walletContext?.refreshNeuronsForGovernance;
     const clearNeuronCache = walletContext?.clearNeuronCache;
+    const neuronsContext = useNeuronsOptional();
     const neuronCacheInitialized = walletContext?.neuronCacheInitialized; // Used as dependency to re-run when cache hydrates
     const [showBalanceBreakdown, setShowBalanceBreakdown] = useState(() => {
         // Auto-expand if there's a backend balance
@@ -577,24 +580,26 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         if (!governanceCanisterId || !identity) return;
         
         try {
-            // Clear the cache for this governance canister and refetch
-            if (clearNeuronCache) {
-                clearNeuronCache(governanceCanisterId);
-            }
-            
-            // Fetch neurons using the global cache (or fallback)
+            // Refresh WalletContext cache (used by VP bar, wallet tokens)
             let loadedNeurons;
-            if (getNeuronsForGovernance) {
+            if (refreshNeuronsForGovernance) {
+                loadedNeurons = await refreshNeuronsForGovernance(governanceCanisterId);
+            } else if (clearNeuronCache && getNeuronsForGovernance) {
+                clearNeuronCache(governanceCanisterId);
                 loadedNeurons = await getNeuronsForGovernance(governanceCanisterId);
             } else {
                 loadedNeurons = await fetchUserNeuronsForSns(identity, governanceCanisterId);
             }
             
-            setNeurons(loadedNeurons);
+            setNeurons(loadedNeurons || []);
             
-            // Notify parent of loaded neurons (for collect maturity feature)
+            // Refresh NeuronsContext (used by Proposals, HotkeyNeurons) to stay in sync
+            if (neuronsContext?.refreshNeurons && snsRootCanisterId) {
+                neuronsContext.refreshNeurons(snsRootCanisterId);
+            }
+            
             if (onNeuronsLoaded) {
-                onNeuronsLoaded(loadedNeurons);
+                onNeuronsLoaded(loadedNeurons || []);
             }
         } catch (error) {
             console.error('[TokenCard] Error refetching neurons:', error);
