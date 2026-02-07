@@ -7,7 +7,7 @@ import { useNaming } from '../NamingContext';
 import PrincipalInput from '../components/PrincipalInput';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, getPrincipalProfileUrl, isCanisterPrincipal } from '../utils/PrincipalUtils';
 import { Principal } from '@dfinity/principal';
-import { FaUsers, FaSearch, FaChevronRight, FaChevronLeft, FaExternalLinkAlt } from 'react-icons/fa';
+import { FaUsers, FaFilter, FaChevronRight, FaChevronLeft, FaExternalLinkAlt } from 'react-icons/fa';
 
 const usersPrimary = '#6366f1';
 const usersSecondary = '#8b5cf6';
@@ -103,15 +103,46 @@ function Users() {
                         overflow: 'hidden'
                     }}
                 >
+                    {/* Background decorations - match Neurons page */}
+                    <div style={{
+                        position: 'absolute', top: '-50%', right: '-10%', width: '400px', height: '400px',
+                        background: `radial-gradient(circle, ${usersPrimary}20 0%, transparent 70%)`,
+                        borderRadius: '50%', pointerEvents: 'none'
+                    }} />
+                    <div style={{
+                        position: 'absolute', bottom: '-30%', left: '-5%', width: '300px', height: '300px',
+                        background: `radial-gradient(circle, ${usersSecondary}15 0%, transparent 70%)`,
+                        borderRadius: '50%', pointerEvents: 'none'
+                    }} />
                     <div style={{ maxWidth: '1200px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
-                        <h1 style={{ color: theme.colors.primaryText, fontSize: '1.75rem', fontWeight: '700', margin: 0 }}>
-                            Named Users
-                        </h1>
-                        <p style={{ color: theme.colors.secondaryText, fontSize: '0.95rem', margin: '0.35rem 0 0 0' }}>
-                            Browse all principals with public names or nicknames
-                        </p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+                            <div style={{
+                                width: '56px', height: '56px',
+                                minWidth: '56px', maxWidth: '56px',
+                                flexShrink: 0,
+                                borderRadius: '14px',
+                                overflow: 'hidden'
+                            }}>
+                                <div style={{
+                                    width: '100%', height: '100%',
+                                    background: `linear-gradient(135deg, ${usersPrimary}, ${usersSecondary})`,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    boxShadow: `0 4px 20px ${usersPrimary}40`
+                                }}>
+                                    <FaUsers size={24} color="white" />
+                                </div>
+                            </div>
+                            <div>
+                                <h1 style={{ color: theme.colors.primaryText, fontSize: '1.75rem', fontWeight: '700', margin: 0 }}>
+                                    Named Users
+                                </h1>
+                                <p style={{ color: theme.colors.secondaryText, fontSize: '0.95rem', margin: '0.25rem 0 0 0' }}>
+                                    Browse all principals with public names or nicknames
+                                </p>
+                            </div>
+                        </div>
 
-                        <div style={{ marginTop: '1.5rem', maxWidth: '400px' }}>
+                        <div style={{ marginTop: '1rem', maxWidth: '400px' }}>
                             <PrincipalInput
                                 placeholder="Search or enter principal to view..."
                                 defaultTab="all"
@@ -124,11 +155,11 @@ function Users() {
 
                         <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', marginTop: '1rem' }}>
                             <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
-                                <span style={{ color: usersPrimary, fontWeight: '600' }}>{filteredPrincipals.length.toLocaleString()}</span> named users
+                                <span style={{ color: usersPrimary, fontWeight: '600' }}>{namedUserPrincipals.length.toLocaleString()}</span> named users
                             </span>
                             {filteredPrincipals.length !== namedUserPrincipals.length && (
                                 <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
-                                    <span style={{ color: usersAccent, fontWeight: '600' }}>{filteredPrincipals.length.toLocaleString()}</span> matching search
+                                    <span style={{ color: usersAccent, fontWeight: '600' }}>{filteredPrincipals.length.toLocaleString()}</span> matching filter
                                 </span>
                             )}
                         </div>
@@ -145,11 +176,29 @@ function Users() {
                             border: `1px solid ${theme.colors.border}`
                         }}
                     >
-                        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                            <div style={{ flex: '1 1 300px', minWidth: '200px' }}>
-                                <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '0.5rem' }}>
-                                    Search
-                                </div>
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            flexWrap: 'wrap',
+                            gap: '1rem'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                <FaFilter size={14} color={usersPrimary} />
+                                <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '1rem' }}>
+                                    Filters & Controls
+                                </span>
+                            </div>
+                        </div>
+                        <div style={{
+                            display: 'flex',
+                            gap: '1rem',
+                            flexWrap: 'wrap',
+                            alignItems: 'center',
+                            marginTop: '1rem'
+                        }}>
+                            <div style={{ flex: '1 1 300px', minWidth: '200px', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <span style={{ color: theme.colors.secondaryText, fontSize: '0.85rem', whiteSpace: 'nowrap' }}>Filter:</span>
                                 <input
                                     type="text"
                                     value={searchTerm}
@@ -157,14 +206,14 @@ function Users() {
                                         setSearchTerm(e.target.value);
                                         setCurrentPage(1);
                                     }}
-                                    placeholder="Search by name or principal ID..."
+                                    placeholder="By name or principal ID..."
                                     style={{
+                                        flex: 1,
                                         backgroundColor: theme.colors.tertiaryBg,
                                         color: theme.colors.primaryText,
                                         border: `1px solid ${theme.colors.border}`,
                                         borderRadius: '10px',
                                         padding: '0.65rem 1rem',
-                                        width: '100%',
                                         fontSize: '0.9rem'
                                     }}
                                 />
@@ -247,12 +296,12 @@ function Users() {
                             <div style={{ color: theme.colors.secondaryText, fontSize: '1rem' }}>
                                 {namedUserPrincipals.length === 0
                                     ? 'No named users yet'
-                                    : 'No users match your search'}
+                                    : 'No users match your filter'}
                             </div>
                             <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginTop: '0.5rem' }}>
                                 {namedUserPrincipals.length === 0
                                     ? 'Public names and nicknames will appear here once set'
-                                    : 'Try adjusting your search'}
+                                    : 'Try adjusting your filter'}
                             </div>
                         </div>
                     )}
