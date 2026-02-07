@@ -1378,6 +1378,7 @@ function Proposal() {
                                                 onVoteSuccess={() => {
                                                     fetchProposalData();
                                                     refreshNeurons(selectedSnsRoot);
+                                                    window.dispatchEvent(new CustomEvent('votableProposalsRefresh'));
                                                 }}
                                             />
                                         )}
