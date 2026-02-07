@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../AuthContext';
 import { useSns } from '../contexts/SnsContext';
 import { useForum } from '../contexts/ForumContext';
-import { useSearchParams, Link, useNavigate } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 import { getPrincipalName, setPrincipalName, setPrincipalNickname, getPrincipalNickname, getPostsByUser, getRepliesToUser, getThreadsByUser, getPostsByThread } from '../utils/BackendUtils';
@@ -127,6 +127,8 @@ export default function PrincipalPage() {
     const { createForumActor } = useForum();
     const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
+    const { pathname } = useLocation();
+    const isUserPage = pathname === '/user';
     const [principalInfo, setPrincipalInfo] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -1544,47 +1546,68 @@ export default function PrincipalPage() {
             
             <div style={{ maxWidth: '1200px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', marginBottom: '1rem' }}>
-                    {/* SNS Logo */}
-                    <div style={{
-                        width: '56px',
-                        height: '56px',
-                        minWidth: '56px',
-                        maxWidth: '56px',
-                        flexShrink: 0,
-                        borderRadius: '14px',
-                        overflow: 'hidden'
-                    }}>
-                        {loadingLogo ? (
-                            <div style={{
-                                width: '100%',
-                                height: '100%',
-                                background: theme.colors.tertiaryBg,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center'
-                            }}>
-                                <span className="principal-pulse" style={{ color: theme.colors.mutedText }}>...</span>
-                            </div>
-                        ) : snsLogo ? (
-                            <img 
-                                src={snsLogo} 
-                                alt={snsInfo?.name || 'SNS'} 
-                                style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                            />
-                        ) : (
-                            <div style={{
-                                width: '100%',
-                                height: '100%',
-                                background: `linear-gradient(135deg, ${principalPrimary}, ${principalSecondary})`,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                boxShadow: `0 4px 20px ${principalPrimary}40`
-                            }}>
-                                <FaUser size={24} color="white" />
-                            </div>
-                        )}
-                    </div>
+                    {/* SNS Logo - hidden on /user page */}
+                    {!isUserPage && (
+                        <div style={{
+                            width: '56px',
+                            height: '56px',
+                            minWidth: '56px',
+                            maxWidth: '56px',
+                            flexShrink: 0,
+                            borderRadius: '14px',
+                            overflow: 'hidden'
+                        }}>
+                            {loadingLogo ? (
+                                <div style={{
+                                    width: '100%',
+                                    height: '100%',
+                                    background: theme.colors.tertiaryBg,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}>
+                                    <span className="principal-pulse" style={{ color: theme.colors.mutedText }}>...</span>
+                                </div>
+                            ) : snsLogo ? (
+                                <img 
+                                    src={snsLogo} 
+                                    alt={snsInfo?.name || 'SNS'} 
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                                />
+                            ) : (
+                                <div style={{
+                                    width: '100%',
+                                    height: '100%',
+                                    background: `linear-gradient(135deg, ${principalPrimary}, ${principalSecondary})`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    boxShadow: `0 4px 20px ${principalPrimary}40`
+                                }}>
+                                    <FaUser size={24} color="white" />
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    {/* User icon on /user page */}
+                    {isUserPage && (
+                        <div style={{
+                            width: '56px',
+                            height: '56px',
+                            minWidth: '56px',
+                            maxWidth: '56px',
+                            flexShrink: 0,
+                            borderRadius: '14px',
+                            overflow: 'hidden',
+                            background: `linear-gradient(135deg, ${principalPrimary}, ${principalSecondary})`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: `0 4px 20px ${principalPrimary}40`
+                        }}>
+                            <FaUser size={24} color="white" />
+                        </div>
+                    )}
                     
                     <div style={{ flex: 1, minWidth: 0 }}>
                         <h1 style={{ 
@@ -1597,7 +1620,7 @@ export default function PrincipalPage() {
                             gap: '12px',
                             flexWrap: 'wrap'
                         }}>
-                            {snsInfo ? `${snsInfo.name}` : ''} User Explorer
+                            {isUserPage ? 'User Explorer' : (snsInfo ? `${snsInfo.name} ` : '') + 'User Explorer'}
                         </h1>
                         <p style={{ 
                             color: theme.colors.secondaryText, 
@@ -1609,9 +1632,9 @@ export default function PrincipalPage() {
                     </div>
                 </div>
                 
-                {/* Quick Stats Row */}
+                {/* Quick Stats Row - hide SNS context on /user page */}
                 <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
-                    {snsInfo && (
+                    {snsInfo && !isUserPage && (
                         <div style={{ 
                             display: 'flex', 
                             alignItems: 'center', 
@@ -1623,7 +1646,7 @@ export default function PrincipalPage() {
                             <span>Viewing <strong style={{ color: theme.colors.primaryText }}>{snsInfo.name}</strong> context</span>
                         </div>
                     )}
-                    {tokenSymbol && tokenSymbol !== 'SNS' && (
+                    {tokenSymbol && tokenSymbol !== 'SNS' && !isUserPage && (
                         <div style={{ 
                             display: 'flex', 
                             alignItems: 'center', 
