@@ -57,6 +57,7 @@ import {
 } from '../utils/NeuronManagerSettings';
 import usePremiumStatus, { PremiumBadge } from '../hooks/usePremiumStatus';
 import ThemeToggle from '../components/ThemeToggle';
+import InfoTooltip from '../components/InfoTooltip';
 import TokenIcon from '../components/TokenIcon';
 import { Principal } from '@dfinity/principal';
 import { createSneedexActor } from '../utils/SneedexUtils';
@@ -2738,6 +2739,11 @@ export default function Me() {
                                                 style={{ cursor: 'pointer', accentColor: mePrimary, width: '16px', height: '16px' }}
                                             />
                                             Include reachable
+                                            <InfoTooltip
+                                                text="Include neurons you can reach through ownership chains — e.g. neurons owned by the same principal but not hotkeyed. Useful for forum voting. When unchecked, only neurons you manage are shown."
+                                                accentColor={mePrimary}
+                                                iconSize={11}
+                                            />
                                         </label>
                                     </div>
                                 )}

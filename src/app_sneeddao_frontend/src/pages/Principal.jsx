@@ -22,6 +22,7 @@ import { useNaming } from '../NamingContext';
 import usePremiumStatus, { PremiumBadge } from '../hooks/usePremiumStatus';
 import MarkdownBody from '../components/MarkdownBody';
 import MessageDialog from '../components/MessageDialog';
+import InfoTooltip from '../components/InfoTooltip';
 import { FaUser, FaSearch, FaEdit, FaPen, FaComments, FaNewspaper, FaCoins, FaExchangeAlt, FaChevronDown, FaChevronUp, FaChevronRight, FaEnvelope, FaCrown, FaKey, FaCheckCircle, FaTimesCircle, FaCopy, FaCheck, FaArrowUp, FaArrowDown, FaNetworkWired, FaCube, FaExternalLinkAlt, FaBrain, FaGavel, FaHandHoldingUsd, FaClock, FaTimes, FaUserShield, FaVoteYea, FaQuestion } from 'react-icons/fa';
 import { 
     createSneedexActor, 
@@ -2967,6 +2968,11 @@ export default function PrincipalPage() {
                                             style={{ cursor: 'pointer', accentColor: principalAccent, width: '14px', height: '14px' }}
                                         />
                                         Include reachable
+                                        <InfoTooltip
+                                            text="Include neurons this principal can reach through ownership chains — e.g. neurons owned by the same account but not directly permissioned. When unchecked, only neurons where they have direct permissions are shown."
+                                            accentColor={principalAccent}
+                                            iconSize={11}
+                                        />
                                         {loadingReachable && (
                                             <span className="principal-spin" style={{
                                                 width: '12px',
