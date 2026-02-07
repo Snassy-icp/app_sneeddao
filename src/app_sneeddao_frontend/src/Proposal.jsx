@@ -1587,7 +1587,7 @@ function Proposal() {
                                                                                     whiteSpace: 'nowrap',
                                                                                     fontSize: '0.7rem'
                                                                                 }}>
-                                                                                    {getRelativeTime(Number(ballot.cast_timestamp_seconds) * 1000)}
+                                                                                    {getRelativeTime(Number(ballot.cast_timestamp_seconds) * 1000, false)}
                                                                                 </span>
                                                                             )}
                                                                         </div>
