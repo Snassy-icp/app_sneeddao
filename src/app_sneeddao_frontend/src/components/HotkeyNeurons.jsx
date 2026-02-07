@@ -195,8 +195,11 @@ const HotkeyNeurons = ({
             if (response?.command?.[0]?.RegisterVote) {
                 setVotingStates(prev => ({ ...prev, [neuronIdHex]: 'success' }));
                 if (!skipRefreshAndCallback) {
-                    await refreshNeurons(effectiveSnsRoot);
-                    if (onVoteSuccess) onVoteSuccess();
+                    const doRefresh = () => {
+                        refreshNeurons(effectiveSnsRoot);
+                        if (onVoteSuccess) onVoteSuccess();
+                    };
+                    showInfoModal('Vote submitted', 'Successfully voted with 1 neuron!', 'success', doRefresh);
                 }
                 return 'success';
             } else if (response?.command?.[0]?.Error) {
