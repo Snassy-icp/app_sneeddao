@@ -55,6 +55,7 @@ function ActiveProposals() {
     const [votedProposals, setVotedProposals] = useState(new Set());
     const [refreshing, setRefreshing] = useState(false);
     const [snsLogos, setSnsLogos] = useState({});
+    const [showOnlyVotable, setShowOnlyVotable] = useState(true); // default: only proposals you can vote on
     const hasFetchedRef = useRef(false);
     
     // Get all SNSes with user's neurons that have voting power (shared with notifications)
@@ -373,6 +374,22 @@ function ActiveProposals() {
         return count;
     }, [snsProposalsData, proposalEligibility]);
 
+    // Filter to votable-only when showOnlyVotable is true (proposals with eligibleCount > 0 or votedCount > 0)
+    // Include proposals still loading eligibility so we don't hide them prematurely
+    const displayedSnsProposalsData = useMemo(() => {
+        if (!showOnlyVotable) return snsProposalsData;
+        return snsProposalsData
+            .map(({ snsInfo, proposals, neurons, nervousSystemParams, logo }) => {
+                const filteredProposals = proposals.filter(p => {
+                    const key = `${snsInfo.rootCanisterId}_${p.id[0]?.id?.toString()}`;
+                    const elig = proposalEligibility[key];
+                    return !elig || elig.eligibleCount > 0 || elig.votedCount > 0;
+                });
+                return { snsInfo, proposals: filteredProposals, neurons, nervousSystemParams, logo };
+            })
+            .filter(d => d.proposals.length > 0);
+    }, [snsProposalsData, proposalEligibility, showOnlyVotable]);
+
     // Get status style
     const getStatusStyle = (status) => {
         if (status.includes('Executed')) {
@@ -435,14 +452,14 @@ function ActiveProposals() {
                         
                         {/* Stats Row */}
                         {!loading && snsProposalsData.length > 0 && (
-                            <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', marginTop: '1rem' }}>
+                            <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', alignItems: 'center', marginTop: '1rem' }}>
                                 <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
-                                    <span style={{ color: proposalPrimary, fontWeight: '600' }}>{snsProposalsData.length}</span> SNS{snsProposalsData.length !== 1 ? 'es' : ''} with proposals
+                                    <span style={{ color: proposalPrimary, fontWeight: '600' }}>{displayedSnsProposalsData.length}</span> SNS{displayedSnsProposalsData.length !== 1 ? 'es' : ''} {showOnlyVotable ? 'with votable proposals' : 'with proposals'}
                                 </div>
                                 <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
                                     <span style={{ color: proposalAccent, fontWeight: '600' }}>
-                                        {snsProposalsData.reduce((sum, d) => sum + d.proposals.length, 0)}
-                                    </span> active proposal{snsProposalsData.reduce((sum, d) => sum + d.proposals.length, 0) !== 1 ? 's' : ''}
+                                        {displayedSnsProposalsData.reduce((sum, d) => sum + d.proposals.length, 0)}
+                                    </span> proposal{displayedSnsProposalsData.reduce((sum, d) => sum + d.proposals.length, 0) !== 1 ? 's' : ''}
                                 </div>
                                 {totalVotableCount > 0 && (
                                     <div style={{ 
@@ -457,6 +474,15 @@ function ActiveProposals() {
                                         {totalVotableCount} you can vote on
                                     </div>
                                 )}
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.85rem', cursor: 'pointer', marginLeft: 'auto' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={showOnlyVotable}
+                                        onChange={(e) => setShowOnlyVotable(e.target.checked)}
+                                    />
+                                    <FaFilter size={10} />
+                                    Show only votable
+                                </label>
                             </div>
                         )}
                     </div>
@@ -545,7 +571,7 @@ function ActiveProposals() {
                     )}
 
                     {/* Empty State */}
-                    {isAuthenticated && !loading && snsProposalsData.length === 0 && (
+                    {isAuthenticated && !loading && displayedSnsProposalsData.length === 0 && (
                         <div style={{
                             background: theme.colors.secondaryBg,
                             borderRadius: '16px',
@@ -555,16 +581,24 @@ function ActiveProposals() {
                         }}>
                             <FaBrain size={48} color={theme.colors.mutedText} style={{ opacity: 0.3, marginBottom: '1rem' }} />
                             <div style={{ color: theme.colors.secondaryText, fontSize: '1rem' }}>
-                                No active proposals found
+                                {snsProposalsData.length === 0
+                                    ? 'No active proposals found'
+                                    : showOnlyVotable
+                                        ? 'No proposals you can vote on'
+                                        : 'No active proposals found'}
                             </div>
                             <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginTop: '0.5rem' }}>
-                                Either you have no hotkey neurons, or there are no open proposals for the SNSes you participate in
+                                {snsProposalsData.length === 0
+                                    ? 'Either you have no hotkey neurons, or there are no open proposals for the SNSes you participate in'
+                                    : showOnlyVotable
+                                        ? 'Try unchecking "Show only votable" to see all proposals'
+                                        : 'Either you have no hotkey neurons, or there are no open proposals for the SNSes you participate in'}
                             </div>
                         </div>
                     )}
 
                     {/* SNS Sections */}
-                    {isAuthenticated && !loading && snsProposalsData.map(({ snsInfo, proposals, neurons, nervousSystemParams, logo }) => {
+                    {isAuthenticated && !loading && displayedSnsProposalsData.map(({ snsInfo, proposals, neurons, nervousSystemParams, logo }) => {
                         const isExpanded = expandedSns.has(snsInfo.rootCanisterId);
                         
                         // Count votable proposals for this SNS
