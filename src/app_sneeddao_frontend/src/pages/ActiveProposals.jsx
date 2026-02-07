@@ -374,7 +374,7 @@ function ActiveProposals() {
         return count;
     }, [snsProposalsData, proposalEligibility]);
 
-    // Filter to votable-only when showOnlyVotable is true (proposals with eligibleCount > 0 or votedCount > 0)
+    // Filter to votable-only when showOnlyVotable is true (proposals with eligibleCount > 0 - i.e. have voting buttons)
     // Include proposals still loading eligibility so we don't hide them prematurely
     const displayedSnsProposalsData = useMemo(() => {
         if (!showOnlyVotable) return snsProposalsData;
@@ -383,7 +383,8 @@ function ActiveProposals() {
                 const filteredProposals = proposals.filter(p => {
                     const key = `${snsInfo.rootCanisterId}_${p.id[0]?.id?.toString()}`;
                     const elig = proposalEligibility[key];
-                    return !elig || elig.eligibleCount > 0 || elig.votedCount > 0;
+                    if (!elig || elig.loading) return true;
+                    return elig.eligibleCount > 0;
                 });
                 return { snsInfo, proposals: filteredProposals, neurons, nervousSystemParams, logo };
             })
