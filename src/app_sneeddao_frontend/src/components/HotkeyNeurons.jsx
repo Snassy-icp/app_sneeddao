@@ -52,7 +52,7 @@ const HotkeyNeurons = ({
         const cb = pendingVoteSuccessCallback;
         setInfoModal(prev => ({ ...prev, show: false }));
         setPendingVoteSuccessCallback(null);
-        cb?.();
+        if (typeof cb === 'function') cb();
     };
 
     const effectiveSnsRoot = forceSneedSns ? SNEED_SNS_ROOT : selectedSnsRoot;
