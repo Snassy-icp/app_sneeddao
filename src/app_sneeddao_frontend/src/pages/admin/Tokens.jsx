@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../AuthContext';
 import { useAdminCheck } from '../../hooks/useAdminCheck';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -13,24 +13,23 @@ import {
     FaSync, FaPlus, FaTrash, FaSpinner, FaCoins, FaSearch,
     FaCheckCircle, FaExclamationTriangle
 } from 'react-icons/fa';
+import { useWhitelistTokens } from '../../contexts/WhitelistTokensContext';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 
 export default function TokensAdmin() {
     const { isAuthenticated, identity } = useAuth();
     const { theme } = useTheme();
-    const [loading, setLoading] = useState(true);
+    const { whitelistedTokens, loading, refreshWhitelist } = useWhitelistTokens();
+    const tokens = useMemo(() => [...whitelistedTokens].sort((a, b) => a.symbol.localeCompare(b.symbol)), [whitelistedTokens]);
     const [error, setError] = useState('');
-    
-    // Admin check
     const { isAdmin: isGlobalAdmin, loading: adminLoading } = useAdminCheck({
         identity,
         isAuthenticated,
         redirectPath: '/admin'
     });
     
-    // Token list state
-    const [tokens, setTokens] = useState([]);
+    // Token list state (tokens from useWhitelistTokens, sorted)
     const [tokenLogos, setTokenLogos] = useState({});
     const [searchTerm, setSearchTerm] = useState('');
     
@@ -85,37 +84,12 @@ export default function TokensAdmin() {
         });
     }, [identity]);
     
-    // Fetch whitelisted tokens
-    const fetchTokens = useCallback(async () => {
-        if (!isAuthenticated || !identity) return;
-        
-        setLoading(true);
-        setError('');
-        
-        try {
-            const actor = getBackendActor();
-            const whitelistedTokens = await actor.get_whitelisted_tokens();
-            
-            // Sort by symbol
-            whitelistedTokens.sort((a, b) => a.symbol.localeCompare(b.symbol));
-            setTokens(whitelistedTokens);
-            
-            // Fetch logos for each token (in background)
-            fetchTokenLogos(whitelistedTokens);
-        } catch (err) {
-            console.error('Error fetching tokens:', err);
-            setError('Failed to fetch whitelisted tokens');
-        } finally {
-            setLoading(false);
-        }
-    }, [isAuthenticated, identity, getBackendActor]);
-    
     // Fetch logos for tokens
-    const fetchTokenLogos = async (tokenList) => {
+    const fetchTokenLogos = useCallback(async (tokenList) => {
         const logos = {};
         
         for (const token of tokenList) {
-            const ledgerId = token.ledger_id.toString();
+            const ledgerId = (token.ledger_id?.toString?.() ?? String(token.ledger_id));
             try {
                 const ledgerActor = createLedgerActor(token.ledger_id, {
                     agentOptions: { identity }
@@ -130,13 +104,14 @@ export default function TokensAdmin() {
             // Update progressively
             setTokenLogos(prev => ({ ...prev, [ledgerId]: logos[ledgerId] }));
         }
-    };
+    }, [identity]);
     
+    // Fetch logos when whitelisted tokens change
     useEffect(() => {
-        if (isGlobalAdmin) {
-            fetchTokens();
+        if (isGlobalAdmin && whitelistedTokens.length > 0) {
+            fetchTokenLogos(whitelistedTokens);
         }
-    }, [isGlobalAdmin, fetchTokens]);
+    }, [isGlobalAdmin, whitelistedTokens, fetchTokenLogos]);
     
     // Import from SwapRunner
     const handleImportFromSwapRunner = async () => {
@@ -149,16 +124,15 @@ export default function TokensAdmin() {
             
             await actor.import_whitelist_from_swaprunner();
             
-            // Refresh the list
-            await fetchTokens();
-            
-            const afterCount = tokens.length;
-            const newTokens = afterCount - beforeCount;
+            // Refresh the list from shared cache
+            const refreshedTokens = await refreshWhitelist();
+            const afterCount = refreshedTokens?.length ?? 0;
+            const importedCount = afterCount - beforeCount;
             
             setImportResult({
                 success: true,
-                message: newTokens > 0 
-                    ? `Successfully imported ${newTokens} new token(s) from SwapRunner!`
+                message: importedCount > 0 
+                    ? `Successfully imported ${importedCount} new token(s) from SwapRunner!`
                     : 'Import complete. No new tokens found.'
             });
         } catch (err) {
@@ -248,7 +222,7 @@ export default function TokensAdmin() {
             // Reset form and refresh
             setNewLedgerId('');
             setVerifiedToken(null);
-            await fetchTokens();
+            await refreshWhitelist();
         } catch (err) {
             console.error('Error adding token:', err);
             showInfo('Error', `Failed to add token: ${err.message || 'Unknown error'}`, 'error');
@@ -271,7 +245,7 @@ export default function TokensAdmin() {
                     await actor.remove_whitelisted_token(token.ledger_id);
                     
                     showInfo('Success', `${token.symbol} has been removed from the whitelist.`, 'success');
-                    await fetchTokens();
+                    await refreshWhitelist();
                 } catch (err) {
                     console.error('Error removing token:', err);
                     showInfo('Error', `Failed to remove token: ${err.message || 'Unknown error'}`, 'error');
@@ -303,7 +277,7 @@ export default function TokensAdmin() {
                     message: `Successfully refreshed metadata for ${token.symbol} (${token.name})`
                 });
                 // Refresh the list to show updated metadata
-                await fetchTokens();
+                await refreshWhitelist();
                 // Clear inputs
                 setCustomRefreshLedger('');
                 setSelectedRefreshToken('');
@@ -353,7 +327,7 @@ export default function TokensAdmin() {
                         errors: progress.errors || []
                     });
                     // Refresh the list to show updated metadata
-                    await fetchTokens();
+                    await refreshWhitelist();
                 }
             } catch (err) {
                 console.error('Error polling refresh progress:', err);
@@ -627,7 +601,7 @@ export default function TokensAdmin() {
                             <FaCoins /> Token Whitelist Management
                         </h1>
                         <button
-                            onClick={fetchTokens}
+                            onClick={refreshWhitelist}
                             style={{ ...styles.button, ...styles.secondaryButton }}
                             disabled={loading}
                         >

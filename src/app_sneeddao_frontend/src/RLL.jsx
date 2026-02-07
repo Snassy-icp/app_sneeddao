@@ -17,6 +17,7 @@ import { headerStyles } from './styles/HeaderStyles';
 import Header from './components/Header';
 import { fetchUserNeurons, fetchUserNeuronsForSns } from './utils/NeuronUtils';
 import { useTheme } from './contexts/ThemeContext';
+import { useWhitelistTokens } from './contexts/WhitelistTokensContext';
 import { normalizeId } from './hooks/useNeuronsCache';
 import { FaCoins, FaChartBar, FaBalanceScale, FaClock, FaDatabase, FaCog, FaHistory, FaCheckCircle, FaExclamationTriangle, FaArrowRight, FaSpinner } from 'react-icons/fa';
 
@@ -440,10 +441,9 @@ const formatDuration = (seconds) => {
 function RLL() {
     const { identity, isAuthenticated, logout, login } = useAuth();
     const { theme } = useTheme();
+    const { whitelistedTokens: tokens, loading: loadingTokens } = useWhitelistTokens();
     const styles = getStyles(theme);
-    const [tokens, setTokens] = useState([]);
     const [balances, setBalances] = useState({});
-    const [loadingTokens, setLoadingTokens] = useState(true);
     const [loadingBalances, setLoadingBalances] = useState({});
     const [distributions, setDistributions] = useState(null);
     const [loadingDistributions, setLoadingDistributions] = useState(true);
@@ -517,33 +517,6 @@ function RLL() {
     // New state for claiming tokens
     const [claimingTokens, setClaimingTokens] = useState({});
     const [notification, setNotification] = useState(null);
-
-    // Fetch whitelisted tokens
-    useEffect(() => {
-        const fetchTokens = async () => {
-            console.log('Starting to fetch whitelisted tokens...');
-            try {
-                const agent = new HttpAgent({
-                    host: 'https://ic0.app'
-                });
-                await agent.fetchRootKey();
-                
-                const backendActor = createBackendActor(backendCanisterId, {
-                    agentOptions: { agent }
-                });
-                console.log('Created backend actor, fetching tokens...');
-                const whitelistedTokens = await backendActor.get_whitelisted_tokens();
-                console.log('Received whitelisted tokens:', whitelistedTokens);
-                setTokens(whitelistedTokens);
-            } catch (error) {
-                console.error('Error fetching whitelisted tokens:', error);
-            } finally {
-                setLoadingTokens(false);
-            }
-        };
-
-        fetchTokens();
-    }, []);
 
     // Fetch total distributions
     useEffect(() => {

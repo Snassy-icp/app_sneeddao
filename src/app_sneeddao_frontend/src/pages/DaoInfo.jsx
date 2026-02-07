@@ -14,6 +14,7 @@ import {
     calculateTotalAssetsValue,
     getTokenLogo 
 } from '../utils/TokenUtils';
+import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
 import { Link } from 'react-router-dom';
 import { FaChartPie, FaBrain, FaCoins, FaHandshake, FaRocket, FaArrowRight, FaSpinner, FaLock, FaExchangeAlt } from 'react-icons/fa';
 
@@ -234,6 +235,7 @@ const getStyles = (theme) => ({
 
 function DaoInfo() {
     const { identity } = useAuth();
+    const { whitelistedTokens } = useWhitelistTokens();
     const { theme } = useTheme();
     const styles = getStyles(theme);
     const [loading, setLoading] = useState({
@@ -445,17 +447,10 @@ function DaoInfo() {
                         agentOptions: { agent }
                     });
 
-                    const backendActor = createBackendActor(backendCanisterId, {
-                        agentOptions: { agent }
-                    });
-
-                    // Get whitelisted tokens first
-                    const whitelistedTokens = await backendActor.get_whitelisted_tokens();
+                    // Use whitelisted tokens from shared cache
                     const tokenMetadata = {};
-
-                    // Use metadata from whitelisted tokens
                     whitelistedTokens.forEach(token => {
-                        tokenMetadata[token.ledger_id.toString()] = {
+                        tokenMetadata[(token.ledger_id?.toString?.() ?? String(token.ledger_id))] = {
                             symbol: token.symbol,
                             decimals: token.decimals,
                             name: token.name || token.symbol
@@ -654,7 +649,7 @@ function DaoInfo() {
         // Refresh data every minute
         const interval = setInterval(fetchData, 60000);
         return () => clearInterval(interval);
-    }, [conversionRates]);
+    }, [conversionRates, whitelistedTokens]);
 
     const formatNumber = (number) => {
         return new Intl.NumberFormat('en-US').format(number);

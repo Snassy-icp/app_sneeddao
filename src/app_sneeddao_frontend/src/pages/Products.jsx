@@ -15,6 +15,7 @@ import { formatAmount } from '../utils/StringUtils';
 import { getTokenLogo, getTokenMetaForSwap } from '../utils/TokenUtils';
 import { FaRocket, FaLock, FaExchangeAlt, FaUsers, FaDollarSign, FaArrowRight, FaSpinner, FaCubes, FaBolt, FaChartLine, FaGavel, FaWater } from 'react-icons/fa';
 import { createSneedexActor } from '../utils/SneedexUtils';
+import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
 
 // Custom CSS for animations
 const customAnimations = `
@@ -303,6 +304,7 @@ function StatCard({ value, label, isLoading, isParentComplete, isFinalValue, the
 
 function Products() {
     const { identity } = useAuth();
+    const { whitelistedTokens } = useWhitelistTokens();
     const { theme } = useTheme();
     const styles = getStyles(theme);
     const [sneedLockStats, setSneedLockStats] = useState({
@@ -448,14 +450,12 @@ function Products() {
             console.timeEnd('Fetch conversion rates');
 
             const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
-            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
             
-            // Fetch all locks and whitelisted tokens
+            // Fetch all locks (whitelisted tokens from shared cache)
             console.time('Fetch locks and tokens');
-            const [tokenLocks, positionLocks, whitelistedTokens] = await Promise.all([
+            const [tokenLocks, positionLocks] = await Promise.all([
                 sneedLockActor.get_all_token_locks(),
-                sneedLockActor.get_all_position_locks(),
-                backendActor.get_whitelisted_tokens()
+                sneedLockActor.get_all_position_locks()
             ]);
             console.timeEnd('Fetch locks and tokens');
             console.log('Token locks count:', tokenLocks.length);
@@ -484,7 +484,7 @@ function Products() {
 
             // Create a map of whitelisted tokens
             console.time('Create token map');
-            const whitelistedTokenMap = new Map(whitelistedTokens.map(token => [token.ledger_id.toText(), token]));
+            const whitelistedTokenMap = new Map(whitelistedTokens.map(token => [(token.ledger_id?.toString?.() ?? String(token.ledger_id)), token]));
             console.timeEnd('Create token map');
 
             // Calculate total value from token locks
@@ -670,7 +670,7 @@ function Products() {
         }, 5 * 60 * 1000);
 
         return () => clearInterval(interval);
-    }, []);
+    }, [whitelistedTokens]);
 
     // Function to check if a StatCard is complete
     const isCardComplete = (ref) => {

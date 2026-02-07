@@ -5,6 +5,7 @@ import { useAuth } from './AuthContext';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { getTokenLogo } from './utils/TokenUtils';
+import { useWhitelistTokens } from './contexts/WhitelistTokensContext';
 import './Help.css';
 import Header from './components/Header';
 
@@ -107,40 +108,16 @@ const styles = {
 
 function ScanWallet() {
     const { isAuthenticated, identity } = useAuth();
+    const { whitelistedTokens: tokens, loading: loadingTokens } = useWhitelistTokens();
     const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
     const [principalInput, setPrincipalInput] = useState(searchParams.get('principal') || '');
     const [currentPrincipal, setCurrentPrincipal] = useState(searchParams.get('principal') || '');
     const [error, setError] = useState('');
     
-    const [tokens, setTokens] = useState([]);
     const [balances, setBalances] = useState({});
-    const [loadingTokens, setLoadingTokens] = useState(true);
     const [loadingBalances, setLoadingBalances] = useState({});
     const [hideEmptyBalances, setHideEmptyBalances] = useState(false);
-
-    // Fetch whitelisted tokens
-    useEffect(() => {
-        const fetchTokens = async () => {
-            try {
-                const backendActor = createBackendActor(backendCanisterId, {
-                    agentOptions: {
-                        identity,
-                    },
-                });
-                const whitelistedTokens = await backendActor.get_whitelisted_tokens();
-                setTokens(whitelistedTokens);
-            } catch (error) {
-                console.error('Error fetching whitelisted tokens:', error);
-            } finally {
-                setLoadingTokens(false);
-            }
-        };
-
-        if (isAuthenticated) {
-            fetchTokens();
-        }
-    }, [isAuthenticated, identity]);
 
     // Fetch balances when principal or tokens change
     useEffect(() => {

@@ -12,6 +12,7 @@ import { createActor as createNeutriniteDappActor, canisterId as neutriniteCanis
 import { useLocation, useNavigate } from 'react-router-dom';
 import { PrincipalDisplay, getPrincipalDisplayInfo } from '../utils/PrincipalUtils';
 import { useTheme } from '../contexts/ThemeContext';
+import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
 import PrincipalInput from '../components/PrincipalInput';
 import TokenSelector from '../components/TokenSelector';
 import { FaLock, FaCoins, FaWater, FaChevronDown, FaChevronRight, FaFilter, FaSpinner, FaUser, FaClock, FaShieldAlt } from 'react-icons/fa';
@@ -68,6 +69,7 @@ const lockAccent = '#a5b4fc';
 
 function SneedlockInfo() {
     const { identity } = useAuth();
+    const { whitelistedTokens } = useWhitelistTokens();
     const { theme } = useTheme();
     const location = useLocation();
     const navigate = useNavigate();
@@ -567,12 +569,8 @@ function SneedlockInfo() {
             // Start loading metadata and positions in the background
             setMetadataLoading(true);
 
-            // Now fetch whitelisted tokens for ALL tokens we found
-            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
-            const whitelistedTokens = await backendActor.get_whitelisted_tokens();
-            
-            // Create a map for faster lookup
-            const whitelistedTokenMap = new Map(whitelistedTokens.map(token => [token.ledger_id.toText(), token]));
+            // Use whitelisted tokens from shared cache
+            const whitelistedTokenMap = new Map(whitelistedTokens.map(token => [(token.ledger_id?.toString?.() ?? String(token.ledger_id)), token]));
             
             // Process metadata for ALL tokens (both from token locks and position locks)
             for (const tokenKey of Object.keys(aggregatedData)) {
@@ -792,10 +790,8 @@ function SneedlockInfo() {
             setExpiredLoaded(true);
             setExpiredLoading(false);
 
-            // Now load metadata and position details in the background
-            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
-            const whitelistedTokens = await backendActor.get_whitelisted_tokens();
-            const whitelistedTokenMap = new Map(whitelistedTokens.map(token => [token.ledger_id.toText(), token]));
+            // Use whitelisted tokens from shared cache
+            const whitelistedTokenMap = new Map(whitelistedTokens.map(token => [(token.ledger_id?.toString?.() ?? String(token.ledger_id)), token]));
 
             // Process metadata for ALL tokens (both from token locks and position locks)
             for (const tokenKey of Object.keys(aggregatedData)) {

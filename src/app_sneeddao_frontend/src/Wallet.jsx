@@ -54,6 +54,7 @@ import { createActor as createFactoryActor, canisterId as factoryCanisterId } fr
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
 import { useNaming } from './NamingContext';
+import { useWhitelistTokens } from './contexts/WhitelistTokensContext';
 import { useWallet } from './contexts/WalletContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, computeAccountId } from './utils/PrincipalUtils';
 import { getCyclesColor, formatCyclesCompact, formatMemory, getNeuronManagerSettings, getCanisterManagerSettings } from './utils/NeuronManagerSettings';
@@ -424,6 +425,7 @@ function Wallet() {
     const { identity, isAuthenticated, logout } = useAuth();
     const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
+    const { whitelistedTokens } = useWhitelistTokens();
     const { isPremium } = usePremiumStatus(identity);
     const { 
         walletTokens, 
@@ -4600,9 +4602,8 @@ function Wallet() {
         try {
             const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
             
-            // Get all whitelisted tokens (same as token selector dropdowns)
-            const whitelistedTokens = await backendActor.get_whitelisted_tokens();
-            const whitelistedLedgers = whitelistedTokens.map(t => t.ledger_id.toString());
+            // Use shared whitelist cache (same as token selector dropdowns)
+            const whitelistedLedgers = whitelistedTokens.map(t => (t.ledger_id?.toString?.() ?? String(t.ledger_id)));
             
             // Get already registered ledgers
             const registeredLedgers = await backendActor.get_ledger_canister_ids();

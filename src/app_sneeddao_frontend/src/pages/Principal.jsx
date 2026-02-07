@@ -19,6 +19,7 @@ import TransactionList from '../components/TransactionList';
 import TokenIcon from '../components/TokenIcon';
 import NeuronDisplay from '../components/NeuronDisplay';
 import { useNaming } from '../NamingContext';
+import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
 import usePremiumStatus, { PremiumBadge } from '../hooks/usePremiumStatus';
 import MarkdownBody from '../components/MarkdownBody';
 import MessageDialog from '../components/MessageDialog';
@@ -169,7 +170,7 @@ export default function PrincipalPage() {
     const [userBids, setUserBids] = useState([]);
     const [loadingTrades, setLoadingTrades] = useState(false);
     const [tradesError, setTradesError] = useState(null);
-    const [whitelistedTokens, setWhitelistedTokens] = useState([]);
+    const { whitelistedTokens } = useWhitelistTokens();
     const [userPosts, setUserPosts] = useState([]);
     const [userThreads, setUserThreads] = useState([]);
     const [loadingPosts, setLoadingPosts] = useState(false);
@@ -1086,24 +1087,6 @@ export default function PrincipalPage() {
         }
     }, [identity]);
 
-    // Fetch whitelisted tokens for trade metadata
-    useEffect(() => {
-        const fetchTokens = async () => {
-            try {
-                const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
-                const agentOptions = identity ? { identity } : {};
-                const backendActor = createBackendActor(backendCanisterId, {
-                    agentOptions
-                });
-                const tokens = await backendActor.get_whitelisted_tokens();
-                setWhitelistedTokens(tokens);
-            } catch (e) {
-                console.error('Failed to fetch whitelisted tokens:', e);
-            }
-        };
-        fetchTokens();
-    }, [identity]);
-
     // Auto-fetch trades when principal changes
     useEffect(() => {
         if (stablePrincipalId.current) {
@@ -1113,7 +1096,7 @@ export default function PrincipalPage() {
 
     // Helper to get token info for trades
     const getTradeTokenInfo = useCallback((ledgerId) => {
-        const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
+        const token = whitelistedTokens.find(t => (t.ledger_id?.toString?.() ?? String(t.ledger_id)) === ledgerId);
         if (token) {
             return {
                 symbol: token.symbol || 'TOKEN',
@@ -1124,7 +1107,7 @@ export default function PrincipalPage() {
     }, [whitelistedTokens]);
 
     const getWhitelistedTokenInfo = useCallback((ledgerId) => {
-        const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
+        const token = whitelistedTokens.find(t => (t.ledger_id?.toString?.() ?? String(t.ledger_id)) === ledgerId);
         if (token) {
             return {
                 ledgerId,
