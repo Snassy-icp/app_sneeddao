@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useRef, useMemo 
 import { useAuth } from './AuthContext';
 import { getAllNeuronNames, getAllNeuronNicknames, getAllPrincipalNames, getAllPrincipalNicknames } from './utils/BackendUtils';
 import { uint8ArrayToHex } from './utils/NeuronUtils';
-import { getAllSnses, fetchAndCacheSnsData } from './utils/SnsUtils';
+import { getAllSnses, SNS_CACHE_UPDATED_EVENT } from './utils/SnsUtils';
 
 const NamingContext = createContext();
 export { NamingContext };
@@ -60,7 +60,7 @@ export function NamingProvider({ children }) {
     const [principalNicknames, setPrincipalNicknames] = useState(() => loadMapFromCache(CACHE_KEYS.PRINCIPAL_NICKNAMES));
     const [verifiedNames, setVerifiedNames] = useState(() => loadMapFromCache(CACHE_KEYS.VERIFIED_NAMES));
     const [loading, setLoading] = useState(true);
-    const [snses, setSnses] = useState(() => getAllSnses() || []);
+    const [snsCacheVersion, setSnsCacheVersion] = useState(0);
     
     // Track if we've done initial load from cache
     const hasLoadedFromCache = useRef(
@@ -195,28 +195,17 @@ export function NamingProvider({ children }) {
         }
     }, [identity]);
 
-    // Load SNS data and inject known canister IDs into public names
+    // Subscribe to SNS cache updates (single source of truth in SnsUtils)
     useEffect(() => {
-        async function loadSnses() {
-            const cached = getAllSnses();
-            if (cached?.length > 0) {
-                setSnses(cached);
-            }
-            try {
-                const data = await fetchAndCacheSnsData(identity);
-                if (data?.length > 0) {
-                    setSnses(data);
-                }
-            } catch (err) {
-                console.warn('NamingContext: Failed to load SNS data for names:', err);
-            }
-        }
-        loadSnses();
-    }, [identity]);
+        const handler = () => setSnsCacheVersion(v => v + 1);
+        window.addEventListener(SNS_CACHE_UPDATED_EVENT, handler);
+        return () => window.removeEventListener(SNS_CACHE_UPDATED_EVENT, handler);
+    }, []);
 
-    // Merge principal names with SNS canister names (user-set names take precedence)
+    // Merge principal names with SNS canister names from cache (user-set names take precedence)
     const principalNamesWithSns = useMemo(() => {
         const merged = new Map(principalNames);
+        const snses = getAllSnses() || [];
         snses.forEach(sns => {
             const name = sns.name || `SNS ${(sns.rootCanisterId || '').slice(0, 8)}...`;
             const entries = [
@@ -232,7 +221,7 @@ export function NamingProvider({ children }) {
             });
         });
         return merged;
-    }, [principalNames, snses]);
+    }, [principalNames, snsCacheVersion]);
 
     const getNeuronDisplayName = (neuronId, snsRoot) => {
         if (!neuronId || !snsRoot) return null;

@@ -6,7 +6,15 @@ import { getLogo, setLogo, getLogoSync, hasLogo, clearLogoCache as clearUnifiedL
 import { normalizeId } from './IdUtils';
 
 const SNS_CACHE_KEY = 'sns_data_cache';
+export const SNS_CACHE_UPDATED_EVENT = 'sns-cache-updated';
 const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 1 week in milliseconds
+
+/** Notify listeners that the SNS cache was updated (single source of truth) */
+function notifySnsCacheUpdated() {
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(SNS_CACHE_UPDATED_EVENT));
+    }
+}
 
 // Memory fallback when localStorage fails
 let memoryCache = null;
@@ -254,6 +262,7 @@ export async function fetchAndCacheSnsData(identity) {
             console.log('No valid SNS data to cache'); // Debug log
             // Clear invalid cache
             safeStorage.removeItem(SNS_CACHE_KEY);
+            notifySnsCacheUpdated();
         }
         
         return snsData;
@@ -304,6 +313,7 @@ function cacheSnsData(data) {
             timestamp: Date.now()
         };
         safeStorage.setItem(SNS_CACHE_KEY, JSON.stringify(cacheObject));
+        notifySnsCacheUpdated();
     } catch (error) {
         console.error('Error caching SNS data:', error);
     }
@@ -343,6 +353,7 @@ function addSnsToCache(snsData) {
             timestamp
         };
         safeStorage.setItem(SNS_CACHE_KEY, JSON.stringify(cacheObject));
+        notifySnsCacheUpdated();
         console.log(`Added/updated SNS ${snsData.rootCanisterId} in cache`);
     } catch (error) {
         console.error('Error adding SNS to cache:', error);
@@ -583,6 +594,7 @@ export async function fetchAndCacheSnsDataOptimized(identity, options = {}) {
         } else {
             console.log('No valid SNS data to cache'); // Debug log
             safeStorage.removeItem(SNS_CACHE_KEY);
+            notifySnsCacheUpdated();
         }
         
         return snsData;
@@ -634,4 +646,5 @@ export function startBackgroundSnsFetch(identity, onComplete) {
 export function clearSnsCache() {
     console.log('Clearing SNS cache...'); // Debug log
     safeStorage.removeItem(SNS_CACHE_KEY);
+    notifySnsCacheUpdated();
 } 
