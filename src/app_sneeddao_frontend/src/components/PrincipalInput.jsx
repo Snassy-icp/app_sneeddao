@@ -676,8 +676,8 @@ const PrincipalInput = ({
                 </div>
             )}
             
-            {/* Dropdown - rendered via portal to ensure it's above everything */}
-            {showDropdown && searchResults.length > 0 && ReactDOM.createPortal(
+            {/* Dropdown - rendered via portal to ensure it's above everything (show even when no matches so user can change filters) */}
+            {showDropdown && inputValue.trim() && ReactDOM.createPortal(
                 <div
                     ref={dropdownRef}
                     style={{
@@ -795,7 +795,13 @@ const PrincipalInput = ({
                             </button>
                         </div>
                     </div>
-                    {searchResults.map((item, index) => (
+                    {searchResults.length === 0 ? (
+                        <div style={{ padding: '10px 12px', color: theme.colors.mutedText, fontSize: '12px' }}>
+                            No matches in <strong>{activeTab === 'private' ? 'Private (nicknames)' : activeTab === 'public' ? 'Public (names)' : 'All'}</strong>.
+                            Try switching tabs or toggling users/canisters.
+                        </div>
+                    ) : (
+                    searchResults.map((item, index) => (
                         <div
                             key={item.principalStr}
                             onClick={() => handleSelect(item)}
@@ -819,7 +825,8 @@ const PrincipalInput = ({
                                 isAuthenticated={isAuthenticated}
                             />
                         </div>
-                    ))}
+                    ))
+                    )}
                 </div>,
                 document.body
             )}
