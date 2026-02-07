@@ -1998,7 +1998,7 @@ export default function PrincipalPage() {
                                                     alignItems: 'center',
                                                     gap: '0.5rem'
                                                 }}>
-                                                    {principalInfo?.name || (isCanisterPrincipal(stablePrincipalId.current?.toString() || '') ? 'Canister' : 'Anonymous')}
+                                                    {principalInfo?.name || principalNames?.get(stablePrincipalId.current?.toString() || '') || (isCanisterPrincipal(stablePrincipalId.current?.toString() || '') ? 'Canister' : 'Anonymous')}
                                                     {principalInfo?.isVerified && (
                                                         <FaCheckCircle size={16} color={principalPrimary} title="Verified name" />
                                                     )}
