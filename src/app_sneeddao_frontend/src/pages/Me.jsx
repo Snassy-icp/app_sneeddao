@@ -58,7 +58,7 @@ import ThemeToggle from '../components/ThemeToggle';
 import TokenIcon from '../components/TokenIcon';
 import { Principal } from '@dfinity/principal';
 import { createSneedexActor } from '../utils/SneedexUtils';
-import { FaUser, FaCrown, FaKey, FaWallet, FaComments, FaCoins, FaEnvelope, FaGift, FaLock, FaServer, FaAddressBook, FaCog, FaBrain, FaExchangeAlt, FaCheckCircle, FaBell, FaPalette, FaGavel, FaShareAlt, FaExternalLinkAlt, FaCopy, FaPen, FaChevronRight, FaChevronDown } from 'react-icons/fa';
+import { FaUser, FaCrown, FaKey, FaWallet, FaComments, FaCoins, FaEnvelope, FaGift, FaLock, FaServer, FaAddressBook, FaCog, FaBrain, FaExchangeAlt, FaCheckCircle, FaBell, FaPalette, FaGavel, FaShareAlt, FaExternalLinkAlt, FaCopy, FaPen, FaChevronRight, FaChevronDown, FaVoteYea } from 'react-icons/fa';
 
 // Custom CSS for animations
 const customStyles = `
@@ -1256,6 +1256,7 @@ export default function Me() {
     const quickNavItems = [
         { icon: <FaShareAlt size={20} />, label: 'My Public Page', to: `/principal?id=${identity?.getPrincipal().toString()}`, color: '#3b82f6' },
         { icon: <FaWallet size={20} />, label: 'My Wallet', to: '/wallet', color: mePrimary },
+        { icon: <FaVoteYea size={20} />, label: 'Voting', to: '/active_proposals', color: '#8b5cf6' },
         { icon: <FaGavel size={20} />, label: 'My Trades', to: '/sneedex_my', color: '#6366f1' },
         { icon: <FaComments size={20} />, label: 'My Posts', to: '/posts', color: '#10b981' },
         { icon: <FaCoins size={20} />, label: 'My Tips', to: '/tips', color: '#f59e0b' },

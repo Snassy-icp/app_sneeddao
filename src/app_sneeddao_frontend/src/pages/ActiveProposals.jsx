@@ -5,6 +5,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useWallet } from '../contexts/WalletContext';
 import Header from '../components/Header';
 import { getAllSnses, fetchSnsLogo } from '../utils/SnsUtils';
+import { getRelevantSnses } from '../utils/VotableProposalsUtils';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { HttpAgent } from '@dfinity/agent';
 import { uint8ArrayToHex, safePrincipalString } from '../utils/NeuronUtils';
@@ -56,40 +57,8 @@ function ActiveProposals() {
     const [snsLogos, setSnsLogos] = useState({});
     const hasFetchedRef = useRef(false);
     
-    // Get all SNSes with user's neurons that have voting power
-    const getRelevantSnses = useCallback(() => {
-        if (!neuronCache || neuronCache.size === 0) return [];
-        
-        const allSnses = getAllSnses();
-        const relevant = [];
-        
-        for (const sns of allSnses) {
-            const govId = sns.canisters?.governance;
-            if (!govId) continue;
-            
-            const neurons = neuronCache.get(govId);
-            if (!neurons || neurons.length === 0) continue;
-            
-            // Check if user has any neurons with hotkey permission
-            const userPrincipal = identity?.getPrincipal()?.toString();
-            if (!userPrincipal) continue;
-            
-            const hotkeyNeurons = neurons.filter(neuron => {
-                return neuron.permissions?.some(p => {
-                    const permPrincipal = safePrincipalString(p.principal);
-                    if (!permPrincipal || permPrincipal !== userPrincipal) return false;
-                    const permTypes = p.permission_type || [];
-                    return permTypes.includes(4); // Vote permission
-                });
-            });
-            
-            if (hotkeyNeurons.length > 0) {
-                relevant.push({ sns, neurons: hotkeyNeurons });
-            }
-        }
-        
-        return relevant;
-    }, [neuronCache, identity]);
+    // Get all SNSes with user's neurons that have voting power (shared with notifications)
+    const relevantSnses = useMemo(() => getRelevantSnses(neuronCache, identity), [neuronCache, identity]);
 
     // Fetch proposals for all relevant SNSes
     const fetchAllProposals = useCallback(async () => {
@@ -102,8 +71,6 @@ function ActiveProposals() {
         setError('');
 
         try {
-            const relevantSnses = getRelevantSnses();
-            
             if (relevantSnses.length === 0) {
                 setSnsProposalsData([]);
                 setLoading(false);
@@ -188,7 +155,7 @@ function ActiveProposals() {
         } finally {
             setLoading(false);
         }
-    }, [identity, isAuthenticated, getRelevantSnses, snsLogos]);
+    }, [identity, isAuthenticated, relevantSnses, snsLogos]);
 
     // Check eligibility for proposals
     useEffect(() => {

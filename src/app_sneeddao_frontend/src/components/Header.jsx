@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars, FaComments, FaUnlock, FaCrown, FaGift, FaBrain, FaKey, FaHandPaper, FaBell, FaEnvelope, FaCoins, FaSync } from 'react-icons/fa';
+import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars, FaComments, FaUnlock, FaCrown, FaGift, FaBrain, FaKey, FaHandPaper, FaBell, FaEnvelope, FaCoins, FaSync, FaVoteYea } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { headerStyles } from '../styles/HeaderStyles';
@@ -13,6 +13,7 @@ import { useWalletOptional } from '../contexts/WalletContext';
 import { useSns } from '../contexts/SnsContext';
 import { useTipNotifications } from '../hooks/useTipNotifications';
 import { useReplyNotifications } from '../hooks/useReplyNotifications';
+import { useVotableProposalsNotifications } from '../hooks/useVotableProposalsNotifications';
 import { useSmsNotifications } from '../hooks/useSmsNotifications';
 import { useCollectiblesNotifications } from '../hooks/useCollectiblesNotifications';
 import ConsolidateModal from '../ConsolidateModal';
@@ -92,6 +93,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         closeModal: closeCollectModal,
         handleConsolidate 
     } = useCollectiblesNotifications();
+    const { votableCount } = useVotableProposalsNotifications();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isQuickLinksOpen, setIsQuickLinksOpen] = useState(false);
     const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
@@ -134,7 +136,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         if (path.startsWith('/msg')) return 'Sneed Me';
         if (['/', '/hub', '/sns', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/feed', '/thread', '/post'].includes(path) || location.pathname.startsWith('/topic/')) return 'Sneed Hub';
         if (['/liquid_staking', '/sns_neuron_wizard', '/create_icp_neuron'].includes(path) || path.startsWith('/icp_neuron_manager')) return 'Liquid Staking';
-        if (['/me', '/names', '/premium', '/rewards', '/tips', '/posts', '/sms', '/wallet', '/canister', '/canisters'].includes(path)) return 'Sneed Me';
+        if (['/me', '/names', '/premium', '/rewards', '/tips', '/posts', '/sms', '/wallet', '/canister', '/canisters', '/active_proposals'].includes(path)) return 'Sneed Me';
         if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) return 'Sneed DAO';
         if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock', '/lock_wizard'].includes(path) || path.startsWith('/lock/')) return 'Sneed Lock';
         if (['/sneedex', '/sneedex_offers', '/sneedex_create', '/sneedex_my'].includes(path) || path.startsWith('/sneedex_offer/')) return 'Sneedex';
@@ -235,7 +237,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             setActiveSection('Sneed Hub');
         } else if (['/liquid_staking', '/sns_neuron_wizard', '/create_icp_neuron'].includes(path) || path.startsWith('/icp_neuron_manager')) {
             setActiveSection('Liquid Staking');
-        } else if (['/me', '/names', '/premium', '/rewards', '/tips', '/posts', '/sms', '/wallet', '/canister', '/canisters'].includes(path)) {
+        } else if (['/me', '/names', '/premium', '/rewards', '/tips', '/posts', '/sms', '/wallet', '/canister', '/canisters', '/active_proposals'].includes(path)) {
             setActiveSection('Sneed Me');
         } else if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) {
             setActiveSection('Sneed DAO');
@@ -425,6 +427,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             defaultPath: '/me',
             subMenu: [
                 { name: 'Me', path: '/me' },
+                { name: 'Voting', path: '/active_proposals' },
                 { name: 'Wallet', path: '/wallet' },
                 { name: 'Messages', path: '/sms' },
                 { name: 'Posts', path: '/posts' },
@@ -1513,7 +1516,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             )}
 
             {/* Notifications Row: Only shows when there are notifications */}
-            {!isHeaderCollapsed && showHeaderNotificationsSetting && isAuthenticated && (newReplyCount > 0 || newTipCount > 0 || newMessageCount > 0 || collectiblesCount > 0) && (
+            {!isHeaderCollapsed && showHeaderNotificationsSetting && isAuthenticated && (newReplyCount > 0 || newTipCount > 0 || newMessageCount > 0 || collectiblesCount > 0 || votableCount > 0) && (
                 <div style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
@@ -1609,6 +1612,40 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                             >
                                 <FaEnvelope size={11} />
                                 <span>{newMessageCount}</span>
+                            </div>
+                        )}
+                        
+                        {/* Votable Proposals Notifications */}
+                        {votableCount > 0 && (
+                            <div 
+                                onClick={() => navigate('/active_proposals')}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    padding: '5px 12px',
+                                    background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(139, 92, 246, 0.1))',
+                                    border: '1px solid rgba(139, 92, 246, 0.3)',
+                                    borderRadius: '16px',
+                                    cursor: 'pointer',
+                                    fontSize: '12px',
+                                    fontWeight: '600',
+                                    color: '#a78bfa',
+                                    transition: 'all 0.2s ease',
+                                    boxShadow: '0 2px 8px rgba(139, 92, 246, 0.15)'
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(-1px)';
+                                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(139, 92, 246, 0.25)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(139, 92, 246, 0.15)';
+                                }}
+                                title={`You have ${votableCount} proposal${votableCount === 1 ? '' : 's'} to vote on`}
+                            >
+                                <FaVoteYea size={11} />
+                                <span>{votableCount}</span>
                             </div>
                         )}
                         
