@@ -6,7 +6,7 @@ import { useAuth } from '../AuthContext';
 import { useSns } from '../contexts/SnsContext';
 import Header from '../components/Header';
 import { fetchAndCacheSnsData, getSnsById, fetchSnsLogo, getAllSnses } from '../utils/SnsUtils';
-import { formatNeuronIdLink, formatE8s, getDissolveState, uint8ArrayToHex } from '../utils/NeuronUtils';
+import { formatNeuronIdLink, formatE8s, getDissolveState, uint8ArrayToHex, indexNeuronsForUsers as sharedIndexNeuronsForUsers } from '../utils/NeuronUtils';
 import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
 import { HttpAgent } from '@dfinity/agent';
 import { useNaming } from '../NamingContext';
@@ -15,7 +15,7 @@ import NeuronInput from '../components/NeuronInput';
 import NeuronDisplay from '../components/NeuronDisplay';
 import TokenIcon from '../components/TokenIcon';
 import useNeuronsCache from '../hooks/useNeuronsCache';
-import { FaUsers, FaLock, FaUnlock, FaClock, FaDownload, FaSync, FaChevronLeft, FaChevronRight, FaSearch, FaLightbulb, FaArrowUp, FaArrowDown, FaSort, FaFilter, FaCoins, FaVoteYea, FaCheckCircle, FaTimesCircle, FaExternalLinkAlt, FaCrown, FaKey, FaUserShield, FaQuestion } from 'react-icons/fa';
+import { FaUsers, FaLock, FaUnlock, FaClock, FaDownload, FaSync, FaChevronLeft, FaChevronRight, FaSearch, FaLightbulb, FaArrowUp, FaArrowDown, FaSort, FaFilter, FaCoins, FaVoteYea, FaCheckCircle, FaTimesCircle, FaExternalLinkAlt, FaCrown, FaKey, FaUserShield, FaQuestion, FaBrain } from 'react-icons/fa';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { Principal } from '@dfinity/principal';
 import { extractPrincipalString } from '../utils/NeuronUtils';
@@ -34,7 +34,7 @@ function Neurons() {
     const [loadingSnses, setLoadingSnses] = useState(true);
     const [totalSupply, setTotalSupply] = useState(null);
     
-    // Use shared neurons cache (same as /hub and /users)
+    // Use shared neurons cache (same as /hub and /users) - shared across both tabs
     const {
         neurons,
         loading,
@@ -45,9 +45,93 @@ function Neurons() {
         refreshData: refreshNeurons,
         setError
     } = useNeuronsCache(selectedSnsRoot, identity);
+
+    // Tab state from URL - default to 'neurons', switching tabs preserves loading state
+    const activeTab = searchParams.get('tab') === 'stakers' ? 'stakers' : 'neurons';
+    const setActiveTab = (tab) => {
+        const newSearchParams = new URLSearchParams(searchParams);
+        if (tab === 'neurons') {
+            newSearchParams.delete('tab');
+        } else {
+            newSearchParams.set('tab', tab);
+        }
+        navigate(`${location.pathname}?${newSearchParams.toString()}`);
+    };
     
     // Get naming context
     const { neuronNames, neuronNicknames, verifiedNames, principalNames, principalNicknames } = useNaming();
+
+    // Stakers tab: index neurons by principal (only when on Stakers tab to avoid unnecessary work)
+    const usersData = useMemo(() => {
+        if (activeTab !== 'stakers') return [];
+        return sharedIndexNeuronsForUsers(neurons);
+    }, [neurons, activeTab]);
+
+    // Stakers tab: get principal display info
+    const getStakersPrincipalDisplayInfo = (principal) => {
+        return getPrincipalDisplayInfoFromContext(principal, principalNames, principalNicknames);
+    };
+
+    // Stakers tab: filter and sort users
+    const filteredStakers = useMemo(() => {
+        if (activeTab !== 'stakers') return [];
+        let filtered = usersData;
+        if (stakersUserTypeFilter === 'owners') {
+            filtered = filtered.filter(user => user.ownedStake > 0n);
+        } else if (stakersUserTypeFilter === 'hotkeys') {
+            filtered = filtered.filter(user => user.ownedStake === 0n && user.hotkeyNeurons.length > 0);
+        }
+        if (stakersSearchTerm.trim()) {
+            const searchLower = stakersSearchTerm.toLowerCase();
+            filtered = filtered.filter(user => {
+                if (user.principal.toLowerCase().includes(searchLower)) return true;
+                const displayInfo = getStakersPrincipalDisplayInfo(user.principal);
+                return displayInfo?.name?.toLowerCase().includes(searchLower) || displayInfo?.nickname?.toLowerCase().includes(searchLower);
+            });
+        }
+        if (stakersHideUnnamed) {
+            filtered = filtered.filter(user => {
+                const displayInfo = getStakersPrincipalDisplayInfo(user.principal);
+                return displayInfo?.name || displayInfo?.nickname;
+            });
+        }
+        return [...filtered].sort((a, b) => {
+            let result = 0;
+            switch (stakersSortConfig.key) {
+                case 'stake': result = a.totalStake > b.totalStake ? -1 : a.totalStake < b.totalStake ? 1 : 0; break;
+                case 'neurons': result = b.neurons.length - a.neurons.length; break;
+                case 'owned': result = a.ownedStake > b.ownedStake ? -1 : a.ownedStake < b.ownedStake ? 1 : 0; break;
+                case 'name':
+                    const nameA = getStakersPrincipalDisplayInfo(a.principal)?.name || getStakersPrincipalDisplayInfo(a.principal)?.nickname || '';
+                    const nameB = getStakersPrincipalDisplayInfo(b.principal)?.name || getStakersPrincipalDisplayInfo(b.principal)?.nickname || '';
+                    result = nameA && nameB ? nameA.localeCompare(nameB) : nameA ? -1 : nameB ? 1 : a.principal.localeCompare(b.principal);
+                    break;
+                default: result = 0;
+            }
+            return stakersSortConfig.direction === 'asc' ? -result : result;
+        });
+    }, [usersData, stakersSearchTerm, stakersHideUnnamed, stakersUserTypeFilter, stakersSortConfig, principalNames, principalNicknames, activeTab]);
+
+    const paginatedStakers = filteredStakers.slice(
+        (stakersCurrentPage - 1) * stakersItemsPerPage,
+        stakersCurrentPage * stakersItemsPerPage
+    );
+    const stakersTotalPages = Math.ceil(filteredStakers.length / stakersItemsPerPage);
+
+    const formatStakeCompact = (e8sValue) => {
+        if (!e8sValue) return '0';
+        const value = Number(e8sValue) / 100000000;
+        if (value >= 1000000000) return (value / 1000000000).toFixed(2).replace(/\.?0+$/, '') + 'B';
+        if (value >= 1000000) return (value / 1000000).toFixed(2).replace(/\.?0+$/, '') + 'M';
+        return Math.floor(value).toLocaleString();
+    };
+
+    const stakersStats = useMemo(() => {
+        const uniqueUsers = usersData.length;
+        const totalOwners = usersData.filter(u => u.ownedStake > BigInt(0)).length;
+        const totalStake = usersData.reduce((sum, u) => sum + u.ownedStake, BigInt(0));
+        return { uniqueUsers, totalOwners, totalStake };
+    }, [usersData]);
     
     // Get current SNS info
     const currentSnsInfo = useMemo(() => {
@@ -134,6 +218,14 @@ function Neurons() {
     const [currentPage, setCurrentPage] = useState(1);
 
     const [dissolveFilter, setDissolveFilter] = useState('all');
+
+    // Stakers tab state (preserved when switching tabs)
+    const [stakersSearchTerm, setStakersSearchTerm] = useState('');
+    const [stakersCurrentPage, setStakersCurrentPage] = useState(1);
+    const [stakersItemsPerPage, setStakersItemsPerPage] = useState(20);
+    const [stakersSortConfig, setStakersSortConfig] = useState({ key: 'owned', direction: 'desc' });
+    const [stakersHideUnnamed, setStakersHideUnnamed] = useState(false);
+    const [stakersUserTypeFilter, setStakersUserTypeFilter] = useState('all');
     
     // Add new filter states
     const [hideUnnamed, setHideUnnamed] = useState(false);
@@ -153,6 +245,7 @@ function Neurons() {
         if (snsParam && snsParam !== selectedSnsRoot) {
             updateSelectedSns(snsParam);
             setCurrentPage(1);
+            setStakersCurrentPage(1);
         }
     }, [searchParams, selectedSnsRoot, updateSelectedSns]);
 
@@ -283,7 +376,7 @@ function Neurons() {
         // Update state
         updateSelectedSns(newSnsRoot);
         setCurrentPage(1);
-        setNeurons([]);
+        setStakersCurrentPage(1);
     };
 
     const handleItemsPerPageChange = (e) => {
@@ -710,6 +803,13 @@ function Neurons() {
             transform: translateY(-3px);
             box-shadow: 0 12px 40px rgba(99, 102, 241, 0.15);
         }
+        .user-card-animate {
+            animation: fadeInUp 0.5s ease-out forwards;
+        }
+        .user-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 40px rgba(99, 102, 241, 0.15);
+        }
         .stat-card:hover {
             transform: translateY(-2px);
         }
@@ -765,35 +865,104 @@ function Neurons() {
                             </div>
                             <div>
                                 <h1 style={{ color: theme.colors.primaryText, fontSize: '1.75rem', fontWeight: '700', margin: 0 }}>
-                                    {currentSnsInfo?.name || 'SNS'} Neuron Explorer
+                                    {currentSnsInfo?.name || 'SNS'} {activeTab === 'neurons' ? 'Neuron' : 'Staker'} Explorer
                                 </h1>
                                 <p style={{ color: theme.colors.secondaryText, fontSize: '0.95rem', margin: '0.25rem 0 0 0' }}>
-                                    Browse and analyze all neurons in the {currentSnsInfo?.name || 'SNS'} governance
+                                    {activeTab === 'neurons' 
+                                        ? `Browse and analyze all neurons in the ${currentSnsInfo?.name || 'SNS'} governance`
+                                        : `Discover users with neuron holdings in ${currentSnsInfo?.name || 'this SNS'}`
+                                    }
                                 </p>
                             </div>
+                        </div>
+
+                        {/* Tab switcher */}
+                        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+                            <button
+                                onClick={() => setActiveTab('neurons')}
+                                style={{
+                                    padding: '0.5rem 1rem',
+                                    borderRadius: '8px',
+                                    border: activeTab === 'neurons' ? `2px solid ${neuronPrimary}` : `1px solid ${theme.colors.border}`,
+                                    background: activeTab === 'neurons' ? `${neuronPrimary}20` : theme.colors.tertiaryBg,
+                                    color: activeTab === 'neurons' ? neuronPrimary : theme.colors.secondaryText,
+                                    fontWeight: activeTab === 'neurons' ? '600' : '500',
+                                    cursor: 'pointer',
+                                    fontSize: '0.9rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                    transition: 'all 0.2s ease'
+                                }}
+                            >
+                                <FaBrain size={14} />
+                                Neurons
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('stakers')}
+                                style={{
+                                    padding: '0.5rem 1rem',
+                                    borderRadius: '8px',
+                                    border: activeTab === 'stakers' ? `2px solid ${neuronPrimary}` : `1px solid ${theme.colors.border}`,
+                                    background: activeTab === 'stakers' ? `${neuronPrimary}20` : theme.colors.tertiaryBg,
+                                    color: activeTab === 'stakers' ? neuronPrimary : theme.colors.secondaryText,
+                                    fontWeight: activeTab === 'stakers' ? '600' : '500',
+                                    cursor: 'pointer',
+                                    fontSize: '0.9rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                    transition: 'all 0.2s ease'
+                                }}
+                            >
+                                <FaUsers size={14} />
+                                Stakers
+                            </button>
                         </div>
                         
                         {/* Quick Stats Row */}
                         <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', marginTop: '1rem' }}>
-                            <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
-                                <span style={{ color: neuronPrimary, fontWeight: '600' }}>{neurons.length.toLocaleString()}</span> neurons loaded
-                            </div>
-                            {totalNeuronCount && (
-                                <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
-                                    <span style={{ color: neuronPrimary, fontWeight: '600' }}>{totalNeuronCount.toLocaleString()}</span> total on-chain
-                                </div>
-                            )}
-                            {filteredNeurons.length !== neurons.length && (
-                                <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
-                                    <span style={{ color: neuronAccent, fontWeight: '600' }}>{filteredNeurons.length.toLocaleString()}</span> matching filters
-                                </div>
+                            {activeTab === 'neurons' ? (
+                                <>
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                                        <span style={{ color: neuronPrimary, fontWeight: '600' }}>{neurons.length.toLocaleString()}</span> neurons loaded
+                                    </div>
+                                    {totalNeuronCount && (
+                                        <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                                            <span style={{ color: neuronPrimary, fontWeight: '600' }}>{totalNeuronCount.toLocaleString()}</span> total on-chain
+                                        </div>
+                                    )}
+                                    {filteredNeurons.length !== neurons.length && (
+                                        <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                                            <span style={{ color: neuronAccent, fontWeight: '600' }}>{filteredNeurons.length.toLocaleString()}</span> matching filters
+                                        </div>
+                                    )}
+                                </>
+                            ) : (
+                                <>
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                                        <span style={{ color: neuronPrimary, fontWeight: '600' }}>{stakersStats.uniqueUsers.toLocaleString()}</span> unique users
+                                    </div>
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                                        <span style={{ color: '#10b981', fontWeight: '600' }}>{stakersStats.totalOwners.toLocaleString()}</span> owners
+                                    </div>
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                                        <span style={{ color: neuronPrimary, fontWeight: '600' }}>{neurons.length.toLocaleString()}</span> neurons loaded
+                                    </div>
+                                    {filteredStakers.length !== usersData.length && (
+                                        <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                                            <span style={{ color: neuronAccent, fontWeight: '600' }}>{filteredStakers.length.toLocaleString()}</span> matching filters
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </div>
                     </div>
                 </div>
 
                 <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '1.5rem' }}>
-                    {/* Statistics Cards */}
+                    {/* Statistics Cards - Neurons tab */}
+                    {activeTab === 'neurons' && (
                     <div style={{
                         display: 'grid',
                         gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
@@ -937,8 +1106,98 @@ function Neurons() {
                             </div>
                         </div>
                     </div>
+                    )}
 
-                    {/* Did you know - Liquid Staking */}
+                    {/* Statistics Cards - Stakers tab */}
+                    {activeTab === 'stakers' && (
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                        gap: '1rem',
+                        marginBottom: '1.5rem'
+                    }}>
+                        <div className="stat-card" style={{
+                            background: theme.colors.secondaryBg,
+                            borderRadius: '16px',
+                            padding: '1.25rem',
+                            border: `1px solid ${theme.colors.border}`,
+                            transition: 'all 0.3s ease'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                                <div style={{
+                                    width: '40px', height: '40px', borderRadius: '10px',
+                                    background: `linear-gradient(135deg, ${neuronPrimary}30, ${neuronSecondary}20)`,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    color: neuronPrimary
+                                }}>
+                                    <FaUsers size={18} />
+                                </div>
+                                <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem', fontWeight: '500' }}>Total Users</span>
+                            </div>
+                            <div style={{ color: theme.colors.primaryText, fontSize: '1.75rem', fontWeight: '700' }}>
+                                {stakersStats.uniqueUsers.toLocaleString()}
+                            </div>
+                            <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginTop: '0.25rem' }}>
+                                with neuron access
+                            </div>
+                        </div>
+                        <div className="stat-card" style={{
+                            background: theme.colors.secondaryBg,
+                            borderRadius: '16px',
+                            padding: '1.25rem',
+                            border: `1px solid ${theme.colors.border}`,
+                            transition: 'all 0.3s ease'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                                <div style={{
+                                    width: '40px', height: '40px', borderRadius: '10px',
+                                    background: 'linear-gradient(135deg, #10b98130, #10b98120)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    color: '#10b981'
+                                }}>
+                                    <FaBrain size={18} />
+                                </div>
+                                <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem', fontWeight: '500' }}>Total Neurons</span>
+                            </div>
+                            <div style={{ color: '#10b981', fontSize: '1.75rem', fontWeight: '700' }}>
+                                {neurons.length.toLocaleString()}
+                            </div>
+                            {totalNeuronCount && (
+                                <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginTop: '0.25rem' }}>
+                                    of {totalNeuronCount.toLocaleString()} on-chain
+                                </div>
+                            )}
+                        </div>
+                        <div className="stat-card" style={{
+                            background: theme.colors.secondaryBg,
+                            borderRadius: '16px',
+                            padding: '1.25rem',
+                            border: `1px solid ${theme.colors.border}`,
+                            transition: 'all 0.3s ease'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                                <div style={{
+                                    width: '40px', height: '40px', borderRadius: '10px',
+                                    background: 'linear-gradient(135deg, #f59e0b30, #f59e0b20)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    color: '#f59e0b'
+                                }}>
+                                    <FaCoins size={18} />
+                                </div>
+                                <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem', fontWeight: '500' }}>Total Staked</span>
+                            </div>
+                            <div style={{ color: '#f59e0b', fontSize: '1.5rem', fontWeight: '700' }}>
+                                {formatStakeCompact(stakersStats.totalStake)}
+                            </div>
+                            <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginTop: '0.25rem' }}>
+                                {tokenSymbol}
+                            </div>
+                        </div>
+                    </div>
+                    )}
+
+                    {/* Did you know - Liquid Staking (Neurons tab only) */}
+                    {activeTab === 'neurons' && (
                     <div style={{
                         background: `linear-gradient(135deg, ${neuronPrimary}12, ${neuronSecondary}08)`,
                         border: `1px solid ${neuronPrimary}25`,
@@ -983,8 +1242,10 @@ function Neurons() {
                             Learn More →
                         </Link>
                     </div>
+                    )}
 
-                    {/* Controls Section */}
+                    {/* Controls Section - Neurons tab */}
+                    {activeTab === 'neurons' && (
                     <div style={{
                         background: theme.colors.secondaryBg,
                         borderRadius: '16px',
@@ -1157,8 +1418,158 @@ function Neurons() {
                             </label>
                         </div>
                     </div>
+                    )}
 
-                    {/* Sort Controls */}
+                    {/* Controls Section - Stakers tab */}
+                    {activeTab === 'stakers' && (
+                    <div style={{
+                        background: theme.colors.secondaryBg,
+                        borderRadius: '16px',
+                        padding: '1.25rem',
+                        marginBottom: '1.5rem',
+                        border: `1px solid ${theme.colors.border}`
+                    }}>
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '1rem',
+                            flexWrap: 'wrap',
+                            gap: '1rem'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                <FaFilter size={14} color={neuronPrimary} />
+                                <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '1rem' }}>
+                                    Filters & Controls
+                                </span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                                <button
+                                    onClick={refreshNeurons}
+                                    disabled={loading}
+                                    style={{
+                                        background: theme.colors.tertiaryBg,
+                                        color: theme.colors.primaryText,
+                                        border: `1px solid ${theme.colors.border}`,
+                                        borderRadius: '8px',
+                                        padding: '0.5rem 1rem',
+                                        cursor: loading ? 'not-allowed' : 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem',
+                                        fontSize: '0.85rem',
+                                        fontWeight: '500',
+                                        opacity: loading ? 0.6 : 1,
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                >
+                                    <FaSync size={12} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
+                                    Refresh
+                                </button>
+                            </div>
+                        </div>
+                        <div style={{
+                            display: 'flex',
+                            gap: '1rem',
+                            flexWrap: 'wrap',
+                            alignItems: 'center',
+                            marginBottom: '1rem'
+                        }}>
+                            <div style={{ width: '200px', minWidth: '150px', position: 'relative' }}>
+                                <FaSearch size={14} style={{
+                                    position: 'absolute',
+                                    left: '12px',
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    color: theme.colors.mutedText
+                                }} />
+                                <input
+                                    type="text"
+                                    value={stakersSearchTerm}
+                                    onChange={(e) => { setStakersSearchTerm(e.target.value); setStakersCurrentPage(1); }}
+                                    placeholder="Search by name or ID..."
+                                    style={{
+                                        backgroundColor: theme.colors.tertiaryBg,
+                                        color: theme.colors.primaryText,
+                                        border: `1px solid ${theme.colors.border}`,
+                                        borderRadius: '10px',
+                                        padding: '0.65rem 1rem 0.65rem 2.5rem',
+                                        width: '100%',
+                                        fontSize: '0.9rem'
+                                    }}
+                                />
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <span style={{ color: theme.colors.secondaryText, fontSize: '0.85rem' }}>Show:</span>
+                                <select
+                                    value={stakersUserTypeFilter}
+                                    onChange={(e) => { setStakersUserTypeFilter(e.target.value); setStakersCurrentPage(1); }}
+                                    style={{
+                                        backgroundColor: theme.colors.tertiaryBg,
+                                        color: theme.colors.primaryText,
+                                        border: `1px solid ${theme.colors.border}`,
+                                        borderRadius: '8px',
+                                        padding: '0.5rem 0.75rem',
+                                        fontSize: '0.9rem',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    <option value="all">All Users</option>
+                                    <option value="owners">Owners Only</option>
+                                    <option value="hotkeys">Hotkeys Only</option>
+                                </select>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <span style={{ color: theme.colors.secondaryText, fontSize: '0.85rem' }}>Per page:</span>
+                                <select
+                                    value={stakersItemsPerPage}
+                                    onChange={(e) => { setStakersItemsPerPage(Number(e.target.value)); setStakersCurrentPage(1); }}
+                                    style={{
+                                        backgroundColor: theme.colors.tertiaryBg,
+                                        color: theme.colors.primaryText,
+                                        border: `1px solid ${theme.colors.border}`,
+                                        borderRadius: '8px',
+                                        padding: '0.5rem 0.75rem',
+                                        fontSize: '0.9rem',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    <option value={10}>10</option>
+                                    <option value={20}>20</option>
+                                    <option value={50}>50</option>
+                                    <option value={100}>100</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style={{
+                            display: 'flex',
+                            gap: '1.5rem',
+                            flexWrap: 'wrap',
+                            paddingTop: '0.75rem',
+                            borderTop: `1px solid ${theme.colors.border}`
+                        }}>
+                            <label style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                color: theme.colors.secondaryText,
+                                fontSize: '0.85rem',
+                                cursor: 'pointer'
+                            }}>
+                                <input
+                                    type="checkbox"
+                                    checked={stakersHideUnnamed}
+                                    onChange={(e) => { setStakersHideUnnamed(e.target.checked); setStakersCurrentPage(1); }}
+                                    style={{ accentColor: neuronPrimary, width: '16px', height: '16px' }}
+                                />
+                                Show only named users
+                            </label>
+                        </div>
+                    </div>
+                    )}
+
+                    {/* Sort Controls - Neurons tab */}
+                    {activeTab === 'neurons' && (
                     <div style={{
                         background: theme.colors.secondaryBg,
                         borderRadius: '12px',
@@ -1203,6 +1614,62 @@ function Neurons() {
                             </button>
                         ))}
                     </div>
+                    )}
+
+                    {/* Sort Controls - Stakers tab */}
+                    {activeTab === 'stakers' && (
+                    <div style={{
+                        background: theme.colors.secondaryBg,
+                        borderRadius: '12px',
+                        padding: '0.75rem 1rem',
+                        marginBottom: '1rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        flexWrap: 'wrap',
+                        border: `1px solid ${theme.colors.border}`
+                    }}>
+                        <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem', fontWeight: '500', marginRight: '0.5rem' }}>
+                            Sort by:
+                        </span>
+                        {[
+                            { key: 'stake', label: 'Total Stake', icon: <FaCoins size={12} /> },
+                            { key: 'neurons', label: 'Neurons', icon: <FaBrain size={12} /> },
+                            { key: 'owned', label: 'Owned', icon: <FaUsers size={12} /> },
+                            { key: 'name', label: 'Name', icon: <FaUsers size={12} /> }
+                        ].map(sort => (
+                            <button
+                                key={sort.key}
+                                onClick={() => {
+                                    setStakersSortConfig(prevConfig => ({
+                                        key: sort.key,
+                                        direction: prevConfig.key === sort.key && prevConfig.direction === 'desc' ? 'asc' : 'desc'
+                                    }));
+                                }}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.4rem',
+                                    padding: '0.4rem 0.75rem',
+                                    borderRadius: '6px',
+                                    border: stakersSortConfig.key === sort.key ? `1px solid ${neuronPrimary}` : `1px solid transparent`,
+                                    background: stakersSortConfig.key === sort.key ? `${neuronPrimary}15` : 'transparent',
+                                    color: stakersSortConfig.key === sort.key ? neuronPrimary : theme.colors.secondaryText,
+                                    cursor: 'pointer',
+                                    fontSize: '0.8rem',
+                                    fontWeight: stakersSortConfig.key === sort.key ? '600' : '500',
+                                    transition: 'all 0.2s ease'
+                                }}
+                            >
+                                {sort.icon}
+                                {sort.label}
+                                {stakersSortConfig.key === sort.key
+                                    ? (stakersSortConfig.direction === 'asc' ? <FaArrowUp size={10} /> : <FaArrowDown size={10} />)
+                                    : <FaSort size={10} style={{ opacity: 0.4 }} />}
+                            </button>
+                        ))}
+                    </div>
+                    )}
 
                     {/* Error display */}
                     {error && (
@@ -1266,7 +1733,8 @@ function Neurons() {
                         </div>
                     ) : (
                         <>
-                            {/* Neuron Cards */}
+                            {/* Neuron Cards - Neurons tab */}
+                            {activeTab === 'neurons' && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                                 {paginatedNeurons.map((neuron, index) => {
                                     const neuronId = uint8ArrayToHex(neuron.id[0]?.id);
@@ -1493,8 +1961,8 @@ function Neurons() {
                                 })}
                             </div>
 
-                            {/* Empty State */}
-                            {filteredNeurons.length === 0 && !loading && (
+                            {/* Empty State - Neurons tab */}
+                            {activeTab === 'neurons' && filteredNeurons.length === 0 && !loading && (
                                 <div style={{
                                     background: theme.colors.secondaryBg,
                                     borderRadius: '16px',
@@ -1512,8 +1980,8 @@ function Neurons() {
                                 </div>
                             )}
 
-                            {/* Pagination */}
-                            {filteredNeurons.length > 0 && (
+                            {/* Pagination - Neurons tab */}
+                            {activeTab === 'neurons' && filteredNeurons.length > 0 && (
                                 <div style={{
                                     display: 'flex',
                                     justifyContent: 'center',
@@ -1571,6 +2039,178 @@ function Neurons() {
                                         <FaChevronRight size={10} />
                                     </button>
                                 </div>
+                            )}
+                            )}
+
+                            {/* User Cards - Stakers tab */}
+                            {activeTab === 'stakers' && (
+                            <>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                {paginatedStakers.map((user, index) => {
+                                    const displayInfo = getStakersPrincipalDisplayInfo(user.principal);
+                                    return (
+                                        <Link
+                                            key={user.principal}
+                                            to={`/principal?id=${user.principal}${selectedSnsRoot ? `&sns=${selectedSnsRoot}` : ''}`}
+                                            className="user-card user-card-animate"
+                                            style={{
+                                                backgroundColor: theme.colors.secondaryBg,
+                                                borderRadius: '14px',
+                                                padding: '1.25rem',
+                                                border: `1px solid ${theme.colors.border}`,
+                                                opacity: 0,
+                                                animationDelay: `${index * 0.03}s`,
+                                                textDecoration: 'none',
+                                                transition: 'all 0.3s ease',
+                                                display: 'block'
+                                            }}
+                                        >
+                                            <div style={{
+                                                display: 'grid',
+                                                gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                                                gap: '1.25rem',
+                                                alignItems: 'center'
+                                            }}>
+                                                <div style={{ minWidth: 0, gridColumn: 'span 2' }}>
+                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                                        User
+                                                    </div>
+                                                    <PrincipalDisplay
+                                                        principal={user.principal}
+                                                        displayInfo={displayInfo}
+                                                        short={false}
+                                                        noLink={true}
+                                                        isAuthenticated={!!identity}
+                                                        showViewProfile={false}
+                                                        style={{ fontSize: '1rem' }}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                                        Neurons
+                                                    </div>
+                                                    <div style={{ color: theme.colors.primaryText, fontSize: '1.1rem', fontWeight: '600' }}>
+                                                        {user.neurons.length}
+                                                        <span style={{ fontSize: '0.8rem', fontWeight: '400', color: theme.colors.mutedText, marginLeft: '0.35rem' }}>
+                                                            ({user.ownedNeurons.length} owned)
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                                        <FaCoins size={10} />
+                                                        Total Stake
+                                                    </div>
+                                                    <div style={{ color: neuronPrimary, fontSize: '1.1rem', fontWeight: '600' }}>
+                                                        {formatStakeCompact(user.totalStake)}
+                                                        <span style={{ fontSize: '0.8rem', fontWeight: '400', color: theme.colors.secondaryText, marginLeft: '0.35rem' }}>
+                                                            {tokenSymbol}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                                        Owned Stake
+                                                    </div>
+                                                    <div style={{ color: '#10b981', fontSize: '1rem', fontWeight: '600' }}>
+                                                        {formatStakeCompact(user.ownedStake)}
+                                                    </div>
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                                    <div style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.35rem',
+                                                        color: neuronPrimary,
+                                                        fontSize: '0.85rem',
+                                                        fontWeight: '500'
+                                                    }}>
+                                                        View Profile
+                                                        <FaExternalLinkAlt size={10} />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </Link>
+                                    );
+                                })}
+                            </div>
+                            {filteredStakers.length === 0 && !loading && (
+                                <div style={{
+                                    background: theme.colors.secondaryBg,
+                                    borderRadius: '16px',
+                                    padding: '3rem',
+                                    textAlign: 'center',
+                                    border: `1px solid ${theme.colors.border}`
+                                }}>
+                                    <FaUsers size={48} color={theme.colors.mutedText} style={{ opacity: 0.3, marginBottom: '1rem' }} />
+                                    <div style={{ color: theme.colors.secondaryText, fontSize: '1rem' }}>
+                                        {neurons.length === 0 ? 'No neurons loaded yet' : 'No users match your filters'}
+                                    </div>
+                                    <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginTop: '0.5rem' }}>
+                                        {neurons.length === 0 ? 'Click Refresh to load neurons' : 'Try adjusting your search or filter criteria'}
+                                    </div>
+                                </div>
+                            )}
+                            {filteredStakers.length > 0 && (
+                                <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'center',
+                                    alignItems: 'center',
+                                    gap: '1rem',
+                                    marginTop: '1.5rem',
+                                    padding: '1rem',
+                                    background: theme.colors.secondaryBg,
+                                    borderRadius: '12px',
+                                    border: `1px solid ${theme.colors.border}`
+                                }}>
+                                    <button
+                                        onClick={() => setStakersCurrentPage(prev => Math.max(1, prev - 1))}
+                                        disabled={stakersCurrentPage === 1}
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.4rem',
+                                            padding: '0.5rem 1rem',
+                                            borderRadius: '8px',
+                                            border: 'none',
+                                            background: stakersCurrentPage === 1 ? theme.colors.tertiaryBg : `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
+                                            color: stakersCurrentPage === 1 ? theme.colors.mutedText : 'white',
+                                            cursor: stakersCurrentPage === 1 ? 'not-allowed' : 'pointer',
+                                            fontSize: '0.85rem',
+                                            fontWeight: '500',
+                                            opacity: stakersCurrentPage === 1 ? 0.5 : 1
+                                        }}
+                                    >
+                                        <FaChevronLeft size={10} />
+                                        Previous
+                                    </button>
+                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
+                                        Page <strong style={{ color: theme.colors.primaryText }}>{stakersCurrentPage}</strong> of <strong style={{ color: theme.colors.primaryText }}>{stakersTotalPages}</strong>
+                                    </span>
+                                    <button
+                                        onClick={() => setStakersCurrentPage(prev => Math.min(stakersTotalPages, prev + 1))}
+                                        disabled={stakersCurrentPage === stakersTotalPages}
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.4rem',
+                                            padding: '0.5rem 1rem',
+                                            borderRadius: '8px',
+                                            border: 'none',
+                                            background: stakersCurrentPage === stakersTotalPages ? theme.colors.tertiaryBg : `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
+                                            color: stakersCurrentPage === stakersTotalPages ? theme.colors.mutedText : 'white',
+                                            cursor: stakersCurrentPage === stakersTotalPages ? 'not-allowed' : 'pointer',
+                                            fontSize: '0.85rem',
+                                            fontWeight: '500',
+                                            opacity: stakersCurrentPage === stakersTotalPages ? 0.5 : 1
+                                        }}
+                                    >
+                                        Next
+                                        <FaChevronRight size={10} />
+                                    </button>
+                                </div>
+                            )}
+                            </>
                             )}
                         </>
                     )}

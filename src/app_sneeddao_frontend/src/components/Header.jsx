@@ -424,7 +424,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Proposals', path: '/proposals' },
                 { name: 'Neurons', path: '/neurons' },
                 { name: 'Transactions', path: '/transactions' },
-                { name: 'Users', path: '/users' }
+                { name: 'Stakers', path: '/neurons?tab=stakers' }
             ]
         },
         'Sneed Me': {
