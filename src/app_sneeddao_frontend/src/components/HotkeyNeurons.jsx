@@ -26,13 +26,16 @@ const HotkeyNeurons = ({
     proposalData = null,
     currentProposalId = null,
     onVoteSuccess = null,
-    forceSneedSns = false
+    forceSneedSns = false,
+    inlineInProposal = false
 }) => {
     const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
     const { selectedSnsRoot, SNEED_SNS_ROOT } = useSns();
     const { getHotkeyNeurons, loading: neuronsLoading, refreshNeurons, neuronsData } = useNeurons();
     const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+    const [neuronsListExpanded, setNeuronsListExpanded] = useState(false);
+    const [voteAllState, setVoteAllState] = useState('idle');
     const [votingStates, setVotingStates] = useState({});
     const [tokenSymbol, setTokenSymbol] = useState('SNS');
     const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
@@ -78,20 +81,28 @@ const HotkeyNeurons = ({
     };
 
     const hasEligibleNeurons = () => {
-        if (!proposalData || !currentProposalId) return false;
+        const info = getEligibleNeuronsInfo();
+        return info.count > 0;
+    };
+
+    const getEligibleNeuronsInfo = () => {
+        if (!proposalData || !currentProposalId) return { count: 0, totalVP: 0 };
         
         const allNeurons = getAllNeurons();
         const userPrincipal = normalizeId(identity.getPrincipal());
-        return allNeurons.some(neuron => {
+        let count = 0;
+        let totalVP = 0;
+        
+        for (const neuron of allNeurons) {
             const hasHotkeyAccess = neuron.permissions.some(p => 
                 normalizeId(p.principal) === userPrincipal &&
                 p.permission_type.includes(4)
             );
-            if (!hasHotkeyAccess) return false;
+            if (!hasHotkeyAccess) continue;
 
             const neuronVotingPower = nervousSystemParameters ? 
                 calculateVotingPower(neuron, nervousSystemParameters) : 0;
-            if (neuronVotingPower === 0) return false;
+            if (neuronVotingPower === 0) continue;
 
             const neuronIdHex = uint8ArrayToHex(neuron.id[0]?.id);
             const ballot = proposalData.ballots?.find(([id, _]) => id === neuronIdHex);
@@ -99,11 +110,13 @@ const HotkeyNeurons = ({
             if (ballot && ballot[1]) {
                 const ballotData = ballot[1];
                 const hasVoted = ballotData.cast_timestamp_seconds && Number(ballotData.cast_timestamp_seconds) > 0;
-                if (hasVoted) return false;
+                if (hasVoted) continue;
             }
 
-            return true;
-        });
+            count++;
+            totalVP += neuronVotingPower;
+        }
+        return { count, totalVP };
     };
 
     const isProposalOpenForVoting = () => {
@@ -139,7 +152,7 @@ const HotkeyNeurons = ({
     };
 
     const voteWithNeuron = async (neuronId, vote) => {
-        if (!identity || !effectiveSnsRoot || !currentProposalId) return;
+        if (!identity || !effectiveSnsRoot || !currentProposalId) return 'error';
         
         const neuronIdHex = uint8ArrayToHex(neuronId);
         setVotingStates(prev => ({ ...prev, [neuronIdHex]: 'voting' }));
@@ -168,6 +181,7 @@ const HotkeyNeurons = ({
                 setVotingStates(prev => ({ ...prev, [neuronIdHex]: 'success' }));
                 await refreshNeurons(effectiveSnsRoot);
                 if (onVoteSuccess) onVoteSuccess();
+                return 'success';
             } else if (response?.command?.[0]?.Error) {
                 throw new Error(response.command[0].Error.error_message);
             } else {
@@ -177,6 +191,7 @@ const HotkeyNeurons = ({
             console.error('Error voting:', error);
             setVotingStates(prev => ({ ...prev, [neuronIdHex]: 'error' }));
             alert(`Voting failed: ${error.message}`);
+            return 'error';
         }
     };
 
@@ -187,6 +202,7 @@ const HotkeyNeurons = ({
             return;
         }
 
+        setVoteAllState('voting');
         try {
             const userPrincipal = normalizeId(identity.getPrincipal());
             const eligibleNeurons = allNeurons.filter(neuron => {
@@ -234,30 +250,31 @@ const HotkeyNeurons = ({
             let failedVotes = 0;
             
             for (const neuron of eligibleNeurons) {
-                const neuronIdHex = uint8ArrayToHex(neuron.id[0].id);
-                
-                await voteWithNeuron(neuron.id[0].id, vote);
-                
-                const finalState = votingStates[neuronIdHex];
-                if (finalState === 'success') {
-                    successfulVotes++;
-                } else if (finalState === 'error') {
-                    failedVotes++;
-                }
+                const result = await voteWithNeuron(neuron.id[0].id, vote);
+                if (result === 'success') successfulVotes++;
+                else failedVotes++;
             }
 
             if (successfulVotes > 0) {
+                setVoteAllState('success');
                 alert(`Successfully voted with ${successfulVotes} neuron(s)!${failedVotes > 0 ? ` ${failedVotes} vote(s) failed.` : ''}`);
                 await refreshNeurons(effectiveSnsRoot);
                 if (onVoteSuccess) {
                     onVoteSuccess();
                 }
+                setTimeout(() => setVoteAllState('idle'), 2000);
             } else if (failedVotes > 0) {
+                setVoteAllState('error');
                 alert(`All ${failedVotes} vote(s) failed.`);
+                setTimeout(() => setVoteAllState('idle'), 3000);
+            } else {
+                setVoteAllState('idle');
             }
         } catch (error) {
             console.error('Error voting with all neurons:', error);
+            setVoteAllState('error');
             alert('Error voting with all neurons: ' + error.message);
+            setTimeout(() => setVoteAllState('idle'), 3000);
         }
     };
 
@@ -377,6 +394,20 @@ const HotkeyNeurons = ({
 
     // No neurons state
     if (hotkeyNeurons?.neurons_by_owner?.length === 0 && !neuronsLoading) {
+        if (inlineInProposal) {
+            return (
+                <div style={{
+                    padding: '1rem 1.25rem',
+                    background: theme.colors.primaryBg,
+                    borderRadius: '12px',
+                    border: `1px solid ${theme.colors.border}`,
+                    color: theme.colors.mutedText,
+                    fontSize: '0.9rem'
+                }}>
+                    No eligible neurons available. Add your principal as a hotkey to your neurons to vote.
+                </div>
+            );
+        }
         return (
             <div style={{
                 background: theme.colors.secondaryBg,
@@ -485,7 +516,296 @@ const HotkeyNeurons = ({
         );
     }
 
-    // Main component with neurons
+    // Inline proposal layout - vote-all at top, expandable compact neuron list
+    const renderCompactNeuronCard = (neuron, owner) => {
+        const neuronId = neuron.id?.[0]?.id;
+        if (!neuronId) return null;
+        const neuronIdHex = uint8ArrayToHex(neuronId);
+        const existingVote = getNeuronVote(neuronId);
+        const votingState = votingStates[neuronIdHex];
+        const isOpen = isProposalOpenForVoting();
+        const neuronVotingPower = nervousSystemParameters ? calculateVotingPower(neuron, nervousSystemParameters) : 0;
+        const hasHotkey = neuron.permissions?.some(p => 
+            normalizeId(p.principal) === normalizeId(identity.getPrincipal()) && p.permission_type?.includes(4)
+        );
+        if (!hasHotkey) return null;
+
+        const shortId = neuronIdHex ? `${neuronIdHex.slice(0, 8)}…${neuronIdHex.slice(-6)}` : '—';
+
+        if (existingVote) {
+            const voteInfo = formatVote(existingVote.vote);
+            return (
+                <div key={neuronIdHex} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    padding: '0.5rem 0.75rem',
+                    background: theme.colors.secondaryBg,
+                    borderRadius: '8px',
+                    border: `1px solid ${theme.colors.border}`,
+                    flexWrap: 'wrap'
+                }}>
+                    <code style={{ fontSize: '0.75rem', color: theme.colors.mutedText, fontFamily: 'monospace' }}>{shortId}</code>
+                    <span style={{ color: accentPrimary, fontWeight: '600', fontSize: '0.8rem' }}>
+                        {nervousSystemParameters ? formatVotingPower(neuronVotingPower) : '—'} VP
+                    </span>
+                    <span style={{ color: voteInfo.color, fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        {existingVote.vote === 1 ? <FaCheckCircle size={12} /> : <FaTimesCircle size={12} />}
+                        {voteInfo.text}
+                    </span>
+                </div>
+            );
+        }
+        if (!isOpen || neuronVotingPower === 0) return (
+            <div key={neuronIdHex} style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+                padding: '0.5rem 0.75rem',
+                background: theme.colors.secondaryBg,
+                borderRadius: '8px',
+                border: `1px solid ${theme.colors.border}`
+            }}>
+                <code style={{ fontSize: '0.75rem', color: theme.colors.mutedText, fontFamily: 'monospace' }}>{shortId}</code>
+                <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem' }}>
+                    {!isOpen ? 'Voting closed' : 'No VP'}
+                </span>
+            </div>
+        );
+        if (votingState === 'voting') return (
+            <div key={neuronIdHex} style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+                padding: '0.5rem 0.75rem',
+                background: theme.colors.secondaryBg,
+                borderRadius: '8px',
+                border: `1px solid ${theme.colors.border}`
+            }}>
+                <code style={{ fontSize: '0.75rem', color: theme.colors.mutedText, fontFamily: 'monospace' }}>{shortId}</code>
+                <div style={{ width: '14px', height: '14px', border: `2px solid ${accentPrimary}`, borderTop: '2px solid transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                <span style={{ color: accentPrimary, fontSize: '0.8rem' }}>Voting...</span>
+            </div>
+        );
+        if (votingState === 'success') return (
+            <div key={neuronIdHex} style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+                padding: '0.5rem 0.75rem',
+                background: theme.colors.secondaryBg,
+                borderRadius: '8px',
+                border: `1px solid ${theme.colors.border}`
+            }}>
+                <code style={{ fontSize: '0.75rem', color: theme.colors.mutedText, fontFamily: 'monospace' }}>{shortId}</code>
+                <span style={{ color: theme.colors.success, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <FaCheckCircle size={12} /> Voted
+                </span>
+            </div>
+        );
+        if (votingState === 'error') return (
+            <div key={neuronIdHex} style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.5rem 0.75rem',
+                background: theme.colors.secondaryBg,
+                borderRadius: '8px',
+                border: `1px solid ${theme.colors.border}`,
+                flexWrap: 'wrap'
+            }}>
+                <code style={{ fontSize: '0.75rem', color: theme.colors.mutedText, fontFamily: 'monospace' }}>{shortId}</code>
+                <div style={{ display: 'flex', gap: '0.35rem' }}>
+                    <button onClick={() => voteWithNeuron(neuronId, 1)} style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', background: theme.colors.success, color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Adopt</button>
+                    <button onClick={() => voteWithNeuron(neuronId, 2)} style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', background: theme.colors.error, color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Reject</button>
+                </div>
+            </div>
+        );
+        return (
+            <div key={neuronIdHex} style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+                padding: '0.5rem 0.75rem',
+                background: theme.colors.secondaryBg,
+                borderRadius: '8px',
+                border: `1px solid ${theme.colors.border}`,
+                flexWrap: 'wrap'
+            }}>
+                <code style={{ fontSize: '0.75rem', color: theme.colors.mutedText, fontFamily: 'monospace' }}>{shortId}</code>
+                <span style={{ color: accentPrimary, fontWeight: '600', fontSize: '0.8rem' }}>
+                    {nervousSystemParameters ? formatVotingPower(neuronVotingPower) : '—'} VP
+                </span>
+                <div style={{ display: 'flex', gap: '0.35rem' }}>
+                    <button onClick={() => voteWithNeuron(neuronId, 1)} style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', background: theme.colors.success, color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <FaCheckCircle size={10} /> Adopt
+                    </button>
+                    <button onClick={() => voteWithNeuron(neuronId, 2)} style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', background: theme.colors.error, color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <FaTimesCircle size={10} /> Reject
+                    </button>
+                </div>
+            </div>
+        );
+    };
+
+    if (inlineInProposal && proposalData && currentProposalId) {
+        if (neuronsLoading) {
+            return (
+                <div style={{
+                    marginTop: '1.5rem',
+                    padding: '1.25rem',
+                    background: theme.colors.primaryBg,
+                    borderRadius: '12px',
+                    border: `1px solid ${theme.colors.border}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    color: theme.colors.mutedText
+                }}>
+                    <div style={{ width: '20px', height: '20px', border: `2px solid ${theme.colors.border}`, borderTop: `2px solid ${accentPrimary}`, borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                    Loading neurons...
+                </div>
+            );
+        }
+        const eligibleInfo = getEligibleNeuronsInfo();
+        const allNeurons = getAllNeurons();
+        const userPrincipal = normalizeId(identity?.getPrincipal());
+        const voteableNeurons = allNeurons.filter(n => 
+            n.permissions?.some(p => normalizeId(p.principal) === userPrincipal && p.permission_type?.includes(4))
+        );
+
+        return (
+            <div style={{ marginTop: '1.5rem' }}>
+                <div style={{
+                    padding: '1.25rem',
+                    background: theme.colors.primaryBg,
+                    borderRadius: '12px',
+                    border: `1px solid ${theme.colors.border}`
+                }}>
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '1rem',
+                        flexWrap: 'wrap'
+                    }}>
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            color: theme.colors.primaryText,
+                            fontWeight: '600',
+                            fontSize: '0.9rem'
+                        }}>
+                            <FaVoteYea size={16} style={{ color: accentPrimary }} />
+                            Vote with your neurons:
+                        </div>
+                        <button
+                            onClick={() => voteWithAllNeurons(1)}
+                            disabled={eligibleInfo.count === 0 || voteAllState === 'voting'}
+                            style={{
+                                padding: '0.6rem 1.25rem',
+                                borderRadius: '10px',
+                                border: 'none',
+                                cursor: eligibleInfo.count > 0 && voteAllState !== 'voting' ? 'pointer' : 'not-allowed',
+                                fontWeight: '600',
+                                fontSize: '0.9rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                background: eligibleInfo.count > 0 ? `linear-gradient(135deg, ${theme.colors.success}, #27ae60)` : theme.colors.mutedText,
+                                color: 'white',
+                                opacity: eligibleInfo.count > 0 ? 1 : 0.5,
+                                transition: 'all 0.2s ease'
+                            }}
+                        >
+                            {voteAllState === 'voting' ? '...' : <FaCheckCircle size={14} />}
+                            Adopt
+                            {eligibleInfo.count > 0 && (
+                                <span style={{ opacity: 0.8, fontWeight: '400' }}>({eligibleInfo.count})</span>
+                            )}
+                        </button>
+                        <button
+                            onClick={() => voteWithAllNeurons(2)}
+                            disabled={eligibleInfo.count === 0 || voteAllState === 'voting'}
+                            style={{
+                                padding: '0.6rem 1.25rem',
+                                borderRadius: '10px',
+                                border: 'none',
+                                cursor: eligibleInfo.count > 0 && voteAllState !== 'voting' ? 'pointer' : 'not-allowed',
+                                fontWeight: '600',
+                                fontSize: '0.9rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                background: eligibleInfo.count > 0 ? `linear-gradient(135deg, ${theme.colors.error}, #c0392b)` : theme.colors.mutedText,
+                                color: 'white',
+                                opacity: eligibleInfo.count > 0 ? 1 : 0.5,
+                                transition: 'all 0.2s ease'
+                            }}
+                        >
+                            {voteAllState === 'voting' ? '...' : <FaTimesCircle size={14} />}
+                            Reject
+                            {eligibleInfo.count > 0 && (
+                                <span style={{ opacity: 0.8, fontWeight: '400' }}>({eligibleInfo.count})</span>
+                            )}
+                        </button>
+                        {voteAllState === 'success' && (
+                            <span style={{ color: theme.colors.success, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <FaCheckCircle /> Vote submitted!
+                            </span>
+                        )}
+                        {voteAllState === 'error' && (
+                            <span style={{ color: theme.colors.error, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <FaTimesCircle /> Voting failed
+                            </span>
+                        )}
+                    </div>
+                    {eligibleInfo.count === 0 && (
+                        <div style={{ marginTop: '0.75rem', fontSize: '0.8rem', color: theme.colors.mutedText }}>
+                            No eligible neurons available. Either you've already voted or your neurons have no voting power.
+                        </div>
+                    )}
+                    {voteableNeurons.length > 0 && (
+                        <div style={{ marginTop: '1rem' }}>
+                            <button
+                                onClick={() => setNeuronsListExpanded(!neuronsListExpanded)}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                    padding: '0.5rem 0',
+                                    background: 'none',
+                                    border: 'none',
+                                    color: accentPrimary,
+                                    cursor: 'pointer',
+                                    fontSize: '0.9rem',
+                                    fontWeight: '500'
+                                }}
+                            >
+                                {neuronsListExpanded ? <FaChevronUp size={12} /> : <FaChevronDown size={12} />}
+                                {neuronsListExpanded ? 'Hide' : 'Show'} my neurons ({voteableNeurons.length})
+                            </button>
+                            {neuronsListExpanded && (
+                                <div style={{
+                                    marginTop: '0.75rem',
+                                    display: 'grid',
+                                    gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                                    gap: '0.5rem'
+                                }}>
+                                    {(hotkeyNeurons?.neurons_by_owner || []).map(([owner, neurons]) =>
+                                        neurons.map((neuron) => renderCompactNeuronCard(neuron, owner))
+                                    ).flat().filter(Boolean)}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+                <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+            </div>
+        );
+    }
+
+    // Full card layout
     return (
         <div style={{
             background: theme.colors.secondaryBg,
