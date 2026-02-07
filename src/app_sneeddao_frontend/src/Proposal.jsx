@@ -208,6 +208,14 @@ function Proposal() {
         }
     }, [snsError]);
 
+    // Sync URL sns parameter to context
+    useEffect(() => {
+        const snsParam = searchParams.get('sns');
+        if (snsParam && snsParam !== selectedSnsRoot) {
+            updateSelectedSns(snsParam);
+        }
+    }, [searchParams, selectedSnsRoot, updateSelectedSns]);
+
     useEffect(() => {
         if (currentProposalId && selectedSnsRoot) {
             fetchProposalData();

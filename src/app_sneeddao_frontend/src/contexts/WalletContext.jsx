@@ -1563,7 +1563,10 @@ export const WalletProvider = ({ children }) => {
                 [canisterIdStr]: { loading: false, neurons: neuronsData, error: null }
             }));
         } catch (err) {
-            console.error(`Error fetching neurons for ${canisterIdStr}:`, err);
+            // Only log if not a "method not found" error (canister isn't an ICP Staking Bot)
+            if (!err.message?.includes('has no') && !err.message?.includes('Method not found')) {
+                console.error(`Error fetching neurons for ${canisterIdStr}:`, err);
+            }
             setManagerNeurons(prev => ({
                 ...prev,
                 [canisterIdStr]: { loading: false, neurons: [], error: err.message }
@@ -1618,6 +1621,7 @@ export const WalletProvider = ({ children }) => {
                 // Step 3: Progressively fetch version and neuronCount for each manager
                 canisterIds.forEach(async (canisterIdPrincipal) => {
                     const canisterId = canisterIdPrincipal.toString();
+                    let isValidManager = false;
                     
                     try {
                         const managerActor = createManagerActor(canisterIdPrincipal, { agent });
@@ -1628,6 +1632,8 @@ export const WalletProvider = ({ children }) => {
                         
                         if (managersFetchSessionRef.current !== sessionId) return;
                         
+                        isValidManager = true;
+                        
                         // Update this specific manager with fetched data
                         setNeuronManagers(prev => prev.map(m => 
                             m.canisterId.toString() === canisterId 
@@ -1635,20 +1641,25 @@ export const WalletProvider = ({ children }) => {
                                 : m
                         ));
                     } catch (err) {
-                        console.error(`Error fetching data for ${canisterId}:`, err);
+                        // Only log if not a "method not found" error (canister isn't an ICP Staking Bot)
+                        if (!err.message?.includes('has no') && !err.message?.includes('Method not found')) {
+                            console.error(`Error fetching data for ${canisterId}:`, err);
+                        }
                         
                         if (managersFetchSessionRef.current !== sessionId) return;
                         
                         // Mark as loaded even on error, with default values
                         setNeuronManagers(prev => prev.map(m => 
                             m.canisterId.toString() === canisterId 
-                                ? { ...m, version: { major: 0, minor: 0, patch: 0 }, neuronCount: 0, loading: false }
+                                ? { ...m, version: { major: 0, minor: 0, patch: 0 }, neuronCount: 0, loading: false, isInvalid: true }
                                 : m
                         ));
                     }
                     
-                    // Fetch neurons for this manager (for total calculation)
-                    fetchManagerNeuronsData(canisterId);
+                    // Only fetch neurons if this is a valid ICP Staking Bot
+                    if (isValidManager) {
+                        fetchManagerNeuronsData(canisterId);
+                    }
                 });
             } else {
                 setNeuronManagers([]);

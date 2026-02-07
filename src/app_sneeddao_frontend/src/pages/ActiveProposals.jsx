@@ -54,6 +54,7 @@ function ActiveProposals() {
     const [votedProposals, setVotedProposals] = useState(new Set());
     const [refreshing, setRefreshing] = useState(false);
     const [snsLogos, setSnsLogos] = useState({});
+    const hasFetchedRef = useRef(false);
     
     // Get all SNSes with user's neurons that have voting power
     const getRelevantSnses = useCallback(() => {
@@ -249,14 +250,16 @@ function ActiveProposals() {
         checkEligibility();
     }, [snsProposalsData, identity, votedProposals]);
 
-    // Initial fetch
+    // Initial fetch - only once when neurons are available
     useEffect(() => {
-        if (isAuthenticated && identity && neuronCache.size > 0) {
+        if (isAuthenticated && identity && neuronCache.size > 0 && !hasFetchedRef.current) {
+            hasFetchedRef.current = true;
             fetchAllProposals();
         } else if (!isAuthenticated) {
+            hasFetchedRef.current = false;
             setLoading(false);
         }
-    }, [isAuthenticated, identity, neuronCache.size]);
+    }, [isAuthenticated, identity, neuronCache.size, fetchAllProposals]);
 
     // Quick vote function
     const quickVote = useCallback(async (snsInfo, proposal, neurons, nervousSystemParams, vote) => {
