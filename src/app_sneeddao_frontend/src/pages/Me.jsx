@@ -772,20 +772,18 @@ export default function Me() {
         const userPrincipal = identity?.getPrincipal().toString();
         const MANAGE_PRINCIPALS = 2; // Permission type for managing principals
 
-        // If includeReachable is false, show only neurons where user has MANAGE_PRINCIPALS (i.e. "my" neurons)
+        // If includeReachable is false, show only neurons where user has any permission (hotkey, manage, vote, etc.)
         if (!includeReachable) {
-            const myNeuronsOnly = neurons.filter(n => {
-                const userHasManagePermissions = n.permissions?.some(p => {
+            const neuronsWithAccess = neurons.filter(n => {
+                const userHasAnyPermission = n.permissions?.some(p => {
                     const permPrincipal = safePrincipalString(p.principal);
-                    if (!permPrincipal || permPrincipal !== userPrincipal) return false;
-                    const permTypes = safePermissionType(p);
-                    return permTypes.includes(MANAGE_PRINCIPALS);
+                    return permPrincipal && permPrincipal === userPrincipal;
                 });
-                return userHasManagePermissions;
+                return userHasAnyPermission;
             });
             const filteredNeurons = hideEmptyNeurons 
-                ? myNeuronsOnly.filter(n => !isNeuronEmpty(n))
-                : myNeuronsOnly;
+                ? neuronsWithAccess.filter(n => !isNeuronEmpty(n))
+                : neuronsWithAccess;
             
             if (filteredNeurons.length > 0) {
                 const totalStake = filteredNeurons.reduce(
@@ -2740,7 +2738,7 @@ export default function Me() {
                                             />
                                             Include reachable
                                             <InfoTooltip
-                                                text="Include neurons you can reach through ownership chains — e.g. neurons owned by the same principal but not hotkeyed. Useful for forum voting. When unchecked, only neurons you manage are shown."
+                                                text="Include neurons you can reach through ownership chains — e.g. neurons owned by the same principal but not hotkeyed. Useful for forum voting. When unchecked, only neurons you have some permission to (hotkey, manage, vote, etc.) are shown."
                                                 accentColor={mePrimary}
                                                 iconSize={11}
                                             />
