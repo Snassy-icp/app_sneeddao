@@ -13,14 +13,24 @@ import { getTokenLogo } from '../utils/TokenUtils';
 import { getLogo, setLogo, getLogoSync } from './useLogoCache';
 
 const TOKEN_DB_NAME = 'sneed_token_cache';
-const TOKEN_DB_VERSION = 1;
+const TOKEN_DB_VERSION = 2; // Bumped for WHITELIST_STORE
 const METADATA_STORE = 'tokenMetadata';
 const LEDGER_LIST_STORE = 'ledgerLists';
+const WHITELIST_STORE = 'whitelistTokens';
+export const WHITELIST_UPDATED_EVENT = 'whitelist-tokens-updated';
 
 // In-memory caches for fast access
 const metadataMemoryCache = new Map();
 const ledgerListMemoryCache = new Map(); // key -> Set of ledger IDs
+const whitelistMemoryCache = []; // WhitelistedToken[]
 const loadingStates = new Map();
+
+/** Notify listeners that whitelist was updated */
+function notifyWhitelistUpdated() {
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(WHITELIST_UPDATED_EVENT));
+    }
+}
 
 let dbPromise = null;
 
@@ -51,6 +61,10 @@ const initializeDB = () => {
             // Ledger lists store (known token ledger IDs by source)
             if (!db.objectStoreNames.contains(LEDGER_LIST_STORE)) {
                 db.createObjectStore(LEDGER_LIST_STORE, { keyPath: 'key' });
+            }
+            // Whitelist tokens store (single source for token selectors)
+            if (!db.objectStoreNames.contains(WHITELIST_STORE)) {
+                db.createObjectStore(WHITELIST_STORE, { keyPath: 'key' });
             }
         };
     });
@@ -368,6 +382,73 @@ export const getMergedLedgerList = async (keys) => {
 };
 
 // ============================================================================
+// WHITELIST TOKENS CACHE (single source for token selectors)
+// ============================================================================
+
+const WHITELIST_KEY = 'whitelist';
+
+/**
+ * Get cached whitelist tokens (sync from memory)
+ */
+export const getCachedWhitelistTokens = () => {
+    return whitelistMemoryCache.length > 0 ? [...whitelistMemoryCache] : [];
+};
+
+/**
+ * Save whitelist tokens to cache
+ */
+const toLedgerIdStr = (t) => typeof t?.toText === 'function' ? t.toText() : String(t ?? '');
+
+export const setCachedWhitelistTokens = async (tokens) => {
+    if (!tokens || !Array.isArray(tokens)) return;
+    whitelistMemoryCache.length = 0;
+    whitelistMemoryCache.push(...tokens);
+    try {
+        const db = await initializeDB();
+        if (db.objectStoreNames.contains(WHITELIST_STORE)) {
+            const transaction = db.transaction([WHITELIST_STORE], 'readwrite');
+            transaction.objectStore(WHITELIST_STORE).put({
+                key: WHITELIST_KEY,
+                tokens: tokens.map(t => ({
+                    ...t,
+                    ledger_id: toLedgerIdStr(t.ledger_id)
+                })),
+                timestamp: Date.now()
+            });
+        }
+        notifyWhitelistUpdated();
+    } catch (e) {
+        console.warn('[TokenCache] Failed to save whitelist:', e);
+    }
+};
+
+/**
+ * Initialize whitelist from IndexedDB on load
+ */
+export const initializeWhitelistCache = async () => {
+    try {
+        const db = await initializeDB();
+        if (!db.objectStoreNames.contains(WHITELIST_STORE)) return 0;
+        return new Promise((resolve) => {
+            const transaction = db.transaction([WHITELIST_STORE], 'readonly');
+            const store = transaction.objectStore(WHITELIST_STORE);
+            const request = store.get(WHITELIST_KEY);
+            request.onsuccess = () => {
+                const result = request.result;
+                if (result?.tokens?.length) {
+                    whitelistMemoryCache.length = 0;
+                    whitelistMemoryCache.push(...result.tokens);
+                }
+                resolve(whitelistMemoryCache.length);
+            };
+            request.onerror = () => resolve(0);
+        });
+    } catch (e) {
+        return 0;
+    }
+};
+
+// ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
 
@@ -377,6 +458,7 @@ export const getMergedLedgerList = async (keys) => {
 export const clearTokenCache = async () => {
     metadataMemoryCache.clear();
     ledgerListMemoryCache.clear();
+    whitelistMemoryCache.length = 0;
     
     try {
         const db = await initializeDB();
@@ -391,6 +473,16 @@ export const clearTokenCache = async () => {
             new Promise((resolve, reject) => {
                 const tx = db.transaction([LEDGER_LIST_STORE], 'readwrite');
                 const req = tx.objectStore(LEDGER_LIST_STORE).clear();
+                req.onsuccess = () => resolve();
+                req.onerror = () => reject(req.error);
+            }),
+            new Promise((resolve, reject) => {
+                if (!db.objectStoreNames.contains(WHITELIST_STORE)) {
+                    resolve();
+                    return;
+                }
+                const tx = db.transaction([WHITELIST_STORE], 'readwrite');
+                const req = tx.objectStore(WHITELIST_STORE).clear();
                 req.onsuccess = () => resolve();
                 req.onerror = () => reject(req.error);
             })

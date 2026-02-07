@@ -2,12 +2,10 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
-import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
+import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { getTokenLogo } from '../utils/TokenUtils';
 import { Principal } from '@dfinity/principal';
-
-const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 
 // Global cache for token metadata (logos and errors)
 const metadataCache = new Map();
@@ -45,6 +43,7 @@ function TokenSelector({
 }) {
     const { theme } = useTheme();
     const { identity } = useAuth();
+    const { whitelistedTokens: whitelistFromContext, loading: whitelistLoading } = useWhitelistTokens();
     
     const [tokens, setTokens] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -140,30 +139,14 @@ function TokenSelector({
         setCustomTokenInfo(null);
     }, [customTokenInfo, onChange, onSelectToken]);
 
-    // Fetch whitelisted tokens
+    // Use whitelist from context (single cache), filter excluded
     useEffect(() => {
-        const fetchTokens = async () => {
-            try {
-                const backendActor = createBackendActor(backendCanisterId, {
-                    agentOptions: { identity }
-                });
-                const whitelistedTokens = await backendActor.get_whitelisted_tokens();
-                
-                // Filter out excluded tokens
-                const filteredTokens = whitelistedTokens.filter(
-                    token => !excludeTokens.includes(token.ledger_id.toString())
-                );
-                
-                setTokens(filteredTokens);
-            } catch (error) {
-                console.error('Error fetching whitelisted tokens:', error);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchTokens();
-    }, [identity, excludeTokens]);
+        const filtered = whitelistFromContext.filter(
+            token => !excludeTokens.includes(token.ledger_id?.toString?.() ?? String(token.ledger_id))
+        );
+        setTokens(filtered);
+        setLoading(whitelistLoading);
+    }, [whitelistFromContext, excludeTokens, whitelistLoading]);
 
     // Fetch logos for tokens progressively (using cache)
     useEffect(() => {

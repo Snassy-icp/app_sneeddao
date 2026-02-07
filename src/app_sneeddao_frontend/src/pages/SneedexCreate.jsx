@@ -37,6 +37,7 @@ import { getAllSnses, startBackgroundSnsFetch, fetchSnsLogo, getSnsById } from '
 import { normalizeId } from '../utils/IdUtils';
 import { useWalletOptional } from '../contexts/WalletContext';
 import { useNeuronsOptional } from '../contexts/NeuronsContext';
+import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
 import { fetchUserNeuronsForSns, getNeuronId, uint8ArrayToHex } from '../utils/NeuronUtils';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import PrincipalInput from '../components/PrincipalInput';
@@ -152,9 +153,8 @@ function SneedexCreate() {
     const [publicNote, setPublicNote] = useState(''); // Visible to everyone
     const [noteToBuyer, setNoteToBuyer] = useState(''); // Only visible to winning bidder
     
-    // Token metadata from backend
-    const [whitelistedTokens, setWhitelistedTokens] = useState([]);
-    const [loadingTokens, setLoadingTokens] = useState(true);
+    // Token metadata from backend (single cache via context)
+    const { whitelistedTokens, loading: loadingTokens } = useWhitelistTokens();
     
     // USD price for selected payment token
     const [paymentTokenPrice, setPaymentTokenPrice] = useState(null);
@@ -200,27 +200,9 @@ function SneedexCreate() {
     const [loadingCanisters, setLoadingCanisters] = useState(true);
     
     // Derived token info from selected ledger (with custom token fallback)
-    const selectedPriceToken = whitelistedTokens.find(t => t.ledger_id.toString() === priceTokenLedger);
+    const selectedPriceToken = whitelistedTokens.find(t => (t.ledger_id?.toString?.() ?? String(t.ledger_id)) === priceTokenLedger);
     const priceTokenSymbol = selectedPriceToken?.symbol || customPriceTokenSymbol || 'TOKEN';
     const priceTokenDecimals = selectedPriceToken?.decimals || (customPriceTokenDecimals ? parseInt(customPriceTokenDecimals) : 8);
-    
-    // Fetch whitelisted tokens on mount
-    useEffect(() => {
-        const fetchTokens = async () => {
-            try {
-                const backendActor = createBackendActor(backendCanisterId, {
-                    agentOptions: { identity }
-                });
-                const tokens = await backendActor.get_whitelisted_tokens();
-                setWhitelistedTokens(tokens);
-            } catch (e) {
-                console.error('Failed to fetch whitelisted tokens:', e);
-            } finally {
-                setLoadingTokens(false);
-            }
-        };
-        fetchTokens();
-    }, [identity]);
     
     // Fetch USD price for selected payment token
     useEffect(() => {
@@ -702,7 +684,7 @@ function SneedexCreate() {
             const newPrices = {};
             for (const ledgerId of ledgerIds) {
                 try {
-                    const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
+                    const token = whitelistedTokens.find(t => (t.ledger_id?.toString?.() ?? String(t.ledger_id)) === ledgerId);
                     const decimals = token ? Number(token.decimals) : 8;
                     const price = await priceService.getTokenUSDPrice(ledgerId, decimals);
                     newPrices[ledgerId] = price;
@@ -1018,7 +1000,7 @@ function SneedexCreate() {
             });
             
             // Get fee
-            const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
+            const token = whitelistedTokens.find(t => (t.ledger_id?.toString?.() ?? String(t.ledger_id)) === ledgerId);
             const fee = token?.fee ? Number(token.fee) : 10000;
             
             // Required: amount + fee (in smallest units)
@@ -2486,7 +2468,7 @@ function SneedexCreate() {
                                 onChange={(ledgerId) => {
                                     setPriceTokenLedger(ledgerId);
                                     // Check if it's a whitelisted token and populate from there
-                                    const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
+                                    const token = whitelistedTokens.find(t => (t.ledger_id?.toString?.() ?? String(t.ledger_id)) === ledgerId);
                                     if (token) {
                                         setCustomPriceTokenSymbol(token.symbol);
                                         setCustomPriceTokenDecimals(token.decimals.toString());
@@ -4126,7 +4108,7 @@ function SneedexCreate() {
                                                 onChange={(ledgerId) => {
                                                     setNewAssetTokenLedger(ledgerId);
                                                     // Auto-populate symbol and decimals from whitelisted tokens
-                                                    const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
+                                                    const token = whitelistedTokens.find(t => (t.ledger_id?.toString?.() ?? String(t.ledger_id)) === ledgerId);
                                                     if (token) {
                                                         setNewAssetTokenSymbol(token.symbol);
                                                         setNewAssetTokenDecimals(token.decimals.toString());
@@ -4254,7 +4236,7 @@ function SneedexCreate() {
                                                             type="button"
                                                             onClick={() => {
                                                                 const decimals = parseInt(newAssetTokenDecimals) || 8;
-                                                                const token = whitelistedTokens.find(t => t.ledger_id.toString() === newAssetTokenLedger);
+                                                                const token = whitelistedTokens.find(t => (t.ledger_id?.toString?.() ?? String(t.ledger_id)) === newAssetTokenLedger);
                                                                 const fee = token?.fee ? Number(token.fee) : 10000; // Default to 0.0001 if no fee found
                                                                 const maxAmount = Number(newAssetTokenBalance) - fee;
                                                                 if (maxAmount > 0) {

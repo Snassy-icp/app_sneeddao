@@ -37,6 +37,7 @@ import { createActor as createICRC1Actor } from 'external/icrc1_ledger';
 import { fetchAndCacheSnsData, fetchSnsLogo, getAllSnses } from '../utils/SnsUtils';
 import { useWalletOptional } from '../contexts/WalletContext';
 import { useNeuronsOptional } from '../contexts/NeuronsContext';
+import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
 import { normalizeId } from '../utils/IdUtils';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
 import { VotingPowerCalculator } from '../utils/VotingPowerUtils';
@@ -166,7 +167,7 @@ function SneedexOffer() {
     const [neuronPermissionStatus, setNeuronPermissionStatus] = useState({}); // {governanceId_neuronId: {verified, message}}
     const [tokenBalanceStatus, setTokenBalanceStatus] = useState({}); // {ledgerId: {verified, balance, required}}
     const [checkingAssets, setCheckingAssets] = useState(false);
-    const [whitelistedTokens, setWhitelistedTokens] = useState([]);
+    const { whitelistedTokens } = useWhitelistTokens();
     const [expandedAssets, setExpandedAssets] = useState({}); // {assetIndex: boolean}
     const [expandedDescriptions, setExpandedDescriptions] = useState({}); // {assetIndex: boolean} - for long descriptions
     const [publicNoteExpanded, setPublicNoteExpanded] = useState(false); // For long public notes
@@ -221,22 +222,6 @@ function SneedexOffer() {
             if (style) style.remove();
         };
     }, []);
-    
-    // Fetch whitelisted tokens for metadata lookup
-    useEffect(() => {
-        const fetchTokens = async () => {
-            try {
-                const backendActor = createBackendActor(backendCanisterId, {
-                    agentOptions: { identity }
-                });
-                const tokens = await backendActor.get_whitelisted_tokens();
-                setWhitelistedTokens(tokens);
-            } catch (e) {
-                console.error('Failed to fetch whitelisted tokens:', e);
-            }
-        };
-        fetchTokens();
-    }, [identity]);
     
     // Countdown timer for offer expiration
     useEffect(() => {
@@ -836,7 +821,7 @@ function SneedexOffer() {
         if (offer && identity) {
             const paymentLedger = offer.price_token_ledger.toString();
             // Skip if already in whitelist, already fetched, or is ICP
-            const isWhitelisted = whitelistedTokens.some(t => t.ledger_id.toString() === paymentLedger);
+            const isWhitelisted = whitelistedTokens.some(t => (t.ledger_id?.toString?.() ?? String(t.ledger_id)) === paymentLedger);
             const isIcp = paymentLedger === 'ryjl3-tyaaa-aaaaa-aaaba-cai';
             if (!isWhitelisted && !isIcp && !tokenMetadata[paymentLedger]) {
                 fetchTokenMetadata('payment', paymentLedger);
@@ -1037,7 +1022,7 @@ function SneedexOffer() {
                 const prices = {};
                 for (const ledgerId of ledgerIds) {
                     try {
-                        const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
+                        const token = whitelistedTokens.find(t => (t.ledger_id?.toString?.() ?? String(t.ledger_id)) === ledgerId);
                         const decimals = token ? Number(token.decimals) : 8;
                         const price = await priceService.getTokenUSDPrice(ledgerId, decimals);
                         prices[ledgerId] = price;
@@ -1162,7 +1147,7 @@ function SneedexOffer() {
         if (!offer) return { symbol: 'TOKEN', decimals: 8, fee: null };
         const ledgerId = offer.price_token_ledger.toString();
         // First check whitelisted tokens
-        const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
+        const token = whitelistedTokens.find(t => (t.ledger_id?.toString?.() ?? String(t.ledger_id)) === ledgerId);
         if (token) {
             return { symbol: token.symbol, decimals: Number(token.decimals), name: token.name, fee: token.fee ? BigInt(token.fee) : null };
         }
@@ -2752,7 +2737,7 @@ function SneedexOffer() {
                                                             {details.type === 'ICRC1Token' && (() => {
                                                                 // Check whitelisted tokens first, then dynamically fetched metadata
                                                                 const ledgerId = details.ledger_id;
-                                                                const whitelistedToken = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
+                                                                const whitelistedToken = whitelistedTokens.find(t => (t.ledger_id?.toString?.() ?? String(t.ledger_id)) === ledgerId);
                                                                 const meta = tokenMetadata[ledgerId];
                                                                 const decimals = whitelistedToken?.decimals 
                                                                     ? Number(whitelistedToken.decimals) 

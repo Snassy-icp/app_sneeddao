@@ -27,6 +27,7 @@ import { getAllSnses, fetchSnsLogo, startBackgroundSnsFetch } from '../utils/Sns
 import priceService from '../services/PriceService';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
+import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
@@ -99,7 +100,7 @@ function SneedexOffers() {
     const [searchSellerPrincipal, setSearchSellerPrincipal] = useState(''); // Search by seller principal
     const [filterType, setFilterType] = useState('all'); // all, canister, neuron, token, neuron_manager
     const [sortBy, setSortBy] = useState('newest'); // newest, ending_soon, highest_bid, lowest_price
-    const [whitelistedTokens, setWhitelistedTokens] = useState([]);
+    const { whitelistedTokens } = useWhitelistTokens();
     const [offerTab, setOfferTab] = useState('public'); // 'public' or 'private'
     const [snsLogos, setSnsLogos] = useState(new Map()); // governance_id -> logo URL
     const [snsList, setSnsList] = useState([]); // List of all SNSes
@@ -164,22 +165,6 @@ function SneedexOffers() {
         });
     }, [identity]);
     
-    // Fetch whitelisted tokens for metadata lookup
-    useEffect(() => {
-        const fetchTokens = async () => {
-            try {
-                const backendActor = createBackendActor(backendCanisterId, {
-                    agentOptions: { identity }
-                });
-                const tokens = await backendActor.get_whitelisted_tokens();
-                setWhitelistedTokens(tokens);
-            } catch (e) {
-                console.error('Failed to fetch whitelisted tokens:', e);
-            }
-        };
-        fetchTokens();
-    }, [identity]);
-    
     // Helper to get token info from whitelisted tokens or global metadata cache
     // Note: tokenMetadataState in deps triggers re-render when global cache updates
     const getTokenInfo = useCallback((ledgerId) => {
@@ -188,7 +173,7 @@ function SneedexOffers() {
         const cachedLogo = globalMeta?.logo || null;
         
         // First check whitelisted tokens for basic metadata (symbol, decimals, fee)
-        const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
+        const token = whitelistedTokens.find(t => (t.ledger_id?.toString?.() ?? String(t.ledger_id)) === ledgerId);
         if (token) {
             // Use logo from global cache since whitelist doesn't include logo URLs
             return { symbol: token.symbol, decimals: Number(token.decimals), name: token.name, logo: cachedLogo, fee: token.fee ? BigInt(token.fee) : null };

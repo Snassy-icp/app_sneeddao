@@ -23,6 +23,7 @@ import { NeuronsProvider } from './contexts/NeuronsContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { WalletProvider } from './contexts/WalletContext';
 import { FrontendUpdateProvider, useFrontendUpdate } from './contexts/FrontendUpdateContext';
+import { WhitelistTokensProvider } from './contexts/WhitelistTokensContext';
 import Layout from './components/Layout';
 import CacheRefreshDialog from './components/CacheRefreshDialog';
 
@@ -131,6 +132,7 @@ function App() {
             <ForumProvider>
               <Router>
                 <PremiumProvider>
+                <WhitelistTokensProvider>
                 <WalletProvider>
                 <NamingProvider>
                   <FrontendUpdateProvider>
@@ -245,6 +247,7 @@ function App() {
                   </FrontendUpdateProvider>
                 </NamingProvider>
                 </WalletProvider>
+                </WhitelistTokensProvider>
                 </PremiumProvider>
               </Router>
             </ForumProvider>

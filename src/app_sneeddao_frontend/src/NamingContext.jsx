@@ -3,6 +3,7 @@ import { useAuth } from './AuthContext';
 import { getAllNeuronNames, getAllNeuronNicknames, getAllPrincipalNames, getAllPrincipalNicknames } from './utils/BackendUtils';
 import { uint8ArrayToHex } from './utils/NeuronUtils';
 import { getAllSnses, SNS_CACHE_UPDATED_EVENT } from './utils/SnsUtils';
+import { getCachedWhitelistTokens, WHITELIST_UPDATED_EVENT } from './hooks/useTokenCache';
 
 const NamingContext = createContext();
 export { NamingContext };
@@ -61,6 +62,7 @@ export function NamingProvider({ children }) {
     const [verifiedNames, setVerifiedNames] = useState(() => loadMapFromCache(CACHE_KEYS.VERIFIED_NAMES));
     const [loading, setLoading] = useState(true);
     const [snsCacheVersion, setSnsCacheVersion] = useState(0);
+    const [whitelistCacheVersion, setWhitelistCacheVersion] = useState(0);
     
     // Track if we've done initial load from cache
     const hasLoadedFromCache = useRef(
@@ -202,6 +204,13 @@ export function NamingProvider({ children }) {
         return () => window.removeEventListener(SNS_CACHE_UPDATED_EVENT, handler);
     }, []);
 
+    // Subscribe to whitelist cache updates (single source in useTokenCache)
+    useEffect(() => {
+        const handler = () => setWhitelistCacheVersion(v => v + 1);
+        window.addEventListener(WHITELIST_UPDATED_EVENT, handler);
+        return () => window.removeEventListener(WHITELIST_UPDATED_EVENT, handler);
+    }, []);
+
     // Merge principal names with SNS canister names from cache (user-set names take precedence)
     const principalNamesWithSns = useMemo(() => {
         const merged = new Map(principalNames);
@@ -231,8 +240,28 @@ export function NamingProvider({ children }) {
                 }
             });
         });
+        // Merge whitelist ledgers (some may be SNS dapp canisters - combine names)
+        const whitelist = getCachedWhitelistTokens();
+        whitelist.forEach(token => {
+            const ledgerId = token.ledger_id?.toString?.() ?? String(token.ledger_id);
+            if (!ledgerId) return;
+            const tokenName = token.name || token.symbol || 'Token';
+            const existingName = merged.get(ledgerId);
+            let finalName;
+            if (existingName) {
+                const dappMatch = existingName.match(/^(.+)\s+Dapp\s+\d+$/);
+                if (dappMatch) {
+                    finalName = `${dappMatch[1]} ${tokenName} Ledger`;
+                } else {
+                    return;
+                }
+            } else {
+                finalName = `${tokenName} Ledger`;
+            }
+            merged.set(ledgerId, finalName);
+        });
         return merged;
-    }, [principalNames, snsCacheVersion]);
+    }, [principalNames, snsCacheVersion, whitelistCacheVersion]);
 
     const getNeuronDisplayName = (neuronId, snsRoot) => {
         if (!neuronId || !snsRoot) return null;

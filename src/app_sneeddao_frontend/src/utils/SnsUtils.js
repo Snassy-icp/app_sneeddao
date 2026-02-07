@@ -252,7 +252,6 @@ export async function fetchAndCacheSnsData(identity) {
                         indexId = safeGetOptPrincipal(canisterList.index) || indexId;
                         dapps = (canisterList.dapps || []).map(d => principalToStr(d)).filter(Boolean);
                         archives = (canisterList.archives || []).map(a => principalToStr(a)).filter(Boolean);
-                        console.log(`[SnsUtils] ${name}: index=${indexId || 'none'}, dapps=${dapps.length}, archives=${archives.length}, keys=${Object.keys(canisterList || {}).join(',')}`);
                     } catch (rootErr) {
                         console.warn(`Could not fetch canister list from SNS root ${rootCanisterId}:`, rootErr);
                     }
@@ -626,7 +625,6 @@ export async function fetchAndCacheSnsDataOptimized(identity, options = {}) {
                     indexId = safeGetOptPrincipal(canisterList.index) || indexId;
                     dapps = (canisterList.dapps || []).map(d => principalToStr(d)).filter(Boolean);
                     archives = (canisterList.archives || []).map(a => principalToStr(a)).filter(Boolean);
-                    console.log(`[SnsUtils] ${name}: index=${indexId || 'none'}, dapps=${dapps.length}, archives=${archives.length}, keys=${Object.keys(canisterList || {}).join(',')}`);
                 } catch (rootErr) {
                     console.warn(`Could not fetch canister list from SNS root ${rootCanisterId}:`, rootErr);
                 }

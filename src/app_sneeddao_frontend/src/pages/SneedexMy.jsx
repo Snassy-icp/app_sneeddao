@@ -26,6 +26,7 @@ import { Principal } from '@dfinity/principal';
 import { fetchAndCacheSnsData, getAllSnses } from '../utils/SnsUtils';
 import { useWalletOptional } from '../contexts/WalletContext';
 import { useNeuronsOptional } from '../contexts/NeuronsContext';
+import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
 
 // Generate bid escrow subaccount (matches backend Utils.bidEscrowSubaccount)
 // Structure: byte 0 = principal length, bytes 1-N = principal, byte 23 = 0x42 ('B'), bytes 24-31 = bidId big-endian
@@ -108,7 +109,7 @@ function SneedexMy() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [actionLoading, setActionLoading] = useState(null); // Track which item is loading
-    const [whitelistedTokens, setWhitelistedTokens] = useState([]);
+    const { whitelistedTokens } = useWhitelistTokens();
     const [bidOfferInfo, setBidOfferInfo] = useState({}); // offer_id -> { price_token_ledger, tokenInfo }
     
     // USD pricing state
@@ -141,26 +142,10 @@ function SneedexMy() {
         injectSneedexMyStyles();
     }, []);
     
-    // Fetch whitelisted tokens for metadata lookup
-    useEffect(() => {
-        const fetchTokens = async () => {
-            try {
-                const backendActor = createBackendActor(backendCanisterId, {
-                    agentOptions: { identity }
-                });
-                const tokens = await backendActor.get_whitelisted_tokens();
-                setWhitelistedTokens(tokens);
-            } catch (e) {
-                console.error('Failed to fetch whitelisted tokens:', e);
-            }
-        };
-        fetchTokens();
-    }, [identity]);
-    
     // Helper to get token info from whitelisted tokens or cached metadata
     const getTokenInfo = useCallback((ledgerId) => {
         // First check whitelisted tokens
-        const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
+        const token = whitelistedTokens.find(t => (t.ledger_id?.toString?.() ?? String(t.ledger_id)) === ledgerId);
         if (token) {
             return { symbol: token.symbol, decimals: Number(token.decimals), name: token.name };
         }
@@ -178,7 +163,7 @@ function SneedexMy() {
     const fetchTokenMetadata = useCallback(async (ledgerId) => {
         // Skip if we already have this token in whitelist or cache
         if (tokenMetadataCache.has(ledgerId)) return;
-        if (whitelistedTokens.some(t => t.ledger_id.toString() === ledgerId)) return;
+        if (whitelistedTokens.some(t => (t.ledger_id?.toString?.() ?? String(t.ledger_id)) === ledgerId)) return;
         if (ledgerId === 'ryjl3-tyaaa-aaaaa-aaaba-cai') return; // Skip ICP
         
         try {
@@ -497,7 +482,7 @@ function SneedexMy() {
             const prices = {};
             for (const ledgerId of ledgerIds) {
                 try {
-                    const token = whitelistedTokens.find(t => t.ledger_id.toString() === ledgerId);
+                    const token = whitelistedTokens.find(t => (t.ledger_id?.toString?.() ?? String(t.ledger_id)) === ledgerId);
                     const decimals = token ? Number(token.decimals) : 8;
                     const price = await priceService.getTokenUSDPrice(ledgerId, decimals);
                     prices[ledgerId] = price;
