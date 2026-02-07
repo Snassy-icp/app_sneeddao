@@ -3392,7 +3392,6 @@ function NeuronCard({
                 <div style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
-                    justifyContent: 'space-between',
                     gap: '0.5rem',
                     marginBottom: '0.5rem'
                 }}>
@@ -3403,29 +3402,6 @@ function NeuronCard({
                     }}>
                         {formatE8s(neuron.cached_neuron_stake_e8s)} {tokenSymbol}
                     </div>
-                    {accessLevelDisplay && (() => {
-                        const Icon = ACCESS_LEVEL_ICONS[accessLevelDisplay.iconKey] || FaQuestion;
-                        return (
-                            <span
-                                title={accessLevelDisplay.title}
-                                style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '0.35rem',
-                                    fontSize: '0.8rem',
-                                    fontWeight: '600',
-                                    color: accessLevelDisplay.color || theme.colors.mutedText,
-                                    background: accessLevelDisplay.color ? `${accessLevelDisplay.color}20` : theme.colors.secondaryBg,
-                                    padding: '0.25rem 0.5rem',
-                                    borderRadius: '6px',
-                                    border: accessLevelDisplay.color ? `1px solid ${accessLevelDisplay.color}40` : `1px solid ${theme.colors.border}`
-                                }}
-                            >
-                                <Icon size={12} />
-                                {accessLevelDisplay.title}
-                            </span>
-                        );
-                    })()}
                 </div>
                 <div style={{
                     color: theme.colors.mutedText,
@@ -3464,6 +3440,14 @@ function NeuronCard({
                 )}
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    {accessLevelDisplay && (() => {
+                        const Icon = ACCESS_LEVEL_ICONS[accessLevelDisplay.iconKey] || FaQuestion;
+                        return (
+                            <span title={accessLevelDisplay.title} style={{ display: 'flex', alignItems: 'center', color: theme.colors.mutedText, flexShrink: 0 }}>
+                                <Icon size={12} />
+                            </span>
+                        );
+                    })()}
                     <div onClick={(event) => event.stopPropagation()} style={{ flex: '1 1 auto', minWidth: '120px' }}>
                         <NeuronDisplay
                             neuronId={neuronId}

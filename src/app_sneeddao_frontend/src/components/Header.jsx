@@ -1459,8 +1459,6 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                         </>
                                     );
                         })()}
-                    </div>
-                    
                     {/* Refresh neurons button - sync cache after transfer, Sneedex, etc. */}
                     {refreshAllNeurons && (
                         <button
@@ -1489,6 +1487,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                             <FaSync size={12} />
                         </button>
                     )}
+                    </div>
+                    
                     {/* Close button */}
                     <button
                         onClick={() => {
