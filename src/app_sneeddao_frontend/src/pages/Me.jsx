@@ -771,11 +771,20 @@ export default function Me() {
         const userPrincipal = identity?.getPrincipal().toString();
         const MANAGE_PRINCIPALS = 2; // Permission type for managing principals
 
-        // If includeReachable is false, put all neurons in a single group
+        // If includeReachable is false, show only neurons where user has MANAGE_PRINCIPALS (i.e. "my" neurons)
         if (!includeReachable) {
+            const myNeuronsOnly = neurons.filter(n => {
+                const userHasManagePermissions = n.permissions?.some(p => {
+                    const permPrincipal = safePrincipalString(p.principal);
+                    if (!permPrincipal || permPrincipal !== userPrincipal) return false;
+                    const permTypes = safePermissionType(p);
+                    return permTypes.includes(MANAGE_PRINCIPALS);
+                });
+                return userHasManagePermissions;
+            });
             const filteredNeurons = hideEmptyNeurons 
-                ? neurons.filter(n => !isNeuronEmpty(n))
-                : neurons;
+                ? myNeuronsOnly.filter(n => !isNeuronEmpty(n))
+                : myNeuronsOnly;
             
             if (filteredNeurons.length > 0) {
                 const totalStake = filteredNeurons.reduce(
@@ -1617,6 +1626,14 @@ export default function Me() {
                                         }}>
                                             Display Name
                                         </label>
+                                        <p style={{
+                                            fontSize: '0.75rem',
+                                            color: theme.colors.mutedText,
+                                            margin: '-0.5rem 0 0',
+                                            lineHeight: 1.4
+                                        }}>
+                                            This is shown publicly — other users will see it when viewing your profile.
+                                        </p>
                                         <input
                                             type="text"
                                             value={principalNameInput}
