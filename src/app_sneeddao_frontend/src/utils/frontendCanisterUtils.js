@@ -1,9 +1,8 @@
 /**
- * Utilities for checking the frontend canister's WASM module hash.
- * Used to detect when a new version has been deployed.
+ * Utilities for checking if a new frontend version has been deployed.
+ * Asset canisters don't change module_hash when assets are updated, so we fetch
+ * version.json which contains a unique buildId written at build time.
  */
-import { getCanisterInfo } from './BackendUtils';
-
 const FRONTEND_CANISTER_IDS = {
     ic: 'pxtkg-giaaa-aaaal-ajjzq-cai',
     staging: '2icdp-6qaaa-aaaal-qjt6a-cai',
@@ -22,31 +21,24 @@ export const getFrontendCanisterId = () => {
 };
 
 /**
- * Convert Uint8Array module hash to hex string for comparison.
+ * Fetch the current build ID from version.json (written at build time).
+ * This changes on each deploy, unlike canister_info's module_hash for asset canisters.
+ * @returns {Promise<string | null>} buildId string, or null on failure
  */
-const uint8ArrayToHex = (arr) => {
-    if (!arr || !(arr instanceof Uint8Array)) return null;
-    return Array.from(arr)
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
-};
-
-/**
- * Fetch the current WASM module hash of the frontend canister.
- * Uses backend's get_canister_info (works with anonymous identity).
- * @param {Identity | null} identity - Optional, can be null for anonymous call
- * @returns {Promise<string | null>} Module hash as hex string, or null on failure
- */
-export const getFrontendCanisterModuleHash = async (identity = null) => {
-    const canisterId = getFrontendCanisterId();
+export const getFrontendCanisterModuleHash = async () => {
     try {
-        const result = await getCanisterInfo(identity, canisterId);
-        if (result && 'ok' in result && result.ok?.module_hash?.[0]) {
-            return uint8ArrayToHex(result.ok.module_hash[0]);
+        const url = `${window.location.origin}/version.json?t=${Date.now()}`;
+        const res = await fetch(url);
+        if (!res.ok) return null;
+        const data = await res.json();
+        const buildId = data?.buildId;
+        if (buildId) {
+            console.log('[FrontendUpdate] Fetched version.json -> buildId:', buildId);
+            return buildId;
         }
         return null;
     } catch (error) {
-        console.warn('[FrontendUpdate] Failed to get frontend canister module hash:', error);
+        console.warn('[FrontendUpdate] Failed to fetch version.json:', error);
         return null;
     }
 };

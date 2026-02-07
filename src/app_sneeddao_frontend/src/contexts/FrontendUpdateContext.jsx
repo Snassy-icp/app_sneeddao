@@ -71,10 +71,8 @@ export function FrontendUpdateProvider({ children }) {
         if (!isRunningOnCanister()) return;
         if (!settings.autoUpdateEnabled) return;
 
-        const currentHash = await getFrontendCanisterModuleHash(null);
+        const currentHash = await getFrontendCanisterModuleHash();
         if (!currentHash) return;
-
-        console.log('[FrontendUpdate] WASM module hash:', currentHash);
 
         if (initialHashRef.current === null) {
             initialHashRef.current = currentHash;
