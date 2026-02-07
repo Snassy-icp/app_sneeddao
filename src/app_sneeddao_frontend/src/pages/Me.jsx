@@ -14,7 +14,9 @@ import {
     uint8ArrayToHex,
     getOwnerPrincipals,
     safePrincipalString,
-    safePermissionType
+    safePermissionType,
+    getPrincipalPermissionDisplay,
+    getPrincipalPermissionOnNeuron
 } from '../utils/NeuronUtils';
 import { useWalletOptional } from '../contexts/WalletContext';
 import {
@@ -58,7 +60,7 @@ import ThemeToggle from '../components/ThemeToggle';
 import TokenIcon from '../components/TokenIcon';
 import { Principal } from '@dfinity/principal';
 import { createSneedexActor } from '../utils/SneedexUtils';
-import { FaUser, FaCrown, FaKey, FaWallet, FaComments, FaCoins, FaEnvelope, FaGift, FaLock, FaServer, FaAddressBook, FaCog, FaBrain, FaExchangeAlt, FaCheckCircle, FaBell, FaPalette, FaGavel, FaShareAlt, FaExternalLinkAlt, FaCopy, FaPen, FaChevronRight, FaChevronDown, FaVoteYea } from 'react-icons/fa';
+import { FaUser, FaCrown, FaKey, FaWallet, FaComments, FaCoins, FaEnvelope, FaGift, FaLock, FaServer, FaAddressBook, FaCog, FaBrain, FaExchangeAlt, FaCheckCircle, FaBell, FaPalette, FaGavel, FaShareAlt, FaExternalLinkAlt, FaCopy, FaPen, FaChevronRight, FaChevronDown, FaVoteYea, FaUserShield, FaQuestion } from 'react-icons/fa';
 
 // Custom CSS for animations
 const customStyles = `
@@ -2808,6 +2810,8 @@ export default function Me() {
                                                                 const permTypes = safePermissionType(p);
                                                                 return permTypes.includes(4);
                                                             });
+                                                            const userPerm = getPrincipalPermissionOnNeuron(neuron, myPrincipalText);
+                                                            const accessLevelDisplay = userPerm ? getPrincipalPermissionDisplay(userPerm) : null;
 
                                                             const { name, nickname, isVerified } = getDisplayName(neuronId);
 
@@ -2820,6 +2824,7 @@ export default function Me() {
                                                                     nickname={nickname}
                                                                     isVerified={isVerified}
                                                                     hasHotkeyAccess={hasHotkeyAccess}
+                                                                    accessLevelDisplay={accessLevelDisplay}
                                                                     theme={theme}
                                                                     tokenSymbol={tokenSymbol}
                                                                     selectedSnsRoot={selectedSnsRoot}
@@ -3294,6 +3299,8 @@ function NeuronGroup({
                                 const permTypes = safePermissionType(p);
                                 return permTypes.includes(4);
                             });
+                            const userPerm = getPrincipalPermissionOnNeuron(neuron, myPrincipalText);
+                            const accessLevelDisplay = userPerm ? getPrincipalPermissionDisplay(userPerm) : null;
 
                             const { name, nickname, isVerified } = getDisplayName(neuronId);
 
@@ -3306,6 +3313,7 @@ function NeuronGroup({
                                     nickname={nickname}
                                     isVerified={isVerified}
                                     hasHotkeyAccess={hasHotkeyAccess}
+                                    accessLevelDisplay={accessLevelDisplay}
                                     theme={theme}
                                     tokenSymbol={tokenSymbol}
                                     selectedSnsRoot={selectedSnsRoot}
@@ -3333,6 +3341,8 @@ function NeuronGroup({
     );
 }
 
+const ACCESS_LEVEL_ICONS = { crown: FaCrown, key: FaKey, voteyea: FaVoteYea, manager: FaUserShield, coins: FaCoins, question: FaQuestion };
+
 function NeuronCard({ 
     neuron, 
     neuronId, 
@@ -3340,6 +3350,7 @@ function NeuronCard({
     nickname, 
     isVerified, 
     hasHotkeyAccess, 
+    accessLevelDisplay,
     theme, 
     tokenSymbol, 
     selectedSnsRoot, 
@@ -3392,6 +3403,30 @@ function NeuronCard({
                     }}>
                         {formatE8s(neuron.cached_neuron_stake_e8s)} {tokenSymbol}
                     </div>
+                    {accessLevelDisplay && (() => {
+                        const Icon = ACCESS_LEVEL_ICONS[accessLevelDisplay.iconKey] || FaQuestion;
+                        return (
+                            <span
+                                title={accessLevelDisplay.title}
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.35rem',
+                                    fontSize: '0.8rem',
+                                    fontWeight: '600',
+                                    color: accessLevelDisplay.color || theme.colors.mutedText,
+                                    background: accessLevelDisplay.color ? `${accessLevelDisplay.color}20` : theme.colors.secondaryBg,
+                                    padding: '0.25rem 0.5rem',
+                                    borderRadius: '6px',
+                                    border: accessLevelDisplay.color ? `1px solid ${accessLevelDisplay.color}40` : `1px solid ${theme.colors.border}`
+                                }}
+                            >
+                                <Icon size={12} />
+                                {accessLevelDisplay.title}
+                            </span>
+                        );
+                    })()}
+                </div>
                 <div style={{
                     color: theme.colors.mutedText,
                     fontSize: '0.9rem',
@@ -3401,7 +3436,6 @@ function NeuronCard({
                     {activeNeuronUsdLoading
                         ? '...'
                         : formatUsd(calculateUsdValue(neuron.cached_neuron_stake_e8s || 0, 8, activeNeuronUsdRate))}
-                </div>
                 </div>
 
                 {name && (
@@ -3617,23 +3651,30 @@ function NeuronCard({
                     <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: `1px solid ${theme.colors.border}` }}>
                         <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginBottom: '0.5rem' }}>Permissions</div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                            {getOwnerPrincipals(neuron).filter(ownerStr => ownerStr && ownerStr.includes('-')).map((ownerStr) => (
-                                <div key={ownerStr} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
-                                    <FaCrown size={12} title="Owner" />
-                                    <PrincipalDisplay
-                                        principal={Principal.fromText(ownerStr)}
-                                        displayInfo={principalDisplayInfo.get(ownerStr)}
-                                        showCopyButton={false}
-                                    />
-                                </div>
-                            ))}
+                            {getOwnerPrincipals(neuron).filter(ownerStr => ownerStr && ownerStr.includes('-')).map((ownerStr) => {
+                                const perm = getPrincipalPermissionOnNeuron(neuron, ownerStr);
+                                const display = perm ? getPrincipalPermissionDisplay(perm) : { iconKey: 'crown', title: 'Owner', color: '#f59e0b' };
+                                const Icon = ACCESS_LEVEL_ICONS[display.iconKey] || FaCrown;
+                                return (
+                                    <div key={ownerStr} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
+                                        <Icon size={12} title={display.title} style={{ color: display.color || undefined }} />
+                                        <PrincipalDisplay
+                                            principal={Principal.fromText(ownerStr)}
+                                            displayInfo={principalDisplayInfo.get(ownerStr)}
+                                            showCopyButton={false}
+                                        />
+                                    </div>
+                                );
+                            })}
                             {neuron.permissions
                                 .filter(p => !getOwnerPrincipals(neuron).includes(safePrincipalString(p.principal)))
                                 .map((p, index) => {
                                     const principalStr = safePrincipalString(p.principal);
+                                    const display = getPrincipalPermissionDisplay(p);
+                                    const Icon = ACCESS_LEVEL_ICONS[display.iconKey] || FaKey;
                                     return (
                                         <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
-                                            <FaKey size={12} title="Hotkey" />
+                                            <Icon size={12} title={display.title} style={{ color: display.color || undefined }} />
                                             <PrincipalDisplay 
                                                 principal={p.principal}
                                                 displayInfo={principalDisplayInfo.get(principalStr)}

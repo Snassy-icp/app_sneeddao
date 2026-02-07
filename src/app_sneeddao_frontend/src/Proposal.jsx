@@ -276,8 +276,8 @@ function Proposal() {
         }
     }, [forumActor, currentProposalId, selectedSnsRoot]);
 
-    const fetchProposalData = async () => {
-        setLoading(true);
+    const fetchProposalData = async (silent = false) => {
+        if (!silent) setLoading(true);
         setError('');
         try {
             const selectedSns = getSnsById(selectedSnsRoot);
@@ -308,7 +308,7 @@ function Proposal() {
             console.error('Error fetching proposal data:', err);
             setError('Failed to fetch proposal data');
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
     };
 
@@ -1384,7 +1384,7 @@ function Proposal() {
                                                 proposalData={proposalData}
                                                 currentProposalId={currentProposalId}
                                                 onVoteSuccess={() => {
-                                                    fetchProposalData();
+                                                    fetchProposalData(true);
                                                     refreshNeurons(selectedSnsRoot);
                                                     window.dispatchEvent(new CustomEvent('votableProposalsRefresh'));
                                                 }}

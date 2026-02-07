@@ -10,7 +10,7 @@ import PrincipalInput from '../components/PrincipalInput';
 import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalColor, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import ConfirmationModal from '../ConfirmationModal';
-import { fetchPrincipalNeuronsForSns, getOwnerPrincipals, safePrincipalString, safePermissionType } from '../utils/NeuronUtils';
+import { fetchPrincipalNeuronsForSns, getOwnerPrincipals, safePrincipalString, safePermissionType, getPrincipalPermissionDisplay, getPrincipalPermissionOnNeuron } from '../utils/NeuronUtils';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { getSnsById, fetchAndCacheSnsData, fetchSnsLogo, getAllSnses } from '../utils/SnsUtils';
 import { formatE8s, getDissolveState, uint8ArrayToHex } from '../utils/NeuronUtils';
@@ -22,7 +22,7 @@ import { useNaming } from '../NamingContext';
 import usePremiumStatus, { PremiumBadge } from '../hooks/usePremiumStatus';
 import MarkdownBody from '../components/MarkdownBody';
 import MessageDialog from '../components/MessageDialog';
-import { FaUser, FaSearch, FaEdit, FaPen, FaComments, FaNewspaper, FaCoins, FaExchangeAlt, FaChevronDown, FaChevronUp, FaChevronRight, FaEnvelope, FaCrown, FaKey, FaCheckCircle, FaTimesCircle, FaCopy, FaCheck, FaArrowUp, FaArrowDown, FaNetworkWired, FaCube, FaExternalLinkAlt, FaBrain, FaGavel, FaHandHoldingUsd, FaClock, FaTimes } from 'react-icons/fa';
+import { FaUser, FaSearch, FaEdit, FaPen, FaComments, FaNewspaper, FaCoins, FaExchangeAlt, FaChevronDown, FaChevronUp, FaChevronRight, FaEnvelope, FaCrown, FaKey, FaCheckCircle, FaTimesCircle, FaCopy, FaCheck, FaArrowUp, FaArrowDown, FaNetworkWired, FaCube, FaExternalLinkAlt, FaBrain, FaGavel, FaHandHoldingUsd, FaClock, FaTimes, FaUserShield, FaVoteYea, FaQuestion } from 'react-icons/fa';
 import { 
     createSneedexActor, 
     formatAmount, 
@@ -36,6 +36,8 @@ import {
 } from '../utils/SneedexUtils';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
 import { get_token_conversion_rate } from '../utils/TokenUtils';
+
+const ACCESS_LEVEL_ICONS = { crown: FaCrown, key: FaKey, voteyea: FaVoteYea, manager: FaUserShield, coins: FaCoins, question: FaQuestion };
 
 // Helper to determine if a principal is a canister (shorter) or user (longer)
 const isCanisterPrincipal = (principalStr) => {
@@ -3356,6 +3358,9 @@ export default function PrincipalPage() {
                                                         const neuronId = uint8ArrayToHex(neuron.id[0]?.id);
                                                         if (!neuronId) return null;
                                                         const isExpanded = expandedNeuronCards.has(neuronId);
+                                                        const viewedPrincipal = stablePrincipalId.current?.toString();
+                                                        const viewedPerm = viewedPrincipal ? getPrincipalPermissionOnNeuron(neuron, viewedPrincipal) : null;
+                                                        const accessLevelDisplay = viewedPerm ? getPrincipalPermissionDisplay(viewedPerm) : null;
 
                                                         const neuronSnsRoot = activeNeuronSns || selectedSnsRoot || SNEED_SNS_ROOT;
                                                         const { name, nickname, isVerified } = getNeuronDisplayName(neuronId, neuronSnsRoot);
@@ -3383,12 +3388,37 @@ export default function PrincipalPage() {
                                                                 >
                                                                     <div>
                                                                         <div style={{ 
-                                                                            fontSize: '1.5rem',
-                                                                            fontWeight: '700',
-                                                                            color: principalAccent,
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '0.5rem',
                                                                             marginBottom: '0.4rem'
                                                                         }}>
-                                                                            {formatE8s(neuron.cached_neuron_stake_e8s)} {tokenSymbol}
+                                                                            <span style={{ fontSize: '1.5rem', fontWeight: '700', color: principalAccent }}>
+                                                                                {formatE8s(neuron.cached_neuron_stake_e8s)} {tokenSymbol}
+                                                                            </span>
+                                                                            {accessLevelDisplay && (() => {
+                                                                                const Icon = ACCESS_LEVEL_ICONS[accessLevelDisplay.iconKey] || FaQuestion;
+                                                                                return (
+                                                                                    <span
+                                                                                        title={accessLevelDisplay.title}
+                                                                                        style={{
+                                                                                            display: 'inline-flex',
+                                                                                            alignItems: 'center',
+                                                                                            gap: '0.35rem',
+                                                                                            fontSize: '0.8rem',
+                                                                                            fontWeight: '600',
+                                                                                            color: accessLevelDisplay.color || theme.colors.mutedText,
+                                                                                            background: accessLevelDisplay.color ? `${accessLevelDisplay.color}20` : theme.colors.secondaryBg,
+                                                                                            padding: '0.25rem 0.5rem',
+                                                                                            borderRadius: '6px',
+                                                                                            border: accessLevelDisplay.color ? `1px solid ${accessLevelDisplay.color}40` : `1px solid ${theme.colors.border}`
+                                                                                        }}
+                                                                                    >
+                                                                                        <Icon size={12} />
+                                                                                        {accessLevelDisplay.title}
+                                                                                    </span>
+                                                                                );
+                                                                            })()}
                                                                         </div>
                                                                         <div style={{
                                                                             color: theme.colors.mutedText,
@@ -3470,34 +3500,31 @@ export default function PrincipalPage() {
                                                                         {/* Permissions */}
                                                                         <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: `1px solid ${theme.colors.border}` }}>
                                                                             <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginBottom: '0.5rem' }}>Permissions</div>
-                                                                            {getOwnerPrincipals(neuron).length > 0 && (
-                                                                                <div style={{ 
-                                                                                    display: 'flex',
-                                                                                    alignItems: 'center',
-                                                                                    gap: '8px',
-                                                                                    marginBottom: '6px'
-                                                                                }}>
-                                                                                    <FaCrown size={12} style={{ color: theme.colors.secondaryText }} title="Owner" />
-                                                                                    <PrincipalDisplay 
-                                                                                        principal={Principal.fromText(getOwnerPrincipals(neuron)[0])}
-                                                                                        displayInfo={principalDisplayInfo.get(getOwnerPrincipals(neuron)[0])}
-                                                                                        showCopyButton={false}
-                                                                                        isAuthenticated={isAuthenticated}
-                                                                                    />
-                                                                                </div>
-                                                                            )}
+                                                                            {getOwnerPrincipals(neuron).filter(ownerStr => ownerStr && ownerStr.includes('-')).map((ownerStr) => {
+                                                                                const perm = getPrincipalPermissionOnNeuron(neuron, ownerStr);
+                                                                                const display = perm ? getPrincipalPermissionDisplay(perm) : { iconKey: 'crown', title: 'Owner', color: '#f59e0b' };
+                                                                                const Icon = ACCESS_LEVEL_ICONS[display.iconKey] || FaCrown;
+                                                                                return (
+                                                                                    <div key={ownerStr} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                                                                                        <Icon size={12} style={{ color: display.color || theme.colors.secondaryText }} title={display.title} />
+                                                                                        <PrincipalDisplay
+                                                                                            principal={Principal.fromText(ownerStr)}
+                                                                                            displayInfo={principalDisplayInfo.get(ownerStr)}
+                                                                                            showCopyButton={false}
+                                                                                            isAuthenticated={isAuthenticated}
+                                                                                        />
+                                                                                    </div>
+                                                                                );
+                                                                            })}
                                                                             {neuron.permissions
                                                                                 .filter(p => !getOwnerPrincipals(neuron).includes(safePrincipalString(p.principal)))
                                                                                 .map((p, index) => {
                                                                                     const principalStr = safePrincipalString(p.principal);
+                                                                                    const display = getPrincipalPermissionDisplay(p);
+                                                                                    const Icon = ACCESS_LEVEL_ICONS[display.iconKey] || FaKey;
                                                                                     return (
-                                                                                        <div key={index} style={{ 
-                                                                                            display: 'flex',
-                                                                                            alignItems: 'center',
-                                                                                            gap: '8px',
-                                                                                            marginBottom: '6px'
-                                                                                        }}>
-                                                                                            <FaKey size={12} style={{ color: theme.colors.secondaryText }} title="Hotkey" />
+                                                                                        <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                                                                                            <Icon size={12} style={{ color: display.color || theme.colors.secondaryText }} title={display.title} />
                                                                                             <PrincipalDisplay 
                                                                                                 principal={p.principal}
                                                                                                 displayInfo={principalDisplayInfo.get(principalStr)}

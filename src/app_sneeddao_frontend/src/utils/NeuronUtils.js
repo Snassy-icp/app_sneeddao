@@ -46,6 +46,41 @@ export const safePermissionType = (permission) => {
     return [];
 };
 
+const PERM = {
+    UNSPECIFIED: 0, CONFIGURE_DISSOLVE_STATE: 1, MANAGE_PRINCIPALS: 2, SUBMIT_PROPOSAL: 3,
+    VOTE: 4, DISBURSE: 5, SPLIT: 6, MERGE_MATURITY: 7, DISBURSE_MATURITY: 8, STAKE_MATURITY: 9, MANAGE_VOTING_PERMISSION: 10
+};
+
+/**
+ * Get permission display info for a principal's permission on a neuron.
+ * Matches the logic used in Proposal/Proposals voting history and permissions section.
+ * @param {object} permission - SNS permission object with permission_type array
+ * @returns {{ iconKey: string, title: string, color: string }}
+ */
+export const getPrincipalPermissionDisplay = (permission) => {
+    const permArray = permission?.permission_type ? safePermissionType(permission) : [];
+    const permCount = permArray.length;
+    if (permCount === 10 || permCount === 11) return { iconKey: 'crown', title: 'Full Owner', color: '#f59e0b' };
+    const hasSubmit = permArray.includes(PERM.SUBMIT_PROPOSAL);
+    const hasVote = permArray.includes(PERM.VOTE);
+    if (permCount === 2 && hasSubmit && hasVote) return { iconKey: 'key', title: 'Hotkey', color: '#06b6d4' };
+    if (permCount === 1 && hasVote) return { iconKey: 'voteyea', title: 'Voter', color: '#10b981' };
+    if (permArray.includes(PERM.MANAGE_PRINCIPALS)) return { iconKey: 'manager', title: 'Manager', color: '#6366f1' };
+    if (permArray.includes(PERM.DISBURSE) || permArray.includes(PERM.DISBURSE_MATURITY)) return { iconKey: 'coins', title: 'Financial', color: '#f59e0b' };
+    return { iconKey: 'question', title: 'Custom', color: null };
+};
+
+/**
+ * Get the permission for a given principal on a neuron.
+ * @param {object} neuron - SNS neuron with permissions array
+ * @param {string} principalStr - Principal string to match
+ * @returns {object|null} The permission object or null
+ */
+export const getPrincipalPermissionOnNeuron = (neuron, principalStr) => {
+    if (!neuron?.permissions || !principalStr) return null;
+    return neuron.permissions.find(p => safePrincipalString(p.principal) === principalStr) || null;
+};
+
 /**
  * Safely extract principal string from various formats
  * Handles:

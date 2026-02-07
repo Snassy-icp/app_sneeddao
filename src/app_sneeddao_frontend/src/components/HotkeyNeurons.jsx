@@ -42,11 +42,18 @@ const HotkeyNeurons = ({
     const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
     const [copiedPrincipal, setCopiedPrincipal] = useState(false);
     const [infoModal, setInfoModal] = useState({ show: false, title: '', message: '', type: 'info' });
+    const [pendingVoteSuccessCallback, setPendingVoteSuccessCallback] = useState(null);
 
-    const showInfoModal = (title, message, type = 'info') => {
+    const showInfoModal = (title, message, type = 'info', onCloseCallback = null) => {
         setInfoModal({ show: true, title, message, type });
+        setPendingVoteSuccessCallback(onCloseCallback);
     };
-    const closeInfoModal = () => setInfoModal(prev => ({ ...prev, show: false }));
+    const closeInfoModal = () => {
+        const cb = pendingVoteSuccessCallback;
+        setInfoModal(prev => ({ ...prev, show: false }));
+        setPendingVoteSuccessCallback(null);
+        cb?.();
+    };
 
     const effectiveSnsRoot = forceSneedSns ? SNEED_SNS_ROOT : selectedSnsRoot;
 
@@ -158,7 +165,8 @@ const HotkeyNeurons = ({
         }
     };
 
-    const voteWithNeuron = async (neuronId, vote, showErrorModal = true) => {
+    const voteWithNeuron = async (neuronId, vote, opts = {}) => {
+        const { showErrorModal = true, skipRefreshAndCallback = false } = typeof opts === 'boolean' ? { showErrorModal: opts } : opts;
         if (!identity || !effectiveSnsRoot || !currentProposalId) return 'error';
         
         const neuronIdHex = uint8ArrayToHex(neuronId);
@@ -186,8 +194,10 @@ const HotkeyNeurons = ({
             
             if (response?.command?.[0]?.RegisterVote) {
                 setVotingStates(prev => ({ ...prev, [neuronIdHex]: 'success' }));
-                await refreshNeurons(effectiveSnsRoot);
-                if (onVoteSuccess) onVoteSuccess();
+                if (!skipRefreshAndCallback) {
+                    await refreshNeurons(effectiveSnsRoot);
+                    if (onVoteSuccess) onVoteSuccess();
+                }
                 return 'success';
             } else if (response?.command?.[0]?.Error) {
                 throw new Error(response.command[0].Error.error_message);
@@ -262,18 +272,23 @@ const HotkeyNeurons = ({
             let failedVotes = 0;
             
             for (const neuron of eligibleNeurons) {
-                const result = await voteWithNeuron(neuron.id[0].id, vote, false);
+                const result = await voteWithNeuron(neuron.id[0].id, vote, { showErrorModal: false, skipRefreshAndCallback: true });
                 if (result === 'success') successfulVotes++;
                 else failedVotes++;
             }
 
             if (successfulVotes > 0) {
                 setVoteAllState('success');
-                showInfoModal('Vote submitted', `Successfully voted with ${successfulVotes} neuron(s)!${failedVotes > 0 ? ` ${failedVotes} vote(s) failed.` : ''}`, 'success');
-                await refreshNeurons(effectiveSnsRoot);
-                if (onVoteSuccess) {
-                    onVoteSuccess();
-                }
+                const doRefresh = async () => {
+                    await refreshNeurons(effectiveSnsRoot);
+                    if (onVoteSuccess) onVoteSuccess();
+                };
+                showInfoModal(
+                    'Vote submitted',
+                    `Successfully voted with ${successfulVotes} neuron(s)!${failedVotes > 0 ? ` ${failedVotes} vote(s) failed.` : ''}`,
+                    'success',
+                    doRefresh
+                );
                 setTimeout(() => setVoteAllState('idle'), 2000);
             } else if (failedVotes > 0) {
                 setVoteAllState('error');
