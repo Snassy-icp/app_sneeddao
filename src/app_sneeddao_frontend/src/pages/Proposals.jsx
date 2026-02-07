@@ -19,7 +19,7 @@ import { getRelativeTime, getFullDate } from '../utils/DateUtils';
 import { HttpAgent } from '@dfinity/agent';
 import { FaGavel, FaSearch, FaFilter, FaDownload, FaChevronDown, FaChevronRight, FaExternalLinkAlt, FaCheck, FaTimes, FaClock, FaLayerGroup, FaVoteYea, FaCrown, FaKey, FaUserShield, FaCoins, FaQuestion } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
-import { getNeuronFromCache } from '../hooks/useNeuronsCache';
+import { getOrFetchNeuron } from '../hooks/useNeuronsCache';
 import { extractPrincipalString } from '../utils/NeuronUtils';
 
 // Custom CSS for animations
@@ -747,7 +747,7 @@ function Proposals() {
         const loadPermissions = async () => {
             for (const neuronIdHex of proposerNeuronIds) {
                 try {
-                    const neuron = await getNeuronFromCache(selectedSnsRoot, neuronIdHex);
+                    const neuron = await getOrFetchNeuron({ snsRoot: selectedSnsRoot, neuronIdHex, identity });
                     if (neuron?.permissions?.length > 0) {
                         setProposerPermissions(prev => ({
                             ...prev,
@@ -761,7 +761,7 @@ function Proposals() {
         };
 
         loadPermissions();
-    }, [filteredProposals, currentPage, itemsPerPage, selectedSnsRoot, proposerPermissions]);
+    }, [filteredProposals, currentPage, itemsPerPage, selectedSnsRoot, proposerPermissions, identity]);
 
     // Handle SNS loading errors
     useEffect(() => {

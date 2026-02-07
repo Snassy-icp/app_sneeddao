@@ -23,7 +23,7 @@ import { getProposalStatus, isProposalAcceptingVotes, getVotingTimeRemaining } f
 import { calculateVotingPower, formatVotingPower } from './utils/VotingPowerUtils';
 import { FaChevronLeft, FaChevronRight, FaSearch, FaExternalLinkAlt, FaCheckCircle, FaTimesCircle, FaClock, FaVoteYea, FaComments, FaChevronDown, FaChevronUp, FaFilter, FaSort, FaGavel, FaUsers, FaCrown, FaKey, FaUserShield, FaCoins, FaQuestion } from 'react-icons/fa';
 import { getRelativeTime, getFullDate } from './utils/DateUtils';
-import { getNeuronFromCache } from './hooks/useNeuronsCache';
+import { getOrFetchNeuron } from './hooks/useNeuronsCache';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
 
 // Custom CSS for animations
@@ -232,7 +232,7 @@ function Proposal() {
             if (!neuronIdHex) return;
             
             try {
-                const neuron = await getNeuronFromCache(selectedSnsRoot, neuronIdHex);
+                const neuron = await getOrFetchNeuron({ snsRoot: selectedSnsRoot, neuronIdHex, identity });
                 if (neuron?.permissions?.length > 0) {
                     setProposerPermissions(neuron.permissions);
                 }
@@ -242,11 +242,11 @@ function Proposal() {
         };
         
         fetchProposerPermissions();
-    }, [proposalData, selectedSnsRoot]);
+    }, [proposalData, selectedSnsRoot, identity]);
 
-    // Fetch voter neuron permissions progressively
+    // Fetch voter neuron permissions progressively (as soon as we have neuron IDs from the proposal)
     useEffect(() => {
-        if (!votingHistory?.length || !selectedSnsRoot || !isVotingHistoryExpanded) return;
+        if (!votingHistory?.length || !selectedSnsRoot) return;
         
         const fetchVoterPermissions = async () => {
             for (const [neuronId, ballot] of votingHistory) {
@@ -254,7 +254,7 @@ function Proposal() {
                 if (!neuronIdHex || voterPermissions[neuronIdHex]) continue;
                 
                 try {
-                    const neuron = await getNeuronFromCache(selectedSnsRoot, neuronIdHex);
+                    const neuron = await getOrFetchNeuron({ snsRoot: selectedSnsRoot, neuronIdHex, identity });
                     if (neuron?.permissions?.length > 0) {
                         setVoterPermissions(prev => ({
                             ...prev,
@@ -268,7 +268,7 @@ function Proposal() {
         };
         
         fetchVoterPermissions();
-    }, [votingHistory, selectedSnsRoot, isVotingHistoryExpanded]);
+    }, [votingHistory, selectedSnsRoot, identity]);
 
     useEffect(() => {
         if (forumActor && currentProposalId && selectedSnsRoot) {
