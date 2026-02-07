@@ -61,6 +61,14 @@ function Neurons() {
     // Get naming context
     const { neuronNames, neuronNicknames, verifiedNames, principalNames, principalNicknames } = useNaming();
 
+    // Stakers tab state (must be declared before filteredStakers useMemo)
+    const [stakersSearchTerm, setStakersSearchTerm] = useState('');
+    const [stakersCurrentPage, setStakersCurrentPage] = useState(1);
+    const [stakersItemsPerPage, setStakersItemsPerPage] = useState(20);
+    const [stakersSortConfig, setStakersSortConfig] = useState({ key: 'owned', direction: 'desc' });
+    const [stakersHideUnnamed, setStakersHideUnnamed] = useState(false);
+    const [stakersUserTypeFilter, setStakersUserTypeFilter] = useState('all');
+
     // Stakers tab: index neurons by principal (only when on Stakers tab to avoid unnecessary work)
     const usersData = useMemo(() => {
         if (activeTab !== 'stakers') return [];
@@ -219,14 +227,6 @@ function Neurons() {
 
     const [dissolveFilter, setDissolveFilter] = useState('all');
 
-    // Stakers tab state (preserved when switching tabs)
-    const [stakersSearchTerm, setStakersSearchTerm] = useState('');
-    const [stakersCurrentPage, setStakersCurrentPage] = useState(1);
-    const [stakersItemsPerPage, setStakersItemsPerPage] = useState(20);
-    const [stakersSortConfig, setStakersSortConfig] = useState({ key: 'owned', direction: 'desc' });
-    const [stakersHideUnnamed, setStakersHideUnnamed] = useState(false);
-    const [stakersUserTypeFilter, setStakersUserTypeFilter] = useState('all');
-    
     // Add new filter states
     const [hideUnnamed, setHideUnnamed] = useState(false);
     const [hideUnverified, setHideUnverified] = useState(false);
