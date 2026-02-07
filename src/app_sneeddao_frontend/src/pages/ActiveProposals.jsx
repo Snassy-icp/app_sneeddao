@@ -170,13 +170,13 @@ function ActiveProposals() {
                     const proposalId = proposal.id[0]?.id?.toString();
                     const key = `${snsInfo.rootCanisterId}_${proposalId}`;
                     
-                    if (votedProposals.has(key)) {
-                        updates[key] = { loading: false, eligibleCount: 0, totalVP: 0 };
-                        continue;
-                    }
+                    // Skip - we already have voted state from quickVote this session
+                    if (votedProposals.has(key)) continue;
 
                     let eligibleCount = 0;
                     let totalVP = 0;
+                    let votedCount = 0;
+                    let votedVP = 0;
 
                     for (const neuron of neurons) {
                         // Check if user has vote permission
@@ -200,14 +200,18 @@ function ActiveProposals() {
                         if (ballot && ballot[1]) {
                             const ballotData = ballot[1];
                             const hasVoted = ballotData.cast_timestamp_seconds && Number(ballotData.cast_timestamp_seconds) > 0;
-                            if (hasVoted) continue;
+                            if (hasVoted) {
+                                votedCount++;
+                                votedVP += votingPower;
+                                continue;
+                            }
                         }
 
                         eligibleCount++;
                         totalVP += votingPower;
                     }
 
-                    updates[key] = { loading: false, eligibleCount, totalVP };
+                    updates[key] = { loading: false, eligibleCount, totalVP, votedCount, votedVP };
                 }
             }
 
@@ -297,11 +301,13 @@ function ActiveProposals() {
             }
 
             if (successCount > 0) {
+                const votedVP = eligibleNeurons.reduce((sum, n) => 
+                    sum + (nervousSystemParams ? calculateVotingPower(n, nervousSystemParams) : 0), 0);
                 setQuickVotingStates(prev => ({ ...prev, [key]: 'success' }));
                 setVotedProposals(prev => new Set([...prev, key]));
                 setProposalEligibility(prev => ({ 
                     ...prev, 
-                    [key]: { loading: false, eligibleCount: 0, totalVP: 0 } 
+                    [key]: { loading: false, eligibleCount: 0, totalVP: 0, votedCount: successCount, votedVP } 
                 }));
                 // Notify header to refresh votable proposals count immediately
                 window.dispatchEvent(new CustomEvent('votableProposalsRefresh'));
@@ -677,6 +683,8 @@ function ActiveProposals() {
                                             const isLoading = !eligibility;
                                             const eligibleCount = eligibility?.eligibleCount || 0;
                                             const totalVP = eligibility?.totalVP || 0;
+                                            const votedCount = eligibility?.votedCount || 0;
+                                            const votedVP = eligibility?.votedVP || 0;
                                             const isEnabled = !isLoading && eligibleCount > 0;
                                             
                                             return (
@@ -779,8 +787,13 @@ function ActiveProposals() {
                                                                     <FaBrain size={10} style={{ marginRight: '4px' }} />
                                                                     {eligibleCount} neuron{eligibleCount !== 1 ? 's' : ''} • {formatCompactVP(totalVP)} VP
                                                                 </span>
+                                                            ) : votedCount > 0 ? (
+                                                                <span>
+                                                                    <FaCheck size={10} style={{ marginRight: '4px' }} />
+                                                                    Voted with {votedCount} neuron{votedCount !== 1 ? 's' : ''} • {formatCompactVP(votedVP)} VP
+                                                                </span>
                                                             ) : (
-                                                                <span>Already voted or no eligible neurons</span>
+                                                                <span>No eligible neurons</span>
                                                             )}
                                                         </div>
                                                         
