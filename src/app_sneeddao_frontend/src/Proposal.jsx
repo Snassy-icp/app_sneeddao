@@ -810,15 +810,23 @@ function Proposal() {
                                 width: '56px',
                                 height: '56px',
                                 borderRadius: '16px',
-                                background: `linear-gradient(135deg, ${proposalPrimary}, ${proposalSecondary})`,
+                                background: (selectedSns?.logo || (selectedSnsRoot === SNEED_SNS_ROOT)) ? theme.colors.primaryBg : `linear-gradient(135deg, ${proposalPrimary}, ${proposalSecondary})`,
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                color: 'white',
+                                overflow: 'hidden',
                                 flexShrink: 0,
-                                boxShadow: `0 4px 20px ${proposalPrimary}40`
+                                boxShadow: (selectedSns?.logo || (selectedSnsRoot === SNEED_SNS_ROOT)) ? `0 4px 20px ${theme.colors.border}` : `0 4px 20px ${proposalPrimary}40`
                             }}>
-                                <FaGavel size={24} />
+                                {(selectedSns?.logo || selectedSnsRoot === SNEED_SNS_ROOT) ? (
+                                    <img
+                                        src={selectedSns?.logo || '/sneed_logo.png'}
+                                        alt={selectedSns?.name || 'SNS'}
+                                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                    />
+                                ) : (
+                                    <FaGavel size={24} style={{ color: 'white' }} />
+                                )}
                             </div>
                             <div>
                                 <h1 style={{
