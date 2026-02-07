@@ -446,7 +446,7 @@ function ActiveProposals() {
                                     Active Proposals
                                 </h1>
                                 <p style={{ color: theme.colors.secondaryText, fontSize: '0.95rem', margin: '0.25rem 0 0 0' }}>
-                                    Vote on open proposals across all your SNS neurons
+                                    Vote on funny proposals across all your SNS neurons
                                 </p>
                             </div>
                         </div>

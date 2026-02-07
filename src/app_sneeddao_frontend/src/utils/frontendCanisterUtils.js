@@ -52,17 +52,6 @@ export const getFrontendCanisterModuleHash = async (identity = null) => {
 };
 
 /**
- * Check if we're running on the IC (not localhost).
- * Skip update checks when developing locally.
+ * We only deploy to staging and prod (both on mainnet), so always run the update check.
  */
-export const isRunningOnCanister = () => {
-    const network = process.env.DFX_NETWORK;
-    if (network === 'ic' || network === 'staging') return true;
-    // Also check if we're on a canister URL (e.g. *.icp0.io)
-    try {
-        const host = window.location.hostname;
-        return host.endsWith('.icp0.io') || host.endsWith('.ic0.app');
-    } catch {
-        return false;
-    }
-};
+export const isRunningOnCanister = () => true;
