@@ -197,6 +197,7 @@ function App() {
                     <Route path="/post" element={<Post />} />
                     <Route path="/disclaimer" element={<Disclaimer />} />
                     <Route path="/principal" element={<Principal />} />
+                    <Route path="/user" element={<Principal />} />
                     <Route path="/canister" element={<Canister />} />
                     <Route path="/canisters" element={<Canisters />} />
                     <Route path="/neurons" element={<Neurons />} />

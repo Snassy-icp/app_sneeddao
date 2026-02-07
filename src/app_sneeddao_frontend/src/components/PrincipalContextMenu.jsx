@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { FaCopy } from 'react-icons/fa';
+import { getPrincipalProfileUrl } from '../utils/PrincipalUtils';
 
 const PrincipalContextMenu = ({ 
     isOpen, 
@@ -72,7 +73,7 @@ const PrincipalContextMenu = ({
     const handleViewProfile = (e) => {
         e.stopPropagation();
         e.preventDefault();
-        navigate(`/principal?id=${principalId}`);
+        navigate(getPrincipalProfileUrl(principalId));
         onClose();
     };
 

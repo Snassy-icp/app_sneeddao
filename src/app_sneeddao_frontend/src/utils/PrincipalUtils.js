@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useContext, useMemo, useRef, useEffect } from 'react';
+import { Principal } from '@dfinity/principal';
 import { sha224 } from '@dfinity/principal/lib/esm/utils/sha224';
 import { encodeIcrcAccount } from '@dfinity/ledger-icrc';
 import { FaCopy, FaCheck } from 'react-icons/fa';
@@ -138,6 +139,29 @@ export const formatPrincipal = (principal, displayInfo = null) => {
         fullId: principal.toString(),
         isVerified
     };
+};
+
+/**
+ * Get the appropriate profile URL for a principal.
+ * - /user?id=xxx for user principals (identity, self-authenticating)
+ * - /canister?id=xxx for canister principals (10 or fewer bytes)
+ * - /principal?id=xxx as fallback when type cannot be determined
+ */
+export const getPrincipalProfileUrl = (principalOrId, options = {}) => {
+    const principalId = typeof principalOrId === 'string' ? principalOrId : principalOrId?.toString();
+    if (!principalId) return '/principal';
+    try {
+        const principal = typeof principalOrId === 'string' ? Principal.fromText(principalOrId) : principalOrId;
+        const isCanister = isCanisterPrincipal(principal);
+        const base = isCanister ? '/canister' : '/user';
+        const params = new URLSearchParams();
+        params.set('id', principalId);
+        if (options.sns) params.set('sns', options.sns);
+        if (options.subaccount) params.set('subaccount', options.subaccount);
+        return `${base}?${params.toString()}`;
+    } catch {
+        return `/principal?id=${principalId}`;
+    }
 };
 
 // Detect if a principal is a canister (shorter bytes) vs a user (self-authenticating, longer)
@@ -404,7 +428,7 @@ export const PrincipalDisplay = React.memo(({
                 );
             }
             
-            const href = `/principal?id=${principalId}`;
+            const href = getPrincipalProfileUrl(principal);
             return React.createElement('a', 
                 {
                     href,

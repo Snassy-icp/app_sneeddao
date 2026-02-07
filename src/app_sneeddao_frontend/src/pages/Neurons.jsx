@@ -16,7 +16,7 @@ import NeuronDisplay from '../components/NeuronDisplay';
 import TokenIcon from '../components/TokenIcon';
 import useNeuronsCache from '../hooks/useNeuronsCache';
 import { FaUsers, FaLock, FaUnlock, FaClock, FaDownload, FaSync, FaChevronLeft, FaChevronRight, FaSearch, FaLightbulb, FaArrowUp, FaArrowDown, FaSort, FaFilter, FaCoins, FaVoteYea, FaCheckCircle, FaTimesCircle, FaExternalLinkAlt, FaCrown, FaKey, FaUserShield, FaQuestion, FaBrain } from 'react-icons/fa';
-import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, getPrincipalProfileUrl } from '../utils/PrincipalUtils';
 import { Principal } from '@dfinity/principal';
 import { extractPrincipalString } from '../utils/NeuronUtils';
 
@@ -2053,7 +2053,7 @@ function Neurons() {
                                     return (
                                         <Link
                                             key={user.principal}
-                                            to={`/principal?id=${user.principal}${selectedSnsRoot ? `&sns=${selectedSnsRoot}` : ''}`}
+                                            to={getPrincipalProfileUrl(user.principal, selectedSnsRoot ? { sns: selectedSnsRoot } : {})}
                                             className="user-card user-card-animate"
                                             style={{
                                                 backgroundColor: theme.colors.secondaryBg,

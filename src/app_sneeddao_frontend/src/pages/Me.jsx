@@ -39,7 +39,7 @@ import { useForum } from '../contexts/ForumContext';
 import { useNaming } from '../NamingContext';
 import { Link } from 'react-router-dom';
 import ConfirmationModal from '../ConfirmationModal';
-import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, getPrincipalProfileUrl } from '../utils/PrincipalUtils';
 import TransactionList from '../components/TransactionList';
 import NeuronDisplay from '../components/NeuronDisplay';
 import { useSns } from '../contexts/SnsContext';
@@ -1288,7 +1288,7 @@ export default function Me() {
 
     // Quick navigation items
     const quickNavItems = [
-        { icon: <FaShareAlt size={20} />, label: 'My Public Page', to: `/principal?id=${identity?.getPrincipal().toString()}`, color: '#3b82f6' },
+        { icon: <FaShareAlt size={20} />, label: 'My Public Page', to: identity ? getPrincipalProfileUrl(identity.getPrincipal()) : '/user', color: '#3b82f6' },
         { icon: <FaWallet size={20} />, label: 'My Wallet', to: '/wallet', color: mePrimary },
         { icon: <FaVoteYea size={20} />, label: 'Voting', to: '/active_proposals', color: '#8b5cf6' },
         { icon: <FaGavel size={20} />, label: 'My Trades', to: '/sneedex_my', color: '#6366f1' },
@@ -1706,7 +1706,7 @@ export default function Me() {
 
                                 {/* Public Page Link */}
                                 <Link
-                                    to={`/principal?id=${identity?.getPrincipal().toString()}`}
+                                    to={identity ? getPrincipalProfileUrl(identity.getPrincipal()) : '/user'}
                                     style={{
                                         display: 'flex',
                                         alignItems: 'center',

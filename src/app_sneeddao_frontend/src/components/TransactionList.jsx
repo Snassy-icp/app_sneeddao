@@ -5,7 +5,7 @@ import { createActor as createSnsRootActor } from 'external/sns_root';
 import { createActor as createSnsArchiveActor } from 'external/sns_archive';
 import { createActor as createSnsLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createSnsIndexActor } from 'external/sns_index';
-import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, getPrincipalProfileUrl } from '../utils/PrincipalUtils';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
@@ -1755,7 +1755,7 @@ function TransactionList({
                                                                             </span>
                                                                         ) : (
                                                                             <Link
-                                                                                to={`/principal?id=${fromPrincipal.toString()}&subaccount=${fromSubHex}`}
+                                                                                to={getPrincipalProfileUrl(fromPrincipal, { subaccount: fromSubHex })}
                                                                                 onClick={(e) => e.stopPropagation()}
                                                                                 style={{
                                                                                     color: theme.colors.mutedText,
@@ -1841,7 +1841,7 @@ function TransactionList({
                                                                             </span>
                                                                         ) : (
                                                                             <Link
-                                                                                to={`/principal?id=${toPrincipal.toString()}&subaccount=${toSubHex}`}
+                                                                                to={getPrincipalProfileUrl(toPrincipal, { subaccount: toSubHex })}
                                                                                 onClick={(e) => e.stopPropagation()}
                                                                                 style={{
                                                                                     color: theme.colors.mutedText,

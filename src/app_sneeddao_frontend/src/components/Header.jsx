@@ -140,7 +140,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         const path = location.pathname;
         // Check /msg paths first to avoid conflicts
         if (path.startsWith('/msg')) return 'Sneed Me';
-        if (['/', '/hub', '/sns', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/feed', '/thread', '/post'].includes(path) || location.pathname.startsWith('/topic/')) return 'Sneed Hub';
+        if (['/', '/hub', '/sns', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/user', '/forum', '/feed', '/thread', '/post'].includes(path) || location.pathname.startsWith('/topic/')) return 'Sneed Hub';
         if (['/liquid_staking', '/sns_neuron_wizard', '/create_icp_neuron'].includes(path) || path.startsWith('/icp_neuron_manager')) return 'Liquid Staking';
         if (['/me', '/names', '/premium', '/rewards', '/tips', '/posts', '/sms', '/wallet', '/canister', '/canisters', '/active_proposals'].includes(path)) return 'Sneed Me';
         if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) return 'Sneed DAO';
@@ -239,7 +239,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         // Check /msg paths first to avoid conflicts
         if (path.startsWith('/msg')) {
             setActiveSection('Sneed Me');
-        } else if (['/', '/hub', '/sns', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/feed', '/thread', '/post'].includes(path) || path.startsWith('/topic/')) {
+        } else if (['/', '/hub', '/sns', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/user', '/forum', '/feed', '/thread', '/post'].includes(path) || path.startsWith('/topic/')) {
             setActiveSection('Sneed Hub');
         } else if (['/liquid_staking', '/sns_neuron_wizard', '/create_icp_neuron'].includes(path) || path.startsWith('/icp_neuron_manager')) {
             setActiveSection('Liquid Staking');
