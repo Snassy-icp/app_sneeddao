@@ -152,10 +152,26 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
                 
                 // Start loading logos for visible SNSes
                 cachedData.forEach(sns => {
-                    if (sns.canisters.governance) {
+                    if (sns.canisters?.governance) {
                         loadSnsLogo(sns.canisters.governance);
                     }
                 });
+                // Also run background refresh to get index/dapps/archives (cache may be from before we added those)
+                startBackgroundSnsFetch(identity, (data) => {
+                    if (data?.length > 0) {
+                        const sorted = [...data].sort((a, b) => {
+                            if (a.rootCanisterId === SNEED_SNS_ROOT) return -1;
+                            if (b.rootCanisterId === SNEED_SNS_ROOT) return 1;
+                            return a.name.localeCompare(b.name);
+                        });
+                        setSnsList(sorted);
+                        data.forEach(sns => {
+                            if (sns.canisters?.governance) {
+                                loadSnsLogo(sns.canisters.governance);
+                            }
+                        });
+                    }
+                }).catch(() => {});
                 return;
             }
             

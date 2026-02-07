@@ -213,10 +213,21 @@ export function NamingProvider({ children }) {
                 [sns.canisters?.governance, `${name} Governance`],
                 [sns.canisters?.ledger, `${name} Ledger`],
                 [sns.canisters?.swap, `${name} Swap`],
+                [sns.canisters?.index, `${name} Index`],
             ];
             entries.forEach(([canisterId, label]) => {
                 if (canisterId && !merged.has(canisterId)) {
                     merged.set(canisterId, label);
+                }
+            });
+            (sns.canisters?.dapps || []).forEach((dappId, i) => {
+                if (dappId && !merged.has(dappId)) {
+                    merged.set(dappId, `${name} Dapp ${i + 1}`);
+                }
+            });
+            (sns.canisters?.archives || []).forEach((archId, i) => {
+                if (archId && !merged.has(archId)) {
+                    merged.set(archId, `${name} Archive ${i + 1}`);
                 }
             });
         });

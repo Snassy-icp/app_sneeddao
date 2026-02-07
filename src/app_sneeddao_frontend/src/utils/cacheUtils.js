@@ -3,6 +3,7 @@
  * Used by Me page settings and by the frontend update refresh flow.
  */
 import { clearTokenCache } from '../hooks/useTokenCache';
+import { clearSnsCache } from './SnsUtils';
 
 const CACHE_DB_NAMES = [
     'sneed_wallet_cache',
@@ -13,7 +14,7 @@ const CACHE_DB_NAMES = [
 
 const CACHE_KEY_PATTERNS = [
     key => key?.includes('wallet_cache'),
-    key => key?.includes('sns_cache'),
+    key => key?.includes('sns_cache') || key === 'sns_data_cache',  // SNS cache (localStorage)
     key => key?.includes('sneed_'),
     key => key?.startsWith('neuronsCache_'),  // Old NeuronsContext localStorage cache
 ];
@@ -48,6 +49,13 @@ export const clearAllCaches = async () => {
         await clearTokenCache();
     } catch (e) {
         console.warn('[Cache] Failed to clear token cache:', e);
+    }
+
+    // Clear SNS cache (localStorage)
+    try {
+        clearSnsCache();
+    } catch (e) {
+        console.warn('[Cache] Failed to clear SNS cache:', e);
     }
 
     // Clear localStorage caches

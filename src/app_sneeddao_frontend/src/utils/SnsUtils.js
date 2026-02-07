@@ -1,5 +1,6 @@
 import { createActor as createNnsSnsWActor } from 'external/nns_snsw';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
+import { createActor as createSnsRootActor } from 'external/sns_root';
 import { Principal } from '@dfinity/principal';
 import { HttpAgent } from '@dfinity/agent';
 import { getLogo, setLogo, getLogoSync, hasLogo, clearLogoCache as clearUnifiedLogoCache } from '../hooks/useLogoCache';
@@ -50,6 +51,27 @@ const safeStorage = {
         }
     }
 };
+
+// Extract principal ID from opt Principal (Candid returns [principal] or [])
+function safeGetOptPrincipal(optPrincipal) {
+    if (!optPrincipal) return null;
+    const val = Array.isArray(optPrincipal) ? optPrincipal[0] : optPrincipal;
+    if (!val) return null;
+    return principalToStr(val);
+}
+
+// Convert any principal-like value to string (handles Principal, _arr, string)
+function principalToStr(p) {
+    if (!p) return null;
+    if (typeof p === 'string') return p;
+    if (typeof p?.toText === 'function') return p.toText();
+    if (p?._arr) return Principal.fromUint8Array(p._arr).toText();
+    try {
+        return Principal.from(p).toText();
+    } catch {
+        return null;
+    }
+}
 
 // Helper function to safely get canister ID
 function safeGetCanisterId(canisterIdArray) {
@@ -220,6 +242,21 @@ export async function fetchAndCacheSnsData(identity) {
                         setLogo(rootCanisterId, logo);
                     }
                     
+                    // Fetch index, dapps, archives from SNS root
+                    let indexId = safeGetOptPrincipal(sns.index_canister_id);
+                    let dapps = [];
+                    let archives = [];
+                    try {
+                        const rootActor = createSnsRootActor(rootCanisterId, { agent });
+                        const canisterList = await rootActor.list_sns_canisters({});
+                        indexId = safeGetOptPrincipal(canisterList.index) || indexId;
+                        dapps = (canisterList.dapps || []).map(d => principalToStr(d)).filter(Boolean);
+                        archives = (canisterList.archives || []).map(a => principalToStr(a)).filter(Boolean);
+                        console.log(`[SnsUtils] ${name}: index=${indexId || 'none'}, dapps=${dapps.length}, archives=${archives.length}, keys=${Object.keys(canisterList || {}).join(',')}`);
+                    } catch (rootErr) {
+                        console.warn(`Could not fetch canister list from SNS root ${rootCanisterId}:`, rootErr);
+                    }
+                    
                     // Store only essential data (NO logo - it's in unified logo cache)
                     const snsData = {
                         rootCanisterId,
@@ -230,7 +267,10 @@ export async function fetchAndCacheSnsData(identity) {
                             governance: governanceId,
                             ledger: ledgerId,
                             root: rootCanisterId,
-                            swap: swapId
+                            swap: swapId,
+                            index: indexId || null,
+                            dapps,
+                            archives
                         }
                     };
                     
@@ -459,6 +499,20 @@ export async function fetchSingleSnsData(rootCanisterId, identity) {
             setLogo(governanceId, logo);
             setLogo(rootCanisterId, logo);
         }
+
+        // Fetch index, dapps, archives from SNS root
+        let indexId = safeGetOptPrincipal(targetSns.index_canister_id);
+        let dapps = [];
+        let archives = [];
+                try {
+                    const rootActor = createSnsRootActor(normalizedRootId, { agent });
+                    const canisterList = await rootActor.list_sns_canisters({});
+                    indexId = safeGetOptPrincipal(canisterList.index) || indexId;
+                    dapps = (canisterList.dapps || []).map(d => principalToStr(d)).filter(Boolean);
+                    archives = (canisterList.archives || []).map(a => principalToStr(a)).filter(Boolean);
+                } catch (rootErr) {
+                    console.warn(`Could not fetch canister list from SNS root ${normalizedRootId}:`, rootErr);
+                }
         
         const snsData = {
             rootCanisterId,
@@ -469,7 +523,10 @@ export async function fetchSingleSnsData(rootCanisterId, identity) {
                 governance: governanceId,
                 ledger: ledgerId,
                 root: rootCanisterId,
-                swap: swapId
+                swap: swapId,
+                index: indexId || null,
+                dapps,
+                archives
             }
         };
         
@@ -559,6 +616,21 @@ export async function fetchAndCacheSnsDataOptimized(identity, options = {}) {
                     setLogo(rootCanisterId, logo);
                 }
                 
+                // Fetch index, dapps, archives from SNS root
+                let indexId = safeGetOptPrincipal(sns.index_canister_id);
+                let dapps = [];
+                let archives = [];
+                try {
+                    const rootActor = createSnsRootActor(rootCanisterId, { agent });
+                    const canisterList = await rootActor.list_sns_canisters({});
+                    indexId = safeGetOptPrincipal(canisterList.index) || indexId;
+                    dapps = (canisterList.dapps || []).map(d => principalToStr(d)).filter(Boolean);
+                    archives = (canisterList.archives || []).map(a => principalToStr(a)).filter(Boolean);
+                    console.log(`[SnsUtils] ${name}: index=${indexId || 'none'}, dapps=${dapps.length}, archives=${archives.length}, keys=${Object.keys(canisterList || {}).join(',')}`);
+                } catch (rootErr) {
+                    console.warn(`Could not fetch canister list from SNS root ${rootCanisterId}:`, rootErr);
+                }
+
                 const snsData = {
                     rootCanisterId,
                     name,
@@ -568,7 +640,10 @@ export async function fetchAndCacheSnsDataOptimized(identity, options = {}) {
                         governance: governanceId,
                         ledger: ledgerId,
                         root: rootCanisterId,
-                        swap: swapId
+                        swap: swapId,
+                        index: indexId || null,
+                        dapps,
+                        archives
                     }
                 };
                 
