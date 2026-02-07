@@ -3714,7 +3714,8 @@ export default function PrincipalPage() {
                                                 <div style={{ 
                                                     display: 'flex',
                                                     alignItems: 'baseline',
-                                                    gap: '0.4rem'
+                                                    gap: '0.4rem',
+                                                    flexWrap: 'wrap'
                                                 }}>
                                                     <span style={{ 
                                                         color: theme.colors.secondaryText, 
@@ -3727,7 +3728,9 @@ export default function PrincipalPage() {
                                                         marginLeft: 'auto',
                                                         color: theme.colors.primaryText, 
                                                         fontSize: '0.8rem',
-                                                        fontWeight: '600'
+                                                        fontWeight: '600',
+                                                        overflowWrap: 'break-word',
+                                                        wordBreak: 'break-word'
                                                     }}>
                                                         {formatUsd(token.usdValue || 0)}
                                                     </span>
