@@ -214,9 +214,9 @@ export default function Me() {
         neuron_manager_cycle_threshold_orange: 5_000_000_000_000,
         canister_manager_cycle_threshold_red: 1_000_000_000_000,
         canister_manager_cycle_threshold_orange: 5_000_000_000_000,
-        frontend_auto_update_enabled: true,
-        frontend_update_check_interval_sec: 60,
-        frontend_update_countdown_sec: 30,
+        frontend_auto_update_enabled: false,
+        frontend_update_check_interval_sec: 600,
+        frontend_update_countdown_sec: 300,
     };
 
     const getLocalSettingsForBackend = () => {
@@ -364,22 +364,22 @@ export default function Me() {
             setCanisterCycleThresholdOrange(formatCyclesCompact(orangeValue));
         }
 
-        const frontendAutoUpdateValue = settings.frontend_auto_update_enabled ?? true;
+        const frontendAutoUpdateValue = settings.frontend_auto_update_enabled ?? false;
         setFrontendAutoUpdateEnabled(frontendAutoUpdateValue);
         localStorage.setItem('frontendAutoUpdateEnabled', JSON.stringify(frontendAutoUpdateValue));
         window.dispatchEvent(new CustomEvent('frontendUpdateSettingsChanged', {
             detail: {
                 autoUpdateEnabled: frontendAutoUpdateValue,
-                checkIntervalSec: settings.frontend_update_check_interval_sec ?? 60,
-                countdownSec: settings.frontend_update_countdown_sec ?? 30,
+                checkIntervalSec: settings.frontend_update_check_interval_sec ?? 600,
+                countdownSec: settings.frontend_update_countdown_sec ?? 300,
             }
         }));
 
-        const checkIntervalValue = Number(settings.frontend_update_check_interval_sec ?? 60);
+        const checkIntervalValue = Number(settings.frontend_update_check_interval_sec ?? 600);
         setFrontendUpdateCheckInterval(checkIntervalValue);
         localStorage.setItem('frontendUpdateCheckIntervalSec', checkIntervalValue.toString());
 
-        const countdownValue = Number(settings.frontend_update_countdown_sec ?? 30);
+        const countdownValue = Number(settings.frontend_update_countdown_sec ?? 300);
         setFrontendUpdateCountdown(countdownValue);
         localStorage.setItem('frontendUpdateCountdownSec', countdownValue.toString());
     };
@@ -448,25 +448,25 @@ export default function Me() {
     const [frontendAutoUpdateEnabled, setFrontendAutoUpdateEnabled] = useState(() => {
         try {
             const saved = localStorage.getItem('frontendAutoUpdateEnabled');
-            return saved !== null ? JSON.parse(saved) : true; // Default ON
+            return saved !== null ? JSON.parse(saved) : false; // Default OFF - notification only, no auto-refresh
         } catch (error) {
-            return true;
+            return false;
         }
     });
     const [frontendUpdateCheckInterval, setFrontendUpdateCheckInterval] = useState(() => {
         try {
             const saved = localStorage.getItem('frontendUpdateCheckIntervalSec');
-            return saved !== null ? parseInt(saved, 10) : 60;
+            return saved !== null ? parseInt(saved, 10) : 600;
         } catch (error) {
-            return 60;
+            return 600;
         }
     });
     const [frontendUpdateCountdown, setFrontendUpdateCountdown] = useState(() => {
         try {
             const saved = localStorage.getItem('frontendUpdateCountdownSec');
-            return saved !== null ? parseInt(saved, 10) : 30;
+            return saved !== null ? parseInt(saved, 10) : 300;
         } catch (error) {
-            return 30;
+            return 300;
         }
     });
 
@@ -2153,7 +2153,7 @@ export default function Me() {
 
                                     <SettingItem
                                         title="Auto-update on new version"
-                                        description="When a new version of the app is deployed, show a notification and auto-refresh after a countdown"
+                                        description="When a new version is detected, auto-refresh after countdown. When off, you still get the notification and can click to refresh."
                                         theme={theme}
                                     >
                                         <ToggleSwitch
@@ -2172,17 +2172,17 @@ export default function Me() {
 
                                     <SettingItem
                                         title="Update check interval"
-                                        description="How often to check for new app versions (seconds). Minimum 30. Ignored during countdown."
+                                        description="How often to check for new app versions (seconds). Minimum 30, max 1 hour. Ignored during countdown."
                                         theme={theme}
                                     >
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                             <input
                                                 type="number"
                                                 min="30"
-                                                max="600"
+                                                max="3600"
                                                 value={frontendUpdateCheckInterval}
                                                 onChange={(e) => {
-                                                    const newValue = Math.max(30, Math.min(600, parseInt(e.target.value, 10) || 60));
+                                                    const newValue = Math.max(30, Math.min(3600, parseInt(e.target.value, 10) || 600));
                                                     setFrontendUpdateCheckInterval(newValue);
                                                     localStorage.setItem('frontendUpdateCheckIntervalSec', newValue.toString());
                                                     window.dispatchEvent(new CustomEvent('frontendUpdateSettingsChanged', {
@@ -2210,7 +2210,7 @@ export default function Me() {
 
                                     <SettingItem
                                         title="Update countdown timer"
-                                        description="Seconds to wait before auto-refresh when update is detected (10-120)"
+                                        description="Seconds to wait before auto-refresh when update is detected (10-300, i.e. up to 5 minutes)"
                                         theme={theme}
                                         isLast={true}
                                     >
@@ -2218,10 +2218,10 @@ export default function Me() {
                                             <input
                                                 type="number"
                                                 min="10"
-                                                max="120"
+                                                max="300"
                                                 value={frontendUpdateCountdown}
                                                 onChange={(e) => {
-                                                    const newValue = Math.max(10, Math.min(120, parseInt(e.target.value, 10) || 30));
+                                                    const newValue = Math.max(10, Math.min(300, parseInt(e.target.value, 10) || 300));
                                                     setFrontendUpdateCountdown(newValue);
                                                     localStorage.setItem('frontendUpdateCountdownSec', newValue.toString());
                                                     window.dispatchEvent(new CustomEvent('frontendUpdateSettingsChanged', {

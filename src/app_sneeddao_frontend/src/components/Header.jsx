@@ -99,6 +99,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const hasUpdateAvailable = frontendUpdate?.hasUpdateAvailable ?? false;
     const countdownSeconds = frontendUpdate?.countdownSeconds ?? 0;
     const triggerRefresh = frontendUpdate?.triggerRefresh;
+    const autoUpdateEnabled = frontendUpdate?.autoUpdateEnabled ?? false;
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isQuickLinksOpen, setIsQuickLinksOpen] = useState(false);
     const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
@@ -721,7 +722,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                             title="New version - Click to refresh"
                         >
                             <FaCloudDownloadAlt size={9} />
-                            {countdownSeconds}s
+                            {autoUpdateEnabled ? `${countdownSeconds}s` : 'Update'}
                         </span>
                     )}
                 </div>
@@ -1606,11 +1607,13 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                     e.currentTarget.style.transform = 'translateY(0)';
                                     e.currentTarget.style.boxShadow = '0 2px 8px rgba(16, 185, 129, 0.15)';
                                 }}
-                                title="New version available - Click to refresh now or wait for auto-refresh"
+                                title={autoUpdateEnabled ? "New version available - Click to refresh now or wait for auto-refresh" : "New version available - Click to refresh"}
                             >
                                 <FaCloudDownloadAlt size={11} />
                                 <span>Update available</span>
-                                <span style={{ opacity: 0.9, fontWeight: 500 }}>({countdownSeconds}s)</span>
+                                {autoUpdateEnabled && (
+                                    <span style={{ opacity: 0.9, fontWeight: 500 }}>({countdownSeconds}s)</span>
+                                )}
                             </div>
                         )}
                         

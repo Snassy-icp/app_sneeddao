@@ -237,9 +237,9 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   transient let default_particle_effects_enabled : Bool = true;
   transient let default_cycle_threshold_red : Nat = 1_000_000_000_000;
   transient let default_cycle_threshold_orange : Nat = 5_000_000_000_000;
-  transient let default_frontend_auto_update_enabled : Bool = true;
-  transient let default_frontend_update_check_interval_sec : Nat = 60;
-  transient let default_frontend_update_countdown_sec : Nat = 30;
+  transient let default_frontend_auto_update_enabled : Bool = false;
+  transient let default_frontend_update_check_interval_sec : Nat = 600;
+  transient let default_frontend_update_countdown_sec : Nat = 300;
 
   // Runtime storage for user settings
   transient var user_setting_principal_color_coding : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);

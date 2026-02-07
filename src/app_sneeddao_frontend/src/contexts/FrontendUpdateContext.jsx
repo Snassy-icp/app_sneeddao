@@ -6,8 +6,8 @@ import { useAuth } from '../AuthContext';
 
 const FrontendUpdateContext = createContext(null);
 
-const DEFAULT_CHECK_INTERVAL_SEC = 60;
-const DEFAULT_COUNTDOWN_SEC = 30;
+const DEFAULT_CHECK_INTERVAL_SEC = 600;
+const DEFAULT_COUNTDOWN_SEC = 300;
 
 function readSettingsFromStorage() {
     try {
@@ -17,9 +17,9 @@ function readSettingsFromStorage() {
         const checkNum = checkInterval != null ? parseInt(checkInterval, 10) : NaN;
         const countNum = countdown != null ? parseInt(countdown, 10) : NaN;
         return {
-            autoUpdateEnabled: autoUpdate !== null ? JSON.parse(autoUpdate) : true,
-            checkIntervalSec: Number.isNaN(checkNum) ? DEFAULT_CHECK_INTERVAL_SEC : Math.max(30, Math.min(600, checkNum)),
-            countdownSec: Number.isNaN(countNum) ? DEFAULT_COUNTDOWN_SEC : Math.max(10, Math.min(120, countNum)),
+            autoUpdateEnabled: autoUpdate !== null ? JSON.parse(autoUpdate) : false,
+            checkIntervalSec: Number.isNaN(checkNum) ? DEFAULT_CHECK_INTERVAL_SEC : Math.max(30, Math.min(3600, checkNum)),
+            countdownSec: Number.isNaN(countNum) ? DEFAULT_COUNTDOWN_SEC : Math.max(10, Math.min(300, countNum)),
         };
     } catch {
         return {
@@ -69,7 +69,6 @@ export function FrontendUpdateProvider({ children }) {
 
     const checkForUpdates = useCallback(async () => {
         if (!isRunningOnCanister()) return;
-        if (!settings.autoUpdateEnabled) return;
 
         const currentHash = await getFrontendCanisterModuleHash();
         if (!currentHash) return;
@@ -81,26 +80,28 @@ export function FrontendUpdateProvider({ children }) {
 
         if (currentHash !== initialHashRef.current) {
             setHasUpdateAvailable(true);
-            setCountdownSeconds(settings.countdownSec);
 
             if (checkIntervalRef.current) {
                 clearInterval(checkIntervalRef.current);
                 checkIntervalRef.current = null;
             }
 
-            countdownIntervalRef.current = setInterval(() => {
-                setCountdownSeconds(prev => {
-                    if (prev <= 1) {
-                        if (countdownIntervalRef.current) {
-                            clearInterval(countdownIntervalRef.current);
-                            countdownIntervalRef.current = null;
+            if (settings.autoUpdateEnabled) {
+                setCountdownSeconds(settings.countdownSec);
+                countdownIntervalRef.current = setInterval(() => {
+                    setCountdownSeconds(prev => {
+                        if (prev <= 1) {
+                            if (countdownIntervalRef.current) {
+                                clearInterval(countdownIntervalRef.current);
+                                countdownIntervalRef.current = null;
+                            }
+                            performRefresh();
+                            return 0;
                         }
-                        performRefresh();
-                        return 0;
-                    }
-                    return prev - 1;
-                });
-            }, 1000);
+                        return prev - 1;
+                    });
+                }, 1000);
+            }
         }
     }, [performRefresh, settings.autoUpdateEnabled, settings.countdownSec]);
 
@@ -111,10 +112,10 @@ export function FrontendUpdateProvider({ children }) {
                 ...prev,
                 ...s,
                 checkIntervalSec: s.checkIntervalSec !== undefined
-                    ? Math.max(30, Math.min(600, toNum(s.checkIntervalSec)))
+                    ? Math.max(30, Math.min(3600, toNum(s.checkIntervalSec)))
                     : prev.checkIntervalSec,
                 countdownSec: s.countdownSec !== undefined
-                    ? Math.max(10, Math.min(120, toNum(s.countdownSec)))
+                    ? Math.max(10, Math.min(300, toNum(s.countdownSec)))
                     : prev.countdownSec,
             }));
         };
@@ -125,7 +126,7 @@ export function FrontendUpdateProvider({ children }) {
                     const checkInterval = backendSettings.frontend_update_check_interval_sec;
                     const countdown = backendSettings.frontend_update_countdown_sec;
                     applySettings({
-                        autoUpdateEnabled: backendSettings.frontend_auto_update_enabled ?? true,
+                        autoUpdateEnabled: backendSettings.frontend_auto_update_enabled ?? false,
                         checkIntervalSec: checkInterval !== undefined && checkInterval !== null
                             ? (typeof checkInterval === 'bigint' ? Number(checkInterval) : Number(checkInterval))
                             : DEFAULT_CHECK_INTERVAL_SEC,
@@ -156,7 +157,6 @@ export function FrontendUpdateProvider({ children }) {
 
     useEffect(() => {
         if (!isRunningOnCanister()) return;
-        if (!settings.autoUpdateEnabled) return;
         if (hasUpdateAvailable) return;
 
         const runCheck = () => {
@@ -181,6 +181,7 @@ export function FrontendUpdateProvider({ children }) {
         countdownSeconds,
         triggerRefresh,
         isRefreshing,
+        autoUpdateEnabled: settings.autoUpdateEnabled,
     };
 
     return (
