@@ -9,6 +9,8 @@ import { createActor as createSnsGovernanceActor } from 'external/sns_governance
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSns } from '../contexts/SnsContext';
+import { useWalletOptional } from '../contexts/WalletContext';
+import { useNeuronsOptional } from '../contexts/NeuronsContext';
 import { useAuth } from '../AuthContext';
 import { fetchAndCacheSnsData, getSnsById, fetchSnsLogo } from '../utils/SnsUtils';
 import { formatAmount } from '../utils/SneedexUtils';
@@ -68,6 +70,8 @@ export default function SnsNeuronWizard() {
   const { theme } = useTheme();
   const { identity, isAuthenticated, login } = useAuth();
   const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT } = useSns();
+  const walletContext = useWalletOptional();
+  const neuronsContext = useNeuronsOptional();
 
     // Step state (1-indexed for display: 1=Select SNS, 2=Configure, 3=Confirm & Stake)
     const [currentStep, setCurrentStep] = useState(1);
@@ -489,6 +493,9 @@ export default function SnsNeuronWizard() {
             setStakingSuccess(true);
             setStakingProgress('');
             setStakingStepIndex(0);
+            // Refresh hotkey neuron caches so VP bar and wallet show the new neuron
+            walletContext?.refreshNeuronsForGovernance?.(selectedGovernanceId);
+            neuronsContext?.refreshNeurons?.(selectedSnsRoot);
         } catch (error) {
             console.error('Staking error:', error);
             setStakingError(error.message || 'Failed to stake neuron');
