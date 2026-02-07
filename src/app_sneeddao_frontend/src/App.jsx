@@ -37,6 +37,7 @@ import SneedlockInfo from './pages/SneedlockInfo';
 import Products from './pages/Products';
 import Partners from './pages/Partners';
 import Proposals from './pages/Proposals';
+import ActiveProposals from './pages/ActiveProposals';
 import Admin from './pages/Admin';
 import UserBans from './pages/admin/UserBans';
 import WordBlacklist from './pages/admin/WordBlacklist';
@@ -172,6 +173,7 @@ function App() {
                     <Route path="/partners" element={<Partners />} />
                     <Route path="/projects" element={<Projects />} />
                     <Route path="/proposals" element={<Proposals />} />
+                    <Route path="/active_proposals" element={<ActiveProposals />} />
                     <Route path="/premium" element={<Premium />} />
                     <Route path="/rewards" element={<Rewards />} />
                     <Route path="/tips" element={<Tips />} />
