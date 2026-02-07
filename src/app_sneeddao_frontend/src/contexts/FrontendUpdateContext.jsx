@@ -1,16 +1,39 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { getFrontendCanisterModuleHash, isRunningOnCanister } from '../utils/frontendCanisterUtils';
 import { clearAllCaches } from '../utils/cacheUtils';
+import { getMySettings } from '../utils/BackendUtils';
+import { useAuth } from '../AuthContext';
 
 const FrontendUpdateContext = createContext(null);
 
-const CHECK_INTERVAL_MS = 60 * 1000; // Check every 60 seconds
-const COUNTDOWN_SECONDS = 30; // Countdown before auto-refresh
+const DEFAULT_CHECK_INTERVAL_SEC = 60;
+const DEFAULT_COUNTDOWN_SEC = 30;
+
+function readSettingsFromStorage() {
+    try {
+        const autoUpdate = localStorage.getItem('frontendAutoUpdateEnabled');
+        const checkInterval = localStorage.getItem('frontendUpdateCheckIntervalSec');
+        const countdown = localStorage.getItem('frontendUpdateCountdownSec');
+        return {
+            autoUpdateEnabled: autoUpdate !== null ? JSON.parse(autoUpdate) : true,
+            checkIntervalSec: checkInterval !== null ? Math.max(30, Math.min(600, parseInt(checkInterval, 10) || DEFAULT_CHECK_INTERVAL_SEC)) : DEFAULT_CHECK_INTERVAL_SEC,
+            countdownSec: countdown !== null ? Math.max(10, Math.min(120, parseInt(countdown, 10) || DEFAULT_COUNTDOWN_SEC)) : DEFAULT_COUNTDOWN_SEC,
+        };
+    } catch {
+        return {
+            autoUpdateEnabled: true,
+            checkIntervalSec: DEFAULT_CHECK_INTERVAL_SEC,
+            countdownSec: DEFAULT_COUNTDOWN_SEC,
+        };
+    }
+}
 
 export function FrontendUpdateProvider({ children }) {
+    const { identity } = useAuth();
     const [hasUpdateAvailable, setHasUpdateAvailable] = useState(false);
-    const [countdownSeconds, setCountdownSeconds] = useState(COUNTDOWN_SECONDS);
+    const [countdownSeconds, setCountdownSeconds] = useState(DEFAULT_COUNTDOWN_SEC);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [settings, setSettings] = useState(readSettingsFromStorage);
     const initialHashRef = useRef(null);
     const countdownIntervalRef = useRef(null);
     const checkIntervalRef = useRef(null);
@@ -21,7 +44,6 @@ export function FrontendUpdateProvider({ children }) {
 
         try {
             await clearAllCaches();
-            // Small delay to ensure cache clear completes
             await new Promise(r => setTimeout(r, 300));
         } catch (err) {
             console.error('[FrontendUpdate] Failed to clear cache before refresh:', err);
@@ -45,6 +67,7 @@ export function FrontendUpdateProvider({ children }) {
 
     const checkForUpdates = useCallback(async () => {
         if (!isRunningOnCanister()) return;
+        if (!settings.autoUpdateEnabled) return;
 
         const currentHash = await getFrontendCanisterModuleHash(null);
         if (!currentHash) return;
@@ -56,7 +79,7 @@ export function FrontendUpdateProvider({ children }) {
 
         if (currentHash !== initialHashRef.current) {
             setHasUpdateAvailable(true);
-            setCountdownSeconds(COUNTDOWN_SECONDS);
+            setCountdownSeconds(settings.countdownSec);
 
             if (checkIntervalRef.current) {
                 clearInterval(checkIntervalRef.current);
@@ -77,10 +100,58 @@ export function FrontendUpdateProvider({ children }) {
                 });
             }, 1000);
         }
-    }, [performRefresh]);
+    }, [performRefresh, settings.autoUpdateEnabled, settings.countdownSec]);
+
+    useEffect(() => {
+        const applySettings = (s) => {
+            setSettings(prev => ({
+                ...prev,
+                ...s,
+                checkIntervalSec: s.checkIntervalSec !== undefined
+                    ? Math.max(30, Math.min(600, s.checkIntervalSec))
+                    : prev.checkIntervalSec,
+                countdownSec: s.countdownSec !== undefined
+                    ? Math.max(10, Math.min(120, s.countdownSec))
+                    : prev.countdownSec,
+            }));
+        };
+
+        if (identity) {
+            getMySettings(identity).then(backendSettings => {
+                if (backendSettings) {
+                    const checkInterval = backendSettings.frontend_update_check_interval_sec;
+                    const countdown = backendSettings.frontend_update_countdown_sec;
+                    applySettings({
+                        autoUpdateEnabled: backendSettings.frontend_auto_update_enabled ?? true,
+                        checkIntervalSec: checkInterval !== undefined && checkInterval !== null
+                            ? Number(checkInterval) : DEFAULT_CHECK_INTERVAL_SEC,
+                        countdownSec: countdown !== undefined && countdown !== null
+                            ? Number(countdown) : DEFAULT_COUNTDOWN_SEC,
+                    });
+                }
+            });
+        } else {
+            setSettings(readSettingsFromStorage());
+        }
+
+        const handleSettingsChanged = (e) => {
+            if (e.detail) {
+                applySettings({
+                    autoUpdateEnabled: e.detail.autoUpdateEnabled,
+                    checkIntervalSec: e.detail.checkIntervalSec,
+                    countdownSec: e.detail.countdownSec,
+                });
+            }
+        };
+
+        window.addEventListener('frontendUpdateSettingsChanged', handleSettingsChanged);
+        return () => window.removeEventListener('frontendUpdateSettingsChanged', handleSettingsChanged);
+    }, [identity]);
 
     useEffect(() => {
         if (!isRunningOnCanister()) return;
+        if (!settings.autoUpdateEnabled) return;
+        if (hasUpdateAvailable) return;
 
         const runCheck = () => {
             checkForUpdates();
@@ -88,17 +159,16 @@ export function FrontendUpdateProvider({ children }) {
 
         runCheck();
 
-        checkIntervalRef.current = setInterval(runCheck, CHECK_INTERVAL_MS);
+        const intervalMs = settings.checkIntervalSec * 1000;
+        checkIntervalRef.current = setInterval(runCheck, intervalMs);
 
         return () => {
             if (checkIntervalRef.current) {
                 clearInterval(checkIntervalRef.current);
-            }
-            if (countdownIntervalRef.current) {
-                clearInterval(countdownIntervalRef.current);
+                checkIntervalRef.current = null;
             }
         };
-    }, [checkForUpdates]);
+    }, [checkForUpdates, settings.autoUpdateEnabled, settings.checkIntervalSec, hasUpdateAvailable]);
 
     const value = {
         hasUpdateAvailable,

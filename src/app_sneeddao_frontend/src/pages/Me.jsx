@@ -200,6 +200,7 @@ export default function Me() {
     const [loadingNotificationSettings, setLoadingNotificationSettings] = useState(false);
     const [notificationSettingsSaved, setNotificationSettingsSaved] = useState(false);
     const collectiblesSaveTimerRef = useRef(null);
+    const frontendUpdateSaveTimerRef = useRef(null);
 
     const defaultUserSettings = {
         principal_color_coding: true,
@@ -213,6 +214,9 @@ export default function Me() {
         neuron_manager_cycle_threshold_orange: 5_000_000_000_000,
         canister_manager_cycle_threshold_red: 1_000_000_000_000,
         canister_manager_cycle_threshold_orange: 5_000_000_000_000,
+        frontend_auto_update_enabled: true,
+        frontend_update_check_interval_sec: 60,
+        frontend_update_countdown_sec: 30,
     };
 
     const getLocalSettingsForBackend = () => {
@@ -234,6 +238,15 @@ export default function Me() {
             }
         };
 
+        const readNat = (key, fallback) => {
+            try {
+                const saved = localStorage.getItem(key);
+                return saved !== null ? parseInt(saved, 10) : fallback;
+            } catch (error) {
+                return fallback;
+            }
+        };
+
         const neuronSettings = getNeuronManagerSettings();
         const canisterSettings = getCanisterManagerSettings();
 
@@ -249,6 +262,9 @@ export default function Me() {
             neuron_manager_cycle_threshold_orange: neuronSettings.cycleThresholdOrange ?? defaultUserSettings.neuron_manager_cycle_threshold_orange,
             canister_manager_cycle_threshold_red: canisterSettings.cycleThresholdRed ?? defaultUserSettings.canister_manager_cycle_threshold_red,
             canister_manager_cycle_threshold_orange: canisterSettings.cycleThresholdOrange ?? defaultUserSettings.canister_manager_cycle_threshold_orange,
+            frontend_auto_update_enabled: readBool('frontendAutoUpdateEnabled', defaultUserSettings.frontend_auto_update_enabled),
+            frontend_update_check_interval_sec: readNat('frontendUpdateCheckIntervalSec', defaultUserSettings.frontend_update_check_interval_sec),
+            frontend_update_countdown_sec: readNat('frontendUpdateCountdownSec', defaultUserSettings.frontend_update_countdown_sec),
         };
     };
 
@@ -269,6 +285,9 @@ export default function Me() {
             && toNumber(settings.neuron_manager_cycle_threshold_orange ?? defaultUserSettings.neuron_manager_cycle_threshold_orange) === defaultUserSettings.neuron_manager_cycle_threshold_orange
             && toNumber(settings.canister_manager_cycle_threshold_red ?? defaultUserSettings.canister_manager_cycle_threshold_red) === defaultUserSettings.canister_manager_cycle_threshold_red
             && toNumber(settings.canister_manager_cycle_threshold_orange ?? defaultUserSettings.canister_manager_cycle_threshold_orange) === defaultUserSettings.canister_manager_cycle_threshold_orange
+            && (settings.frontend_auto_update_enabled ?? defaultUserSettings.frontend_auto_update_enabled) === defaultUserSettings.frontend_auto_update_enabled
+            && toNumber(settings.frontend_update_check_interval_sec ?? defaultUserSettings.frontend_update_check_interval_sec) === defaultUserSettings.frontend_update_check_interval_sec
+            && toNumber(settings.frontend_update_countdown_sec ?? defaultUserSettings.frontend_update_countdown_sec) === defaultUserSettings.frontend_update_countdown_sec
         );
     };
 
@@ -344,6 +363,25 @@ export default function Me() {
             setCanisterCycleThresholdRed(formatCyclesCompact(redValue));
             setCanisterCycleThresholdOrange(formatCyclesCompact(orangeValue));
         }
+
+        const frontendAutoUpdateValue = settings.frontend_auto_update_enabled ?? true;
+        setFrontendAutoUpdateEnabled(frontendAutoUpdateValue);
+        localStorage.setItem('frontendAutoUpdateEnabled', JSON.stringify(frontendAutoUpdateValue));
+        window.dispatchEvent(new CustomEvent('frontendUpdateSettingsChanged', {
+            detail: {
+                autoUpdateEnabled: frontendAutoUpdateValue,
+                checkIntervalSec: settings.frontend_update_check_interval_sec ?? 60,
+                countdownSec: settings.frontend_update_countdown_sec ?? 30,
+            }
+        }));
+
+        const checkIntervalValue = Number(settings.frontend_update_check_interval_sec ?? 60);
+        setFrontendUpdateCheckInterval(checkIntervalValue);
+        localStorage.setItem('frontendUpdateCheckIntervalSec', checkIntervalValue.toString());
+
+        const countdownValue = Number(settings.frontend_update_countdown_sec ?? 30);
+        setFrontendUpdateCountdown(countdownValue);
+        localStorage.setItem('frontendUpdateCountdownSec', countdownValue.toString());
     };
 
     // Color coding settings
@@ -403,6 +441,32 @@ export default function Me() {
             return saved !== null ? JSON.parse(saved) : true; // Default ON
         } catch (error) {
             return true;
+        }
+    });
+
+    // Frontend auto-update settings (check for new WASM, countdown before refresh)
+    const [frontendAutoUpdateEnabled, setFrontendAutoUpdateEnabled] = useState(() => {
+        try {
+            const saved = localStorage.getItem('frontendAutoUpdateEnabled');
+            return saved !== null ? JSON.parse(saved) : true; // Default ON
+        } catch (error) {
+            return true;
+        }
+    });
+    const [frontendUpdateCheckInterval, setFrontendUpdateCheckInterval] = useState(() => {
+        try {
+            const saved = localStorage.getItem('frontendUpdateCheckIntervalSec');
+            return saved !== null ? parseInt(saved, 10) : 60;
+        } catch (error) {
+            return 60;
+        }
+    });
+    const [frontendUpdateCountdown, setFrontendUpdateCountdown] = useState(() => {
+        try {
+            const saved = localStorage.getItem('frontendUpdateCountdownSec');
+            return saved !== null ? parseInt(saved, 10) : 30;
+        } catch (error) {
+            return 30;
         }
     });
 
@@ -2075,7 +2139,6 @@ export default function Me() {
                                         title="Particle Effects"
                                         description="Show sparkle trails when tipping and fireworks on the Tips page for new tips"
                                         theme={theme}
-                                        isLast={true}
                                     >
                                         <ToggleSwitch
                                             checked={particleEffectsEnabled}
@@ -2086,6 +2149,102 @@ export default function Me() {
                                                 updateBackendSettings({ particle_effects_enabled: newValue });
                                             }}
                                         />
+                                    </SettingItem>
+
+                                    <SettingItem
+                                        title="Auto-update on new version"
+                                        description="When a new version of the app is deployed, show a notification and auto-refresh after a countdown"
+                                        theme={theme}
+                                    >
+                                        <ToggleSwitch
+                                            checked={frontendAutoUpdateEnabled}
+                                            onChange={(e) => {
+                                                const newValue = e.target.checked;
+                                                setFrontendAutoUpdateEnabled(newValue);
+                                                localStorage.setItem('frontendAutoUpdateEnabled', JSON.stringify(newValue));
+                                                updateBackendSettings({ frontend_auto_update_enabled: newValue });
+                                                window.dispatchEvent(new CustomEvent('frontendUpdateSettingsChanged', {
+                                                    detail: { autoUpdateEnabled: newValue, checkIntervalSec: frontendUpdateCheckInterval, countdownSec: frontendUpdateCountdown }
+                                                }));
+                                            }}
+                                        />
+                                    </SettingItem>
+
+                                    <SettingItem
+                                        title="Update check interval"
+                                        description="How often to check for new app versions (seconds). Minimum 30. Ignored during countdown."
+                                        theme={theme}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <input
+                                                type="number"
+                                                min="30"
+                                                max="600"
+                                                value={frontendUpdateCheckInterval}
+                                                onChange={(e) => {
+                                                    const newValue = Math.max(30, Math.min(600, parseInt(e.target.value, 10) || 60));
+                                                    setFrontendUpdateCheckInterval(newValue);
+                                                    localStorage.setItem('frontendUpdateCheckIntervalSec', newValue.toString());
+                                                    window.dispatchEvent(new CustomEvent('frontendUpdateSettingsChanged', {
+                                                        detail: { autoUpdateEnabled: frontendAutoUpdateEnabled, checkIntervalSec: newValue, countdownSec: frontendUpdateCountdown }
+                                                    }));
+                                                    if (frontendUpdateSaveTimerRef.current) clearTimeout(frontendUpdateSaveTimerRef.current);
+                                                    frontendUpdateSaveTimerRef.current = setTimeout(() => {
+                                                        updateBackendSettings({ frontend_update_check_interval_sec: newValue });
+                                                    }, 500);
+                                                }}
+                                                style={{
+                                                    width: '80px',
+                                                    padding: '6px 10px',
+                                                    borderRadius: '8px',
+                                                    border: `1px solid ${theme.colors.border}`,
+                                                    backgroundColor: theme.colors.tertiaryBg,
+                                                    color: theme.colors.primaryText,
+                                                    fontSize: '14px',
+                                                    textAlign: 'right'
+                                                }}
+                                            />
+                                            <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>seconds</span>
+                                        </div>
+                                    </SettingItem>
+
+                                    <SettingItem
+                                        title="Update countdown timer"
+                                        description="Seconds to wait before auto-refresh when update is detected (10-120)"
+                                        theme={theme}
+                                        isLast={true}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <input
+                                                type="number"
+                                                min="10"
+                                                max="120"
+                                                value={frontendUpdateCountdown}
+                                                onChange={(e) => {
+                                                    const newValue = Math.max(10, Math.min(120, parseInt(e.target.value, 10) || 30));
+                                                    setFrontendUpdateCountdown(newValue);
+                                                    localStorage.setItem('frontendUpdateCountdownSec', newValue.toString());
+                                                    window.dispatchEvent(new CustomEvent('frontendUpdateSettingsChanged', {
+                                                        detail: { autoUpdateEnabled: frontendAutoUpdateEnabled, checkIntervalSec: frontendUpdateCheckInterval, countdownSec: newValue }
+                                                    }));
+                                                    if (frontendUpdateSaveTimerRef.current) clearTimeout(frontendUpdateSaveTimerRef.current);
+                                                    frontendUpdateSaveTimerRef.current = setTimeout(() => {
+                                                        updateBackendSettings({ frontend_update_countdown_sec: newValue });
+                                                    }, 500);
+                                                }}
+                                                style={{
+                                                    width: '80px',
+                                                    padding: '6px 10px',
+                                                    borderRadius: '8px',
+                                                    border: `1px solid ${theme.colors.border}`,
+                                                    backgroundColor: theme.colors.tertiaryBg,
+                                                    color: theme.colors.primaryText,
+                                                    fontSize: '14px',
+                                                    textAlign: 'right'
+                                                }}
+                                            />
+                                            <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>seconds</span>
+                                        </div>
                                     </SettingItem>
                                 </SettingsSection>
 

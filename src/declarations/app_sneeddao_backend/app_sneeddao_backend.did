@@ -13,6 +13,9 @@ type UserSettingsUpdate =
    canister_manager_cycle_threshold_red: opt nat;
    collectibles_threshold: opt float64;
    expand_quick_links_on_desktop: opt bool;
+   frontend_auto_update_enabled: opt bool;
+   frontend_update_check_interval_sec: opt nat;
+   frontend_update_countdown_sec: opt nat;
    neuron_color_coding: opt bool;
    neuron_manager_cycle_threshold_orange: opt nat;
    neuron_manager_cycle_threshold_red: opt nat;
@@ -27,6 +30,9 @@ type UserSettings =
    canister_manager_cycle_threshold_red: nat;
    collectibles_threshold: float64;
    expand_quick_links_on_desktop: bool;
+   frontend_auto_update_enabled: bool;
+   frontend_update_check_interval_sec: nat;
+   frontend_update_countdown_sec: nat;
    neuron_color_coding: bool;
    neuron_manager_cycle_threshold_orange: nat;
    neuron_manager_cycle_threshold_red: nat;

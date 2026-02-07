@@ -44,6 +44,9 @@ export const setMySettings = async (identity, updates) => {
             neuron_manager_cycle_threshold_orange: toOptional(updates.neuron_manager_cycle_threshold_orange),
             canister_manager_cycle_threshold_red: toOptional(updates.canister_manager_cycle_threshold_red),
             canister_manager_cycle_threshold_orange: toOptional(updates.canister_manager_cycle_threshold_orange),
+            frontend_auto_update_enabled: toOptional(updates.frontend_auto_update_enabled),
+            frontend_update_check_interval_sec: toOptional(updates.frontend_update_check_interval_sec),
+            frontend_update_countdown_sec: toOptional(updates.frontend_update_countdown_sec),
         };
         return await actor.set_my_settings(payload);
     } catch (error) {

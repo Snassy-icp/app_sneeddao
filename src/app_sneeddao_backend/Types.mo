@@ -48,6 +48,9 @@ module {
         neuron_manager_cycle_threshold_orange: Nat;
         canister_manager_cycle_threshold_red: Nat;
         canister_manager_cycle_threshold_orange: Nat;
+        frontend_auto_update_enabled: Bool;
+        frontend_update_check_interval_sec: Nat;
+        frontend_update_countdown_sec: Nat;
     };
 
     public type UserSettingsUpdate = {
@@ -62,6 +65,9 @@ module {
         neuron_manager_cycle_threshold_orange: ?Nat;
         canister_manager_cycle_threshold_red: ?Nat;
         canister_manager_cycle_threshold_orange: ?Nat;
+        frontend_auto_update_enabled: ?Bool;
+        frontend_update_check_interval_sec: ?Nat;
+        frontend_update_countdown_sec: ?Nat;
     };
 
     // token metadata types

@@ -126,6 +126,9 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   stable var stable_user_setting_neuron_manager_cycle_threshold_orange : [(Principal, Nat)] = [];
   stable var stable_user_setting_canister_manager_cycle_threshold_red : [(Principal, Nat)] = [];
   stable var stable_user_setting_canister_manager_cycle_threshold_orange : [(Principal, Nat)] = [];
+  stable var stable_user_setting_frontend_auto_update_enabled : [(Principal, Bool)] = [];
+  stable var stable_user_setting_frontend_update_check_interval_sec : [(Principal, Nat)] = [];
+  stable var stable_user_setting_frontend_update_countdown_sec : [(Principal, Nat)] = [];
 
   // Stable storage for neuron names and nicknames
   stable var stable_neuron_names : [(NeuronNameKey, (Text, Bool))] = [];
@@ -234,6 +237,9 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   transient let default_particle_effects_enabled : Bool = true;
   transient let default_cycle_threshold_red : Nat = 1_000_000_000_000;
   transient let default_cycle_threshold_orange : Nat = 5_000_000_000_000;
+  transient let default_frontend_auto_update_enabled : Bool = true;
+  transient let default_frontend_update_check_interval_sec : Nat = 60;
+  transient let default_frontend_update_countdown_sec : Nat = 30;
 
   // Runtime storage for user settings
   transient var user_setting_principal_color_coding : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
@@ -247,6 +253,9 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   transient var user_setting_neuron_manager_cycle_threshold_orange : HashMap.HashMap<Principal, Nat> = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
   transient var user_setting_canister_manager_cycle_threshold_red : HashMap.HashMap<Principal, Nat> = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
   transient var user_setting_canister_manager_cycle_threshold_orange : HashMap.HashMap<Principal, Nat> = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
+  transient var user_setting_frontend_auto_update_enabled : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
+  transient var user_setting_frontend_update_check_interval_sec : HashMap.HashMap<Principal, Nat> = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
+  transient var user_setting_frontend_update_countdown_sec : HashMap.HashMap<Principal, Nat> = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
 
   // Add after other runtime variables
   private transient var blacklisted_words = HashMap.fromIter<Text, Bool>(
@@ -408,6 +417,18 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         case (?value) value;
         case null default_cycle_threshold_orange;
       };
+      frontend_auto_update_enabled = switch (user_setting_frontend_auto_update_enabled.get(user)) {
+        case (?value) value;
+        case null default_frontend_auto_update_enabled;
+      };
+      frontend_update_check_interval_sec = switch (user_setting_frontend_update_check_interval_sec.get(user)) {
+        case (?value) value;
+        case null default_frontend_update_check_interval_sec;
+      };
+      frontend_update_countdown_sec = switch (user_setting_frontend_update_countdown_sec.get(user)) {
+        case (?value) value;
+        case null default_frontend_update_countdown_sec;
+      };
     }
   };
 
@@ -456,6 +477,18 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       case (?value) { user_setting_canister_manager_cycle_threshold_orange.put(user, value) };
       case null {};
     };
+    switch (update.frontend_auto_update_enabled) {
+      case (?value) { user_setting_frontend_auto_update_enabled.put(user, value) };
+      case null {};
+    };
+    switch (update.frontend_update_check_interval_sec) {
+      case (?value) { user_setting_frontend_update_check_interval_sec.put(user, value) };
+      case null {};
+    };
+    switch (update.frontend_update_countdown_sec) {
+      case (?value) { user_setting_frontend_update_countdown_sec.put(user, value) };
+      case null {};
+    };
   };
 
   // User settings endpoints
@@ -473,6 +506,9 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         neuron_manager_cycle_threshold_orange = default_cycle_threshold_orange;
         canister_manager_cycle_threshold_red = default_cycle_threshold_red;
         canister_manager_cycle_threshold_orange = default_cycle_threshold_orange;
+        frontend_auto_update_enabled = default_frontend_auto_update_enabled;
+        frontend_update_check_interval_sec = default_frontend_update_check_interval_sec;
+        frontend_update_countdown_sec = default_frontend_update_countdown_sec;
       };
     };
     get_user_settings(caller)
@@ -3181,6 +3217,9 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     stable_user_setting_neuron_manager_cycle_threshold_orange := Iter.toArray(user_setting_neuron_manager_cycle_threshold_orange.entries());
     stable_user_setting_canister_manager_cycle_threshold_red := Iter.toArray(user_setting_canister_manager_cycle_threshold_red.entries());
     stable_user_setting_canister_manager_cycle_threshold_orange := Iter.toArray(user_setting_canister_manager_cycle_threshold_orange.entries());
+    stable_user_setting_frontend_auto_update_enabled := Iter.toArray(user_setting_frontend_auto_update_enabled.entries());
+    stable_user_setting_frontend_update_check_interval_sec := Iter.toArray(user_setting_frontend_update_check_interval_sec.entries());
+    stable_user_setting_frontend_update_countdown_sec := Iter.toArray(user_setting_frontend_update_countdown_sec.entries());
   };
 
   // initialize ephemeral state and empty stable arrays to save memory
@@ -3358,6 +3397,18 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         user_setting_canister_manager_cycle_threshold_orange.put(user, value);
       };
       stable_user_setting_canister_manager_cycle_threshold_orange := [];
+      for ((user, value) in stable_user_setting_frontend_auto_update_enabled.vals()) {
+        user_setting_frontend_auto_update_enabled.put(user, value);
+      };
+      stable_user_setting_frontend_auto_update_enabled := [];
+      for ((user, value) in stable_user_setting_frontend_update_check_interval_sec.vals()) {
+        user_setting_frontend_update_check_interval_sec.put(user, value);
+      };
+      stable_user_setting_frontend_update_check_interval_sec := [];
+      for ((user, value) in stable_user_setting_frontend_update_countdown_sec.vals()) {
+        user_setting_frontend_update_countdown_sec.put(user, value);
+      };
+      stable_user_setting_frontend_update_countdown_sec := [];
 
       // Update next_project_id to be one more than the highest existing ID
       var max_project_id : Nat = 0;
