@@ -11,6 +11,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { isProposalAcceptingVotes } from '../utils/ProposalUtils';
 import { normalizeId } from '../hooks/useNeuronsCache';
 import { FaKey, FaCheckCircle, FaTimesCircle, FaVoteYea, FaChevronDown, FaChevronUp, FaInfoCircle, FaCopy, FaSync } from 'react-icons/fa';
+import InfoModal from './InfoModal';
 
 // Accent colors - matching Proposal page
 const accentPrimary = '#6366f1';
@@ -40,6 +41,12 @@ const HotkeyNeurons = ({
     const [tokenSymbol, setTokenSymbol] = useState('SNS');
     const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
     const [copiedPrincipal, setCopiedPrincipal] = useState(false);
+    const [infoModal, setInfoModal] = useState({ show: false, title: '', message: '', type: 'info' });
+
+    const showInfoModal = (title, message, type = 'info') => {
+        setInfoModal({ show: true, title, message, type });
+    };
+    const closeInfoModal = () => setInfoModal(prev => ({ ...prev, show: false }));
 
     const effectiveSnsRoot = forceSneedSns ? SNEED_SNS_ROOT : selectedSnsRoot;
 
@@ -151,7 +158,7 @@ const HotkeyNeurons = ({
         }
     };
 
-    const voteWithNeuron = async (neuronId, vote) => {
+    const voteWithNeuron = async (neuronId, vote, showErrorModal = true) => {
         if (!identity || !effectiveSnsRoot || !currentProposalId) return 'error';
         
         const neuronIdHex = uint8ArrayToHex(neuronId);
@@ -190,7 +197,7 @@ const HotkeyNeurons = ({
         } catch (error) {
             console.error('Error voting:', error);
             setVotingStates(prev => ({ ...prev, [neuronIdHex]: 'error' }));
-            alert(`Voting failed: ${error.message}`);
+            if (showErrorModal) showInfoModal('Voting failed', error.message, 'error');
             return 'error';
         }
     };
@@ -198,7 +205,7 @@ const HotkeyNeurons = ({
     const voteWithAllNeurons = async (vote) => {
         const allNeurons = getAllNeurons();
         if (!allNeurons || !proposalData || !currentProposalId) {
-            alert('Missing required data for voting');
+            showInfoModal('Error', 'Missing required data for voting', 'error');
             return;
         }
 
@@ -211,6 +218,10 @@ const HotkeyNeurons = ({
                     p.permission_type.includes(4)
                 );
                 if (!hasHotkeyAccess) return false;
+
+                const neuronVotingPower = nervousSystemParameters ? 
+                    calculateVotingPower(neuron, nervousSystemParameters) : 0;
+                if (neuronVotingPower === 0) return false;
 
                 const neuronIdHex = uint8ArrayToHex(neuron.id[0]?.id);
                 const ballot = proposalData.ballots?.find(([id, _]) => id === neuronIdHex);
@@ -242,7 +253,8 @@ const HotkeyNeurons = ({
                     return false;
                 }).length;
 
-                alert(`No eligible neurons found for voting.\n\nTotal neurons: ${allNeurons.length}\nNeurons with hotkey access: ${neuronsWithHotkey}\nNeurons that already voted: ${neuronsAlreadyVoted}\nEligible neurons: ${eligibleNeurons.length}`);
+                setVoteAllState('idle');
+                showInfoModal('No eligible neurons', `No eligible neurons found for voting.\n\nTotal neurons: ${allNeurons.length}\nNeurons with hotkey access: ${neuronsWithHotkey}\nNeurons that already voted: ${neuronsAlreadyVoted}\nEligible neurons: ${eligibleNeurons.length}`, 'warning');
                 return;
             }
 
@@ -250,14 +262,14 @@ const HotkeyNeurons = ({
             let failedVotes = 0;
             
             for (const neuron of eligibleNeurons) {
-                const result = await voteWithNeuron(neuron.id[0].id, vote);
+                const result = await voteWithNeuron(neuron.id[0].id, vote, false);
                 if (result === 'success') successfulVotes++;
                 else failedVotes++;
             }
 
             if (successfulVotes > 0) {
                 setVoteAllState('success');
-                alert(`Successfully voted with ${successfulVotes} neuron(s)!${failedVotes > 0 ? ` ${failedVotes} vote(s) failed.` : ''}`);
+                showInfoModal('Vote submitted', `Successfully voted with ${successfulVotes} neuron(s)!${failedVotes > 0 ? ` ${failedVotes} vote(s) failed.` : ''}`, 'success');
                 await refreshNeurons(effectiveSnsRoot);
                 if (onVoteSuccess) {
                     onVoteSuccess();
@@ -265,7 +277,7 @@ const HotkeyNeurons = ({
                 setTimeout(() => setVoteAllState('idle'), 2000);
             } else if (failedVotes > 0) {
                 setVoteAllState('error');
-                alert(`All ${failedVotes} vote(s) failed.`);
+                showInfoModal('Voting failed', `All ${failedVotes} vote(s) failed.`, 'error');
                 setTimeout(() => setVoteAllState('idle'), 3000);
             } else {
                 setVoteAllState('idle');
@@ -273,7 +285,7 @@ const HotkeyNeurons = ({
         } catch (error) {
             console.error('Error voting with all neurons:', error);
             setVoteAllState('error');
-            alert('Error voting with all neurons: ' + error.message);
+            showInfoModal('Error', 'Error voting with all neurons: ' + error.message, 'error');
             setTimeout(() => setVoteAllState('idle'), 3000);
         }
     };
@@ -675,6 +687,7 @@ const HotkeyNeurons = ({
         );
 
         return (
+            <>
             <div style={{ marginTop: '1.5rem' }}>
                 <div style={{
                     padding: '1.25rem',
@@ -802,11 +815,14 @@ const HotkeyNeurons = ({
                 </div>
                 <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
             </div>
+            <InfoModal show={infoModal.show} onClose={closeInfoModal} title={infoModal.title} message={infoModal.message} type={infoModal.type} />
+        </>
         );
     }
 
     // Full card layout
     return (
+        <>
         <div style={{
             background: theme.colors.secondaryBg,
             borderRadius: '16px',
@@ -1398,6 +1414,8 @@ const HotkeyNeurons = ({
                 `}
             </style>
         </div>
+        <InfoModal show={infoModal.show} onClose={closeInfoModal} title={infoModal.title} message={infoModal.message} type={infoModal.type} />
+        </>
     );
 };
 
