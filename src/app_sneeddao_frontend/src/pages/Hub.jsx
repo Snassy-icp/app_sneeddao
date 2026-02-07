@@ -1165,11 +1165,11 @@ function Hub() {
             color: theme.colors.success,
         },
         {
-            title: 'Stakers',
+            title: 'Users',
             icon: <FaUsers size={22} />,
-            desc: 'Discover users with neuron holdings, see their stake, and explore their governance activity.',
-            path: '/neurons?tab=stakers',
-            cta: 'Browse Stakers',
+            desc: 'Browse named principals with public names and nicknames.',
+            path: '/users',
+            cta: 'Browse Users',
             color: '#f39c12',
         },
         {

@@ -84,6 +84,7 @@ const PrincipalInput = ({
     isAuthenticated = false,
     defaultTab = 'private', // 'private' | 'public' | 'all'
     defaultPrincipalType = 'both', // 'users' | 'canisters' | 'both'
+    onSelect = null, // Called when user selects from dropdown (principalStr) - use for navigate-on-select
     onFocus: onFocusProp,
     onBlur: onBlurProp,
     // Subaccount support props
@@ -309,6 +310,9 @@ const PrincipalInput = ({
         
         if (onChange) {
             onChange(item.principalStr);
+        }
+        if (onSelect) {
+            onSelect(item.principalStr);
         }
     };
 

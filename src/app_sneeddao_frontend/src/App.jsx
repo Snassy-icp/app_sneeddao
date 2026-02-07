@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Route, Routes, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import Login from './Login';
 import Wallet from './Wallet';
 import Doc from './Doc';
@@ -65,6 +65,7 @@ import Rewards from './pages/Rewards';
 import Disclaimer from './pages/Disclaimer';
 import Principal from './pages/Principal';
 import Neurons from './pages/Neurons';
+import Users from './pages/Users';
 import Transaction from './pages/Transaction';
 import Transactions from './pages/Transactions';
 import Hub from './pages/Hub';
@@ -107,14 +108,6 @@ import SneedexMy from './pages/SneedexMy';
 
 // Premium page
 import Premium from './pages/Premium';
-
-// Redirect /users to /neurons?tab=stakers, preserving query params (e.g. sns=xxx)
-function UsersRedirect() {
-    const location = useLocation();
-    const params = new URLSearchParams(location.search);
-    params.set('tab', 'stakers');
-    return <Navigate to={`/neurons?${params.toString()}`} replace />;
-}
 
 // Component to set up global naming function
 function GlobalNamingSetup() {
@@ -201,7 +194,7 @@ function App() {
                     <Route path="/canister" element={<Canister />} />
                     <Route path="/canisters" element={<Canisters />} />
                     <Route path="/neurons" element={<Neurons />} />
-                    <Route path="/users" element={<UsersRedirect />} />
+                    <Route path="/users" element={<Users />} />
                     <Route path="/create_icp_neuron" element={<CreateIcpNeuron />} />
                     <Route path="/icp_neuron_manager/:canisterId" element={<IcpNeuronManager />} />
                     <Route path="/transaction" element={<Transaction />} />
