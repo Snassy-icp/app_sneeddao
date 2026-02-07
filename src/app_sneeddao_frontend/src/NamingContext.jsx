@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from './AuthContext';
 import { getAllNeuronNames, getAllNeuronNicknames, getAllPrincipalNames, getAllPrincipalNicknames } from './utils/BackendUtils';
 import { uint8ArrayToHex } from './utils/NeuronUtils';
+import { getAllSnses, fetchAndCacheSnsData } from './utils/SnsUtils';
 
 const NamingContext = createContext();
 export { NamingContext };
@@ -59,6 +60,7 @@ export function NamingProvider({ children }) {
     const [principalNicknames, setPrincipalNicknames] = useState(() => loadMapFromCache(CACHE_KEYS.PRINCIPAL_NICKNAMES));
     const [verifiedNames, setVerifiedNames] = useState(() => loadMapFromCache(CACHE_KEYS.VERIFIED_NAMES));
     const [loading, setLoading] = useState(true);
+    const [snses, setSnses] = useState(() => getAllSnses() || []);
     
     // Track if we've done initial load from cache
     const hasLoadedFromCache = useRef(
@@ -193,6 +195,45 @@ export function NamingProvider({ children }) {
         }
     }, [identity]);
 
+    // Load SNS data and inject known canister IDs into public names
+    useEffect(() => {
+        async function loadSnses() {
+            const cached = getAllSnses();
+            if (cached?.length > 0) {
+                setSnses(cached);
+            }
+            try {
+                const data = await fetchAndCacheSnsData(identity);
+                if (data?.length > 0) {
+                    setSnses(data);
+                }
+            } catch (err) {
+                console.warn('NamingContext: Failed to load SNS data for names:', err);
+            }
+        }
+        loadSnses();
+    }, [identity]);
+
+    // Merge principal names with SNS canister names (user-set names take precedence)
+    const principalNamesWithSns = useMemo(() => {
+        const merged = new Map(principalNames);
+        snses.forEach(sns => {
+            const name = sns.name || `SNS ${(sns.rootCanisterId || '').slice(0, 8)}...`;
+            const entries = [
+                [sns.canisters?.root, `${name} Root`],
+                [sns.canisters?.governance, `${name} Governance`],
+                [sns.canisters?.ledger, `${name} Ledger`],
+                [sns.canisters?.swap, `${name} Swap`],
+            ];
+            entries.forEach(([canisterId, label]) => {
+                if (canisterId && !merged.has(canisterId)) {
+                    merged.set(canisterId, label);
+                }
+            });
+        });
+        return merged;
+    }, [principalNames, snses]);
+
     const getNeuronDisplayName = (neuronId, snsRoot) => {
         if (!neuronId || !snsRoot) return null;
         const mapKey = `${snsRoot}:${neuronId}`;
@@ -205,7 +246,7 @@ export function NamingProvider({ children }) {
 
     const getPrincipalDisplayName = (principalId) => {
         if (!principalId) return null;
-        const name = principalNames.get(principalId.toString());
+        const name = principalNamesWithSns.get(principalId.toString());
         const nickname = principalNicknames.get(principalId.toString());
         
         return { name, nickname };
@@ -215,7 +256,7 @@ export function NamingProvider({ children }) {
         <NamingContext.Provider value={{
             neuronNames,
             neuronNicknames,
-            principalNames,
+            principalNames: principalNamesWithSns,
             principalNicknames,
             verifiedNames,
             loading,
