@@ -1275,8 +1275,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                           </div>
                       </div>
                       
-                      {/* Account ID - Collapsible */}
-                      {accountId && (
+                      {/* Account ID - Collapsible (hidden in header/compact mode) */}
+                      {!compact && accountId && (
                           <>
                               {!showAccountId ? (
                                   <button
