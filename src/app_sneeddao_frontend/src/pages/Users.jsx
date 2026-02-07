@@ -80,8 +80,16 @@ function Users() {
         totalNeuronCount,
         loadingProgress,
         refreshData,
+        loadData,
         setError
     } = useNeuronsCache(selectedSnsRoot, identity);
+    
+    // Auto-load neurons if not loaded and not currently loading
+    useEffect(() => {
+        if (selectedSnsRoot && neurons.length === 0 && !loading && !error) {
+            loadData();
+        }
+    }, [selectedSnsRoot, neurons.length, loading, error, loadData]);
     
     // Local state
     const [searchTerm, setSearchTerm] = useState('');

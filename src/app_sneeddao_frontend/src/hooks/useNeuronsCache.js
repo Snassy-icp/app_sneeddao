@@ -1099,7 +1099,7 @@ export default function useNeuronsCache(selectedSnsRoot, identity) {
             setNeurons([]);
             loadData();
         }
-    }, [normalizedSnsRoot]);
+    }, [normalizedSnsRoot, loadData]);
 
     return {
         neurons,
