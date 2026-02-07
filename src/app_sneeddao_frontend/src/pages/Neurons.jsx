@@ -1735,6 +1735,7 @@ function Neurons() {
                         <>
                             {/* Neuron Cards - Neurons tab */}
                             {activeTab === 'neurons' && (
+                            <>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                                 {paginatedNeurons.map((neuron, index) => {
                                     const neuronId = uint8ArrayToHex(neuron.id[0]?.id);
@@ -1962,7 +1963,7 @@ function Neurons() {
                             </div>
 
                             {/* Empty State - Neurons tab */}
-                            {activeTab === 'neurons' && filteredNeurons.length === 0 && !loading && (
+                            {filteredNeurons.length === 0 && !loading && (
                                 <div style={{
                                     background: theme.colors.secondaryBg,
                                     borderRadius: '16px',
@@ -1981,7 +1982,7 @@ function Neurons() {
                             )}
 
                             {/* Pagination - Neurons tab */}
-                            {activeTab === 'neurons' && filteredNeurons.length > 0 && (
+                            {filteredNeurons.length > 0 && (
                                 <div style={{
                                     display: 'flex',
                                     justifyContent: 'center',
@@ -2040,6 +2041,7 @@ function Neurons() {
                                     </button>
                                 </div>
                             )}
+                            </>
                             )}
 
                             {/* User Cards - Stakers tab */}
