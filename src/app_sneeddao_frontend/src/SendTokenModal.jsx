@@ -1084,6 +1084,28 @@ function SendTokenModal({ show, onClose, onSend, token }) {
                 borderRadius: '8px',
                 border: `1px solid ${theme.colors.border}`
               }}>
+                {/* Warning: users should normally leave subaccount empty */}
+                <div style={{
+                  marginBottom: '16px',
+                  padding: '12px 14px',
+                  background: `${theme.colors.warning}15`,
+                  border: `1px solid ${theme.colors.warning}40`,
+                  borderRadius: '6px',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '10px'
+                }}>
+                  <span style={{ fontSize: '16px', flexShrink: 0 }}>⚠️</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: theme.colors.warning, fontWeight: '600', fontSize: '0.85rem', marginBottom: '4px' }}>
+                      Usually leave this empty
+                    </div>
+                    <div style={{ color: theme.colors.secondaryText, fontSize: '0.8rem', lineHeight: 1.4 }}>
+                      You should normally <strong>not</strong> fill out any subaccount. Only enter a subaccount if an application you are sending to has explicitly instructed you to do so (e.g., a DEX, NFT marketplace, or other dApp that provided you with a specific subaccount address).
+                    </div>
+                  </div>
+                </div>
+
                 <div style={{ marginBottom: '12px' }}>
                   <label style={{
                     display: 'block',

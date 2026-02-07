@@ -187,7 +187,7 @@ function ActiveProposals() {
         } finally {
             setLoading(false);
         }
-    }, [identity, isAuthenticated, getRelevantSnses, getNervousSystemParameters, snsLogos]);
+    }, [identity, isAuthenticated, getRelevantSnses, snsLogos]);
 
     // Check eligibility for proposals
     useEffect(() => {
