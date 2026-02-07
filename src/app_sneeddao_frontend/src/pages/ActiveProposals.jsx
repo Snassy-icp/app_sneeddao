@@ -326,13 +326,14 @@ function ActiveProposals() {
         }
     }, [identity]);
 
-    // Format VP for display
-    const formatCompactVP = (vp) => {
+    // Format VP for display (vp is in e8s, all SNS have 8 decimals)
+    const formatCompactVP = (vpE8s) => {
+        const vp = vpE8s / 1e8;
         if (vp >= 1e12) return `${(vp / 1e12).toFixed(1)}T`;
         if (vp >= 1e9) return `${(vp / 1e9).toFixed(1)}B`;
         if (vp >= 1e6) return `${(vp / 1e6).toFixed(1)}M`;
         if (vp >= 1e3) return `${(vp / 1e3).toFixed(1)}K`;
-        return vp.toFixed(0);
+        return vp.toFixed(vp >= 1 ? 0 : 2);
     };
 
     // Toggle SNS section
