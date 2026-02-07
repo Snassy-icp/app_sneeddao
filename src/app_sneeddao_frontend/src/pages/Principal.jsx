@@ -38,6 +38,7 @@ import {
 } from '../utils/SneedexUtils';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
 import { get_token_conversion_rate } from '../utils/TokenUtils';
+import { addToSkipList, filterSkipList } from '../utils/LedgerSkipList';
 
 const ACCESS_LEVEL_ICONS = { crown: FaCrown, key: FaKey, voteyea: FaVoteYea, manager: FaUserShield, coins: FaCoins, question: FaQuestion };
 
@@ -1150,7 +1151,10 @@ export default function PrincipalPage() {
 
         setScanningTokens(true);
         setScanError('');
-        setScanProgress({ current: 0, total: whitelistedTokens.length, found: 0 });
+
+        const allLedgerIds = whitelistedTokens.map(t => t.ledger_id?.toString?.() || String(t.ledger_id));
+        const queue = filterSkipList(allLedgerIds);
+        setScanProgress({ current: 0, total: queue.length, found: 0 });
 
         try {
             const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
@@ -1166,8 +1170,14 @@ export default function PrincipalPage() {
 
             let foundCount = 0;
             let completedCount = 0;
-            const queue = whitelistedTokens.map(t => t.ledger_id?.toString?.() || String(t.ledger_id));
             const maxConcurrency = 8;
+
+            const isCanisterError = (err) => {
+                if (!err) return false;
+                if (err && typeof err === 'object' && 'CanisterError' in err) return true;
+                const msg = err?.message ?? String(err);
+                return typeof msg === 'string' && msg.toLowerCase().includes('canistererror');
+            };
 
             const runScanForLedger = async (ledgerId) => {
                 try {
@@ -1208,6 +1218,9 @@ export default function PrincipalPage() {
                         });
                     }
                 } catch (err) {
+                    if (isCanisterError(err)) {
+                        addToSkipList(ledgerId);
+                    }
                     console.warn(`[Principal Scan] Failed to check ${ledgerId}:`, err?.message || err);
                 } finally {
                     completedCount++;
