@@ -698,8 +698,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     >
                         {isHeaderCollapsed ? '...' : '−'}
                     </span>
-                    {/* Update badge when header collapsed */}
-                    {isHeaderCollapsed && hasUpdateAvailable && (
+                    {/* Update badge - always visible in header when update available (independent of notification bar) */}
+                    {hasUpdateAvailable && (
                         <span
                             onClick={(e) => {
                                 e.stopPropagation();
@@ -719,7 +719,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                 color: '#10b981',
                                 marginLeft: '4px',
                             }}
-                            title="New version - Click to refresh"
+                            title={autoUpdateEnabled ? "New version - Click to refresh now or wait for auto-refresh" : "New version - Click to refresh"}
                         >
                             <FaCloudDownloadAlt size={9} />
                             {autoUpdateEnabled ? `${countdownSeconds}s` : 'Update'}
