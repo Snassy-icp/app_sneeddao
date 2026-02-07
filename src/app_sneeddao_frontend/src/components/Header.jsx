@@ -427,8 +427,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             defaultPath: '/me',
             subMenu: [
                 { name: 'Me', path: '/me' },
-                { name: 'Voting', path: '/active_proposals' },
                 { name: 'Wallet', path: '/wallet' },
+                { name: 'Voting', path: '/active_proposals' },
                 { name: 'Messages', path: '/sms' },
                 { name: 'Posts', path: '/posts' },
                 { name: 'Tips', path: '/tips' },
