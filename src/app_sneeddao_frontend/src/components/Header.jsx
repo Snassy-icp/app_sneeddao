@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars, FaComments, FaUnlock, FaCrown, FaGift, FaBrain, FaKey, FaHandPaper, FaBell, FaEnvelope, FaCoins, FaSync, FaVoteYea } from 'react-icons/fa';
+import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars, FaComments, FaUnlock, FaCrown, FaGift, FaBrain, FaKey, FaHandPaper, FaBell, FaEnvelope, FaCoins, FaSync, FaVoteYea, FaCloudDownloadAlt } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { headerStyles } from '../styles/HeaderStyles';
@@ -22,6 +22,7 @@ import { createActor as createSnsGovernanceActor } from 'external/sns_governance
 import { getSnsById, fetchSnsLogo } from '../utils/SnsUtils';
 import { safePrincipalString, safePermissionType } from '../utils/NeuronUtils';
 import { HttpAgent } from '@dfinity/agent';
+import { useFrontendUpdate } from '../contexts/FrontendUpdateContext';
 
 function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const location = useLocation();
@@ -94,6 +95,10 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         handleConsolidate 
     } = useCollectiblesNotifications();
     const { votableCount } = useVotableProposalsNotifications();
+    const frontendUpdate = useFrontendUpdate();
+    const hasUpdateAvailable = frontendUpdate?.hasUpdateAvailable ?? false;
+    const countdownSeconds = frontendUpdate?.countdownSeconds ?? 0;
+    const triggerRefresh = frontendUpdate?.triggerRefresh;
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isQuickLinksOpen, setIsQuickLinksOpen] = useState(false);
     const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
@@ -692,6 +697,33 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     >
                         {isHeaderCollapsed ? '...' : '−'}
                     </span>
+                    {/* Update badge when header collapsed */}
+                    {isHeaderCollapsed && hasUpdateAvailable && (
+                        <span
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                triggerRefresh?.();
+                            }}
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '2px 8px',
+                                borderRadius: '8px',
+                                background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(16, 185, 129, 0.1))',
+                                border: '1px solid rgba(16, 185, 129, 0.3)',
+                                cursor: 'pointer',
+                                fontSize: '10px',
+                                fontWeight: '600',
+                                color: '#10b981',
+                                marginLeft: '4px',
+                            }}
+                            title="New version - Click to refresh"
+                        >
+                            <FaCloudDownloadAlt size={9} />
+                            {countdownSeconds}s
+                        </span>
+                    )}
                 </div>
                 </div>
 
@@ -1515,8 +1547,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 </div>
             )}
 
-            {/* Notifications Row: Only shows when there are notifications */}
-            {!isHeaderCollapsed && showHeaderNotificationsSetting && isAuthenticated && (newReplyCount > 0 || newTipCount > 0 || newMessageCount > 0 || collectiblesCount > 0 || votableCount > 0) && (
+            {/* Notifications Row: Shows when there are notifications or update available */}
+            {!isHeaderCollapsed && (hasUpdateAvailable || (showHeaderNotificationsSetting && isAuthenticated && (newReplyCount > 0 || newTipCount > 0 || newMessageCount > 0 || collectiblesCount > 0 || votableCount > 0))) && (
                 <div style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
@@ -1547,6 +1579,41 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         alignItems: 'center',
                         gap: '10px'
                     }}>
+                        {/* Update Available - click to refresh now */}
+                        {hasUpdateAvailable && (
+                            <div 
+                                onClick={() => triggerRefresh?.()}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    padding: '5px 12px',
+                                    background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(16, 185, 129, 0.1))',
+                                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                                    borderRadius: '16px',
+                                    cursor: 'pointer',
+                                    fontSize: '12px',
+                                    fontWeight: '600',
+                                    color: '#10b981',
+                                    transition: 'all 0.2s ease',
+                                    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.15)'
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(-1px)';
+                                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.25)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(16, 185, 129, 0.15)';
+                                }}
+                                title="New version available - Click to refresh now or wait for auto-refresh"
+                            >
+                                <FaCloudDownloadAlt size={11} />
+                                <span>Update available</span>
+                                <span style={{ opacity: 0.9, fontWeight: 500 }}>({countdownSeconds}s)</span>
+                            </div>
+                        )}
+                        
                         {/* Reply Notifications */}
                         {newReplyCount > 0 && (
                             <div 

@@ -575,54 +575,14 @@ export default function Me() {
         }
     };
     
-    // Clear all IndexedDB caches
+    // Clear all IndexedDB caches (uses shared utility from cacheUtils.js)
     const clearAllCaches = async () => {
         setClearingCache(true);
         try {
-            const dbNames = [
-                'sneed_wallet_cache',
-                'sneed_logo_cache', 
-                'sneed_token_cache',
-                'NeuronsDB'  // Shared neurons cache from useNeuronsCache.js
-            ];
-            
-            for (const dbName of dbNames) {
-                try {
-                    await new Promise((resolve, reject) => {
-                        const request = indexedDB.deleteDatabase(dbName);
-                        request.onsuccess = () => {
-                            console.log(`[Cache] Deleted ${dbName}`);
-                            resolve();
-                        };
-                        request.onerror = () => reject(request.error);
-                        request.onblocked = () => {
-                            console.warn(`[Cache] Delete blocked for ${dbName}`);
-                            resolve(); // Continue anyway
-                        };
-                    });
-                } catch (e) {
-                    console.warn(`[Cache] Failed to delete ${dbName}:`, e);
-                }
-            }
-            
-            // Also clear localStorage caches
-            const keysToRemove = [];
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (key && (
-                    key.includes('wallet_cache') || 
-                    key.includes('sns_cache') || 
-                    key.includes('sneed_') ||
-                    key.startsWith('neuronsCache_')  // Old NeuronsContext localStorage cache
-                )) {
-                    keysToRemove.push(key);
-                }
-            }
-            keysToRemove.forEach(key => localStorage.removeItem(key));
-            
+            const { clearAllCaches: clearCaches } = await import('../utils/cacheUtils');
+            await clearCaches();
             setCacheCleared(true);
             setTimeout(() => setCacheCleared(false), 3000);
-            
             // Offer to reload the page
             if (window.confirm('Cache cleared! Reload page to start fresh?')) {
                 window.location.reload();

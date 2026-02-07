@@ -22,7 +22,9 @@ import { ForumProvider } from './contexts/ForumContext';
 import { NeuronsProvider } from './contexts/NeuronsContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { WalletProvider } from './contexts/WalletContext';
+import { FrontendUpdateProvider, useFrontendUpdate } from './contexts/FrontendUpdateContext';
 import Layout from './components/Layout';
+import CacheRefreshDialog from './components/CacheRefreshDialog';
 
 // Import new pages
 import Dao from './pages/Dao';
@@ -131,8 +133,10 @@ function App() {
                 <PremiumProvider>
                 <WalletProvider>
                 <NamingProvider>
-                  <GlobalNamingSetup />
-                  <Layout>
+                  <FrontendUpdateProvider>
+                    <GlobalNamingSetup />
+                    <CacheRefreshDialogWrapper />
+                    <Layout>
                   <Routes>
                     <Route path="/" element={<Hub />} />
                     <Route path="/login" element={<Login />} />
@@ -238,6 +242,7 @@ function App() {
                     <Route path="/admin/rewards" element={<RewardsAdmin />} />
                   </Routes>
                   </Layout>
+                  </FrontendUpdateProvider>
                 </NamingProvider>
                 </WalletProvider>
                 </PremiumProvider>
@@ -248,6 +253,11 @@ function App() {
       </AuthProvider>
     </ThemeProvider>
   );
+}
+
+function CacheRefreshDialogWrapper() {
+  const frontendUpdate = useFrontendUpdate();
+  return <CacheRefreshDialog isOpen={frontendUpdate?.isRefreshing ?? false} />;
 }
 
 export default App;
