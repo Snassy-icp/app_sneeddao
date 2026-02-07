@@ -215,7 +215,7 @@ function ActiveProposals() {
                 }
             }
 
-            setProposalEligibility(updates);
+            setProposalEligibility(prev => ({ ...prev, ...updates }));
         };
 
         checkEligibility();
