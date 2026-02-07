@@ -206,6 +206,15 @@ function Proposal() {
         }
     }, [snsError]);
 
+    // Sync URL params to state when navigating (e.g. from ActiveProposals)
+    useEffect(() => {
+        const urlProposalId = searchParams.get('proposalid') || '';
+        if (urlProposalId !== currentProposalId) {
+            setProposalIdInput(urlProposalId);
+            setCurrentProposalId(urlProposalId);
+        }
+    }, [searchParams]);
+
     // Sync URL sns parameter to context
     useEffect(() => {
         const snsParam = searchParams.get('sns');
@@ -214,11 +223,14 @@ function Proposal() {
         }
     }, [searchParams, selectedSnsRoot, updateSelectedSns]);
 
+    // Use SNS from URL when available (avoids race: context may not have updated yet after navigation)
+    const effectiveSnsRoot = searchParams.get('sns') || selectedSnsRoot;
+
     useEffect(() => {
-        if (currentProposalId && selectedSnsRoot) {
-            fetchProposalData();
+        if (currentProposalId && effectiveSnsRoot) {
+            fetchProposalData(effectiveSnsRoot);
         }
-    }, [currentProposalId, selectedSnsRoot]);
+    }, [currentProposalId, effectiveSnsRoot]);
 
     // Fetch proposer neuron permissions
     useEffect(() => {
@@ -276,11 +288,11 @@ function Proposal() {
         }
     }, [forumActor, currentProposalId, selectedSnsRoot]);
 
-    const fetchProposalData = async (silent = false) => {
+    const fetchProposalData = async (snsRoot = selectedSnsRoot, silent = false) => {
         if (!silent) setLoading(true);
         setError('');
         try {
-            const selectedSns = getSnsById(selectedSnsRoot);
+            const selectedSns = getSnsById(snsRoot);
             if (!selectedSns) {
                 setError('Selected SNS not found');
                 return;
