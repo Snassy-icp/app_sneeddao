@@ -176,6 +176,10 @@ export default function SwapWidget({ initialInput, initialOutput, onClose }) {
   const [progress, setProgress] = useState(null);
   const [result, setResult] = useState(null);
 
+  // Spot prices per DEX (fetched as soon as pair is selected)
+  const [spotPrices, setSpotPrices] = useState(null); // { icpswap: 0.001, kong: 0.00102 }
+  const [loadingSpot, setLoadingSpot] = useState(false);
+
   const aggregatorRef = useRef(null);
   const quoteTimerRef = useRef(null);
 
@@ -214,6 +218,38 @@ export default function SwapWidget({ initialInput, initialOutput, onClose }) {
     const agent = aggregatorRef.current.config.agent;
     getTokenInfo(outputToken, agent).then(setOutputTokenInfo).catch(() => setOutputTokenInfo(null));
   }, [outputToken]);
+
+  // ── Fetch spot prices when pair changes (no amount needed) ──
+  useEffect(() => {
+    if (!aggregatorRef.current || !inputToken || !outputToken) {
+      setSpotPrices(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingSpot(true);
+
+    (async () => {
+      const agg = aggregatorRef.current;
+      const dexes = [...agg._dexes.values()];
+      const results = await Promise.allSettled(
+        dexes.map(async (dex) => {
+          const price = await dex.getSpotPrice(inputToken, outputToken);
+          return { id: dex.id, name: dex.name, price };
+        })
+      );
+      if (cancelled) return;
+      const prices = {};
+      for (const r of results) {
+        if (r.status === 'fulfilled' && r.value.price > 0) {
+          prices[r.value.id] = { name: r.value.name, price: r.value.price };
+        }
+      }
+      setSpotPrices(Object.keys(prices).length > 0 ? prices : null);
+      setLoadingSpot(false);
+    })();
+
+    return () => { cancelled = true; };
+  }, [inputToken, outputToken]);
 
   // ── Fetch quotes ──
   const fetchQuotes = useCallback(async () => {
@@ -395,8 +431,8 @@ export default function SwapWidget({ initialInput, initialOutput, onClose }) {
         )}
       </div>
 
-      {/* Flip button */}
-      <div style={{ display: 'flex', justifyContent: 'center', margin: '-8px 0' }}>
+      {/* Flip button + Spot prices */}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', margin: '-8px 0', gap: 4 }}>
         <button
           onClick={flipTokens}
           disabled={swapping}
@@ -410,6 +446,25 @@ export default function SwapWidget({ initialInput, initialOutput, onClose }) {
           }}
           title="Flip tokens"
         >&#8595;</button>
+
+        {/* Spot prices per DEX */}
+        {spotPrices && inputTokenInfo && outputTokenInfo && (
+          <div style={{
+            display: 'flex', gap: 12, fontSize: 11, color: 'var(--color-mutedText)',
+            flexWrap: 'wrap', justifyContent: 'center',
+          }}>
+            {Object.entries(spotPrices).map(([dexId, { name, price }]) => (
+              <span key={dexId}>
+                {name}: <span style={{ color: 'var(--color-secondaryText)', fontWeight: 500 }}>
+                  1 {inputTokenInfo.symbol} = {price < 0.000001 ? price.toExponential(3) : price.toPrecision(6)} {outputTokenInfo.symbol}
+                </span>
+              </span>
+            ))}
+          </div>
+        )}
+        {loadingSpot && inputToken && outputToken && !spotPrices && (
+          <span style={{ fontSize: 11, color: 'var(--color-mutedText)' }}>Loading spot prices...</span>
+        )}
       </div>
 
       {/* Output token */}

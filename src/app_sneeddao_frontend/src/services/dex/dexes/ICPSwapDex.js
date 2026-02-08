@@ -293,17 +293,22 @@ export class ICPSwapDex extends BaseDex {
     // Spot price
     const spotPrice = await this.getSpotPrice(inputToken, outputToken);
 
-    // Price impact: compare actual exchange rate to spot price
+    // DEX fee (ICPSwap standard is 0.3%)
+    const dexFeePercent = Number(ICPSWAP_DEFAULT_FEE_TIER) / 1_000_000;
+
+    // Price impact: compare actual exchange rate to spot price, EXCLUDING the DEX fee.
+    // The quote output already has the LP fee deducted, so actualRate/spotPrice ≈ (1-fee)(1-impact).
+    // To isolate market impact: compare actualRate to fee-adjusted spot price.
     const effectiveInputFloat = Number(effectiveInput) / (10 ** inputInfo.decimals);
     const expectedOutputFloat = Number(expectedOutput) / (10 ** outputInfo.decimals);
     const actualRate = expectedOutputFloat / effectiveInputFloat;
-    const priceImpact = spotPrice > 0 ? Math.abs(1 - actualRate / spotPrice) : 0;
+    const feeAdjustedSpot = spotPrice * (1 - dexFeePercent);
+    const priceImpact = (spotPrice > 0 && feeAdjustedSpot > 0)
+      ? Math.max(0, 1 - actualRate / feeAdjustedSpot)
+      : 0;
 
     // Minimum output after slippage
     const minimumOutput = netOutput - BigInt(Math.ceil(Number(netOutput) * slippage));
-
-    // DEX fee (ICPSwap standard is 0.3%)
-    const dexFeePercent = Number(ICPSWAP_DEFAULT_FEE_TIER) / 1_000_000;
 
     return {
       dexId: this.id,

@@ -263,23 +263,6 @@ export class KongDex extends BaseDex {
     const expectedOutput = quoteData.receive_amount;
     const netOutput = expectedOutput - outputFees; // outputFees is 0 for Kong, but keep for consistency
 
-    // Spot price from mid_price or from pool
-    let spotPrice;
-    try {
-      spotPrice = quoteData.mid_price || (await this.getSpotPrice(inputToken, outputToken));
-    } catch {
-      spotPrice = 0;
-    }
-
-    // Price impact
-    const effectiveInputFloat = Number(effectiveInput) / (10 ** inputInfo.decimals);
-    const expectedOutputFloat = Number(expectedOutput) / (10 ** outputInfo.decimals);
-    const actualRate = effectiveInputFloat > 0 ? expectedOutputFloat / effectiveInputFloat : 0;
-    const priceImpact = spotPrice > 0 ? Math.abs(1 - actualRate / spotPrice) : 0;
-
-    // Minimum output with slippage tolerance
-    const minimumOutput = netOutput - BigInt(Math.ceil(Number(netOutput) * slippage));
-
     // DEX fee — use pool's lp_fee_bps (basis points) for accuracy
     let dexFeePercent = 0.003; // default 0.3%
     const pool = await this._findPool(inputToken, outputToken);
@@ -288,11 +271,38 @@ export class KongDex extends BaseDex {
       dexFeePercent = Number(pool.lp_fee_bps) / 10_000;
     } else if (quoteData.txs && quoteData.txs.length > 0) {
       // Fallback: compute from tx-level lp_fee (actual amount) vs pay_amount
-      // For multi-hop, aggregate across hops
       const totalLpFee = quoteData.txs.reduce((sum, tx) => sum + Number(tx.lp_fee || 0), 0);
       const totalPay = quoteData.txs.reduce((sum, tx) => sum + Number(tx.pay_amount || 0), 0);
       if (totalPay > 0) dexFeePercent = totalLpFee / totalPay;
     }
+
+    // Spot price from mid_price (swap_amounts gives us the pool mid-price) or from pool
+    let spotPrice;
+    try {
+      spotPrice = quoteData.mid_price || (await this.getSpotPrice(inputToken, outputToken));
+    } catch {
+      spotPrice = 0;
+    }
+
+    // Price impact — EXCLUDING the DEX fee.
+    // Kong's swap_amounts returns a `slippage` field (percentage, e.g. 1.9 = 1.9%)
+    // which is Kong's own calculation of price impact. Use it if available.
+    // Otherwise compute: the quote output has LP fee + market impact baked in,
+    // so compare actualRate to fee-adjusted spot to isolate market impact.
+    let priceImpact = 0;
+    if (quoteData.slippage !== undefined && quoteData.slippage !== null) {
+      // Kong's slippage field is a percentage (e.g. 1.9 means 1.9%)
+      priceImpact = Math.abs(quoteData.slippage) / 100;
+    } else if (spotPrice > 0) {
+      const effectiveInputFloat = Number(effectiveInput) / (10 ** inputInfo.decimals);
+      const expectedOutputFloat = Number(expectedOutput) / (10 ** outputInfo.decimals);
+      const actualRate = effectiveInputFloat > 0 ? expectedOutputFloat / effectiveInputFloat : 0;
+      const feeAdjustedSpot = spotPrice * (1 - dexFeePercent);
+      priceImpact = feeAdjustedSpot > 0 ? Math.max(0, 1 - actualRate / feeAdjustedSpot) : 0;
+    }
+
+    // Minimum output with slippage tolerance
+    const minimumOutput = netOutput - BigInt(Math.ceil(Number(netOutput) * slippage));
 
     // Build route (Kong may do multi-hop internally)
     const route = (quoteData.txs || []).map((tx, i) => ({
@@ -392,6 +402,9 @@ export class KongDex extends BaseDex {
       // Compute minimum output with slippage
       const minOutput = quote.minimumOutput;
 
+      // Don't pass max_slippage — it checks total deviation from mid_price
+      // (which includes both LP fee and market impact) and would reject valid swaps.
+      // receive_amount already protects the user as the hard minimum.
       const swapResult = await this.kongActor.swap({
         pay_token: inputToken,
         pay_amount: effectiveInputAmount,
@@ -399,7 +412,7 @@ export class KongDex extends BaseDex {
         receive_amount: [minOutput],
         receive_address: [],
         pay_tx_id: [],               // ICRC2: Kong does transferFrom, no block index
-        max_slippage: [slippage * 100],
+        max_slippage: [],
         referred_by: [],
       });
 
@@ -451,6 +464,7 @@ export class KongDex extends BaseDex {
 
       const minOutput = quote.minimumOutput;
 
+      // Don't pass max_slippage — receive_amount protects the user.
       const swapResult = await this.kongActor.swap({
         pay_token: inputToken,
         pay_amount: effectiveInputAmount,
@@ -458,7 +472,7 @@ export class KongDex extends BaseDex {
         receive_amount: [minOutput],
         receive_address: [],
         pay_tx_id: [{ BlockIndex: blockIndex }],
-        max_slippage: [slippage * 100],
+        max_slippage: [],
         referred_by: [],
       });
 
@@ -546,7 +560,7 @@ export class KongDex extends BaseDex {
         receive_amount: [],
         receive_address: [],
         pay_tx_id: [{ BlockIndex: entry.blockIndex }],
-        max_slippage: [1.0],  // Be generous on resume
+        max_slippage: [],     // Don't constrain — user just wants their tokens back
         referred_by: [],
       });
 
