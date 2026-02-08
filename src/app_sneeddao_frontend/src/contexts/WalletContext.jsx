@@ -11,7 +11,7 @@ import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId 
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
 import { HttpAgent, Actor } from '@dfinity/agent';
-import { getTokenLogo, get_token_conversion_rate, get_available, get_available_backend } from '../utils/TokenUtils';
+import { getTokenLogo, get_token_conversion_rate, get_token_icp_rate, get_available, get_available_backend } from '../utils/TokenUtils';
 import { fetchUserNeuronsForSns, uint8ArrayToHex } from '../utils/NeuronUtils';
 import { getTipTokensReceivedByUser, getTrackedCanisters } from '../utils/BackendUtils';
 import { fetchAndCacheSnsData, getAllSnses, getSnsById } from '../utils/SnsUtils';
@@ -730,6 +730,7 @@ export const WalletProvider = ({ children }) => {
                 balance_backend,
                 locked,
                 conversion_rate: null, // Will be fetched progressively
+                icp_rate: null, // Will be fetched progressively
                 usdValue: null
             };
 
@@ -754,13 +755,14 @@ export const WalletProvider = ({ children }) => {
         }
     }, [identity]);
 
-    // Fetch conversion rate for a token and update it in place
+    // Fetch conversion rate and ICP rate for a token and update it in place
     const fetchAndUpdateConversionRate = useCallback(async (ledgerCanisterId, decimals, sessionId) => {
         try {
-            const conversion_rate = await get_token_conversion_rate(
-                ledgerCanisterId.toString(), 
-                decimals
-            );
+            const ledgerIdStr = ledgerCanisterId.toString();
+            const [conversion_rate, icp_rate] = await Promise.all([
+                get_token_conversion_rate(ledgerIdStr, decimals),
+                get_token_icp_rate(ledgerIdStr, decimals)
+            ]);
             
             // Only update if still in same fetch session
             if (fetchSessionRef.current === sessionId) {
@@ -771,7 +773,7 @@ export const WalletProvider = ({ children }) => {
                         const balance = BigInt(token.available || token.balance || 0n);
                         const balanceNum = Number(balance) / (10 ** (token.decimals || 8));
                         const usdValue = conversion_rate ? balanceNum * conversion_rate : null;
-                        return { ...token, conversion_rate, usdValue };
+                        return { ...token, conversion_rate, icp_rate, usdValue };
                     }
                     return token;
                 }));
@@ -1357,9 +1359,10 @@ export const WalletProvider = ({ children }) => {
                     neuronStake: token.neuronStake || existing.neuronStake,
                     neuronMaturity: token.neuronMaturity || existing.neuronMaturity,
                     neuronsLoaded: token.neuronsLoaded || existing.neuronsLoaded,
-                    // Preserve usdValue if new token doesn't have it
+                    // Preserve usdValue and rates if new token doesn't have them
                     usdValue: token.usdValue ?? existing.usdValue,
-                    conversion_rate: token.conversion_rate ?? existing.conversion_rate
+                    conversion_rate: token.conversion_rate ?? existing.conversion_rate,
+                    icp_rate: token.icp_rate ?? existing.icp_rate
                 };
                 return prev.map((t, i) => i === existingIndex ? merged : t);
             }
