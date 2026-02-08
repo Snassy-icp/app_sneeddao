@@ -1367,7 +1367,7 @@ function CreateIcpNeuron() {
                             <Link to="/wallet" style={{ color: neuronPrimary, fontWeight: '500' }}>Sneed Wallet</Link> – Quick access to your managers and neurons alongside your token balances
                         </li>
                         <li>
-                            <Link to="/canisters" style={{ color: neuronPrimary, fontWeight: '500' }}>Canisters Page</Link> – Track all your canisters, monitor cycles, and organize them into groups
+                            <Link to="/apps" style={{ color: neuronPrimary, fontWeight: '500' }}>Apps Page</Link> – Track all your canisters, monitor cycles, and organize them into groups
                         </li>
                         <li>
                             <span style={{ color: theme.colors.primaryText }}>This page</span> – View and manage all your ICP Staking Bots

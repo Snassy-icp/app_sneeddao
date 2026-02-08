@@ -1847,7 +1847,7 @@ export default function Premium() {
                                                 </div>
                                             )}
                                             <Link 
-                                                to="/canisters"
+                                                to="/apps"
                                                 style={{
                                                     display: 'inline-flex',
                                                     alignItems: 'center',

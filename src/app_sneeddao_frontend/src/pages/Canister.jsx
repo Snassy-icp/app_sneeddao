@@ -1257,7 +1257,7 @@ export default function CanisterPage() {
                     {/* Quick Links */}
                     <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
                         <Link 
-                            to="/canisters" 
+                            to="/apps" 
                             style={{ 
                                 display: 'inline-flex', 
                                 alignItems: 'center', 

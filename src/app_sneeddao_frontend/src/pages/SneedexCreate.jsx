@@ -3420,7 +3420,7 @@ function SneedexCreate() {
                                                     }}>
                                                         <strong style={{ color: theme.colors.accent }}>💡 Tip:</strong> You don't have any ICP Staking Bots registered yet.
                                                         Create one on the{' '}
-                                                        <Link to="/canisters" style={{ color: theme.colors.accent }}>Apps page</Link>{' '}
+                                                        <Link to="/apps" style={{ color: theme.colors.accent }}>Apps page</Link>{' '}
                                                         or enter an existing one manually below.
                                                     </div>
                                                     <input
@@ -3506,7 +3506,7 @@ function SneedexCreate() {
                                                     color: theme.colors.secondaryText,
                                                 }}>
                                                     <strong style={{ color: theme.colors.accent }}>💡 Tip:</strong> Register apps on the{' '}
-                                                    <Link to="/canisters" style={{ color: theme.colors.accent }}>Apps page</Link>{' '}
+                                                    <Link to="/apps" style={{ color: theme.colors.accent }}>Apps page</Link>{' '}
                                                     to see them here, or enter an ID manually below.
                                                 </div>
                                                 <input

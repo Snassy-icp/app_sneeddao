@@ -5871,7 +5871,7 @@ function Wallet() {
                         {/* Link to manage canisters */}
                         <div style={{ marginBottom: '16px' }}>
                             <Link 
-                                to="/canisters" 
+                                to="/apps" 
                                 style={{ color: walletPrimary, fontSize: '13px', textDecoration: 'none' }}
                                 onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
                                 onMouseLeave={(e) => e.target.style.textDecoration = 'none'}

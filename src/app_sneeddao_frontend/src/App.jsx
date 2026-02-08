@@ -93,6 +93,7 @@ import HelpCanisterManager from './pages/HelpCanisterManager';
 import HelpSnsJailbreak from './pages/HelpSnsJailbreak';
 import Canister from './pages/Canister';
 import Canisters from './pages/Canisters';
+import Apps from './pages/Apps';
 import CreateIcpNeuron from './pages/CreateIcpNeuron';
 import IcpNeuronManager from './pages/IcpNeuronManager';
 import LockWizard from './pages/LockWizard';
@@ -193,6 +194,7 @@ function App() {
                     <Route path="/user" element={<Principal />} />
                     <Route path="/canister" element={<Canister />} />
                     <Route path="/canisters" element={<Canisters />} />
+                    <Route path="/apps" element={<Apps />} />
                     <Route path="/neurons" element={<Neurons />} />
                     <Route path="/users" element={<Users />} />
                     <Route path="/create_icp_neuron" element={<CreateIcpNeuron />} />

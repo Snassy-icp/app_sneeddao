@@ -298,7 +298,7 @@ function HelpCanisterManager() {
                     <div style={styles.featureCard}>
                         <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
                             <FaFolderOpen size={14} color={canisterPrimary} />
-                            <Link to="/canisters" style={styles.link}>App Manager</Link> (/canisters)
+                            <Link to="/apps" style={styles.link}>App Manager</Link> (/apps)
                         </h4>
                         <p style={{ ...styles.paragraph, marginBottom: '0.5rem' }}>Main dashboard showing all tracked apps:</p>
                         <ul style={{ ...styles.list, marginBottom: 0 }}>

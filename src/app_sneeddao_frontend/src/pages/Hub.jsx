@@ -3,7 +3,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 import Header from '../components/Header';
 import { Link } from 'react-router-dom';
-import { FaExchangeAlt, FaCoins, FaLock, FaComments, FaWallet, FaServer, FaNewspaper, FaUsers, FaVoteYea, FaRss, FaArrowRight, FaHistory, FaStar, FaUnlock, FaShieldAlt, FaGlobe, FaBrain, FaGavel, FaNetworkWired } from 'react-icons/fa';
+import { FaExchangeAlt, FaCoins, FaLock, FaComments, FaWallet, FaServer, FaCube, FaNewspaper, FaUsers, FaVoteYea, FaRss, FaArrowRight, FaHistory, FaStar, FaUnlock, FaShieldAlt, FaGlobe, FaBrain, FaGavel, FaNetworkWired } from 'react-icons/fa';
 import { HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
@@ -1192,12 +1192,20 @@ function Hub() {
             color: hubPrimary,
         },
         {
-            title: 'Canisters',
+            title: 'Apps',
             icon: <FaServer size={22} />,
             desc: 'Monitor your canisters, check cycles, and manage canister ownership and controllers.',
-            path: '/canisters',
-            cta: 'Manage Canisters',
+            path: '/apps',
+            cta: 'Manage Apps',
             color: theme.colors.success,
+        },
+        {
+            title: 'Canisters',
+            icon: <FaCube size={22} />,
+            desc: 'Browse all canisters with public names or nicknames. Explore and discover canister profiles.',
+            path: '/canisters',
+            cta: 'Explore Canisters',
+            color: '#14b8a6',
         },
         {
             title: 'Transactions',
