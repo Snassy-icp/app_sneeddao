@@ -95,7 +95,7 @@ function SlippageSettings({ value, onChange }) {
   );
 }
 
-function QuoteCard({ quote, selected, onSelect, inputDecimals, outputDecimals, outputUsdPrice, isBest }) {
+function QuoteCard({ quote, selected, onSelect, inputDecimals, outputDecimals, outputUsdPrice, isBest, splitAdvantage }) {
   const outputStr = formatAmount(quote.expectedOutput, outputDecimals);
   const minStr = formatAmount(quote.minimumOutput, outputDecimals);
   const impactPct = (quote.priceImpact * 100).toFixed(2);
@@ -181,6 +181,18 @@ function QuoteCard({ quote, selected, onSelect, inputDecimals, outputDecimals, o
               {formatAmount(leg.quote.expectedOutput, outputDecimals)}
             </div>
           ))}
+        </div>
+      )}
+      {/* Split advantage vs next best */}
+      {isSplit && isBest && splitAdvantage && (
+        <div style={{
+          fontSize: 11, fontWeight: 600, marginTop: 4,
+          color: 'var(--color-success)',
+        }}>
+          +{formatAmount(splitAdvantage.amount, outputDecimals)} ({splitAdvantage.percent.toFixed(2)}%) more than next best
+          {splitAdvantage.usdValue && (
+            <span style={{ fontWeight: 400, opacity: 0.8 }}> ({splitAdvantage.usdValue})</span>
+          )}
         </div>
       )}
       <div style={{
@@ -390,6 +402,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
 
   const aggregatorRef = useRef(null);
   const quoteTimerRef = useRef(null);
+  const swappingRef = useRef(false);
 
   // ── Individual DEX quotes (extracted for convenience) ──
   const icpswapQuote = useMemo(() => quotes.find(q => q.dexId === 'icpswap') || null, [quotes]);
@@ -638,6 +651,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
 
   // ── Fetch quotes ──
   const fetchQuotes = useCallback(async () => {
+    if (swappingRef.current) return; // Don't refresh while a swap is in progress
     if (!aggregatorRef.current || !inputToken || !outputToken || !inputAmountStr || !inputTokenInfo) return;
 
     const amount = parseToBigInt(inputAmountStr, inputTokenInfo.decimals);
@@ -850,6 +864,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
     if (!quote) return;
 
     setSwapping(true);
+    swappingRef.current = true;
     setResult(null);
     setProgress(null);
 
@@ -930,6 +945,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
       }));
     } finally {
       setSwapping(false);
+      swappingRef.current = false;
     }
   };
 
@@ -1340,18 +1356,37 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
                 {loadingQuotes ? 'Refreshing...' : ''}
               </span>
             </div>
-            {allQuotes.map((q, i) => (
-              <QuoteCard
-                key={q.dexId}
-                quote={q}
-                selected={selectedQuote?.dexId === q.dexId}
-                onSelect={() => setSelectedDexId(q.dexId)}
-                inputDecimals={inputTokenInfo?.decimals || 8}
-                outputDecimals={outputTokenInfo?.decimals || 8}
-                outputUsdPrice={outputUsdPrice}
-                isBest={i === 0 && allQuotes.length > 1}
-              />
-            ))}
+            {allQuotes.map((q, i) => {
+              // Compute split advantage when the split card is the best
+              let splitAdv = null;
+              if (q.isSplitQuote && i === 0 && allQuotes.length > 1) {
+                const nextBest = allQuotes[1];
+                const diff = q.expectedOutput - nextBest.expectedOutput;
+                if (diff > 0n) {
+                  const pct = nextBest.expectedOutput > 0n
+                    ? (Number(diff) / Number(nextBest.expectedOutput)) * 100
+                    : 0;
+                  const outDec = outputTokenInfo?.decimals || 8;
+                  const usdVal = outputUsdPrice
+                    ? formatUSD((Number(diff) / (10 ** outDec)) * outputUsdPrice)
+                    : null;
+                  splitAdv = { amount: diff, percent: pct, usdValue: usdVal };
+                }
+              }
+              return (
+                <QuoteCard
+                  key={q.dexId}
+                  quote={q}
+                  selected={selectedQuote?.dexId === q.dexId}
+                  onSelect={() => setSelectedDexId(q.dexId)}
+                  inputDecimals={inputTokenInfo?.decimals || 8}
+                  outputDecimals={outputTokenInfo?.decimals || 8}
+                  outputUsdPrice={outputUsdPrice}
+                  isBest={i === 0 && allQuotes.length > 1}
+                  splitAdvantage={splitAdv}
+                />
+              );
+            })}
           </div>
         )}
 
