@@ -2525,6 +2525,17 @@ export default function PrincipalPage() {
                                 {snsesWithNeurons.reduce((sum, s) => sum + s.neuronCount, 0)}
                             </span>
                         )}
+                        {neuronUsdTotal > 0 && (
+                            <span style={{
+                                fontSize: '0.7rem',
+                                background: activeTab === 'neurons' ? 'rgba(255,255,255,0.2)' : theme.colors.tertiaryBg,
+                                padding: '0.1rem 0.4rem',
+                                borderRadius: '6px',
+                                fontWeight: '500'
+                            }}>
+                                {displayNeuronUsdTotal}
+                            </span>
+                        )}
                     </button>
                     <button
                         onClick={() => setActiveTab('transactions')}
@@ -2598,6 +2609,17 @@ export default function PrincipalPage() {
                                 }}
                                 title="Loading balances"
                             />
+                        )}
+                        {tokenUsdTotal > 0 && (
+                            <span style={{
+                                fontSize: '0.7rem',
+                                background: activeTab === 'balances' ? 'rgba(255,255,255,0.2)' : theme.colors.tertiaryBg,
+                                padding: '0.1rem 0.4rem',
+                                borderRadius: '6px',
+                                fontWeight: '500'
+                            }}>
+                                {displayTokenUsdTotal}
+                            </span>
                         )}
                     </button>
                 </div>
