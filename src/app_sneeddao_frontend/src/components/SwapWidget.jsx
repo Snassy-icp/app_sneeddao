@@ -1558,7 +1558,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
               const freshQuotes = await aggregatorRef.current.getQuotes({
                 inputToken: quote.inputToken,
                 outputToken: quote.outputToken,
-                amountIn: quote.swapLegRemaining,
+                amount: quote.swapLegRemaining,
               });
               const preferredDexId = quote.swapLegQuote.dexId;
               const remainderQuote = freshQuotes.find(q => q.dexId === preferredDexId)
