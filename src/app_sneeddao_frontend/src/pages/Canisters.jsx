@@ -23,12 +23,17 @@ function Canisters() {
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(20);
     const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
+    const [nameTypeFilter, setNameTypeFilter] = useState('both'); // 'both' | 'public' | 'nicknames'
 
-    // Get all named canister principals (public names and nicknames) - only canisters
+    // Get all named canister principals - only canisters; filter by name type
     const namedCanisterPrincipals = useMemo(() => {
         const principalIds = new Set();
-        principalNames.forEach((_, id) => principalIds.add(id));
-        principalNicknames.forEach((_, id) => principalIds.add(id));
+        if (nameTypeFilter === 'both' || nameTypeFilter === 'public') {
+            principalNames.forEach((_, id) => principalIds.add(id));
+        }
+        if (nameTypeFilter === 'both' || nameTypeFilter === 'nicknames') {
+            principalNicknames.forEach((_, id) => principalIds.add(id));
+        }
 
         return Array.from(principalIds).filter((principalId) => {
             try {
@@ -38,7 +43,7 @@ function Canisters() {
                 return false;
             }
         });
-    }, [principalNames, principalNicknames]);
+    }, [principalNames, principalNicknames, nameTypeFilter]);
 
     const getPrincipalDisplayInfo = (principalStr) => {
         try {
@@ -217,6 +222,29 @@ function Canisters() {
                                         fontSize: '0.9rem'
                                     }}
                                 />
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <span style={{ color: theme.colors.secondaryText, fontSize: '0.85rem' }}>Show:</span>
+                                <select
+                                    value={nameTypeFilter}
+                                    onChange={(e) => {
+                                        setNameTypeFilter(e.target.value);
+                                        setCurrentPage(1);
+                                    }}
+                                    style={{
+                                        backgroundColor: theme.colors.tertiaryBg,
+                                        color: theme.colors.primaryText,
+                                        border: `1px solid ${theme.colors.border}`,
+                                        borderRadius: '8px',
+                                        padding: '0.5rem 0.75rem',
+                                        fontSize: '0.9rem',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    <option value="both">Both (names & nicknames)</option>
+                                    <option value="public">Public names only</option>
+                                    <option value="nicknames">Nicknames only</option>
+                                </select>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 <span style={{ color: theme.colors.secondaryText, fontSize: '0.85rem' }}>Per page:</span>

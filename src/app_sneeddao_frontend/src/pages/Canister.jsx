@@ -7,9 +7,9 @@ import { useTheme } from '../contexts/ThemeContext';
 import { Principal } from '@dfinity/principal';
 import { Actor, HttpAgent } from '@dfinity/agent';
 import { getCanisterInfo, setCanisterName, setPrincipalNickname } from '../utils/BackendUtils';
-import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, isCanisterPrincipal } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
-import { FaEdit, FaSave, FaTimes, FaExternalLinkAlt, FaGasPump, FaUpload, FaExclamationTriangle, FaCube, FaChevronDown, FaChevronRight, FaArrowLeft, FaCheckCircle, FaMemory, FaUsers, FaLock, FaUnlock, FaCode, FaSpinner, FaCoins } from 'react-icons/fa';
+import { FaEdit, FaSave, FaTimes, FaExternalLinkAlt, FaGasPump, FaUpload, FaExclamationTriangle, FaCube, FaChevronDown, FaChevronRight, FaArrowLeft, FaCheckCircle, FaMemory, FaUsers, FaLock, FaUnlock, FaCode, FaSpinner, FaCoins, FaUser } from 'react-icons/fa';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
 import { getCyclesColor, getNeuronManagerSettings } from '../utils/NeuronManagerSettings';
@@ -1475,6 +1475,57 @@ export default function CanisterPage() {
                             }}>
                                 {fetchMethod === 'canister_status' ? <><FaUnlock size={10} /> Controller Access</> : <><FaLock size={10} /> Public Info</>}
                             </span>
+                        </div>
+
+                        {/* User pill (when principal is actually a user) + Link to /user page (always) */}
+                        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                            {canisterIdParam && (() => {
+                                try {
+                                    const principal = Principal.fromText(canisterIdParam);
+                                    const isUser = !isCanisterPrincipal(principal);
+                                    return (
+                                        <>
+                                            {isUser && (
+                                                <span style={{
+                                                    background: `${canisterPrimary}20`,
+                                                    color: canisterPrimary,
+                                                    padding: '4px 10px',
+                                                    borderRadius: '12px',
+                                                    fontSize: '0.75rem',
+                                                    fontWeight: '600',
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px'
+                                                }}>
+                                                    <FaUser size={10} />
+                                                    User
+                                                </span>
+                                            )}
+                                            <Link
+                                                to={`/user?id=${canisterIdParam}`}
+                                                style={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px',
+                                                    color: canisterPrimary,
+                                                    fontSize: '0.85rem',
+                                                    textDecoration: 'none',
+                                                    padding: '8px 14px',
+                                                    background: `${canisterPrimary}10`,
+                                                    borderRadius: '8px',
+                                                    border: `1px solid ${canisterPrimary}30`,
+                                                    transition: 'all 0.2s ease'
+                                                }}
+                                            >
+                                                <FaExternalLinkAlt size={10} />
+                                                {isUser ? 'View User Profile' : 'View Balances, Neurons & More'}
+                                            </Link>
+                                        </>
+                                    );
+                                } catch {
+                                    return null;
+                                }
+                            })()}
                         </div>
 
                         {/* Canister ID */}
