@@ -312,6 +312,8 @@ export const WalletProvider = ({ children }) => {
     // Tokens from the wallet - same structure as Wallet.jsx tokens state
     const [walletTokens, setWalletTokens] = useState([]);
     const [walletLoading, setWalletLoading] = useState(false);
+    // Map of ledgerId → 'balance' | 'full' for refresh phase tracking (shared with quick wallet)
+    const [refreshingTokens, setRefreshingTokens] = useState(new Map());
     
     const [lastUpdated, setLastUpdated] = useState(null);
     const [hasFetchedInitial, setHasFetchedInitial] = useState(false);
@@ -2217,6 +2219,9 @@ export const WalletProvider = ({ children }) => {
             updateWalletTokens,
             updateTokenRewards, // Update just the rewards on tokens
             setLoading,
+            // Refresh phase tracking (shared between Wallet.jsx and quick wallet)
+            refreshingTokens,
+            setRefreshingTokens,
             clearWallet,
             refreshWallet,
             sendToken,

@@ -10,7 +10,7 @@ import { useNaming } from './NamingContext';
 import { useWalletOptional } from './contexts/WalletContext';
 import { computeAccountId, PrincipalDisplay, getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
 import { formatAmount } from './utils/StringUtils';
-import { get_available_backend } from './utils/TokenUtils';
+import { get_available, get_available_backend } from './utils/TokenUtils';
 import { normalizeId } from './hooks/useNeuronsCache';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
@@ -106,6 +106,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const sendToken = walletContext?.sendToken;
     const isTokenSns = walletContext?.isTokenSns;
     const refreshWallet = walletContext?.refreshWallet;
+    const contextRefreshingTokens = walletContext?.refreshingTokens || new Map();
     const [isRefreshingWallet, setIsRefreshingWallet] = useState(false);
     
     // Get liquidity positions from context
@@ -981,13 +982,108 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         }
     }, [walletContext]);
 
+    // Fast batch balance refresh for quick wallet - fetches liquid balances first
+    const refreshQuickWalletBalancesFirst = useCallback(async () => {
+        if (!walletTokens || walletTokens.length === 0 || !identity) return;
+        const setRefreshingTokensFn = walletContext?.setRefreshingTokens;
+        const updateWalletTokensFn = walletContext?.updateWalletTokens;
+        if (!setRefreshingTokensFn) return;
+
+        // Mark all tokens as refreshing balance (strong pulse)
+        const balanceMap = new Map();
+        for (const t of walletTokens) {
+            const lid = normalizeId(t.principal) || normalizeId(t.ledger_canister_id);
+            if (lid) balanceMap.set(lid, 'balance');
+        }
+        setRefreshingTokensFn(balanceMap);
+
+        try {
+            // Fetch all liquid balances in parallel
+            const results = await Promise.all(walletTokens.map(async (t) => {
+                const lid = normalizeId(t.principal) || normalizeId(t.ledger_canister_id);
+                if (!lid) return null;
+                try {
+                    const ledgerPrincipal = t.ledger_canister_id instanceof Principal
+                        ? t.ledger_canister_id
+                        : Principal.fromText(lid);
+                    const ledgerActor = createLedgerActor(ledgerPrincipal, { agentOptions: { identity } });
+                    const freshBalance = await ledgerActor.icrc1_balance_of({ owner: identity.getPrincipal(), subaccount: [] });
+                    return { lid, freshBalance };
+                } catch {
+                    return null;
+                }
+            }));
+
+            // Build updated tokens array
+            const balanceByLedger = {};
+            for (const r of results) {
+                if (r) balanceByLedger[r.lid] = r.freshBalance;
+            }
+            if (updateWalletTokensFn) {
+                const updatedTokens = walletTokens.map(t => {
+                    const lid = normalizeId(t.principal) || normalizeId(t.ledger_canister_id);
+                    if (lid && balanceByLedger[lid] !== undefined) {
+                        const updated = { ...t, balance: balanceByLedger[lid] };
+                        updated.available = get_available(updated);
+                        return updated;
+                    }
+                    return t;
+                });
+                updateWalletTokensFn(updatedTokens);
+            }
+
+            // Switch all to phase 2 (subtle pulse)
+            const fullMap = new Map();
+            for (const t of walletTokens) {
+                const lid = normalizeId(t.principal) || normalizeId(t.ledger_canister_id);
+                if (lid) fullMap.set(lid, 'full');
+            }
+            setRefreshingTokensFn(fullMap);
+        } catch (error) {
+            console.error('Error in quick wallet fast balance refresh:', error);
+        }
+    }, [walletTokens, identity, walletContext]);
+
     // Handle refresh token in detail modal
     const handleRefreshToken = useCallback(async (token) => {
         if (!walletContext?.refreshWallet) return;
+        const setRefreshingTokensFn = walletContext?.setRefreshingTokens;
+        const lid = normalizeId(token.principal) || normalizeId(token.ledger_canister_id);
         
         setIsRefreshingToken(true);
+        // Phase 1: fast balance fetch
+        if (setRefreshingTokensFn && lid) {
+            setRefreshingTokensFn(prev => new Map(prev).set(lid, 'balance'));
+        }
         try {
-            // Refresh wallet and locks in parallel
+            // Quick: fetch the liquid balance first
+            if (lid && identity) {
+                try {
+                    const ledgerPrincipal = token.ledger_canister_id instanceof Principal
+                        ? token.ledger_canister_id
+                        : Principal.fromText(lid);
+                    const ledgerActor = createLedgerActor(ledgerPrincipal, { agentOptions: { identity } });
+                    const freshBalance = await ledgerActor.icrc1_balance_of({ owner: identity.getPrincipal(), subaccount: [] });
+                    // Update token in context
+                    if (walletContext?.updateWalletTokens) {
+                        const updatedTokens = walletTokens.map(t => {
+                            const tLid = normalizeId(t.principal) || normalizeId(t.ledger_canister_id);
+                            if (tLid === lid) {
+                                const updated = { ...t, balance: freshBalance };
+                                updated.available = get_available(updated);
+                                return updated;
+                            }
+                            return t;
+                        });
+                        walletContext.updateWalletTokens(updatedTokens);
+                    }
+                } catch {}
+            }
+            // Phase 2: switch to subtle pulse
+            if (setRefreshingTokensFn && lid) {
+                setRefreshingTokensFn(prev => new Map(prev).set(lid, 'full'));
+            }
+            // Full refresh and locks
             await Promise.all([
                 walletContext.refreshWallet(),
                 fetchLocksForToken(token)
@@ -996,8 +1092,15 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
             console.error('Error refreshing token:', error);
         } finally {
             setIsRefreshingToken(false);
+            if (setRefreshingTokensFn && lid) {
+                setRefreshingTokensFn(prev => {
+                    const next = new Map(prev);
+                    next.delete(lid);
+                    return next;
+                });
+            }
         }
-    }, [walletContext, fetchLocksForToken]);
+    }, [walletContext, walletTokens, identity, fetchLocksForToken]);
 
     // Keep detailToken in sync with walletTokens
     useEffect(() => {
@@ -1566,9 +1669,13 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                           e.stopPropagation();
                                           setIsRefreshingWallet(true);
                                           try {
+                                              // Phase 1: Fast balance refresh for all existing tokens
+                                              await refreshQuickWalletBalancesFirst();
+                                              // Phase 2: Full refresh
                                               await refreshWallet();
                                           } finally {
                                               setIsRefreshingWallet(false);
+                                              if (walletContext?.setRefreshingTokens) walletContext.setRefreshingTokens(new Map());
                                           }
                                       }}
                                       disabled={isRefreshingWallet || walletLoading}
@@ -1659,11 +1766,13 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                   // Calculate USD value
                                   const balanceNum = Number(totalBalance) / (10 ** (token.decimals || 8));
                                   const usdValue = token.conversion_rate ? balanceNum * token.conversion_rate : token.usdValue;
+                                  const tokenRefreshPhase = contextRefreshingTokens.get(ledgerId) || null;
+                                  const quickWalletRefreshClass = tokenRefreshPhase === 'balance' ? 'refreshing-balance' : tokenRefreshPhase === 'full' ? 'refreshing-full' : '';
                                   
                                   return (
                                       <div 
                                           key={ledgerId || index}
-                                          className="compact-wallet-token"
+                                          className={`compact-wallet-token ${quickWalletRefreshClass}`}
                                           onClick={() => openTokenDetailModal(token)}
                                           style={{
                                               display: 'flex',
@@ -2886,6 +2995,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
           hideButtons={false}
           isSnsToken={detailToken && isTokenSns ? isTokenSns(detailToken.ledger_canister_id) : false}
           handleRefreshToken={handleRefreshToken}
+          refreshPhase={detailToken ? (contextRefreshingTokens.get(normalizeId(detailToken.ledger_canister_id) || normalizeId(detailToken.principal)) || null) : null}
           isRefreshing={isRefreshingToken}
           locks={tokenLocks}
           lockDetailsLoading={lockDetailsLoading}

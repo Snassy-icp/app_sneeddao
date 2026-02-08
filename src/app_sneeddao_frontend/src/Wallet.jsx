@@ -455,7 +455,9 @@ function Wallet() {
         refreshTrackedCanisters: contextRefreshTrackedCanisters,
         // Shared ICP price (same as quick wallet)
         icpPrice: contextIcpPrice,
-        fetchIcpPrice: contextFetchIcpPrice
+        fetchIcpPrice: contextFetchIcpPrice,
+        // Refresh phase tracking (shared with quick wallet)
+        setRefreshingTokens: setContextRefreshingTokens
     } = useWallet();
     const navigate = useNavigate();
     
@@ -573,7 +575,8 @@ function Wallet() {
     // Shows spinner only during manual refresh OR if context hasn't loaded AND we have no tokens
     const showTokensSpinner = isManuallyRefreshingTokens || (!contextHasFetchedTokens && walletTokens.length === 0);
     const [lockDetailsLoading, setLockDetailsLoading] = useState({});
-    const [refreshingTokens, setRefreshingTokens] = useState(new Set());
+    // Map of ledgerId → 'balance' | 'full'. 'balance' = waiting for liquid balance, 'full' = balance received, finishing rest
+    const [refreshingTokens, setRefreshingTokens] = useState(new Map());
     const [refreshingPositions, setRefreshingPositions] = useState(new Set());
     const [refreshingAllWallet, setRefreshingAllWallet] = useState(false);
     const [refreshingTokensSection, setRefreshingTokensSection] = useState(false);
@@ -4492,17 +4495,41 @@ function Wallet() {
         const ledgerPrincipal = token.ledger_canister_id instanceof Principal
             ? token.ledger_canister_id
             : Principal.fromText(ledgerId);
-        // Mark as refreshing
-        setRefreshingTokens(prev => new Set(prev).add(ledgerId));
+        // Phase 1: Mark as refreshing balance (strong pulse)
+        setRefreshingTokens(prev => new Map(prev).set(ledgerId, 'balance'));
+        // Also notify the context so the quick wallet sees it
+        if (setContextRefreshingTokens) setContextRefreshingTokens(prev => new Map(prev).set(ledgerId, 'balance'));
         try {
-            // Refresh token balance, locks, and rewards
+            // Fast: fetch just the liquid balance first
+            const ledgerActor = createLedgerActor(ledgerPrincipal);
+            const freshBalance = await ledgerActor.icrc1_balance_of({ owner: identity.getPrincipal(), subaccount: [] });
+            // Immediately update the token with the fresh liquid balance
+            setTokens(prevTokens => prevTokens.map(t => {
+                if (normalizeId(t.ledger_canister_id) === ledgerId) {
+                    const updated = { ...t, balance: freshBalance };
+                    updated.available = get_available(updated);
+                    return updated;
+                }
+                return t;
+            }));
+
+            // Phase 2: Balance is in, switch to subtle pulse for the rest
+            setRefreshingTokens(prev => new Map(prev).set(ledgerId, 'full'));
+            if (setContextRefreshingTokens) setContextRefreshingTokens(prev => new Map(prev).set(ledgerId, 'full'));
+
+            // Now do the full refresh (locks, backend balance, prices, rewards)
             await fetchBalancesAndLocks(ledgerPrincipal);
             await fetchRewardDetails(ledgerPrincipal);
             // Note: Neurons are refreshed within TokenCard itself
         } finally {
             // Clear refreshing state
             setRefreshingTokens(prev => {
-                const next = new Set(prev);
+                const next = new Map(prev);
+                next.delete(ledgerId);
+                return next;
+            });
+            if (setContextRefreshingTokens) setContextRefreshingTokens(prev => {
+                const next = new Map(prev);
                 next.delete(ledgerId);
                 return next;
             });
@@ -4645,6 +4672,8 @@ function Wallet() {
         try {
             // Refresh positions in context (shared with quick wallet)
             if (contextRefreshPositions) contextRefreshPositions();
+            // Phase 1: Fast balance refresh, then Phase 2: full refresh
+            await refreshAllBalancesFirst();
             await Promise.all([
                 fetchBalancesAndLocks(),
                 fetchIcpPrice()
@@ -4653,17 +4682,84 @@ function Wallet() {
             console.error('Error refreshing all wallet:', error);
         } finally {
             setRefreshingAllWallet(false);
+            // Clear all refreshing states
+            setRefreshingTokens(new Map());
+            if (setContextRefreshingTokens) setContextRefreshingTokens(new Map());
         }
     };
 
     const handleRefreshTokensSection = async () => {
         setRefreshingTokensSection(true);
         try {
+            // Phase 1: Fetch all liquid balances quickly first
+            await refreshAllBalancesFirst();
+            // Phase 2: Full refresh (locks, backend, prices, rewards)
             await fetchBalancesAndLocks();
         } catch (error) {
             console.error('Error refreshing tokens section:', error);
         } finally {
             setRefreshingTokensSection(false);
+            setRefreshingTokens(new Map());
+            if (setContextRefreshingTokens) setContextRefreshingTokens(new Map());
+        }
+    };
+
+    // Fast batch balance refresh for all tokens - used by section and full refresh
+    const refreshAllBalancesFirst = async () => {
+        const currentTokens = tokens;
+        if (!currentTokens || currentTokens.length === 0) return;
+
+        // Mark all tokens as refreshing balance (strong pulse)
+        const balanceMap = new Map();
+        for (const t of currentTokens) {
+            const lid = normalizeId(t.ledger_canister_id);
+            if (lid) balanceMap.set(lid, 'balance');
+        }
+        setRefreshingTokens(balanceMap);
+        if (setContextRefreshingTokens) setContextRefreshingTokens(new Map(balanceMap));
+
+        try {
+            // Fetch all liquid balances in parallel
+            const results = await Promise.all(currentTokens.map(async (t) => {
+                const lid = normalizeId(t.ledger_canister_id);
+                if (!lid) return null;
+                try {
+                    const ledgerPrincipal = t.ledger_canister_id instanceof Principal
+                        ? t.ledger_canister_id
+                        : Principal.fromText(lid);
+                    const ledgerActor = createLedgerActor(ledgerPrincipal);
+                    const freshBalance = await ledgerActor.icrc1_balance_of({ owner: identity.getPrincipal(), subaccount: [] });
+                    return { lid, freshBalance };
+                } catch {
+                    return null;
+                }
+            }));
+
+            // Apply all fresh balances at once
+            const balanceByLedger = {};
+            for (const r of results) {
+                if (r) balanceByLedger[r.lid] = r.freshBalance;
+            }
+            setTokens(prevTokens => prevTokens.map(t => {
+                const lid = normalizeId(t.ledger_canister_id);
+                if (lid && balanceByLedger[lid] !== undefined) {
+                    const updated = { ...t, balance: balanceByLedger[lid] };
+                    updated.available = get_available(updated);
+                    return updated;
+                }
+                return t;
+            }));
+
+            // Switch all to phase 2 (subtle pulse)
+            const fullMap = new Map();
+            for (const t of currentTokens) {
+                const lid = normalizeId(t.ledger_canister_id);
+                if (lid) fullMap.set(lid, 'full');
+            }
+            setRefreshingTokens(fullMap);
+            if (setContextRefreshingTokens) setContextRefreshingTokens(new Map(fullMap));
+        } catch (error) {
+            console.error('Error in fast balance refresh:', error);
         }
     };
 
@@ -5861,7 +5957,7 @@ function Wallet() {
                                 handleWithdrawFromBackend={handleWithdrawFromBackend}
                                 handleDepositToBackend={handleDepositToBackend}
                                 handleRefreshToken={handleRefreshToken}
-                                isRefreshing={refreshingTokens.has(ledgerId)}
+                                refreshPhase={refreshingTokens.get(ledgerId) || null}
                                 isSnsToken={isSns}
                                 onNeuronTotalsChange={(breakdown) => {
                                     setNeuronTotals(prev => ({
@@ -9037,7 +9133,7 @@ function Wallet() {
                     handleWithdrawFromBackend={handleWithdrawFromBackend}
                     handleDepositToBackend={handleDepositToBackend}
                     handleRefreshToken={handleRefreshToken}
-                    isRefreshing={detailToken ? refreshingTokens.has(normalizeId(detailToken.ledger_canister_id)) : false}
+                    refreshPhase={detailToken ? (refreshingTokens.get(normalizeId(detailToken.ledger_canister_id)) || null) : null}
                     isSnsToken={detailToken ? snsTokens.has(normalizeId(detailToken.ledger_canister_id)) : false}
                 />
                 <DappCardModal

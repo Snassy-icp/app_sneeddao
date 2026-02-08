@@ -20,7 +20,8 @@ const TokenCardModal = ({
     handleWithdrawFromBackend,
     handleDepositToBackend,
     handleRefreshToken,
-    isRefreshing = false,
+    refreshPhase = null,
+    isRefreshing: isRefreshingProp = false,
     locks = [],
     lockDetailsLoading = false,
     rewardDetailsLoading = false,
@@ -28,6 +29,7 @@ const TokenCardModal = ({
 }) => {
     const { theme } = useTheme();
     const [refreshClicked, setRefreshClicked] = useState(false);
+    const isRefreshing = refreshPhase !== null || isRefreshingProp;
 
     // Handle refresh click with visual feedback
     const handleRefreshClick = async () => {
@@ -275,7 +277,7 @@ const TokenCardModal = ({
                         handleWithdrawFromBackend={handleWithdrawFromBackend}
                         handleDepositToBackend={handleDepositToBackend}
                         /* Don't pass handleRefreshToken to TokenCard - we handle refresh in modal header */
-                        isRefreshing={isRefreshing}
+                        refreshPhase={refreshPhase}
                         isSnsToken={isSnsToken}
                     />
                 </div>

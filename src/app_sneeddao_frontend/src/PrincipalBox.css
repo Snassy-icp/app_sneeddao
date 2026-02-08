@@ -237,6 +237,25 @@
   transform: scale(0.98);
 }
 
+/* Two-phase refresh pulse animations for quick wallet */
+.compact-wallet-token.refreshing-balance > div:nth-child(2) {
+  animation: qwBalancePulse 0.8s ease-in-out infinite;
+}
+
+.compact-wallet-token.refreshing-full > div:nth-child(2) {
+  animation: qwBalancePulseSubtle 1.2s ease-in-out infinite;
+}
+
+@keyframes qwBalancePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@keyframes qwBalancePulseSubtle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
+}
+
 /* Mobile optimizations for compact wallet */
 @media (max-width: 480px) {
   .compact-wallet-container {

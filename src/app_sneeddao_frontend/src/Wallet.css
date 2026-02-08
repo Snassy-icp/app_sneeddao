@@ -517,6 +517,29 @@ img.token-logo-card {
     }
 }
 
+/* Two-phase refresh pulse animations */
+@keyframes balancePulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+}
+
+@keyframes balancePulseSubtle {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.65; }
+}
+
+.refreshing-balance .token-amount,
+.refreshing-balance .token-usd-value,
+.refreshing-balance .balance-value {
+    animation: balancePulse 0.8s ease-in-out infinite;
+}
+
+.refreshing-full .token-amount,
+.refreshing-full .token-usd-value,
+.refreshing-full .balance-value {
+    animation: balancePulseSubtle 1.2s ease-in-out infinite;
+}
+
 @supports (font-variation-settings: normal) {
     code {
         font-family: "Fira Code VF", monospace;
