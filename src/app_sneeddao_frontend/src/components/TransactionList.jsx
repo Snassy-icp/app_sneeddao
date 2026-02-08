@@ -333,7 +333,10 @@ function TransactionList({
                     try {
                         const snsRootActor = createSnsRootActor(snsRootCanisterId);
                         const response = await snsRootActor.list_sns_canisters({});
-                        setIndexCanisterId(response.index[0]);
+                        // Store as string to prevent reference-inequality re-triggers
+                        // (Principal objects are compared by reference in useState)
+                        const indexId = response.index[0];
+                        setIndexCanisterId(indexId ? indexId.toString() : null);
                     } catch (err) {
                         console.warn('Failed to fetch index canister:', err);
                         // Still have ledger, so continue without index
@@ -345,7 +348,9 @@ function TransactionList({
             const snsRootActor = createSnsRootActor(snsRootCanisterId);
             const response = await snsRootActor.list_sns_canisters({});
             setLedgerCanisterId(response.ledger[0]);
-            setIndexCanisterId(response.index[0]);
+            // Store as string to prevent reference-inequality re-triggers
+            const indexId = response.index[0];
+            setIndexCanisterId(indexId ? indexId.toString() : null);
         } catch (err) {
             setError('Failed to fetch canister IDs');
             setLoading(false);
@@ -380,6 +385,9 @@ function TransactionList({
     const fetchLedgerTransactions = async () => {
         if (!ledgerCanisterId) return;
 
+        // Increment fetch ID so any previous in-flight fetch is superseded
+        const currentFetchId = ++fetchIdRef.current;
+
         setLoading(true);
         setError(null);
 
@@ -392,6 +400,9 @@ function TransactionList({
                 length: BigInt(pageSize)
             });
 
+            // Check if this fetch was superseded by a newer one
+            if (currentFetchId !== fetchIdRef.current) return;
+
             let txs = response.transactions.map((tx, idx) => ({
                 ...tx,
                 txIndex: startIndex + idx
@@ -400,6 +411,8 @@ function TransactionList({
 
             if (response.archived_transactions.length > 0) {
                 for (const archive of response.archived_transactions) {
+                    // Check if superseded before each archive fetch
+                    if (currentFetchId !== fetchIdRef.current) return;
                     try {
                         const archiveCanisterId = archive.callback[0].toText();
                         const archiveActor = createSnsArchiveActor(archiveCanisterId, { agentOptions: { identity } });
@@ -408,6 +421,9 @@ function TransactionList({
                             start: archive.start,
                             length: archive.length
                         });
+
+                        // Check again after the async call
+                        if (currentFetchId !== fetchIdRef.current) return;
 
                         const archivedTxsWithIndex = archiveResponse.transactions.map((tx, idx) => ({
                             ...tx,
@@ -420,12 +436,16 @@ function TransactionList({
                 }
             }
 
+            if (currentFetchId !== fetchIdRef.current) return;
             setRawTransactions(txs);
         } catch (err) {
+            if (currentFetchId !== fetchIdRef.current) return;
             setError('Failed to fetch transactions');
             console.error('Error fetching transactions:', err);
         } finally {
-            setLoading(false);
+            if (currentFetchId === fetchIdRef.current) {
+                setLoading(false);
+            }
         }
     };
 
@@ -797,22 +817,18 @@ function TransactionList({
         }
     }, [indexCanisterId, principalId, showSubaccountFilter]);
 
+    // Fetch principal-specific transactions from the index canister (used by /me and /principal pages)
     useEffect(() => {
-        if (!ledgerCanisterId) return;
-        
-        // If principalId is provided, we need the index canister to fetch principal-specific transactions
-        if (principalId) {
-            // Wait for indexCanisterId to be available
-            if (indexCanisterId) {
-                fetchAllFromIndex();
-            }
-            // If indexCanisterId is not ready yet, don't fetch anything - wait for it
-            return;
-        }
-        
-        // No principalId - fetch all transactions from ledger
-        fetchLedgerTransactions();
+        if (!ledgerCanisterId || !principalId || !indexCanisterId) return;
+        fetchAllFromIndex();
     }, [ledgerCanisterId, indexCanisterId, principalId, subaccount, selectedSubaccount, page, pageSize]);
+
+    // Fetch all ledger transactions (used by /transactions page — no principalId)
+    // Separated from the index fetch so that indexCanisterId changes don't trigger redundant ledger fetches
+    useEffect(() => {
+        if (!ledgerCanisterId || principalId) return;
+        fetchLedgerTransactions();
+    }, [ledgerCanisterId, principalId, page, pageSize]);
 
     useEffect(() => {
         if (principalId && allTransactions.length > 0) {
@@ -866,7 +882,7 @@ function TransactionList({
     }, [principalDisplayInfo, sortConfig.key, sortConfig.direction]);
 
     useEffect(() => {
-        const fetchPrincipalInfo = async () => {
+        const updatePrincipalInfo = () => {
             if (!displayedTransactions.length || !principalNames || !principalNicknames) return;
 
             const uniquePrincipals = new Set();
@@ -885,10 +901,22 @@ function TransactionList({
                 } catch {}
             });
 
-            setPrincipalDisplayInfo(displayInfoMap);
+            // Only update state if the display info actually changed — prevents an infinite
+            // render loop between this effect and the address-sort effect (which sets
+            // displayedTransactions when principalDisplayInfo changes, which would trigger
+            // this effect again, creating displayedTransactions → principalDisplayInfo → displayedTransactions → …)
+            setPrincipalDisplayInfo(prev => {
+                if (prev.size !== displayInfoMap.size) return displayInfoMap;
+                for (const [key, value] of displayInfoMap) {
+                    const existing = prev.get(key);
+                    if (!existing) return displayInfoMap;
+                    if (existing.name !== value.name || existing.nickname !== value.nickname) return displayInfoMap;
+                }
+                return prev; // same content — return previous reference to prevent re-render
+            });
         };
 
-        fetchPrincipalInfo();
+        updatePrincipalInfo();
     }, [displayedTransactions, identity, principalNames, principalNicknames]);
 
     const handlePageSizeChange = (event) => {
