@@ -4530,6 +4530,16 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 onClose={() => setSwapOpen(false)}
                 initialInput={swapInput}
                 initialOutput={swapOutput}
+                onSwapComplete={(inputTokenId, outputTokenId) => {
+                    // Refresh both tokens in the wallet after swap
+                    const refreshFn = walletContext?.refreshTokenBalance;
+                    if (refreshFn) {
+                        if (inputTokenId) refreshFn(inputTokenId);
+                        if (outputTokenId) refreshFn(outputTokenId);
+                    }
+                    // Also refresh this specific token card if handler available
+                    if (handleRefreshToken) handleRefreshToken(token);
+                }}
             />
         </div>
     );

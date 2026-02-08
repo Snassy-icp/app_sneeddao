@@ -785,6 +785,70 @@ export const WalletProvider = ({ children }) => {
         }
     }, []);
 
+    // Refresh a single token's balance quickly (e.g., after a swap)
+    // Does balance-first update then full rate refresh in background
+    const refreshTokenBalance = useCallback(async (ledgerCanisterId) => {
+        if (!identity || !isAuthenticated) return;
+        const lid = normalizeId(ledgerCanisterId);
+        if (!lid) return;
+
+        // Phase 1: fast balance fetch
+        setRefreshingTokens(prev => new Map(prev).set(lid, 'balance'));
+        try {
+            const ledgerPrincipal = typeof ledgerCanisterId === 'string'
+                ? Principal.fromText(lid)
+                : ledgerCanisterId;
+            const ledgerActor = createLedgerActor(ledgerPrincipal, { agentOptions: { identity } });
+            const freshBalance = await ledgerActor.icrc1_balance_of({ owner: identity.getPrincipal(), subaccount: [] });
+
+            // Update balance immediately
+            setWalletTokens(prev => prev.map(token => {
+                const tokenId = normalizeId(token.principal) || normalizeId(token.ledger_canister_id);
+                if (tokenId === lid) {
+                    const updated = { ...token, balance: freshBalance };
+                    updated.available = get_available(updated);
+                    return updated;
+                }
+                return token;
+            }));
+
+            // Phase 2: subtle pulse while rates refresh
+            setRefreshingTokens(prev => new Map(prev).set(lid, 'full'));
+
+            // Refresh conversion rates in background
+            const existingToken = walletTokens.find(t => 
+                (normalizeId(t.principal) || normalizeId(t.ledger_canister_id)) === lid
+            );
+            if (existingToken) {
+                const decimals = existingToken.decimals || 8;
+                try {
+                    const [conversion_rate, icp_rate] = await Promise.all([
+                        get_token_conversion_rate(lid, decimals),
+                        get_token_icp_rate(lid, decimals)
+                    ]);
+                    setWalletTokens(prev => prev.map(token => {
+                        const tokenId = normalizeId(token.principal) || normalizeId(token.ledger_canister_id);
+                        if (tokenId === lid) {
+                            const balance = BigInt(token.available || token.balance || 0n);
+                            const balanceNum = Number(balance) / (10 ** (token.decimals || 8));
+                            const usdValue = conversion_rate ? balanceNum * conversion_rate : null;
+                            return { ...token, conversion_rate, icp_rate, usdValue };
+                        }
+                        return token;
+                    }));
+                } catch {}
+            }
+        } catch (error) {
+            console.warn(`Error refreshing token balance for ${lid}:`, error);
+        } finally {
+            setRefreshingTokens(prev => {
+                const next = new Map(prev);
+                next.delete(lid);
+                return next;
+            });
+        }
+    }, [identity, isAuthenticated, walletTokens]);
+
     // Fetch neurons for a governance canister and cache them
     // Uses promise-based request deduplication - if a fetch is in-flight, subsequent callers share the same promise
     const fetchAndCacheNeurons = useCallback(async (governanceCanisterId) => {
@@ -1941,23 +2005,38 @@ export const WalletProvider = ({ children }) => {
         }
     }, [isAuthenticated, identity, hasFetchedInitial, loadedFromCache, cacheCheckComplete, fetchCompactWalletTokens, fetchCompactPositions, fetchNeuronManagers, fetchTrackedCanisters]);
 
+    // Deduplicate helper
+    const deduplicateTokens = useCallback((tokens) => {
+        const seenPrincipals = new Set();
+        return tokens.filter(token => {
+            const principal = normalizeId(token.principal) || normalizeId(token.ledger_canister_id);
+            if (!principal) return false;
+            if (seenPrincipals.has(principal)) return false;
+            seenPrincipals.add(principal);
+            return true;
+        });
+    }, []);
+
     // Update tokens from Wallet.jsx (more detailed data including locks, staked, etc.)
-    const updateWalletTokens = useCallback((tokens) => {
-        if (tokens && tokens.length > 0) {
-            // Deduplicate by principal (Principal/string insensitive, with ledger_canister_id fallback)
-            const seenPrincipals = new Set();
-            const deduplicatedTokens = tokens.filter(token => {
-                const principal = normalizeId(token.principal) || normalizeId(token.ledger_canister_id);
-                if (!principal) return false;
-                if (seenPrincipals.has(principal)) return false;
-                seenPrincipals.add(principal);
-                return true;
+    // Supports both direct arrays AND function updaters (for safe concurrent updates)
+    const updateWalletTokens = useCallback((tokensOrUpdater) => {
+        if (typeof tokensOrUpdater === 'function') {
+            // Function updater: use React's state updater for safe concurrent access
+            setWalletTokens(prev => {
+                const updated = tokensOrUpdater(prev);
+                if (!updated || updated.length === 0) return prev;
+                const deduped = deduplicateTokens(updated);
+                return deduped;
             });
-            setWalletTokens(deduplicatedTokens);
+            setLastUpdated(new Date());
+            setHasDetailedData(true);
+        } else if (tokensOrUpdater && tokensOrUpdater.length > 0) {
+            const deduped = deduplicateTokens(tokensOrUpdater);
+            setWalletTokens(deduped);
             setLastUpdated(new Date());
             setHasDetailedData(true);
         }
-    }, []);
+    }, [deduplicateTokens]);
 
     // Update just the rewards on tokens (called from Wallet.jsx when rewards are fetched)
     const updateTokenRewards = useCallback((rewardsMap) => {
@@ -2224,6 +2303,7 @@ export const WalletProvider = ({ children }) => {
             setRefreshingTokens,
             clearWallet,
             refreshWallet,
+            refreshTokenBalance, // Refresh a single token's balance (e.g., after swap)
             sendToken,
             isTokenSns,
             // Liquidity positions

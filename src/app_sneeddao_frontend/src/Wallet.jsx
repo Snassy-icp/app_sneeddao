@@ -495,17 +495,12 @@ function Wallet() {
     }, []);
     
     // Helper to set tokens (for backwards compatibility with existing code)
+    // Now passes function updaters directly to context for safe concurrent updates
     const setTokens = useCallback((newTokensOrUpdater) => {
-        if (typeof newTokensOrUpdater === 'function') {
-            // For function updates, we can't easily apply to context, so update context directly
-            const updated = newTokensOrUpdater(tokens);
-            updateWalletTokens(updated);
-        } else {
-            updateWalletTokens(newTokensOrUpdater);
-        }
+        updateWalletTokens(newTokensOrUpdater);
         // Clear local overrides when setting full token list
         setLocalTokenOverrides({});
-    }, [tokens, updateWalletTokens]);
+    }, [updateWalletTokens]);
     const [showSendModal, setShowSendModal] = useState(false);
     const [showWrapUnwrapModal, setShowWrapUnwrapModal] = useState(false);
     const [showWithdrawModal, setShowWithdrawModal] = useState(false);

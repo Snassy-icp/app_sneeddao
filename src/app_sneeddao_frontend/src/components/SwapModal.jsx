@@ -11,7 +11,7 @@ import SwapWidget from './SwapWidget';
  *   initialInput  - optional initial input token canister ID
  *   initialOutput - optional initial output token canister ID
  */
-export default function SwapModal({ isOpen, onClose, initialInput, initialOutput }) {
+export default function SwapModal({ isOpen, onClose, initialInput, initialOutput, onSwapComplete }) {
   if (!isOpen) return null;
 
   return createPortal(
@@ -41,6 +41,7 @@ export default function SwapModal({ isOpen, onClose, initialInput, initialOutput
           initialInput={initialInput}
           initialOutput={initialOutput}
           onClose={onClose}
+          onSwapComplete={onSwapComplete}
         />
       </div>
 

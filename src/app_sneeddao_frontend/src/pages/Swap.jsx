@@ -1,6 +1,7 @@
 import React, { useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
+import { useWalletOptional } from '../contexts/WalletContext';
 import Header from '../components/Header';
 import SwapWidget from '../components/SwapWidget';
 import { FaExchangeAlt, FaHome, FaChevronRight } from 'react-icons/fa';
@@ -20,8 +21,17 @@ const SNEED_CANISTER_ID = 'hvgxa-wqaaa-aaaaq-aacia-cai';
 export default function Swap() {
   const [params, setParams] = useSearchParams();
   const { theme } = useTheme();
+  const walletContext = useWalletOptional();
   const initialInput = params.get('input') || ICP_CANISTER_ID;
   const initialOutput = params.get('output') || SNEED_CANISTER_ID;
+
+  const handleSwapComplete = useCallback((inputTokenId, outputTokenId) => {
+    const refreshFn = walletContext?.refreshTokenBalance;
+    if (refreshFn) {
+      if (inputTokenId) refreshFn(inputTokenId);
+      if (outputTokenId) refreshFn(outputTokenId);
+    }
+  }, [walletContext]);
 
   const handleInputTokenChange = useCallback((tokenId) => {
     setParams(prev => {
@@ -207,6 +217,7 @@ export default function Swap() {
             initialOutput={initialOutput}
             onInputTokenChange={handleInputTokenChange}
             onOutputTokenChange={handleOutputTokenChange}
+            onSwapComplete={handleSwapComplete}
           />
         </div>
       </main>

@@ -196,7 +196,7 @@ function ProgressPanel({ progress }) {
 
 // ─── Main Widget ────────────────────────────────────────────────────────────
 
-export default function SwapWidget({ initialInput, initialOutput, onClose, onInputTokenChange, onOutputTokenChange }) {
+export default function SwapWidget({ initialInput, initialOutput, onClose, onInputTokenChange, onOutputTokenChange, onSwapComplete }) {
   const { identity, isAuthenticated } = useAuth();
   const { theme } = useTheme();
 
@@ -471,6 +471,10 @@ export default function SwapWidget({ initialInput, initialOutput, onClose, onInp
       setResult(res);
       // Refresh balances after swap
       fetchBalances();
+      // Signal wallet to refresh the two tokens involved
+      if (onSwapComplete && res.success !== false) {
+        onSwapComplete(inputToken, outputToken);
+      }
     } catch (e) {
       setResult({ success: false, amountOut: 0n });
       setProgress(prev => ({
