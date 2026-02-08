@@ -785,12 +785,31 @@ export const WalletProvider = ({ children }) => {
         }
     }, []);
 
+    // Ref to always access latest walletTokens (avoids stale closure in refreshTokenBalance)
+    const walletTokensRef = useRef(walletTokens);
+    useEffect(() => { walletTokensRef.current = walletTokens; }, [walletTokens]);
+
+    // Safely compute available balance, tolerating missing fields
+    const safeGetAvailable = useCallback((token) => {
+        try {
+            return get_available(token);
+        } catch {
+            // If balance_backend or locked are missing/invalid, just use balance directly
+            return BigInt(token.balance || 0n);
+        }
+    }, []);
+
     // Refresh a single token's balance quickly (e.g., after a swap)
     // Does balance-first update then full rate refresh in background
     const refreshTokenBalance = useCallback(async (ledgerCanisterId) => {
         if (!identity || !isAuthenticated) return;
         const lid = normalizeId(ledgerCanisterId);
-        if (!lid) return;
+        if (!lid) {
+            console.warn('refreshTokenBalance: invalid ledgerCanisterId', ledgerCanisterId);
+            return;
+        }
+
+        console.log(`[refreshTokenBalance] START for ${lid}`);
 
         // Phase 1: fast balance fetch
         setRefreshingTokens(prev => new Map(prev).set(lid, 'balance'));
@@ -801,22 +820,33 @@ export const WalletProvider = ({ children }) => {
             const ledgerActor = createLedgerActor(ledgerPrincipal, { agentOptions: { identity } });
             const freshBalance = await ledgerActor.icrc1_balance_of({ owner: identity.getPrincipal(), subaccount: [] });
 
+            console.log(`[refreshTokenBalance] Phase 1 balance fetched for ${lid}:`, freshBalance?.toString());
+
             // Update balance immediately
+            let foundMatch = false;
             setWalletTokens(prev => prev.map(token => {
                 const tokenId = normalizeId(token.principal) || normalizeId(token.ledger_canister_id);
                 if (tokenId === lid) {
+                    foundMatch = true;
                     const updated = { ...token, balance: freshBalance };
-                    updated.available = get_available(updated);
+                    // Safely compute available - don't crash if balance_backend/locked missing
+                    updated.available = safeGetAvailable(updated);
                     return updated;
                 }
                 return token;
             }));
 
+            if (!foundMatch) {
+                console.warn(`[refreshTokenBalance] No matching token found in walletTokens for ${lid}`);
+            }
+
             // Phase 2: subtle pulse while rates refresh
             setRefreshingTokens(prev => new Map(prev).set(lid, 'full'));
 
             // Refresh conversion rates in background
-            const existingToken = walletTokens.find(t => 
+            // Use ref to get latest walletTokens (avoids stale closure)
+            const currentTokens = walletTokensRef.current;
+            const existingToken = currentTokens.find(t => 
                 (normalizeId(t.principal) || normalizeId(t.ledger_canister_id)) === lid
             );
             if (existingToken) {
@@ -829,25 +859,35 @@ export const WalletProvider = ({ children }) => {
                     setWalletTokens(prev => prev.map(token => {
                         const tokenId = normalizeId(token.principal) || normalizeId(token.ledger_canister_id);
                         if (tokenId === lid) {
-                            const balance = BigInt(token.available || token.balance || 0n);
-                            const balanceNum = Number(balance) / (10 ** (token.decimals || 8));
-                            const usdValue = conversion_rate ? balanceNum * conversion_rate : null;
-                            return { ...token, conversion_rate, icp_rate, usdValue };
+                            try {
+                                const balance = BigInt(token.available || token.balance || 0n);
+                                const balanceNum = Number(balance) / (10 ** (token.decimals || 8));
+                                const usdValue = conversion_rate ? balanceNum * conversion_rate : null;
+                                return { ...token, conversion_rate, icp_rate, usdValue };
+                            } catch {
+                                return { ...token, conversion_rate, icp_rate };
+                            }
                         }
                         return token;
                     }));
-                } catch {}
+                    console.log(`[refreshTokenBalance] Phase 2 rates updated for ${lid}`);
+                } catch (rateErr) {
+                    console.warn(`refreshTokenBalance: rate fetch failed for ${lid}:`, rateErr);
+                }
+            } else {
+                console.warn(`[refreshTokenBalance] No existing token for rate refresh of ${lid}`);
             }
         } catch (error) {
-            console.warn(`Error refreshing token balance for ${lid}:`, error);
+            console.warn(`[refreshTokenBalance] Error for ${lid}:`, error);
         } finally {
             setRefreshingTokens(prev => {
                 const next = new Map(prev);
                 next.delete(lid);
                 return next;
             });
+            console.log(`[refreshTokenBalance] DONE for ${lid}`);
         }
-    }, [identity, isAuthenticated, walletTokens]);
+    }, [identity, isAuthenticated, safeGetAvailable]);
 
     // Fetch neurons for a governance canister and cache them
     // Uses promise-based request deduplication - if a fetch is in-flight, subsequent callers share the same promise
@@ -1500,7 +1540,10 @@ export const WalletProvider = ({ children }) => {
             
             // Wait for all registered token fetches to complete before marking as fetched
             // This prevents the "No tokens" flash when network is slow
-            Promise.allSettled(registeredTokenPromises).then(() => {
+            // Use a timeout race to ensure walletLoading is reset even if a canister is unresponsive
+            const allSettledPromise = Promise.allSettled(registeredTokenPromises);
+            const timeoutPromise = new Promise(resolve => setTimeout(resolve, 30000)); // 30s safety net
+            Promise.race([allSettledPromise, timeoutPromise]).then(() => {
                 if (fetchSessionRef.current === sessionId) {
                     setHasFetchedInitial(true);
                     setWalletLoading(false);
@@ -1582,6 +1625,15 @@ export const WalletProvider = ({ children }) => {
                 setWalletLoading(false);
             }
         }
+        
+        // Ultimate safety net: ensure walletLoading is cleared after 45 seconds
+        // Only resets if this is still the active session (prevents resetting a newer fetch)
+        setTimeout(() => {
+            if (fetchSessionRef.current === sessionId) {
+                setWalletLoading(false);
+                setHasFetchedInitial(true);
+            }
+        }, 45000);
     }, [identity, isAuthenticated, fetchTokenDetailsFast, addTokenProgressively, fetchAndUpdateConversionRate, fetchAndUpdateNeuronTotals]);
 
     // ============================================================================

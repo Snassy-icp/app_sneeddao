@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useWalletOptional } from '../contexts/WalletContext';
 import { HttpAgent } from '@dfinity/agent';
 import TokenSelector from './TokenSelector';
 import {
@@ -199,6 +200,7 @@ function ProgressPanel({ progress }) {
 export default function SwapWidget({ initialInput, initialOutput, onClose, onInputTokenChange, onOutputTokenChange, onSwapComplete }) {
   const { identity, isAuthenticated } = useAuth();
   const { theme } = useTheme();
+  const walletContext = useWalletOptional();
 
   // ── State ──
   const [inputToken, setInputToken] = useState(initialInput || '');
@@ -313,28 +315,29 @@ export default function SwapWidget({ initialInput, initialOutput, onClose, onInp
     }
     const principal = identity.getPrincipal();
     const account = { owner: principal, subaccount: [] };
+    // Use the aggregator's agent if available (properly configured with host)
+    const agent = aggregatorRef.current?.config?.agent;
 
-    // Fetch input balance
-    if (inputToken) {
+    // Fetch both balances in parallel for speed
+    const fetchOne = async (token) => {
+      if (!token) return null;
       try {
-        const actor = createLedgerActor(inputToken, { agentOptions: { identity } });
-        const bal = await actor.icrc1_balance_of(account);
-        setInputBalance(bal);
-      } catch { setInputBalance(null); }
-    } else {
-      setInputBalance(null);
-    }
+        const actor = agent
+          ? createLedgerActor(token, { agent })
+          : createLedgerActor(token, { agentOptions: { identity } });
+        return await actor.icrc1_balance_of(account);
+      } catch (err) {
+        console.warn(`SwapWidget.fetchBalances: error for ${token}:`, err);
+        return null;
+      }
+    };
 
-    // Fetch output balance
-    if (outputToken) {
-      try {
-        const actor = createLedgerActor(outputToken, { agentOptions: { identity } });
-        const bal = await actor.icrc1_balance_of(account);
-        setOutputBalance(bal);
-      } catch { setOutputBalance(null); }
-    } else {
-      setOutputBalance(null);
-    }
+    const [inBal, outBal] = await Promise.all([
+      fetchOne(inputToken),
+      fetchOne(outputToken),
+    ]);
+    setInputBalance(inBal);
+    setOutputBalance(outBal);
   }, [identity, isAuthenticated, inputToken, outputToken]);
 
   useEffect(() => {
@@ -452,6 +455,25 @@ export default function SwapWidget({ initialInput, initialOutput, onClose, onInp
     setResult(null);
   };
 
+  // ── Fetch a single token balance using the aggregator's agent (properly configured with host) ──
+  const fetchBalanceWithAgent = useCallback(async (tokenCanisterId) => {
+    if (!identity || !tokenCanisterId) return null;
+    try {
+      // Use the aggregator's agent if available (properly configured with host),
+      // otherwise fall back to creating a new one
+      const agent = aggregatorRef.current?.config?.agent;
+      const actor = agent
+        ? createLedgerActor(tokenCanisterId, { agent })
+        : createLedgerActor(tokenCanisterId, { agentOptions: { identity } });
+      const bal = await actor.icrc1_balance_of({ owner: identity.getPrincipal(), subaccount: [] });
+      console.log(`[SwapWidget] fetchBalanceWithAgent OK for ${tokenCanisterId}:`, bal?.toString());
+      return bal;
+    } catch (err) {
+      console.warn(`[SwapWidget] fetchBalanceWithAgent FAILED for ${tokenCanisterId}:`, err);
+      return null;
+    }
+  }, [identity]);
+
   // ── Execute swap ──
   const handleSwap = async () => {
     if (!aggregatorRef.current || quotes.length === 0) return;
@@ -469,11 +491,59 @@ export default function SwapWidget({ initialInput, initialOutput, onClose, onInp
         onProgress: setProgress,
       });
       setResult(res);
-      // Refresh balances after swap
-      fetchBalances();
-      // Signal wallet to refresh the two tokens involved
-      if (onSwapComplete && res.success !== false) {
-        onSwapComplete(inputToken, outputToken);
+      
+      // Capture tokens for post-swap refresh (before any state changes)
+      const swappedInput = inputToken;
+      const swappedOutput = outputToken;
+      
+      if (res.success !== false) {
+        console.log(`[SwapWidget] Swap succeeded, refreshing: input=${swappedInput}, output=${swappedOutput}`);
+        
+        // 1. Immediately refresh BOTH balances in the swap dialog
+        //    Fetch them independently using the aggregator's properly-configured agent
+        const refreshBothBalances = async () => {
+          const [inBal, outBal] = await Promise.all([
+            fetchBalanceWithAgent(swappedInput),
+            fetchBalanceWithAgent(swappedOutput),
+          ]);
+          console.log(`[SwapWidget] Post-swap balances: input=${inBal?.toString()}, output=${outBal?.toString()}`);
+          if (inBal !== null) setInputBalance(inBal);
+          if (outBal !== null) setOutputBalance(outBal);
+        };
+        refreshBothBalances();
+        
+        // 2. Signal wallet to refresh BOTH tokens via onSwapComplete callback
+        if (onSwapComplete) {
+          onSwapComplete(swappedInput, swappedOutput);
+        }
+        
+        // 3. Directly call refreshTokenBalance from wallet context for BOTH tokens
+        //    (belt-and-suspenders: ensures wallet/quick wallet updates even if callback doesn't propagate)
+        const refreshFn = walletContext?.refreshTokenBalance;
+        if (refreshFn) {
+          console.log(`[SwapWidget] Calling refreshTokenBalance for input=${swappedInput} and output=${swappedOutput}`);
+          refreshFn(swappedInput);
+          refreshFn(swappedOutput);
+        } else {
+          console.warn('[SwapWidget] No refreshTokenBalance available from wallet context');
+        }
+        
+        // 4. Delayed re-fetch to catch any ledger propagation delay
+        setTimeout(async () => {
+          const [inBal, outBal] = await Promise.all([
+            fetchBalanceWithAgent(swappedInput),
+            fetchBalanceWithAgent(swappedOutput),
+          ]);
+          if (inBal !== null) setInputBalance(inBal);
+          if (outBal !== null) setOutputBalance(outBal);
+          // Also re-trigger wallet context refresh for output token
+          if (refreshFn) {
+            refreshFn(swappedOutput);
+          }
+        }, 2000);
+      } else {
+        // Swap reported failure - still refresh balances to show current state
+        fetchBalances();
       }
     } catch (e) {
       setResult({ success: false, amountOut: 0n });
