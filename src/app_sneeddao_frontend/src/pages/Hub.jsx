@@ -1079,8 +1079,18 @@ function Hub() {
 
     const featuredProducts = [
         {
-            title: 'Sneedex Marketplace',
+            title: 'Sneedex Swap',
             icon: <FaExchangeAlt size={28} />,
+            desc: 'Swap tokens instantly with the best rates across multiple DEXes. Aggregates quotes from ICPSwap, Kong, and more to find you the optimal price.',
+            path: '/swap',
+            cta: 'Swap Tokens',
+            color: '#3498db',
+            badge: 'New',
+            gradient: `linear-gradient(135deg, #3498db20 0%, #8b5cf610 100%)`,
+        },
+        {
+            title: 'Sneedex Marketplace',
+            icon: <FaGavel size={28} />,
             desc: 'Trade apps, neurons, tokens, and more through secure on-chain escrow. Buy and sell SNS neurons, ICP staking bots, and digital assets with confidence.',
             path: '/sneedex_offers',
             cta: 'Browse Marketplace',

@@ -1272,7 +1272,37 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             )}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            {!hideButtons && openSendModal && (
+                            {!hideButtons && !defaultExpanded && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (isICP) {
+                                            setSwapInput('');
+                                            setSwapOutput(ICP_CANISTER_ID);
+                                        } else {
+                                            setSwapInput(ICP_CANISTER_ID);
+                                            setSwapOutput(tokenCanisterId);
+                                        }
+                                        setSwapOpen(true);
+                                    }}
+                                    style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        padding: '4px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        color: theme.colors.mutedText,
+                                        transition: 'color 0.2s ease'
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.color = theme.colors.success}
+                                    onMouseLeave={(e) => e.currentTarget.style.color = theme.colors.mutedText}
+                                    title={isICP ? 'Swap' : `Buy ${token.symbol}`}
+                                >
+                                    <FaExchangeAlt size={12} />
+                                </button>
+                            )}
+                            {!hideButtons && !defaultExpanded && openSendModal && (
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation();
@@ -1516,48 +1546,56 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     {!hideButtons && (
                 <div className="action-buttons">
 
-                    {/* Buy button - opens swap with ICP → this token */}
-                    {!isICP && (
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation();
+                    {/* Buy button - for non-ICP: swap ICP → this token; for ICP: open swap with ICP as output */}
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (isICP) {
+                                setSwapInput('');
+                                setSwapOutput(ICP_CANISTER_ID);
+                            } else {
                                 setSwapInput(ICP_CANISTER_ID);
                                 setSwapOutput(tokenCanisterId);
-                                setSwapOpen(true);
-                            }}
-                            style={{
-                                background: theme.colors.success,
-                                color: '#fff',
-                                border: 'none',
-                                borderRadius: '6px',
-                                padding: '6px 12px',
-                                cursor: 'pointer',
-                                fontSize: '0.85rem',
-                                fontWeight: '500',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                transition: 'all 0.2s ease'
-                            }}
-                            onMouseEnter={(e) => {
-                                e.currentTarget.style.filter = 'brightness(1.15)';
-                            }}
-                            onMouseLeave={(e) => {
-                                e.currentTarget.style.filter = 'none';
-                            }}
-                        >
-                            <FaShoppingCart size={12} />
-                            Buy
-                        </button>
-                    )}
+                            }
+                            setSwapOpen(true);
+                        }}
+                        style={{
+                            background: theme.colors.success,
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '6px',
+                            padding: '6px 12px',
+                            cursor: 'pointer',
+                            fontSize: '0.85rem',
+                            fontWeight: '500',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            transition: 'all 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.filter = 'brightness(1.15)';
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.filter = 'none';
+                        }}
+                    >
+                        <FaShoppingCart size={12} />
+                        Buy
+                    </button>
 
-                    {/* Sell button - opens swap with this token → ICP */}
-                    {!isICP && token.available > 0n && (
+                    {/* Sell button - for non-ICP: swap this token → ICP; for ICP: open swap with ICP as input */}
+                    {token.available > 0n && (
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
-                                setSwapInput(tokenCanisterId);
-                                setSwapOutput(ICP_CANISTER_ID);
+                                if (isICP) {
+                                    setSwapInput(ICP_CANISTER_ID);
+                                    setSwapOutput('');
+                                } else {
+                                    setSwapInput(tokenCanisterId);
+                                    setSwapOutput(ICP_CANISTER_ID);
+                                }
                                 setSwapOpen(true);
                             }}
                             style={{

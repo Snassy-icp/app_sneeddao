@@ -201,7 +201,7 @@ const PositionCard = ({ position, positionDetails: rawPositionDetails, openSendL
                             </span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            {!hideButtons && openSendLiquidityPositionModal && (!isLockedPosition(positionDetails) || (isLockedPosition(positionDetails) && !positionDetails.frontendOwnership && handleTransferPositionOwnership)) && (
+                            {!hideButtons && !defaultExpanded && openSendLiquidityPositionModal && (!isLockedPosition(positionDetails) || (isLockedPosition(positionDetails) && !positionDetails.frontendOwnership && handleTransferPositionOwnership)) && (
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation();

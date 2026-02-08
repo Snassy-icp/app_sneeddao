@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Header from '../components/Header';
 import NeuronDisplay from '../components/NeuronDisplay';
+import SwapModal from '../components/SwapModal';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { FaArrowLeft, FaClock, FaGavel, FaUser, FaCubes, FaBrain, FaCoins, FaCheck, FaTimes, FaExternalLinkAlt, FaSync, FaWallet, FaChevronDown, FaChevronUp, FaMicrochip, FaMemory, FaBolt, FaLock, FaUserCheck, FaRobot, FaExclamationTriangle } from 'react-icons/fa';
+import { FaArrowLeft, FaClock, FaGavel, FaUser, FaCubes, FaBrain, FaCoins, FaCheck, FaTimes, FaExternalLinkAlt, FaSync, FaWallet, FaChevronDown, FaChevronUp, FaMicrochip, FaMemory, FaBolt, FaLock, FaUserCheck, FaRobot, FaExclamationTriangle, FaExchangeAlt, FaShoppingCart } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import { Actor, HttpAgent } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
@@ -163,6 +164,7 @@ function SneedexOffer() {
     const [paymentLoading, setPaymentLoading] = useState(false);
     const [withdrawLoading, setWithdrawLoading] = useState(false);
     const [userBalance, setUserBalance] = useState(null);
+    const [swapOpen, setSwapOpen] = useState(false);
     const [canisterControllerStatus, setCanisterControllerStatus] = useState({}); // {canisterId: boolean}
     const [neuronPermissionStatus, setNeuronPermissionStatus] = useState({}); // {governanceId_neuronId: {verified, message}}
     const [tokenBalanceStatus, setTokenBalanceStatus] = useState({}); // {ledgerId: {verified, balance, required}}
@@ -5503,9 +5505,64 @@ function SneedexOffer() {
                                                 }
                                                 return null;
                                             })()}
+                                            {/* Insufficient balance hint */}
+                                            {userBalance !== null && bidAmount && parseFloat(bidAmount) > 0 && (() => {
+                                                const paymentLedger = offer.price_token_ledger.toString();
+                                                const paymentPrice = tokenPrices[paymentLedger];
+                                                let bidTokenAmount = parseFloat(bidAmount);
+                                                if (bidInputMode === 'usd' && paymentPrice) {
+                                                    bidTokenAmount = parseFloat(bidAmount) / paymentPrice;
+                                                }
+                                                const bidE8s = BigInt(Math.floor(bidTokenAmount * Math.pow(10, tokenInfo.decimals)));
+                                                if (bidE8s > userBalance) {
+                                                    return (
+                                                        <div style={{
+                                                            marginTop: '10px',
+                                                            padding: '10px 14px',
+                                                            backgroundColor: `${theme.colors.warning}15`,
+                                                            border: `1px solid ${theme.colors.warning}50`,
+                                                            borderRadius: '8px',
+                                                            fontSize: '0.85rem',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '8px',
+                                                            flexWrap: 'wrap',
+                                                        }}>
+                                                            <FaExclamationTriangle style={{ color: theme.colors.warning, flexShrink: 0 }} />
+                                                            <span style={{ color: theme.colors.text }}>
+                                                                Insufficient balance.
+                                                            </span>
+                                                            <button
+                                                                onClick={() => setSwapOpen(true)}
+                                                                style={{
+                                                                    background: 'linear-gradient(135deg, #3498db, #8b5cf6)',
+                                                                    color: '#fff',
+                                                                    border: 'none',
+                                                                    borderRadius: '6px',
+                                                                    padding: '4px 10px',
+                                                                    cursor: 'pointer',
+                                                                    fontSize: '0.8rem',
+                                                                    fontWeight: '600',
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '4px',
+                                                                    transition: 'filter 0.15s ease',
+                                                                }}
+                                                                onMouseEnter={(e) => e.currentTarget.style.filter = 'brightness(1.15)'}
+                                                                onMouseLeave={(e) => e.currentTarget.style.filter = 'none'}
+                                                            >
+                                                                <FaShoppingCart size={10} />
+                                                                Buy {tokenInfo.symbol}
+                                                            </button>
+                                                        </div>
+                                                    );
+                                                }
+                                                return null;
+                                            })()}
                                         </>
                                     ) : (
                                         /* Buyout-only mode - show wallet balance */
+                                        <>
                                         <div style={{ 
                                             display: 'flex', 
                                             justifyContent: 'flex-end', 
@@ -5524,6 +5581,49 @@ function SneedexOffer() {
                                                 )}
                                             </span>
                                         </div>
+                                        {/* Insufficient balance hint for buyout-only */}
+                                        {userBalance !== null && offer.buyout_price?.[0] && userBalance < offer.buyout_price[0] && (
+                                            <div style={{
+                                                marginBottom: '10px',
+                                                padding: '10px 14px',
+                                                backgroundColor: `${theme.colors.warning}15`,
+                                                border: `1px solid ${theme.colors.warning}50`,
+                                                borderRadius: '8px',
+                                                fontSize: '0.85rem',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px',
+                                                flexWrap: 'wrap',
+                                            }}>
+                                                <FaExclamationTriangle style={{ color: theme.colors.warning, flexShrink: 0 }} />
+                                                <span style={{ color: theme.colors.text }}>
+                                                    Insufficient balance for buyout.
+                                                </span>
+                                                <button
+                                                    onClick={() => setSwapOpen(true)}
+                                                    style={{
+                                                        background: 'linear-gradient(135deg, #3498db, #8b5cf6)',
+                                                        color: '#fff',
+                                                        border: 'none',
+                                                        borderRadius: '6px',
+                                                        padding: '4px 10px',
+                                                        cursor: 'pointer',
+                                                        fontSize: '0.8rem',
+                                                        fontWeight: '600',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px',
+                                                        transition: 'filter 0.15s ease',
+                                                    }}
+                                                    onMouseEnter={(e) => e.currentTarget.style.filter = 'brightness(1.15)'}
+                                                    onMouseLeave={(e) => e.currentTarget.style.filter = 'none'}
+                                                >
+                                                    <FaShoppingCart size={10} />
+                                                    Buy {tokenInfo.symbol}
+                                                </button>
+                                            </div>
+                                        )}
+                                        </>
                                     )}
                                     {offer.buyout_price[0] && (
                                         <button
@@ -6031,6 +6131,21 @@ function SneedexOffer() {
                 onSubmit={confirmModal.action}
                 message={confirmModal.message}
                 doAwait={true}
+            />
+            
+            {/* Swap Modal - for buying payment tokens */}
+            <SwapModal
+                isOpen={swapOpen}
+                onClose={() => setSwapOpen(false)}
+                initialOutput={offer ? offer.price_token_ledger.toString() : ''}
+                onSwapComplete={() => {
+                    // Refresh user balance after swap
+                    fetchUserBalance();
+                    const refreshFn = walletContext?.refreshTokenBalance;
+                    if (refreshFn && offer) {
+                        refreshFn(offer.price_token_ledger.toString());
+                    }
+                }}
             />
         </div>
     );

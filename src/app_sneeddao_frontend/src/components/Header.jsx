@@ -888,6 +888,27 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     </button>
 
                     <button
+                        onClick={() => navigate('/swap')}
+                        style={{
+                            background: 'none',
+                            border: 'none',
+                            color: theme.colors.primaryText,
+                            cursor: 'pointer',
+                            padding: '4px',
+                            borderRadius: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            fontSize: '18px',
+                            transition: 'background-color 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(255,255,255,0.1)'}
+                        onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                        title="Swap"
+                    >
+                        <FaExchangeAlt size={16} />
+                    </button>
+
+                    <button
                         onClick={() => navigate('/sms')}
                         style={{
                             background: 'none',
@@ -903,7 +924,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         }}
                         onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(255,255,255,0.1)'}
                         onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                        title="Go to SMS"
+                        title="Messages"
                     >
                         <FaEnvelope size={16} />
                     </button>
@@ -1155,6 +1176,32 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                             
                             <button
                                 onClick={() => {
+                                    navigate('/swap');
+                                    setIsQuickLinksOpen(false);
+                                }}
+                                style={{
+                                    width: '100%',
+                                    background: 'none',
+                                    border: 'none',
+                                    color: theme.colors.primaryText,
+                                    cursor: 'pointer',
+                                    padding: '12px 16px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '10px',
+                                    fontSize: '14px',
+                                    textAlign: 'left',
+                                    transition: 'background-color 0.2s ease'
+                                }}
+                                onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.secondaryBg}
+                                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                            >
+                                <FaExchangeAlt size={14} />
+                                Swap
+                            </button>
+                            
+                            <button
+                                onClick={() => {
                                     navigate('/sms');
                                     setIsQuickLinksOpen(false);
                                 }}
@@ -1176,7 +1223,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                 onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
                             >
                                 <FaEnvelope size={14} />
-                                SMS
+                                Messages
                             </button>
                             
                             <button
