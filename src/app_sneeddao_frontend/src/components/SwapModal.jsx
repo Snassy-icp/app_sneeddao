@@ -6,12 +6,13 @@ import SwapWidget from './SwapWidget';
  * SwapModal — Renders the SwapWidget in a portal overlay.
  *
  * Props:
- *   isOpen        - boolean
- *   onClose       - () => void
- *   initialInput  - optional initial input token canister ID
- *   initialOutput - optional initial output token canister ID
+ *   isOpen              - boolean
+ *   onClose             - () => void
+ *   initialInput        - optional initial input token canister ID
+ *   initialOutput       - optional initial output token canister ID
+ *   initialOutputAmount - optional target output amount (human-readable string)
  */
-export default function SwapModal({ isOpen, onClose, initialInput, initialOutput, onSwapComplete }) {
+export default function SwapModal({ isOpen, onClose, initialInput, initialOutput, initialOutputAmount, onSwapComplete }) {
   if (!isOpen) return null;
 
   return createPortal(
@@ -40,6 +41,7 @@ export default function SwapModal({ isOpen, onClose, initialInput, initialOutput
         <SwapWidget
           initialInput={initialInput}
           initialOutput={initialOutput}
+          initialOutputAmount={initialOutputAmount}
           onClose={onClose}
           onSwapComplete={onSwapComplete}
         />

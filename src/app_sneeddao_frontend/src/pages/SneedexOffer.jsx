@@ -165,6 +165,7 @@ function SneedexOffer() {
     const [withdrawLoading, setWithdrawLoading] = useState(false);
     const [userBalance, setUserBalance] = useState(null);
     const [swapOpen, setSwapOpen] = useState(false);
+    const [swapTargetAmount, setSwapTargetAmount] = useState(null);
     const [canisterControllerStatus, setCanisterControllerStatus] = useState({}); // {canisterId: boolean}
     const [neuronPermissionStatus, setNeuronPermissionStatus] = useState({}); // {governanceId_neuronId: {verified, message}}
     const [tokenBalanceStatus, setTokenBalanceStatus] = useState({}); // {ledgerId: {verified, balance, required}}
@@ -5272,7 +5273,11 @@ function SneedexOffer() {
                                                                 {' '}more.
                                                             </span>
                                                             <button
-                                                                onClick={() => setSwapOpen(true)}
+                                                                onClick={() => {
+                                                                    const deficitDecimal = Number(deficitE8s) / Math.pow(10, tokenInfo.decimals);
+                                                                    setSwapTargetAmount(deficitDecimal.toString());
+                                                                    setSwapOpen(true);
+                                                                }}
                                                                 style={{
                                                                     background: 'linear-gradient(135deg, #3498db, #8b5cf6)',
                                                                     color: '#fff',
@@ -5691,7 +5696,11 @@ function SneedexOffer() {
                                                         {' '}more.
                                                     </span>
                                                     <button
-                                                        onClick={() => setSwapOpen(true)}
+                                                        onClick={() => {
+                                                            const deficitDecimal = Number(deficitE8s) / Math.pow(10, tokenInfo.decimals);
+                                                            setSwapTargetAmount(deficitDecimal.toString());
+                                                            setSwapOpen(true);
+                                                        }}
                                                         style={{
                                                             background: 'linear-gradient(135deg, #3498db, #8b5cf6)',
                                                             color: '#fff',
@@ -6233,9 +6242,10 @@ function SneedexOffer() {
             {/* Swap Modal - for buying payment tokens */}
             <SwapModal
                 isOpen={swapOpen}
-                onClose={() => setSwapOpen(false)}
+                onClose={() => { setSwapOpen(false); setSwapTargetAmount(null); }}
                 initialInput="ryjl3-tyaaa-aaaaa-aaaba-cai"
                 initialOutput={offer ? offer.price_token_ledger.toString() : ''}
+                initialOutputAmount={swapTargetAmount}
                 onSwapComplete={() => {
                     // Refresh user balance after swap
                     fetchUserBalance();

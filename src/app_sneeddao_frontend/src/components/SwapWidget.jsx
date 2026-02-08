@@ -197,7 +197,7 @@ function ProgressPanel({ progress }) {
 
 // ─── Main Widget ────────────────────────────────────────────────────────────
 
-export default function SwapWidget({ initialInput, initialOutput, onClose, onInputTokenChange, onOutputTokenChange, onSwapComplete }) {
+export default function SwapWidget({ initialInput, initialOutput, initialOutputAmount, onClose, onInputTokenChange, onOutputTokenChange, onSwapComplete }) {
   const { identity, isAuthenticated } = useAuth();
   const { theme } = useTheme();
   const walletContext = useWalletOptional();
@@ -238,6 +238,14 @@ export default function SwapWidget({ initialInput, initialOutput, onClose, onInp
 
   const aggregatorRef = useRef(null);
   const quoteTimerRef = useRef(null);
+
+  // ── Target output amount refinement (for pre-filling from external context) ──
+  const targetOutputRef = useRef({
+    amount: initialOutputAmount ? parseFloat(initialOutputAmount) : 0,
+    active: !!(initialOutputAmount && parseFloat(initialOutputAmount) > 0),
+    attempts: 0,
+    lastInputSet: '',
+  });
 
   // ── Token change handlers (also notify parent for URL updates) ──
   const handleSetInputToken = useCallback((tokenId) => {
@@ -375,6 +383,82 @@ export default function SwapWidget({ initialInput, initialOutput, onClose, onInp
 
     return () => { cancelled = true; };
   }, [inputToken, outputToken, aggregatorReady]);
+
+  // ── Initial input estimate from target output amount (using USD or spot prices) ──
+  useEffect(() => {
+    const ref = targetOutputRef.current;
+    if (!ref.active || ref.attempts > 0) return;
+    if (!inputTokenInfo || !outputTokenInfo) return;
+
+    const targetOutput = ref.amount;
+    if (targetOutput <= 0) return;
+
+    let estimatedInput = null;
+
+    // Prefer USD-based estimation (more reliable)
+    if (inputUsdPrice && outputUsdPrice && inputUsdPrice > 0) {
+      estimatedInput = (targetOutput * outputUsdPrice) / inputUsdPrice;
+    }
+    // Fallback: use best spot price
+    else if (spotPrices) {
+      let bestPrice = 0;
+      Object.values(spotPrices).forEach(({ price }) => {
+        if (price > bestPrice) bestPrice = price;
+      });
+      if (bestPrice > 0) {
+        estimatedInput = targetOutput / bestPrice;
+      }
+    }
+
+    if (estimatedInput === null || estimatedInput <= 0) return;
+
+    // Add 5% buffer for price impact + fees
+    estimatedInput *= 1.05;
+
+    const formatted = estimatedInput.toFixed(Math.min(inputTokenInfo.decimals, 8));
+    setInputAmountStr(formatted);
+    ref.lastInputSet = formatted;
+    ref.attempts = 1;
+  }, [inputTokenInfo, outputTokenInfo, inputUsdPrice, outputUsdPrice, spotPrices]);
+
+  // ── Refine input amount after quotes arrive to converge on target output ──
+  useEffect(() => {
+    const ref = targetOutputRef.current;
+    if (!ref.active) return;
+    if (loadingQuotes) return;
+    if (quotes.length === 0) return;
+    if (ref.attempts < 1) return; // Haven't set initial estimate yet
+    if (ref.attempts >= 4) { ref.active = false; return; } // Max refinement attempts
+    if (!outputTokenInfo || !inputTokenInfo) return;
+
+    // Stop refining if user manually edited the input
+    if (inputAmountStr !== ref.lastInputSet) {
+      ref.active = false;
+      return;
+    }
+
+    const targetOutput = ref.amount;
+    const bestQuote = quotes[0]; // Sorted best-first by aggregator
+    const bestOutputNum = Number(bestQuote.expectedOutput) / (10 ** outputTokenInfo.decimals);
+
+    if (bestOutputNum >= targetOutput * 0.98) {
+      // Within 2% of target or above — good enough
+      ref.active = false;
+      return;
+    }
+
+    // Output too low — scale up input proportionally with a small buffer
+    const currentInput = parseFloat(inputAmountStr);
+    if (currentInput <= 0 || bestOutputNum <= 0) { ref.active = false; return; }
+
+    const scaleFactor = (targetOutput / bestOutputNum) * 1.03; // 3% overshoot
+    const newInput = currentInput * scaleFactor;
+
+    const formatted = newInput.toFixed(Math.min(inputTokenInfo.decimals, 8));
+    setInputAmountStr(formatted);
+    ref.lastInputSet = formatted;
+    ref.attempts += 1;
+  }, [quotes, loadingQuotes, inputAmountStr, outputTokenInfo, inputTokenInfo]);
 
   // ── Fetch quotes ──
   const fetchQuotes = useCallback(async () => {
