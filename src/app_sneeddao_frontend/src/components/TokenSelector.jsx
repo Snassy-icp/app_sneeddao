@@ -10,6 +10,9 @@ import { Principal } from '@dfinity/principal';
 // Global cache for token metadata (logos and errors)
 const metadataCache = new Map();
 const failedTokens = new Set(); // Track tokens that failed to load
+// Stable empty array reference to avoid infinite re-render loops
+// (default `[]` in function params creates a new reference each render)
+const EMPTY_EXCLUDE_TOKENS = [];
 
 /**
  * TokenSelector - A reusable dropdown component for selecting tokens
@@ -38,12 +41,15 @@ function TokenSelector({
     placeholder = "Select a token...", 
     disabled = false,
     style = {},
-    excludeTokens = [],
+    excludeTokens = EMPTY_EXCLUDE_TOKENS,
     allowCustom = false
 }) {
     const { theme } = useTheme();
     const { identity } = useAuth();
     const { whitelistedTokens: whitelistFromContext, loading: whitelistLoading } = useWhitelistTokens();
+    
+    // Stabilize excludeTokens by content so callers passing inline arrays don't cause infinite re-renders
+    const excludeTokensKey = useMemo(() => excludeTokens.join(','), [excludeTokens]);
     
     const [tokens, setTokens] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -146,7 +152,8 @@ function TokenSelector({
         );
         setTokens(filtered);
         setLoading(whitelistLoading);
-    }, [whitelistFromContext, excludeTokens, whitelistLoading]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [whitelistFromContext, excludeTokensKey, whitelistLoading]);
 
     // Fetch logos for tokens progressively (using cache)
     useEffect(() => {
