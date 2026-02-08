@@ -1,8 +1,8 @@
 import { Actor, HttpAgent } from "@dfinity/agent";
 
 // Imports and re-exports candid interface
-import { idlFactory } from "./kongswap.did.js";
-export { idlFactory } from "./kongswap.did.js";
+import { idlFactory } from "./kong.did.js";
+export { idlFactory } from "./kong.did.js";
 
 export const canisterId = '2ipq2-uqaaa-aaaar-qailq-cai'; 
     

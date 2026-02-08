@@ -110,6 +110,9 @@ import SneedexMy from './pages/SneedexMy';
 // Premium page
 import Premium from './pages/Premium';
 
+// Swap page
+import Swap from './pages/Swap';
+
 // Component to set up global naming function
 function GlobalNamingSetup() {
     const { getNeuronDisplayName } = useNaming();
@@ -210,6 +213,9 @@ function App() {
                     <Route path="/forum" element={<Forum />} />
                     <Route path="/feed" element={<Feed />} />
                     <Route path="/topic/:topicId" element={<Topic />} />
+
+                    {/* Swap route */}
+                    <Route path="/swap" element={<Swap />} />
 
                     {/* Tools routes */}
                     <Route path="/tools/main" element={<ToolsMain />} />

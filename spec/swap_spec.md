@@ -131,7 +131,7 @@ const SwapStep = {
   DEPOSITING:         'depositing',
   SWAPPING:           'swapping',
   WITHDRAWING:        'withdrawing',
-  CLAIMING:           'claiming',       // Kong: claiming output after swap
+  CLAIMING:           'claiming',       // Kong fallback: claiming output if auto-send failed
   COMPLETE:           'complete',
   FAILED:             'failed',
 };
@@ -731,34 +731,33 @@ class KongDex extends BaseDex {
 
 ### 7.4 Kong Fee Model
 
-Kong swap results include `claim_ids`. After a swap, output tokens are held as "claims" which must be claimed by the user via `claim(claim_id)`. The claim triggers a transfer to the user, which costs 1 output token fee (the `gas_fee` shown in `SwapTxReply`).
+Kong's `swap` call returns output tokens directly to the caller — there is **no separate claim step** in the normal flow. The `swap` response includes `receive_amount` with the actual output. The `claim_ids` in `SwapReply` are a fallback mechanism for cases where the auto-send fails; they are not part of the normal happy path.
 
 | Standard | Step | Who pays | Cost |
 |----------|------|----------|------|
 | ICRC1 | `icrc1_transfer` to Kong canister (main account) | User | 1 × input fee |
-| ICRC1 | (no deposit step) | — | 0 |
-| ICRC1 | `claim(claim_id)` — Kong sends output to user | Deducted from claim amount | 1 × output fee |
+| ICRC1 | `swap(...)` — Kong sends output directly to caller | — | 0 × output fee |
 | ICRC2 | `icrc2_approve` (if allowance insufficient) | User | 1 × input fee |
 | ICRC2 | Kong calls `icrc2_transfer_from` | Deducted from user balance | 1 × input fee |
-| ICRC2 | `claim(claim_id)` — Kong sends output to user | Deducted from claim amount | 1 × output fee |
+| ICRC2 | `swap(...)` — Kong sends output directly to caller | — | 0 × output fee |
 
 **Summary:**
 
 ```js
 getInputFeeCount('icrc1')  → 1   // transfer only
 getInputFeeCount('icrc2')  → 2   // approve + transferFrom
-getOutputFeeCount('icrc1') → 1   // claim transfer
-getOutputFeeCount('icrc2') → 1   // claim transfer
+getOutputFeeCount('icrc1') → 0   // output returned directly by swap
+getOutputFeeCount('icrc2') → 0   // output returned directly by swap
 ```
 
-| Standard | Effective swap input | User balance cost | Output deduction |
-|----------|---------------------|-------------------|------------------|
-| ICRC1 | `amount` (Kong receives full amount) | `amount + 1 fee` | 1 × output fee |
-| ICRC2 | `amount` (Kong receives full amount) | `amount + 2 fees` | 1 × output fee |
+| Standard | Effective swap input | User balance cost |
+|----------|---------------------|-------------------|
+| ICRC1 | `amount` (Kong receives full amount) | `amount + 1 fee` |
+| ICRC2 | `amount` (Kong receives full amount) | `amount + 2 fees` |
 
-> **Note:** Kong ICRC1 is still the most fee-efficient input path (only 1 input fee and full amount enters swap), though both paths have 1 output fee for the claim transfer.
+> **Note:** Kong ICRC1 is the most fee-efficient path overall — only 1 input fee, 0 output fees, and the full amount enters the swap.
 
-> **Auto-claim vs manual claim:** The `SwapReply` includes `claim_ids`. If the list is non-empty, we should automatically call `claim(claim_id)` for each as part of the swap flow. If a claim fails (e.g. temporary issue), we should cache the unclaimed IDs so the user can retry later. The `claims(principal_id)` query can list all pending claims for recovery.
+> **Fallback claims:** If `SwapReply.claim_ids` is non-empty, it means Kong's auto-send of output tokens failed. In that case, we should automatically call `claim(claim_id)` as a recovery step. If that also fails, cache the unclaimed IDs for later retry. The `claims(principal_id)` query can list pending claims for a recovery UI.
 
 ### 7.5 Kong — API Call Mapping
 
@@ -770,8 +769,8 @@ getOutputFeeCount('icrc2') → 1   // claim transfer
 | `getQuote` | `kong.swap_amounts(pay_token, pay_amount, receive_token)` | same |
 | `executeSwap` | 1. `ledger.icrc1_transfer(to: kong canister)` | 1. `ledger.icrc2_allowance(...)` |
 | | 2. **Immediately save block index to KongTxCache** | 2. `ledger.icrc2_approve(...)` (if needed) |
-| | 3. `kong.swap({ pay_tx_id: [{BlockIndex: blockIndex}], ... })` | 3. `kong.swap({ ... })` (Kong calls transferFrom) |
-| | 4. `kong.claim(claim_id)` for each `claim_ids` in result | 4. `kong.claim(claim_id)` for each `claim_ids` in result |
+| | 3. `kong.swap({ pay_tx_id: [{BlockIndex: blockIndex}], ... })` — output returned directly | 3. `kong.swap({ ... })` — Kong calls transferFrom, output returned directly |
+| | 4. *(fallback: if `claim_ids` non-empty, call `kong.claim(...)`)* | 4. *(fallback: if `claim_ids` non-empty, call `kong.claim(...)`)* |
 
 #### Kong Canister Methods Used
 
@@ -1033,7 +1032,7 @@ For a swap of TokenA → TokenB:
 | Kong pending TXs | localStorage | `kong_pending_tx` | Yes (optional) | KongDex |
 | Kong tokens list | Internal Map + TTL | `kong_tokens` | No | KongDex |
 | Kong pools list | Internal Map + TTL | `kong_pools` | No | KongDex |
-| Kong unclaimed IDs | localStorage | `kong_unclaimed` | No | KongDex |
+| Kong unclaimed IDs | localStorage | `kong_unclaimed` | No | KongDex (fallback only) |
 | Spot prices | Internal Map + TTL | `dexId:tokenA:tokenB` | No | DexAggregator |
 
 All caches follow the pattern:
@@ -1066,20 +1065,18 @@ Each DEX implementation calls `onProgress` at each step. The progress object alw
 { step: COMPLETE, ... }
 ```
 
-### Kong ICRC1 — 3 steps
+### Kong ICRC1 — 2 steps
 ```
-{ step: TRANSFERRING, stepIndex: 0, totalSteps: 3, message: "Transferring tokens to KongSwap..." }
-{ step: SWAPPING,     stepIndex: 1, totalSteps: 3, message: "Executing swap..." }
-{ step: CLAIMING,     stepIndex: 2, totalSteps: 3, message: "Claiming output tokens..." }
+{ step: TRANSFERRING, stepIndex: 0, totalSteps: 2, message: "Transferring tokens to KongSwap..." }
+{ step: SWAPPING,     stepIndex: 1, totalSteps: 2, message: "Executing swap..." }
 { step: COMPLETE, ... }
 ```
 
-### Kong ICRC2 — 4 steps
+### Kong ICRC2 — 3 steps
 ```
-{ step: CHECKING_ALLOWANCE, stepIndex: 0, totalSteps: 4, message: "Checking approval..." }
-{ step: APPROVING,          stepIndex: 1, totalSteps: 4, message: "Approving token spend..." }  // skipped if sufficient
-{ step: SWAPPING,           stepIndex: 2, totalSteps: 4, message: "Executing swap..." }
-{ step: CLAIMING,           stepIndex: 3, totalSteps: 4, message: "Claiming output tokens..." }
+{ step: CHECKING_ALLOWANCE, stepIndex: 0, totalSteps: 3, message: "Checking approval..." }
+{ step: APPROVING,          stepIndex: 1, totalSteps: 3, message: "Approving token spend..." }  // skipped if sufficient
+{ step: SWAPPING,           stepIndex: 2, totalSteps: 3, message: "Executing swap..." }
 { step: COMPLETE, ... }
 ```
 
@@ -1330,7 +1327,7 @@ this.txCache.set(txKey, {
 });
 this.txCache.save();  // Synchronous localStorage write
 
-// Step 3: Now safe to call swap
+// Step 3: Now safe to call swap — output tokens returned directly
 const swapResult = await kongActor.swap({
   pay_token: inputToken,
   pay_amount: amountIn,
@@ -1342,10 +1339,13 @@ const swapResult = await kongActor.swap({
   referred_by: [],                              // opt
 });
 
-// Step 4: Claim output tokens
+// Step 4: Fallback — if claim_ids non-empty, auto-send failed, try claiming
 if (swapResult.Ok && swapResult.Ok.claim_ids.length > 0) {
   for (const claimId of swapResult.Ok.claim_ids) {
-    await kongActor.claim(claimId);
+    try { await kongActor.claim(claimId); } catch (e) {
+      // Cache for later retry
+      this.unclaimedCache.add(claimId, outputToken);
+    }
   }
 }
 
@@ -1437,7 +1437,7 @@ However, for Kong specifically, ICRC1 is cheaper (1 input fee vs 2 for ICRC2) an
 
 The spec follows **Option A** (prefer ICRC2) as you specified, but the `preferredStandard` parameter allows the caller to override. We could add a `'cheapest'` option that auto-selects.
 
-**Additional consideration from Kong DID:** Kong's `ICTokenReply` has `icrc1: Bool, icrc2: Bool` flags per token. Some tokens on Kong may only support ICRC1. We should cross-reference Kong's token standard flags with our own `icrc1_supported_standards` detection.
+**Token standard detection must come from the ledger, not Kong.** We may need to know whether a token supports ICRC1/ICRC2 before we ever contact the Kong API (e.g. to filter the UI). The authoritative source is always the token ledger's `icrc1_supported_standards()` query. Kong's `ICTokenReply.icrc1/icrc2` flags are a secondary signal but should not be relied upon as the primary source. Kong also may not support all tokens, so we can't use it as a token registry.
 
 ### 7. Routing discovery performance
 
@@ -1452,13 +1452,9 @@ The spec follows **Option A** (prefer ICRC2) as you specified, but the `preferre
 
 The new `DepositAndSwapArgs` takes `tokenOutFee: Nat`, confirming the pool DOES deduct an output fee internally. This fee is used for the withdrawal step. The effective output the user receives = swap output - `tokenOutFee`.
 
-### 9. Kong claim step — NEW
+### 9. Kong claim_ids — CLARIFIED
 
-**From DID:** Kong's `SwapReply` includes `claim_ids: vec Nat64`. After a swap, the user must call `claim(claim_id)` to receive their output tokens. This is a critical step — if we don't claim, the user doesn't receive tokens. Claims can also fail, so we need:
-- Auto-claim immediately after swap succeeds
-- Cache unclaimed IDs if claim fails
-- Recovery UI for pending claims
-- Use `claims(principal_id)` to list all pending claims
+Kong's `swap` returns output tokens directly in the normal flow — there is **no claim step**. The `claim_ids` in `SwapReply` are a **fallback mechanism** for edge cases where the auto-send of output tokens fails. In the happy path, `claim_ids` will be empty. If non-empty, we should auto-call `claim(claim_id)` as a recovery step and cache any failures for later retry.
 
 ### 10. Price impact — Kong provides it directly
 
@@ -1487,7 +1483,38 @@ Kong's API accepts tokens in multiple formats: `"Symbol"`, `"Chain.Symbol"` (e.g
 - [ ] **Create ICPSwap factory index.js** if missing (need `createActor` + `canisterId` export like other externals)
 - [ ] **Verify ICPSwap factory canister ID** — currently using `4mmnk-kiaaa-aaaag-qbllq-cai` from `PriceService.js`
 
-## 18. Future Considerations
+## 18. Implementation Plan
+
+### Phase 1: Foundation (services/dex/)
+| # | Task | File | Status |
+|---|------|------|--------|
+| 1a | Fix Kong DID import filename | `src/external/kong/index.js` | ✅ |
+| 1b | Types & constants | `services/dex/types.js` | ✅ |
+| 1c | Token standard detection & metadata | `services/dex/tokenStandard.js` | ✅ |
+| 1d | BaseDex base class | `services/dex/dexes/BaseDex.js` | ✅ |
+
+### Phase 2: DEX Adapters
+| # | Task | File | Status |
+|---|------|------|--------|
+| 2a | ICPSwap pool cache + adapter | `services/dex/dexes/ICPSwapDex.js` | ✅ |
+| 2b | Kong TX cache + adapter | `services/dex/dexes/KongDex.js` | ✅ |
+
+### Phase 3: Aggregator
+| # | Task | File | Status |
+|---|------|------|--------|
+| 3a | DexAggregator — registry, quoting, routing, swap | `services/dex/DexAggregator.js` | ✅ |
+
+### Phase 4: UI
+| # | Task | File | Status |
+|---|------|------|--------|
+| 4a | SwapWidget (core reusable component) | `components/SwapWidget.jsx` | ✅ |
+| 4b | SwapModal (portal wrapper) | `components/SwapModal.jsx` | ✅ |
+| 4c | Supporting components (QuoteCard, ProgressPanel, SlippageSettings) | `components/SwapWidget.jsx` (inlined) | ✅ |
+| 4d | Swap page + route registration | `pages/Swap.jsx` + `App.jsx` | ✅ |
+
+---
+
+## 19. Future Considerations
 
 - **More DEXes:** Sonic, Helix, etc. — just add a new file in `dexes/`
 - **Limit orders:** ICPSwap now supports limit orders (visible in DID); could extend the interface
