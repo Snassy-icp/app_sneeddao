@@ -12,6 +12,7 @@ import {
   getHost,
   getTokenInfo,
 } from '../services/dex';
+import priceService from '../services/PriceService';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -34,6 +35,13 @@ function parseToBigInt(str, decimals) {
   const whole = parts[0] || '0';
   let frac = (parts[1] || '').slice(0, decimals).padEnd(decimals, '0');
   return BigInt(whole) * BigInt(10 ** decimals) + BigInt(frac);
+}
+
+function formatUSD(amount) {
+  if (amount === null || amount === undefined || isNaN(amount)) return null;
+  if (amount === 0) return '$0.00';
+  if (Math.abs(amount) < 0.01) return '<$0.01';
+  return '$' + amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 // ─── Sub-components ─────────────────────────────────────────────────────────
@@ -77,12 +85,16 @@ function SlippageSettings({ value, onChange }) {
   );
 }
 
-function QuoteCard({ quote, selected, onSelect, inputDecimals, outputDecimals }) {
+function QuoteCard({ quote, selected, onSelect, inputDecimals, outputDecimals, outputUsdPrice }) {
   const outputStr = formatAmount(quote.expectedOutput, outputDecimals);
   const minStr = formatAmount(quote.minimumOutput, outputDecimals);
   const impactPct = (quote.priceImpact * 100).toFixed(2);
   const feePct = (quote.dexFeePercent * 100).toFixed(2);
   const isRouted = quote.route?.length > 1;
+
+  // Calculate USD value of expected output
+  const outputNum = Number(quote.expectedOutput) / (10 ** outputDecimals);
+  const usdValue = outputUsdPrice ? formatUSD(outputNum * outputUsdPrice) : null;
 
   return (
     <div
@@ -107,12 +119,17 @@ function QuoteCard({ quote, selected, onSelect, inputDecimals, outputDecimals })
             }}>Multi-hop</span>
           )}
         </div>
-        <span style={{ fontWeight: 700, fontSize: 16, color: 'var(--color-success)' }}>{outputStr}</span>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--color-success)' }}>{outputStr}</div>
+          {usdValue && (
+            <div style={{ fontSize: 11, color: 'var(--color-mutedText)', fontWeight: 400 }}>{usdValue}</div>
+          )}
+        </div>
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--color-mutedText)', marginTop: 6 }}>
         <span>Min: {minStr}</span>
         <span>Impact: {impactPct}%</span>
-        <span>Fee: {feePct}%</span>
+        <span style={{ opacity: 0.7 }}>Fee: {feePct}%</span>
       </div>
     </div>
   );
@@ -153,7 +170,7 @@ function ProgressPanel({ progress }) {
 
 // ─── Main Widget ────────────────────────────────────────────────────────────
 
-export default function SwapWidget({ initialInput, initialOutput, onClose }) {
+export default function SwapWidget({ initialInput, initialOutput, onClose, onInputTokenChange, onOutputTokenChange }) {
   const { identity, isAuthenticated } = useAuth();
   const { theme } = useTheme();
 
@@ -180,8 +197,23 @@ export default function SwapWidget({ initialInput, initialOutput, onClose }) {
   const [spotPrices, setSpotPrices] = useState(null); // { icpswap: 0.001, kong: 0.00102 }
   const [loadingSpot, setLoadingSpot] = useState(false);
 
+  // USD prices
+  const [inputUsdPrice, setInputUsdPrice] = useState(null);
+  const [outputUsdPrice, setOutputUsdPrice] = useState(null);
+
   const aggregatorRef = useRef(null);
   const quoteTimerRef = useRef(null);
+
+  // ── Token change handlers (also notify parent for URL updates) ──
+  const handleSetInputToken = useCallback((tokenId) => {
+    setInputToken(tokenId);
+    onInputTokenChange?.(tokenId);
+  }, [onInputTokenChange]);
+
+  const handleSetOutputToken = useCallback((tokenId) => {
+    setOutputToken(tokenId);
+    onOutputTokenChange?.(tokenId);
+  }, [onOutputTokenChange]);
 
   // ── Initialize aggregator ──
   useEffect(() => {
@@ -218,6 +250,25 @@ export default function SwapWidget({ initialInput, initialOutput, onClose }) {
     const agent = aggregatorRef.current.config.agent;
     getTokenInfo(outputToken, agent).then(setOutputTokenInfo).catch(() => setOutputTokenInfo(null));
   }, [outputToken]);
+
+  // ── Fetch USD prices when token info is available ──
+  useEffect(() => {
+    if (!inputToken || !inputTokenInfo) { setInputUsdPrice(null); return; }
+    let cancelled = false;
+    priceService.getTokenUSDPrice(inputToken, inputTokenInfo.decimals)
+      .then(price => { if (!cancelled) setInputUsdPrice(price); })
+      .catch(() => { if (!cancelled) setInputUsdPrice(null); });
+    return () => { cancelled = true; };
+  }, [inputToken, inputTokenInfo]);
+
+  useEffect(() => {
+    if (!outputToken || !outputTokenInfo) { setOutputUsdPrice(null); return; }
+    let cancelled = false;
+    priceService.getTokenUSDPrice(outputToken, outputTokenInfo.decimals)
+      .then(price => { if (!cancelled) setOutputUsdPrice(price); })
+      .catch(() => { if (!cancelled) setOutputUsdPrice(null); });
+    return () => { cancelled = true; };
+  }, [outputToken, outputTokenInfo]);
 
   // ── Fetch spot prices when pair changes (no amount needed) ──
   useEffect(() => {
@@ -300,8 +351,12 @@ export default function SwapWidget({ initialInput, initialOutput, onClose }) {
 
   // ── Swap tokens (flip input/output) ──
   const flipTokens = () => {
-    setInputToken(outputToken);
-    setOutputToken(inputToken);
+    const newInput = outputToken;
+    const newOutput = inputToken;
+    setInputToken(newInput);
+    setOutputToken(newOutput);
+    onInputTokenChange?.(newInput);
+    onOutputTokenChange?.(newOutput);
     setInputAmountStr('');
     setQuotes([]);
     setResult(null);
@@ -340,6 +395,15 @@ export default function SwapWidget({ initialInput, initialOutput, onClose }) {
   // ── Selected quote ──
   const selectedQuote = quotes[selectedQuoteIdx];
 
+  // ── USD value computations ──
+  const inputUsdValue = (inputAmountStr && inputUsdPrice !== null)
+    ? formatUSD(parseFloat(inputAmountStr) * inputUsdPrice)
+    : null;
+
+  const outputUsdValue = (selectedQuote && outputTokenInfo && outputUsdPrice !== null)
+    ? formatUSD((Number(selectedQuote.expectedOutput) / (10 ** outputTokenInfo.decimals)) * outputUsdPrice)
+    : null;
+
   // ── Render ──
   const cardStyle = {
     width: '100%',
@@ -353,6 +417,7 @@ export default function SwapWidget({ initialInput, initialOutput, onClose }) {
     display: 'flex',
     flexDirection: 'column',
     gap: 16,
+    boxSizing: 'border-box',
   };
 
   const inputBoxStyle = {
@@ -363,242 +428,291 @@ export default function SwapWidget({ initialInput, initialOutput, onClose }) {
   };
 
   return (
-    <div style={cardStyle}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: 'var(--color-primaryText)' }}>Swap</h2>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            onClick={() => setShowSettings(s => !s)}
-            title="Slippage settings"
-            style={{
-              background: 'transparent', border: '1px solid var(--color-border)',
-              borderRadius: 8, padding: '4px 10px', cursor: 'pointer', color: 'var(--color-secondaryText)', fontSize: 16,
-            }}
-          >&#9881;</button>
-          {onClose && (
+    <>
+      <style>{`
+        @media (max-width: 480px) {
+          .swap-card {
+            padding: 16px !important;
+            gap: 12px !important;
+          }
+          .swap-input-box {
+            padding: 10px 12px !important;
+          }
+          .swap-amount-input {
+            font-size: 18px !important;
+          }
+          .swap-token-selector-wrap {
+            min-width: 110px !important;
+          }
+        }
+      `}</style>
+      <div className="swap-card" style={cardStyle}>
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: 'var(--color-primaryText)' }}>Swap</h2>
+          <div style={{ display: 'flex', gap: 8 }}>
             <button
-              onClick={onClose}
+              onClick={() => setShowSettings(s => !s)}
+              title="Slippage settings"
               style={{
                 background: 'transparent', border: '1px solid var(--color-border)',
                 borderRadius: 8, padding: '4px 10px', cursor: 'pointer', color: 'var(--color-secondaryText)', fontSize: 16,
               }}
-            >&times;</button>
-          )}
-        </div>
-      </div>
-
-      {/* Slippage settings (collapsible) */}
-      {showSettings && (
-        <div style={{ padding: '8px 0' }}>
-          <SlippageSettings value={slippage} onChange={setSlippage} />
-        </div>
-      )}
-
-      {/* Input token */}
-      <div style={inputBoxStyle}>
-        <div style={{ fontSize: 12, color: 'var(--color-mutedText)', marginBottom: 6 }}>You pay</div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <input
-            type="text"
-            placeholder="0.0"
-            value={inputAmountStr}
-            onChange={e => {
-              const v = e.target.value.replace(/[^0-9.]/g, '');
-              if (v.split('.').length <= 2) setInputAmountStr(v);
-            }}
-            disabled={swapping}
-            style={{
-              flex: 1, background: 'transparent', border: 'none', outline: 'none',
-              fontSize: 22, fontWeight: 600, color: 'var(--color-primaryText)',
-              fontFamily: 'inherit',
-            }}
-          />
-          <div style={{ minWidth: 150 }}>
-            <TokenSelector
-              value={inputToken}
-              onChange={setInputToken}
-              placeholder="Select token"
-              disabled={swapping}
-              allowCustom
-            />
+            >&#9881;</button>
+            {onClose && (
+              <button
+                onClick={onClose}
+                style={{
+                  background: 'transparent', border: '1px solid var(--color-border)',
+                  borderRadius: 8, padding: '4px 10px', cursor: 'pointer', color: 'var(--color-secondaryText)', fontSize: 16,
+                }}
+              >&times;</button>
+            )}
           </div>
         </div>
-        {inputTokenInfo && (
-          <div style={{ fontSize: 11, color: 'var(--color-mutedText)', marginTop: 4 }}>
-            {inputTokenInfo.symbol} &middot; Fee: {formatAmount(inputTokenInfo.fee, inputTokenInfo.decimals)}
+
+        {/* Slippage settings (collapsible) */}
+        {showSettings && (
+          <div style={{ padding: '8px 0' }}>
+            <SlippageSettings value={slippage} onChange={setSlippage} />
           </div>
         )}
-      </div>
 
-      {/* Flip button + Spot prices */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', margin: '-8px 0', gap: 4 }}>
-        <button
-          onClick={flipTokens}
-          disabled={swapping}
-          style={{
-            width: 36, height: 36, borderRadius: '50%',
-            border: '2px solid var(--color-border)', background: 'var(--color-secondaryBg)',
-            cursor: 'pointer', fontSize: 18, color: 'var(--color-accent)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            transition: 'transform 0.2s',
-            zIndex: 1,
-          }}
-          title="Flip tokens"
-        >&#8595;</button>
+        {/* Input token */}
+        <div className="swap-input-box" style={inputBoxStyle}>
+          <div style={{ fontSize: 12, color: 'var(--color-mutedText)', marginBottom: 6 }}>You pay</div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <input
+              className="swap-amount-input"
+              type="text"
+              placeholder="0.0"
+              value={inputAmountStr}
+              onChange={e => {
+                const v = e.target.value.replace(/[^0-9.]/g, '');
+                if (v.split('.').length <= 2) setInputAmountStr(v);
+              }}
+              disabled={swapping}
+              style={{
+                flex: 1, background: 'transparent', border: 'none', outline: 'none',
+                fontSize: 22, fontWeight: 600, color: 'var(--color-primaryText)',
+                fontFamily: 'inherit', minWidth: 0,
+              }}
+            />
+            <div className="swap-token-selector-wrap" style={{ minWidth: 130 }}>
+              <TokenSelector
+                value={inputToken}
+                onChange={handleSetInputToken}
+                placeholder="Select token"
+                disabled={swapping}
+                allowCustom
+              />
+            </div>
+          </div>
+          {/* USD value (replaces old fee display) */}
+          {inputTokenInfo && (
+            <div style={{ fontSize: 12, color: 'var(--color-mutedText)', marginTop: 4 }}>
+              {inputUsdValue ? (
+                <span>{inputUsdValue}</span>
+              ) : (
+                <span>{inputTokenInfo.symbol}</span>
+              )}
+            </div>
+          )}
+        </div>
 
-        {/* Spot prices per DEX */}
-        {spotPrices && inputTokenInfo && outputTokenInfo && (
-          <div style={{
-            display: 'flex', gap: 12, fontSize: 11, color: 'var(--color-mutedText)',
-            flexWrap: 'wrap', justifyContent: 'center',
-          }}>
-            {Object.entries(spotPrices).map(([dexId, { name, price }]) => (
-              <span key={dexId}>
-                {name}: <span style={{ color: 'var(--color-secondaryText)', fontWeight: 500 }}>
-                  1 {inputTokenInfo.symbol} = {price < 0.000001 ? price.toExponential(3) : price.toPrecision(6)} {outputTokenInfo.symbol}
+        {/* Flip button + Spot prices */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', margin: '-8px 0', gap: 4 }}>
+          <button
+            onClick={flipTokens}
+            disabled={swapping}
+            style={{
+              width: 36, height: 36, borderRadius: '50%',
+              border: '2px solid var(--color-border)', background: 'var(--color-secondaryBg)',
+              cursor: 'pointer', fontSize: 18, color: 'var(--color-accent)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: 'transform 0.2s',
+              zIndex: 1,
+            }}
+            title="Flip tokens"
+          >&#8595;</button>
+
+          {/* Spot prices per DEX */}
+          {spotPrices && inputTokenInfo && outputTokenInfo && (
+            <div style={{
+              display: 'flex', gap: 12, fontSize: 11, color: 'var(--color-mutedText)',
+              flexWrap: 'wrap', justifyContent: 'center',
+            }}>
+              {Object.entries(spotPrices).map(([dexId, { name, price }]) => (
+                <span key={dexId}>
+                  {name}: <span style={{ color: 'var(--color-secondaryText)', fontWeight: 500 }}>
+                    1 {inputTokenInfo.symbol} = {price < 0.000001 ? price.toExponential(3) : price.toPrecision(6)} {outputTokenInfo.symbol}
+                  </span>
                 </span>
-              </span>
+              ))}
+            </div>
+          )}
+          {loadingSpot && inputToken && outputToken && !spotPrices && (
+            <span style={{ fontSize: 11, color: 'var(--color-mutedText)' }}>Loading spot prices...</span>
+          )}
+        </div>
+
+        {/* Output token */}
+        <div className="swap-input-box" style={inputBoxStyle}>
+          <div style={{ fontSize: 12, color: 'var(--color-mutedText)', marginBottom: 6 }}>You receive</div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <div style={{
+              flex: 1, fontSize: 22, fontWeight: 600,
+              color: selectedQuote ? 'var(--color-primaryText)' : 'var(--color-mutedText)',
+              minHeight: 32, display: 'flex', alignItems: 'center',
+              minWidth: 0,
+            }}>
+              {loadingQuotes ? (
+                <span style={{ fontSize: 14, color: 'var(--color-mutedText)' }}>Fetching quotes...</span>
+              ) : selectedQuote && outputTokenInfo ? (
+                formatAmount(selectedQuote.expectedOutput, outputTokenInfo.decimals)
+              ) : '0.0'}
+            </div>
+            <div className="swap-token-selector-wrap" style={{ minWidth: 130 }}>
+              <TokenSelector
+                value={outputToken}
+                onChange={handleSetOutputToken}
+                placeholder="Select token"
+                disabled={swapping}
+                allowCustom
+              />
+            </div>
+          </div>
+          {/* USD value (replaces old fee display) */}
+          {outputTokenInfo && (
+            <div style={{ fontSize: 12, color: 'var(--color-mutedText)', marginTop: 4 }}>
+              {outputUsdValue ? (
+                <span>{outputUsdValue}</span>
+              ) : (
+                <span>{outputTokenInfo.symbol}</span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Quotes list */}
+        {quotes.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ fontSize: 13, color: 'var(--color-mutedText)', fontWeight: 500 }}>
+              Quotes ({quotes.length})
+            </div>
+            {quotes.map((q, i) => (
+              <QuoteCard
+                key={`${q.dexId}-${i}`}
+                quote={q}
+                selected={i === selectedQuoteIdx}
+                onSelect={() => setSelectedQuoteIdx(i)}
+                inputDecimals={inputTokenInfo?.decimals || 8}
+                outputDecimals={outputTokenInfo?.decimals || 8}
+                outputUsdPrice={outputUsdPrice}
+              />
             ))}
           </div>
         )}
-        {loadingSpot && inputToken && outputToken && !spotPrices && (
-          <span style={{ fontSize: 11, color: 'var(--color-mutedText)' }}>Loading spot prices...</span>
-        )}
-      </div>
 
-      {/* Output token */}
-      <div style={inputBoxStyle}>
-        <div style={{ fontSize: 12, color: 'var(--color-mutedText)', marginBottom: 6 }}>You receive</div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        {/* Quote error */}
+        {quoteError && !loadingQuotes && (
+          <div style={{ color: 'var(--color-error)', fontSize: 13, textAlign: 'center' }}>{quoteError}</div>
+        )}
+
+        {/* Progress panel */}
+        {progress && <ProgressPanel progress={progress} />}
+
+        {/* Result */}
+        {result && result.success && outputTokenInfo && (
           <div style={{
-            flex: 1, fontSize: 22, fontWeight: 600,
-            color: selectedQuote ? 'var(--color-primaryText)' : 'var(--color-mutedText)',
-            minHeight: 32, display: 'flex', alignItems: 'center',
+            textAlign: 'center', padding: 12, borderRadius: 10,
+            background: 'rgba(46, 204, 113, 0.08)', border: '1px solid var(--color-success)',
           }}>
-            {loadingQuotes ? (
-              <span style={{ fontSize: 14, color: 'var(--color-mutedText)' }}>Fetching quotes...</span>
-            ) : selectedQuote && outputTokenInfo ? (
-              formatAmount(selectedQuote.expectedOutput, outputTokenInfo.decimals)
-            ) : '0.0'}
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-success)' }}>
+              Swap successful!
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--color-secondaryText)', marginTop: 4 }}>
+              Received: {formatAmount(result.amountOut, outputTokenInfo.decimals)} {outputTokenInfo.symbol}
+              {outputUsdPrice !== null && (
+                <span style={{ color: 'var(--color-mutedText)' }}>
+                  {' '}({formatUSD((Number(result.amountOut) / (10 ** outputTokenInfo.decimals)) * outputUsdPrice)})
+                </span>
+              )}
+            </div>
           </div>
-          <div style={{ minWidth: 150 }}>
-            <TokenSelector
-              value={outputToken}
-              onChange={setOutputToken}
-              placeholder="Select token"
-              disabled={swapping}
-              allowCustom
-            />
-          </div>
-        </div>
-        {outputTokenInfo && (
-          <div style={{ fontSize: 11, color: 'var(--color-mutedText)', marginTop: 4 }}>
-            {outputTokenInfo.symbol} &middot; Fee: {formatAmount(outputTokenInfo.fee, outputTokenInfo.decimals)}
+        )}
+
+        {/* Swap button */}
+        <button
+          onClick={handleSwap}
+          disabled={!isAuthenticated || !selectedQuote || swapping || !inputAmountStr}
+          style={{
+            width: '100%', padding: '14px 0', borderRadius: 12, fontSize: 16, fontWeight: 700,
+            border: 'none', cursor: (!isAuthenticated || !selectedQuote || swapping) ? 'not-allowed' : 'pointer',
+            background: (!isAuthenticated || !selectedQuote || swapping)
+              ? 'var(--color-tertiaryBg)'
+              : 'var(--color-accent)',
+            color: (!isAuthenticated || !selectedQuote || swapping)
+              ? 'var(--color-mutedText)'
+              : '#fff',
+            transition: 'all 0.2s',
+          }}
+        >
+          {!isAuthenticated ? 'Connect Wallet' :
+           swapping ? 'Swapping...' :
+           !inputToken || !outputToken ? 'Select Tokens' :
+           !inputAmountStr ? 'Enter Amount' :
+           quotes.length === 0 ? (loadingQuotes ? 'Loading...' : 'No Quotes') :
+           'Swap'}
+        </button>
+
+        {/* Selected quote details */}
+        {selectedQuote && inputTokenInfo && outputTokenInfo && !swapping && !result?.success && (
+          <div style={{ fontSize: 12, color: 'var(--color-mutedText)', lineHeight: 1.6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Rate</span>
+              <span>
+                1 {inputTokenInfo.symbol} = {selectedQuote.spotPrice?.toFixed(6)} {outputTokenInfo.symbol}
+                {inputUsdPrice !== null && (
+                  <span style={{ opacity: 0.7 }}> ({formatUSD(inputUsdPrice)})</span>
+                )}
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Price impact</span>
+              <span style={{ color: selectedQuote.priceImpact > 0.05 ? 'var(--color-error)' : 'inherit' }}>
+                {(selectedQuote.priceImpact * 100).toFixed(2)}%
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Slippage tolerance</span>
+              <span>{(slippage * 100).toFixed(1)}%</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Min received</span>
+              <span>
+                {formatAmount(selectedQuote.minimumOutput, outputTokenInfo.decimals)} {outputTokenInfo.symbol}
+                {outputUsdPrice !== null && (
+                  <span style={{ opacity: 0.7 }}>
+                    {' '}({formatUSD((Number(selectedQuote.minimumOutput) / (10 ** outputTokenInfo.decimals)) * outputUsdPrice)})
+                  </span>
+                )}
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Network fees</span>
+              <span>
+                {selectedQuote.feeBreakdown.totalInputFeesCount}&times; in +{' '}
+                {selectedQuote.feeBreakdown.totalOutputFeesCount}&times; out
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Standard</span>
+              <span>{selectedQuote.standard?.toUpperCase()}</span>
+            </div>
           </div>
         )}
       </div>
-
-      {/* Quotes list */}
-      {quotes.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ fontSize: 13, color: 'var(--color-mutedText)', fontWeight: 500 }}>
-            Quotes ({quotes.length})
-          </div>
-          {quotes.map((q, i) => (
-            <QuoteCard
-              key={`${q.dexId}-${i}`}
-              quote={q}
-              selected={i === selectedQuoteIdx}
-              onSelect={() => setSelectedQuoteIdx(i)}
-              inputDecimals={inputTokenInfo?.decimals || 8}
-              outputDecimals={outputTokenInfo?.decimals || 8}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Quote error */}
-      {quoteError && !loadingQuotes && (
-        <div style={{ color: 'var(--color-error)', fontSize: 13, textAlign: 'center' }}>{quoteError}</div>
-      )}
-
-      {/* Progress panel */}
-      {progress && <ProgressPanel progress={progress} />}
-
-      {/* Result */}
-      {result && result.success && outputTokenInfo && (
-        <div style={{
-          textAlign: 'center', padding: 12, borderRadius: 10,
-          background: 'rgba(46, 204, 113, 0.08)', border: '1px solid var(--color-success)',
-        }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-success)' }}>
-            Swap successful!
-          </div>
-          <div style={{ fontSize: 13, color: 'var(--color-secondaryText)', marginTop: 4 }}>
-            Received: {formatAmount(result.amountOut, outputTokenInfo.decimals)} {outputTokenInfo.symbol}
-          </div>
-        </div>
-      )}
-
-      {/* Swap button */}
-      <button
-        onClick={handleSwap}
-        disabled={!isAuthenticated || !selectedQuote || swapping || !inputAmountStr}
-        style={{
-          width: '100%', padding: '14px 0', borderRadius: 12, fontSize: 16, fontWeight: 700,
-          border: 'none', cursor: (!isAuthenticated || !selectedQuote || swapping) ? 'not-allowed' : 'pointer',
-          background: (!isAuthenticated || !selectedQuote || swapping)
-            ? 'var(--color-tertiaryBg)'
-            : 'var(--color-accent)',
-          color: (!isAuthenticated || !selectedQuote || swapping)
-            ? 'var(--color-mutedText)'
-            : '#fff',
-          transition: 'all 0.2s',
-        }}
-      >
-        {!isAuthenticated ? 'Connect Wallet' :
-         swapping ? 'Swapping...' :
-         !inputToken || !outputToken ? 'Select Tokens' :
-         !inputAmountStr ? 'Enter Amount' :
-         quotes.length === 0 ? (loadingQuotes ? 'Loading...' : 'No Quotes') :
-         'Swap'}
-      </button>
-
-      {/* Selected quote details */}
-      {selectedQuote && inputTokenInfo && outputTokenInfo && !swapping && !result?.success && (
-        <div style={{ fontSize: 12, color: 'var(--color-mutedText)', lineHeight: 1.6 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>Rate</span>
-            <span>1 {inputTokenInfo.symbol} = {selectedQuote.spotPrice?.toFixed(6)} {outputTokenInfo.symbol}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>Price impact</span>
-            <span style={{ color: selectedQuote.priceImpact > 0.05 ? 'var(--color-error)' : 'inherit' }}>
-              {(selectedQuote.priceImpact * 100).toFixed(2)}%
-            </span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>Slippage tolerance</span>
-            <span>{(slippage * 100).toFixed(1)}%</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>Min received</span>
-            <span>{formatAmount(selectedQuote.minimumOutput, outputTokenInfo.decimals)} {outputTokenInfo.symbol}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>Network fees</span>
-            <span>
-              {selectedQuote.feeBreakdown.totalInputFeesCount}&times; in +{' '}
-              {selectedQuote.feeBreakdown.totalOutputFeesCount}&times; out
-            </span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>Standard</span>
-            <span>{selectedQuote.standard?.toUpperCase()}</span>
-          </div>
-        </div>
-      )}
-    </div>
+    </>
   );
 }

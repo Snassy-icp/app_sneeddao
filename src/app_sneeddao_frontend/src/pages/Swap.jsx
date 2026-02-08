@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import Header from '../components/Header';
@@ -8,16 +8,38 @@ import { FaExchangeAlt, FaHome, FaChevronRight } from 'react-icons/fa';
 const swapPrimary = '#3498db';
 const swapSecondary = '#8b5cf6';
 
+const ICP_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
+const SNEED_CANISTER_ID = 'hvgxa-wqaaa-aaaaq-aacia-cai';
+
 /**
  * /swap page — Full-page swap interface.
  *
  * Supports URL params:  ?input=<canisterId>&output=<canisterId>
+ * Defaults: ICP as input, SNEED as output.
  */
 export default function Swap() {
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const { theme } = useTheme();
-  const initialInput = params.get('input') || '';
-  const initialOutput = params.get('output') || '';
+  const initialInput = params.get('input') || ICP_CANISTER_ID;
+  const initialOutput = params.get('output') || SNEED_CANISTER_ID;
+
+  const handleInputTokenChange = useCallback((tokenId) => {
+    setParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (tokenId) next.set('input', tokenId);
+      else next.delete('input');
+      return next;
+    }, { replace: true });
+  }, [setParams]);
+
+  const handleOutputTokenChange = useCallback((tokenId) => {
+    setParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (tokenId) next.set('output', tokenId);
+      else next.delete('output');
+      return next;
+    }, { replace: true });
+  }, [setParams]);
 
   return (
     <div className="page-container" style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
@@ -31,17 +53,36 @@ export default function Swap() {
           transform: scale(1.1) rotate(5deg);
           box-shadow: 0 8px 32px ${swapPrimary}60;
         }
+        @media (max-width: 600px) {
+          .swap-hero-section {
+            padding: 1rem 1rem 0.75rem !important;
+          }
+          .swap-hero-title {
+            font-size: 1.5rem !important;
+          }
+          .swap-hero-icon-box {
+            width: 40px !important;
+            height: 40px !important;
+            border-radius: 12px !important;
+          }
+          .swap-widget-wrapper {
+            padding: 1rem 0.5rem 2rem !important;
+          }
+        }
       `}</style>
 
       <main style={{ color: theme.colors.primaryText }}>
         {/* Hero Section */}
-        <div style={{
-          background: `linear-gradient(180deg, ${swapPrimary}12 0%, transparent 100%)`,
-          borderBottom: `1px solid ${theme.colors.border}`,
-          padding: '2rem 1.5rem 1.5rem',
-          position: 'relative',
-          overflow: 'hidden',
-        }}>
+        <div
+          className="swap-hero-section"
+          style={{
+            background: `linear-gradient(180deg, ${swapPrimary}12 0%, transparent 100%)`,
+            borderBottom: `1px solid ${theme.colors.border}`,
+            padding: '1.5rem 1.5rem 1rem',
+            position: 'relative',
+            overflow: 'hidden',
+          }}
+        >
           {/* Decorative glows */}
           <div style={{
             position: 'absolute',
@@ -70,7 +111,7 @@ export default function Swap() {
               display: 'flex',
               alignItems: 'center',
               gap: '0.5rem',
-              marginBottom: '1.5rem',
+              marginBottom: '1rem',
               fontSize: '0.85rem',
             }}>
               <Link to="/" style={{
@@ -99,21 +140,21 @@ export default function Swap() {
               flexDirection: 'column',
               alignItems: 'center',
               textAlign: 'center',
-              marginBottom: '0.5rem',
+              marginBottom: '0.25rem',
             }}>
               {/* Icon and Title */}
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '1rem',
-                marginBottom: '0.5rem',
+                gap: '0.75rem',
+                marginBottom: '0.35rem',
               }}>
                 <div
-                  className="swap-hero-icon"
+                  className="swap-hero-icon swap-hero-icon-box"
                   style={{
-                    width: '56px',
-                    height: '56px',
-                    borderRadius: '16px',
+                    width: '48px',
+                    height: '48px',
+                    borderRadius: '14px',
                     background: `linear-gradient(135deg, ${swapPrimary}, ${swapSecondary})`,
                     display: 'flex',
                     alignItems: 'center',
@@ -121,24 +162,27 @@ export default function Swap() {
                     boxShadow: `0 4px 20px ${swapPrimary}40`,
                   }}
                 >
-                  <FaExchangeAlt size={26} color="white" />
+                  <FaExchangeAlt size={22} color="white" />
                 </div>
-                <h1 style={{
-                  fontSize: 'clamp(1.8rem, 5vw, 2.5rem)',
-                  fontWeight: '800',
-                  margin: 0,
-                  background: `linear-gradient(135deg, ${theme.colors.primaryText} 30%, ${swapPrimary})`,
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  backgroundClip: 'text',
-                }}>
-                  Swap
+                <h1
+                  className="swap-hero-title"
+                  style={{
+                    fontSize: 'clamp(1.5rem, 4vw, 2rem)',
+                    fontWeight: '800',
+                    margin: 0,
+                    background: `linear-gradient(135deg, ${theme.colors.primaryText} 30%, ${swapPrimary})`,
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    backgroundClip: 'text',
+                  }}
+                >
+                  Sneedex Swap
                 </h1>
               </div>
 
               <p style={{
                 color: theme.colors.mutedText,
-                fontSize: '0.95rem',
+                fontSize: '0.9rem',
                 margin: 0,
                 maxWidth: '500px',
               }}>
@@ -149,13 +193,21 @@ export default function Swap() {
         </div>
 
         {/* Swap Widget */}
-        <div style={{
-          width: '100%',
-          display: 'flex',
-          justifyContent: 'center',
-          padding: '2rem 1rem 3rem',
-        }}>
-          <SwapWidget initialInput={initialInput} initialOutput={initialOutput} />
+        <div
+          className="swap-widget-wrapper"
+          style={{
+            width: '100%',
+            display: 'flex',
+            justifyContent: 'center',
+            padding: '1.5rem 1rem 3rem',
+          }}
+        >
+          <SwapWidget
+            initialInput={initialInput}
+            initialOutput={initialOutput}
+            onInputTokenChange={handleInputTokenChange}
+            onOutputTokenChange={handleOutputTokenChange}
+          />
         </div>
       </main>
     </div>

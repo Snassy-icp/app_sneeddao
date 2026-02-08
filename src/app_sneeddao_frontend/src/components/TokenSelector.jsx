@@ -337,7 +337,7 @@ function TokenSelector({
                 onClick={() => !disabled && !loading && setIsOpen(!isOpen)}
                 style={{
                     width: '100%',
-                    padding: '12px',
+                    padding: '8px 10px',
                     background: disabled ? theme.colors.tertiaryBg : theme.colors.secondaryBg,
                     border: `1px solid ${isOpen ? theme.colors.accent : theme.colors.border}`,
                     borderRadius: '8px',
@@ -347,7 +347,7 @@ function TokenSelector({
                     cursor: disabled || loading ? 'not-allowed' : 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '12px',
+                    gap: '8px',
                     transition: 'all 0.2s ease'
                 }}
             >
@@ -368,14 +368,9 @@ function TokenSelector({
                                 onError={(e) => e.target.style.display = 'none'}
                             />
                         )}
-                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            <span style={{ fontWeight: '600', color: theme.colors.primaryText }}>
-                                {selectedToken.symbol}
-                            </span>
-                            <span style={{ fontSize: '0.8rem', color: theme.colors.mutedText }}>
-                                {selectedToken.name}
-                            </span>
-                        </div>
+                        <span style={{ fontWeight: '600', color: theme.colors.primaryText }}>
+                            {selectedToken.symbol}
+                        </span>
                     </>
                 ) : (
                     <span>{placeholder}</span>
