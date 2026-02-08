@@ -657,8 +657,8 @@ function SneedexCreate() {
             assets.forEach(asset => {
                 if (asset.type === 'token' && asset.ledger_id) {
                     ledgerIds.add(asset.ledger_id);
-                } else if (asset.type === 'neuron' && asset.governance_id) {
-                    // Add SNS ledger for neuron assets
+                } else if (asset.type === 'neuron' && asset.governance_id && snsList.length > 0) {
+                    // Add SNS ledger for neuron assets (requires snsList)
                     const snsLedger = getSnsLedgerFromGovernance(asset.governance_id);
                     if (snsLedger) {
                         ledgerIds.add(snsLedger);
@@ -671,8 +671,8 @@ function SneedexCreate() {
                 ledgerIds.add(newAssetTokenLedger);
             }
             
-            // Also add SNS ledger for currently editing neuron
-            if (newAssetType === 'neuron' && newAssetGovernanceId) {
+            // Also add SNS ledger for currently editing neuron (requires snsList)
+            if (newAssetType === 'neuron' && newAssetGovernanceId && snsList.length > 0) {
                 const snsLedger = getSnsLedgerFromGovernance(newAssetGovernanceId);
                 if (snsLedger) {
                     ledgerIds.add(snsLedger);
@@ -695,9 +695,7 @@ function SneedexCreate() {
             setAssetPrices(prev => ({ ...prev, ...newPrices }));
         };
         
-        if (snsList.length > 0) {
-            fetchAssetPrices();
-        }
+        fetchAssetPrices();
     }, [assets, snsList, newAssetType, newAssetTokenLedger, newAssetGovernanceId, whitelistedTokens, getSnsLedgerFromGovernance]);
     
     const [creating, setCreating] = useState(false);
