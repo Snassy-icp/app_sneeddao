@@ -390,8 +390,15 @@ export default function SwapWidget({ initialInput, initialOutput, onClose, onInp
         amount,
         slippage,
       });
+      // Preserve user's DEX selection across quote refreshes
+      const prevQuote = quotes[selectedQuoteIdx];
       setQuotes(q);
-      setSelectedQuoteIdx(0);
+      if (prevQuote && q.length > 0) {
+        const matchIdx = q.findIndex(newQ => newQ.dexId === prevQuote.dexId);
+        setSelectedQuoteIdx(matchIdx >= 0 ? matchIdx : 0);
+      } else {
+        setSelectedQuoteIdx(0);
+      }
       if (q.length === 0) setQuoteError('No quotes available for this pair');
     } catch (e) {
       setQuoteError(e.message || 'Failed to fetch quotes');
