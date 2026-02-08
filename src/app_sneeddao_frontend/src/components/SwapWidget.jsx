@@ -344,8 +344,11 @@ function ProgressPanel({ progress }) {
  */
 function filterMatchingAuctions(auctions, inputToken, outputToken) {
   if (!auctions || !inputToken || !outputToken) return [];
+  const nowNs = BigInt(Date.now()) * 1_000_000n; // current time in nanoseconds
   return auctions.filter(offer => {
     if (!offer.price_token_ledger) return false;
+    // Skip offers that have expired even if backend hasn't processed them yet
+    if (offer.expiration?.[0] && BigInt(offer.expiration[0]) <= nowNs) return false;
     const priceToken = offer.price_token_ledger.toString();
     if (priceToken !== inputToken) return false;
     // Must have at least one ICRC1Token asset matching the output token
