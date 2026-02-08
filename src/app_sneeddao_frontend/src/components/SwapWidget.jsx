@@ -452,6 +452,88 @@ function MiniAuctionCard({ offer, outputAmount, buyoutPrice, rate, inputTokenInf
   );
 }
 
+const AUCTION_ADS_DEFAULT_VISIBLE = 3;
+
+function AuctionAdsSection({ matchingAuctions, outputToken, inputTokenInfo, outputTokenInfo, outputUsdPrice, loadingAuctions }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+
+  // Pre-compute card data sorted by rate (best first)
+  const cardData = useMemo(() => {
+    return matchingAuctions.map(offer => {
+      let outputAmount = 0n;
+      for (const ae of offer.assets || []) {
+        const d = getAssetDetails(ae);
+        if (d.type === 'ICRC1Token' && d.ledger_id === outputToken) {
+          outputAmount += BigInt(d.amount);
+        }
+      }
+      const buyoutPrice = offer.buyout_price?.[0] ? BigInt(offer.buyout_price[0]) : null;
+      const rate = buyoutPrice && buyoutPrice > 0n
+        ? (Number(outputAmount) / (10 ** outputTokenInfo.decimals)) /
+          (Number(buyoutPrice) / (10 ** inputTokenInfo.decimals))
+        : 0;
+      return { offer, outputAmount, buyoutPrice: buyoutPrice || 0n, rate };
+    }).sort((a, b) => b.rate - a.rate);
+  }, [matchingAuctions, outputToken, inputTokenInfo, outputTokenInfo]);
+
+  const visibleCards = showAll ? cardData : cardData.slice(0, AUCTION_ADS_DEFAULT_VISIBLE);
+  const hasMore = cardData.length > AUCTION_ADS_DEFAULT_VISIBLE;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div
+        onClick={() => setCollapsed(c => !c)}
+        style={{
+          fontSize: 12, color: 'var(--color-mutedText)', fontWeight: 500,
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          cursor: 'pointer', userSelect: 'none',
+        }}
+      >
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ color: '#f39c12' }}>★</span>
+          Sneedex Auctions ({matchingAuctions.length})
+          <span style={{
+            fontSize: 10, transition: 'transform 0.2s',
+            transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+            display: 'inline-block',
+          }}>▾</span>
+        </span>
+        {loadingAuctions && <span style={{ fontSize: 10, opacity: 0.6 }}>Loading...</span>}
+      </div>
+
+      {!collapsed && (
+        <>
+          {visibleCards.map(({ offer, outputAmount, buyoutPrice, rate }) => (
+            <MiniAuctionCard
+              key={Number(offer.id)}
+              offer={offer}
+              outputAmount={outputAmount}
+              buyoutPrice={buyoutPrice}
+              rate={rate}
+              inputTokenInfo={inputTokenInfo}
+              outputTokenInfo={outputTokenInfo}
+              outputUsdPrice={outputUsdPrice}
+            />
+          ))}
+          {hasMore && (
+            <button
+              onClick={() => setShowAll(s => !s)}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: 'var(--color-accent)', fontSize: 11, fontWeight: 500,
+                padding: '4px 0', textAlign: 'center',
+              }}
+            >
+              {showAll ? 'Show less' : `Show ${cardData.length - AUCTION_ADS_DEFAULT_VISIBLE} more`}
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function SplitSlider({ distribution, onChange, disabled, loading, autoSearching }) {
   return (
     <div style={{
@@ -2044,46 +2126,14 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
 
         {/* ─── Matching Sneedex Auctions (ads) ─── */}
         {matchingAuctions.length > 0 && inputTokenInfo && outputTokenInfo && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div style={{
-              fontSize: 12, color: 'var(--color-mutedText)', fontWeight: 500,
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ color: '#f39c12' }}>★</span>
-                Sneedex Auctions ({matchingAuctions.length})
-              </span>
-              {loadingAuctions && <span style={{ fontSize: 10, opacity: 0.6 }}>Loading...</span>}
-            </div>
-            {matchingAuctions.map(offer => {
-              // Find the ICRC1Token output for this pair
-              let outputAmount = 0n;
-              for (const ae of offer.assets || []) {
-                const d = getAssetDetails(ae);
-                if (d.type === 'ICRC1Token' && d.ledger_id === outputToken) {
-                  outputAmount += BigInt(d.amount);
-                }
-              }
-              const buyoutPrice = offer.buyout_price?.[0] ? BigInt(offer.buyout_price[0]) : null;
-              const rate = buyoutPrice && buyoutPrice > 0n
-                ? (Number(outputAmount) / (10 ** outputTokenInfo.decimals)) /
-                  (Number(buyoutPrice) / (10 ** inputTokenInfo.decimals))
-                : 0;
-
-              return (
-                <MiniAuctionCard
-                  key={Number(offer.id)}
-                  offer={offer}
-                  outputAmount={outputAmount}
-                  buyoutPrice={buyoutPrice || 0n}
-                  rate={rate}
-                  inputTokenInfo={inputTokenInfo}
-                  outputTokenInfo={outputTokenInfo}
-                  outputUsdPrice={outputUsdPrice}
-                />
-              );
-            })}
-          </div>
+          <AuctionAdsSection
+            matchingAuctions={matchingAuctions}
+            outputToken={outputToken}
+            inputTokenInfo={inputTokenInfo}
+            outputTokenInfo={outputTokenInfo}
+            outputUsdPrice={outputUsdPrice}
+            loadingAuctions={loadingAuctions}
+          />
         )}
 
         {/* ─── Quote error ─── */}
