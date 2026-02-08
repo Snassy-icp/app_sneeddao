@@ -248,7 +248,7 @@ function QuoteCard({ quote, selected, onSelect, inputDecimals, outputDecimals, o
           {quote.swapLegRemaining > 0n && (
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ color: 'var(--color-accent)', fontWeight: 500 }}>
-                {quote.swapLegQuote?.dexName || 'DEX Swap'}
+                {quote.swapLegIsSplit ? 'Split Swap' : (quote.swapLegQuote?.dexName || 'DEX Swap')}
               </span>
               <span>
                 {formatAmount(quote.swapLegOutput, outputDecimals)} {outputSymbol} for {formatAmount(quote.swapLegRemaining, inputDecimals)} {inputSymbol}
@@ -831,26 +831,39 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
     if (usedBuyouts.length === 0) return null;
 
     // If there's remaining input, find the best swap for it
+    // Consider both single-DEX quotes and the split swap quote
     let swapLegOutput = 0n;
     let swapLegQuote = null;
+    let swapLegIsSplit = false;
     if (remaining > 0n) {
-      // The best swap for the remainder — check if the split swap is better, or a single DEX
-      // Use the best from allQuotes scaled proportionally, or just the best individual rate
-      const bestSwap = quotes[0]; // best single-DEX quote
-      if (bestSwap && bestSwap.inputAmount > 0n) {
-        // Scale: what would we get for `remaining` at this rate?
-        const swapRate = Number(bestSwap.expectedOutput) / Number(bestSwap.inputAmount);
-        swapLegOutput = BigInt(Math.floor(Number(remaining) * swapRate));
-        swapLegQuote = bestSwap;
+      // Candidate 1: best single-DEX quote (scaled proportionally)
+      const bestSingleDex = quotes[0];
+      let bestRate = 0;
+      if (bestSingleDex && bestSingleDex.inputAmount > 0n) {
+        bestRate = Number(bestSingleDex.expectedOutput) / Number(bestSingleDex.inputAmount);
+        swapLegOutput = BigInt(Math.floor(Number(remaining) * bestRate));
+        swapLegQuote = bestSingleDex;
+      }
+
+      // Candidate 2: split swap quote (scaled proportionally) — if it exists and is better
+      if (splitQuoteResult && splitQuoteResult.inputAmount > 0n) {
+        const splitRate = Number(splitQuoteResult.expectedOutput) / Number(splitQuoteResult.inputAmount);
+        if (splitRate > bestRate) {
+          swapLegOutput = BigInt(Math.floor(Number(remaining) * splitRate));
+          swapLegQuote = splitQuoteResult;
+          swapLegIsSplit = true;
+        }
       }
     }
 
     const totalOutput = totalBuyoutOutput + swapLegOutput;
 
-    // Only show split trade if it's better than the best single option
+    // Only show split trade if it's better than ALL other options
     const bestSingleSwap = quotes[0]?.expectedOutput || 0n;
+    const bestSplitSwap = splitQuoteResult?.expectedOutput || 0n;
     const bestSingleBuyout = buyoutQuoteCards[0]?.expectedOutput || 0n;
-    const bestExisting = bestSingleSwap > bestSingleBuyout ? bestSingleSwap : bestSingleBuyout;
+    let bestExisting = bestSingleSwap > bestSingleBuyout ? bestSingleSwap : bestSingleBuyout;
+    if (bestSplitSwap > bestExisting) bestExisting = bestSplitSwap;
     if (totalOutput <= bestExisting) return null;
 
     return {
@@ -859,6 +872,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
       isSplitTrade: true,
       usedBuyouts,
       swapLegQuote,
+      swapLegIsSplit,
       swapLegRemaining: remaining,
       swapLegOutput,
       totalBuyoutCost,
@@ -887,7 +901,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
       route: [],
       timestamp: Date.now(),
     };
-  }, [buyoutQuoteCards, auctionBuyouts.qualifyingBuyouts, quotes, inputAmountStr, inputTokenInfo, outputTokenInfo, inputToken, outputToken, slippage]);
+  }, [buyoutQuoteCards, auctionBuyouts.qualifyingBuyouts, quotes, splitQuoteResult, inputAmountStr, inputTokenInfo, outputTokenInfo, inputToken, outputToken, slippage]);
 
   // ── Combined quotes list (individual + split + auctions), sorted best-first ──
   const allQuotes = useMemo(() => {
@@ -1510,7 +1524,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
           });
           if (quote.swapLegRemaining > 0n) {
             l['swap'] = {
-              label: quote.swapLegQuote?.dexName || 'DEX Swap',
+              label: quote.swapLegIsSplit ? 'Split Swap' : (quote.swapLegQuote?.dexName || 'DEX Swap'),
               status: 'pending', message: 'Waiting...', type: 'swap',
             };
           }
@@ -1554,31 +1568,75 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
           tasks.push((async () => {
             const legKey = 'swap';
             try {
-              updateLegProgress(legKey, { status: 'active', message: 'Getting fresh quote...' });
-              const freshQuotes = await aggregatorRef.current.getQuotes({
-                inputToken: quote.inputToken,
-                outputToken: quote.outputToken,
-                amount: quote.swapLegRemaining,
-              });
-              const preferredDexId = quote.swapLegQuote.dexId;
-              const remainderQuote = freshQuotes.find(q => q.dexId === preferredDexId)
-                || freshQuotes[0];
+              if (quote.swapLegIsSplit) {
+                // Remainder uses a split swap (ICPSwap + Kong)
+                updateLegProgress(legKey, { status: 'active', message: 'Getting fresh split quote...' });
+                // getSplitQuote needs individual DEX quotes as input
+                const freshQuotesForSplit = await aggregatorRef.current.getQuotes({
+                  inputToken: quote.inputToken,
+                  outputToken: quote.outputToken,
+                  amount: quote.swapLegRemaining,
+                });
+                const splitQ = await aggregatorRef.current.getSplitQuote({
+                  inputToken: quote.inputToken,
+                  outputToken: quote.outputToken,
+                  amount: quote.swapLegRemaining,
+                  existingQuotes: freshQuotesForSplit,
+                });
 
-              if (!remainderQuote) throw new Error('No swap quote available for remainder');
+                if (!splitQ) {
+                  // Fall back to best single-DEX if split no longer wins
+                  updateLegProgress(legKey, { status: 'active', message: 'Split not available, trying single DEX...' });
+                  const freshQuotes = await aggregatorRef.current.getQuotes({
+                    inputToken: quote.inputToken,
+                    outputToken: quote.outputToken,
+                    amount: quote.swapLegRemaining,
+                  });
+                  const fallback = freshQuotes[0];
+                  if (!fallback) throw new Error('No swap quote available for remainder');
 
-              updateLegProgress(legKey, { status: 'active', message: `Swapping via ${remainderQuote.dexName}...` });
-              const swapRes = await aggregatorRef.current.swap({
-                quote: remainderQuote,
-                slippage,
-                onProgress: (p) => {
-                  updateLegProgress(legKey, { status: 'active', message: p.message || `${p.step}...` });
-                },
-              });
-              updateLegProgress(legKey, { status: 'done', message: 'Swap complete' });
-              return { type: 'swap', dexId: remainderQuote.dexId, success: swapRes.success !== false, amountOut: swapRes.amountOut || 0n };
+                  updateLegProgress(legKey, { status: 'active', message: `Swapping via ${fallback.dexName}...` });
+                  const swapRes = await aggregatorRef.current.swap({
+                    quote: fallback, slippage,
+                    onProgress: (p) => updateLegProgress(legKey, { status: 'active', message: p.message || `${p.step}...` }),
+                  });
+                  updateLegProgress(legKey, { status: 'done', message: 'Swap complete' });
+                  return { type: 'swap', dexId: fallback.dexId, success: swapRes.success !== false, amountOut: swapRes.amountOut || 0n };
+                }
+
+                updateLegProgress(legKey, { status: 'active', message: 'Executing split swap...' });
+                const swapRes = await aggregatorRef.current.swap({
+                  quote: splitQ, slippage,
+                  onProgress: (p) => updateLegProgress(legKey, { status: 'active', message: p.message || `${p.step}...` }),
+                });
+                updateLegProgress(legKey, { status: 'done', message: 'Split swap complete' });
+                return { type: 'swap', dexId: 'split', success: swapRes.success !== false, amountOut: swapRes.amountOut || 0n };
+
+              } else {
+                // Remainder uses a single DEX
+                updateLegProgress(legKey, { status: 'active', message: 'Getting fresh quote...' });
+                const freshQuotes = await aggregatorRef.current.getQuotes({
+                  inputToken: quote.inputToken,
+                  outputToken: quote.outputToken,
+                  amount: quote.swapLegRemaining,
+                });
+                const preferredDexId = quote.swapLegQuote.dexId;
+                const remainderQuote = freshQuotes.find(q => q.dexId === preferredDexId)
+                  || freshQuotes[0];
+
+                if (!remainderQuote) throw new Error('No swap quote available for remainder');
+
+                updateLegProgress(legKey, { status: 'active', message: `Swapping via ${remainderQuote.dexName}...` });
+                const swapRes = await aggregatorRef.current.swap({
+                  quote: remainderQuote, slippage,
+                  onProgress: (p) => updateLegProgress(legKey, { status: 'active', message: p.message || `${p.step}...` }),
+                });
+                updateLegProgress(legKey, { status: 'done', message: 'Swap complete' });
+                return { type: 'swap', dexId: remainderQuote.dexId, success: swapRes.success !== false, amountOut: swapRes.amountOut || 0n };
+              }
             } catch (e) {
               updateLegProgress(legKey, { status: 'failed', message: e.message });
-              return { type: 'swap', dexId: quote.swapLegQuote.dexId, success: false, error: e.message, amountOut: 0n };
+              return { type: 'swap', dexId: quote.swapLegQuote?.dexId || 'swap', success: false, error: e.message, amountOut: 0n };
             }
           })());
         }
@@ -2320,7 +2378,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
                 <span style={{ fontWeight: 600, color: theme.colors.primaryText }}>Split Trade</span>
                 <span style={{ color: '#f39c12', fontWeight: 500 }}>
                   {selectedQuote.usedBuyouts?.length} buyout{selectedQuote.usedBuyouts?.length > 1 ? 's' : ''}
-                  {selectedQuote.swapLegRemaining > 0n ? ' + swap' : ''}
+                  {selectedQuote.swapLegRemaining > 0n ? (selectedQuote.swapLegIsSplit ? ' + split swap' : ' + swap') : ''}
                 </span>
               </div>
             )}
