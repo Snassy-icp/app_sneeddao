@@ -212,11 +212,12 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     }, [identity]);
 
     // Fetch canister status (cycles, memory, moduleHash) for tracked canisters.
-    // Uses trackedCanistersKey (a serialised string) instead of the array reference
-    // so the effect only re-fires when the *content* of the array changes, not when
-    // React creates a new array reference with the same items.
+    // LAZY: only runs when the quick-wallet popup is open, avoiding expensive
+    // management-canister update calls on every page load.
+    // SEQUENTIAL: processes one canister at a time to avoid flooding the browser
+    // with concurrent HTTP connections (each update call = 1 POST + many read_state polls).
     useEffect(() => {
-        if (!identity || trackedCanisters.length === 0) return;
+        if (!showPopup || !identity || trackedCanisters.length === 0) return;
 
         const currentFetchId = ++fetchCanisterStatusIdRef.current;
 
@@ -233,7 +234,10 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                 if (currentFetchId !== fetchCanisterStatusIdRef.current) return; // superseded
                 
                 const statusMap = {};
-                await Promise.all(trackedCanisters.map(async (canisterId) => {
+                // Process canisters ONE AT A TIME to avoid flooding browser connections
+                for (const canisterId of trackedCanisters) {
+                    if (currentFetchId !== fetchCanisterStatusIdRef.current) return; // superseded
+                    
                     let cycles = null;
                     let memory = null;
                     let isController = false;
@@ -267,7 +271,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                     }
                     
                     statusMap[canisterId] = { cycles, memory, isController, moduleHash };
-                }));
+                }
                 if (currentFetchId !== fetchCanisterStatusIdRef.current) return; // superseded
                 setTrackedCanisterStatus(statusMap);
             } catch (err) {
@@ -277,7 +281,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         };
         
         fetchCanisterStatus();
-    }, [identity, trackedCanistersKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [showPopup, identity, trackedCanistersKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Check if a module hash matches any known neuron manager version
     const isKnownNeuronManagerHash = useCallback((moduleHash) => {

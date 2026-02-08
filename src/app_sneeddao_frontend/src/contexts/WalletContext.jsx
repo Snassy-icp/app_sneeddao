@@ -1765,6 +1765,8 @@ export const WalletProvider = ({ children }) => {
     }, [fetchTrackedCanisters]);
     
     // Fetch controller status for neuron managers
+    // SEQUENTIAL: processes one manager at a time to avoid flooding the browser
+    // with concurrent management-canister update calls (each = 1 POST + many read_state polls)
     const fetchNeuronManagerControllerStatus = useCallback(async () => {
         if (!identity || neuronManagers.length === 0) return;
         
@@ -1778,7 +1780,7 @@ export const WalletProvider = ({ children }) => {
             }
             
             const controllerMap = {};
-            await Promise.all(neuronManagers.map(async (manager) => {
+            for (const manager of neuronManagers) {
                 // Safely convert canisterId to string
                 let canisterId = '';
                 if (manager.canisterId) {
@@ -1791,7 +1793,7 @@ export const WalletProvider = ({ children }) => {
                         canisterId = str.includes('-') ? str : '';
                     }
                 }
-                if (!canisterId) return; // Skip if invalid
+                if (!canisterId) continue; // Skip if invalid
                 
                 try {
                     const canisterIdPrincipal = Principal.fromText(canisterId);
@@ -1809,7 +1811,7 @@ export const WalletProvider = ({ children }) => {
                     // Not a controller
                     controllerMap[canisterId] = false;
                 }
-            }));
+            }
             setNeuronManagerIsController(controllerMap);
         } catch (err) {
             console.warn('[WalletContext] Error fetching manager controller status:', err);
@@ -1817,6 +1819,8 @@ export const WalletProvider = ({ children }) => {
     }, [identity, neuronManagers]);
     
     // Fetch controller status for tracked canisters
+    // SEQUENTIAL: processes one canister at a time to avoid flooding the browser
+    // with concurrent management-canister update calls (each = 1 POST + many read_state polls)
     const fetchTrackedCanisterControllerStatus = useCallback(async () => {
         if (!identity || trackedCanisters.length === 0) return;
         
@@ -1830,7 +1834,7 @@ export const WalletProvider = ({ children }) => {
             }
             
             const controllerMap = {};
-            await Promise.all(trackedCanisters.map(async (canisterId) => {
+            for (const canisterId of trackedCanisters) {
                 try {
                     const canisterIdPrincipal = Principal.fromText(canisterId);
                     const mgmtActor = Actor.createActor(managementCanisterIdlFactory, {
@@ -1847,7 +1851,7 @@ export const WalletProvider = ({ children }) => {
                     // Not a controller
                     controllerMap[canisterId] = false;
                 }
-            }));
+            }
             setTrackedCanisterIsController(controllerMap);
         } catch (err) {
             console.warn('[WalletContext] Error fetching tracked canister controller status:', err);
