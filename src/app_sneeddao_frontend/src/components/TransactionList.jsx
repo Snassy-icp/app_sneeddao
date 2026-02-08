@@ -140,6 +140,8 @@ function TransactionList({
         }
         return null;
     });
+    const [loadingMore, setLoadingMore] = useState(false); // Progressive loading: true while fetching additional pages
+    const fetchIdRef = useRef(0); // Used to cancel stale fetches when dependencies change
     const [loadingSubaccounts, setLoadingSubaccounts] = useState(false);
     const [subaccountInput, setSubaccountInput] = useState(() => {
         if (!initialSubaccountFilter) return '';
@@ -429,7 +431,13 @@ function TransactionList({
 
     const fetchAllFromIndex = async () => {
         setLoading(true);
+        setLoadingMore(false);
         setError(null);
+        setAllTransactions([]);
+        setTotalTransactions(0);
+        
+        // Increment fetch ID so any previous in-flight fetch is cancelled
+        const currentFetchId = ++fetchIdRef.current;
         
         try {
             const indexActor = createSnsIndexActor(indexCanisterId);
@@ -445,18 +453,28 @@ function TransactionList({
             };
             
             let allTxs = [];
-            let startIndex = 0;
+            let cursor = []; // Optional start cursor (txid) - empty for first request (most recent)
             let hasMore = true;
+            let isFirstBatch = true;
 
             while (hasMore) {
+                // Check if this fetch was superseded by a newer one
+                if (currentFetchId !== fetchIdRef.current) return;
+                
                 const response = await indexActor.get_account_transactions({
                     account,
                     max_results: FETCH_SIZE,
-                    start: startIndex > 0 ? [BigInt(startIndex)] : []
+                    // start is a cursor: the txid of the last transaction seen.
+                    // If empty, results start from the most recent txid.
+                    // If set, results start from the next most recent txid after start (start excluded).
+                    start: cursor
                 });
 
+                // Check again after the async call
+                if (currentFetchId !== fetchIdRef.current) return;
+
                 if (!response.Ok) {
-                    throw new Error(response.Err.message);
+                    throw new Error(response.Err?.message || 'Unknown indexer error');
                 }
 
                 const transactions = response.Ok.transactions.map(tx => ({
@@ -469,17 +487,47 @@ function TransactionList({
                 if (transactions.length < FETCH_SIZE) {
                     hasMore = false;
                 } else {
-                    startIndex += FETCH_SIZE;
+                    // Cursor-based pagination: use the oldest (smallest) tx id from this batch
+                    // as the cursor for the next request. The indexer returns results from newest
+                    // to oldest, so the last item has the smallest id.
+                    const oldestTxId = transactions.reduce(
+                        (min, tx) => {
+                            if (tx.id === undefined) return min;
+                            const txId = BigInt(tx.id);
+                            return (min === null || txId < min) ? txId : min;
+                        },
+                        null
+                    );
+                    if (oldestTxId !== null) {
+                        cursor = [oldestTxId];
+                    } else {
+                        // No valid tx ids found - can't paginate further
+                        hasMore = false;
+                    }
                 }
+                
+                // Progressive loading: show results immediately after first batch
+                if (isFirstBatch) {
+                    isFirstBatch = false;
+                    setLoading(false);
+                    if (hasMore) {
+                        setLoadingMore(true);
+                    }
+                }
+                
+                // Update state progressively after each batch so the UI updates
+                setAllTransactions([...allTxs]);
+                setTotalTransactions(allTxs.length);
             }
-
-            setAllTransactions(allTxs);
-            setTotalTransactions(allTxs.length);
         } catch (err) {
+            if (currentFetchId !== fetchIdRef.current) return;
             setError('Failed to fetch transactions from index');
             console.error('Error fetching from index:', err);
         } finally {
-            setLoading(false);
+            if (currentFetchId === fetchIdRef.current) {
+                setLoading(false);
+                setLoadingMore(false);
+            }
         }
     };
 
@@ -1928,6 +1976,34 @@ function TransactionList({
                         </div>
                     )}
 
+                    {/* Loading more indicator (progressive fetch) */}
+                    {loadingMore && (
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '0.75rem',
+                            padding: '0.75rem 1rem',
+                            marginTop: '1rem',
+                            background: `linear-gradient(135deg, ${txPrimary}10, ${txSecondary}10)`,
+                            borderRadius: '10px',
+                            border: `1px solid ${txPrimary}30`,
+                            color: theme.colors.secondaryText,
+                            fontSize: '0.85rem'
+                        }}>
+                            <div style={{
+                                width: '16px',
+                                height: '16px',
+                                borderRadius: '50%',
+                                border: `2px solid ${txPrimary}40`,
+                                borderTopColor: txPrimary,
+                                animation: 'spin 0.8s linear infinite'
+                            }} />
+                            <span>Loading more transactions... ({totalTransactions} loaded so far)</span>
+                            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+                        </div>
+                    )}
+
                     {/* Pagination */}
                     {displayedTransactions.length > 0 && (
                         <div style={{
@@ -1973,12 +2049,12 @@ function TransactionList({
                                     color: theme.colors.secondaryText,
                                     fontSize: '0.9rem'
                                 }}>
-                                    Page {page + 1} of {Math.max(1, Math.ceil(totalTransactions / pageSize))}
+                                    Page {page + 1} of {Math.max(1, Math.ceil(totalTransactions / pageSize))}{loadingMore ? '+' : ''}
                                 </span>
                                 
                                 <button
                                     onClick={() => setPage(p => p + 1)}
-                                    disabled={(page + 1) * pageSize >= totalTransactions}
+                                    disabled={(page + 1) * pageSize >= totalTransactions && !loadingMore}
                                     style={{
                                         display: 'flex',
                                         alignItems: 'center',
@@ -1986,11 +2062,11 @@ function TransactionList({
                                         padding: '0.5rem 1rem',
                                         borderRadius: '8px',
                                         border: `1px solid ${theme.colors.border}`,
-                                        background: (page + 1) * pageSize >= totalTransactions ? theme.colors.tertiaryBg : theme.colors.secondaryBg,
-                                        color: (page + 1) * pageSize >= totalTransactions ? theme.colors.mutedText : theme.colors.primaryText,
+                                        background: ((page + 1) * pageSize >= totalTransactions && !loadingMore) ? theme.colors.tertiaryBg : theme.colors.secondaryBg,
+                                        color: ((page + 1) * pageSize >= totalTransactions && !loadingMore) ? theme.colors.mutedText : theme.colors.primaryText,
                                         fontSize: '0.85rem',
-                                        cursor: (page + 1) * pageSize >= totalTransactions ? 'not-allowed' : 'pointer',
-                                        opacity: (page + 1) * pageSize >= totalTransactions ? 0.5 : 1
+                                        cursor: ((page + 1) * pageSize >= totalTransactions && !loadingMore) ? 'not-allowed' : 'pointer',
+                                        opacity: ((page + 1) * pageSize >= totalTransactions && !loadingMore) ? 0.5 : 1
                                     }}
                                 >
                                     Next
@@ -2005,6 +2081,8 @@ function TransactionList({
                                 color: theme.colors.secondaryText,
                                 fontSize: '0.85rem'
                             }}>
+                                <span>{totalTransactions} txs{loadingMore ? ' (loading...)' : ''}</span>
+                                <span style={{ margin: '0 0.25rem', color: theme.colors.border }}>|</span>
                                 <span>Show</span>
                                 <select 
                                     value={pageSize} 
