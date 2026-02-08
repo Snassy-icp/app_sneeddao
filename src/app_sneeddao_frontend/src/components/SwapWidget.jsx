@@ -231,6 +231,9 @@ export default function SwapWidget({ initialInput, initialOutput, onClose, onInp
   const [inputBalance, setInputBalance] = useState(null);
   const [outputBalance, setOutputBalance] = useState(null);
 
+  // Tracks when the aggregator is ready so dependent effects can re-fire
+  const [aggregatorReady, setAggregatorReady] = useState(false);
+
   const aggregatorRef = useRef(null);
   const quoteTimerRef = useRef(null);
 
@@ -261,24 +264,26 @@ export default function SwapWidget({ initialInput, initialOutput, onClose, onInp
     agg.registerDex(new ICPSwapDex(config));
     agg.registerDex(new KongDex(config));
     aggregatorRef.current = agg;
+    setAggregatorReady(true);
 
     return () => {
       if (quoteTimerRef.current) clearInterval(quoteTimerRef.current);
+      setAggregatorReady(false);
     };
   }, [identity]);
 
-  // ── Fetch token info when tokens change ──
+  // ── Fetch token info when tokens change (or aggregator becomes ready) ──
   useEffect(() => {
     if (!inputToken || !aggregatorRef.current) { setInputTokenInfo(null); return; }
     const agent = aggregatorRef.current.config.agent;
     getTokenInfo(inputToken, agent).then(setInputTokenInfo).catch(() => setInputTokenInfo(null));
-  }, [inputToken]);
+  }, [inputToken, aggregatorReady]);
 
   useEffect(() => {
     if (!outputToken || !aggregatorRef.current) { setOutputTokenInfo(null); return; }
     const agent = aggregatorRef.current.config.agent;
     getTokenInfo(outputToken, agent).then(setOutputTokenInfo).catch(() => setOutputTokenInfo(null));
-  }, [outputToken]);
+  }, [outputToken, aggregatorReady]);
 
   // ── Fetch USD prices when token info is available ──
   useEffect(() => {
@@ -366,7 +371,7 @@ export default function SwapWidget({ initialInput, initialOutput, onClose, onInp
     })();
 
     return () => { cancelled = true; };
-  }, [inputToken, outputToken]);
+  }, [inputToken, outputToken, aggregatorReady]);
 
   // ── Fetch quotes ──
   const fetchQuotes = useCallback(async () => {
