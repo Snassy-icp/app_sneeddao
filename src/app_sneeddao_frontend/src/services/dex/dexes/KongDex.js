@@ -399,12 +399,16 @@ export class KongDex extends BaseDex {
       // Step 2: Call swap — Kong calls transferFrom + routes + sends output
       report(SwapStep.SWAPPING, 'Executing swap on KongSwap...', 2);
 
-      // Compute minimum output with slippage
+      // receive_amount: hard floor — the minimum tokens the user will accept.
+      // max_slippage: percentage ceiling — Kong rejects if total deviation from
+      //   mid-price exceeds this. Must cover known impact + fee + user tolerance.
+      //   Kong's slippage = total % deviation from mid_price (fee + market impact).
       const minOutput = quote.minimumOutput;
 
-      // Don't pass max_slippage — it checks total deviation from mid_price
-      // (which includes both LP fee and market impact) and would reject valid swaps.
-      // receive_amount already protects the user as the hard minimum.
+      // Total known deviation = price impact + DEX fee (both as fractions),
+      // plus the user's additional slippage tolerance, converted to percentage.
+      const totalSlippagePct = (quote.priceImpact + quote.dexFeePercent + slippage) * 100;
+
       const swapResult = await this.kongActor.swap({
         pay_token: inputToken,
         pay_amount: effectiveInputAmount,
@@ -412,7 +416,7 @@ export class KongDex extends BaseDex {
         receive_amount: [minOutput],
         receive_address: [],
         pay_tx_id: [],               // ICRC2: Kong does transferFrom, no block index
-        max_slippage: [],
+        max_slippage: [totalSlippagePct],
         referred_by: [],
       });
 
@@ -463,8 +467,8 @@ export class KongDex extends BaseDex {
       report(SwapStep.SWAPPING, 'Executing swap on KongSwap...', 1);
 
       const minOutput = quote.minimumOutput;
+      const totalSlippagePct = (quote.priceImpact + quote.dexFeePercent + slippage) * 100;
 
-      // Don't pass max_slippage — receive_amount protects the user.
       const swapResult = await this.kongActor.swap({
         pay_token: inputToken,
         pay_amount: effectiveInputAmount,
@@ -472,7 +476,7 @@ export class KongDex extends BaseDex {
         receive_amount: [minOutput],
         receive_address: [],
         pay_tx_id: [{ BlockIndex: blockIndex }],
-        max_slippage: [],
+        max_slippage: [totalSlippagePct],
         referred_by: [],
       });
 
