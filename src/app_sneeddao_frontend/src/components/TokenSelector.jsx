@@ -393,7 +393,7 @@ function TokenSelector({
                         border: `1px solid ${theme.colors.border}`,
                         borderRadius: '8px',
                         boxShadow: theme.colors.cardShadow,
-                        zIndex: 10000,
+                        zIndex: 10600,
                         width: '90%',
                         maxWidth: '500px',
                         maxHeight: '80vh',

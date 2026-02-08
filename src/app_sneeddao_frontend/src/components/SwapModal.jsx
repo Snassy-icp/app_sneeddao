@@ -20,7 +20,7 @@ export default function SwapModal({ isOpen, onClose, initialInput, initialOutput
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 9999,
+        zIndex: 10500,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',

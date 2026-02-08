@@ -18,11 +18,13 @@ import { useNaming } from './NamingContext';
 import { VotingPowerCalculator } from './utils/VotingPowerUtils';
 import { getUserPermissionIcons, getStateIcon, getOwnershipPriority, PERM } from './utils/NeuronPermissionUtils.jsx';
 import { Link } from 'react-router-dom';
-import { FaDollarSign, FaLock, FaBrain, FaInfoCircle, FaTint, FaSeedling, FaHourglassHalf, FaGift, FaExpandAlt, FaSync, FaQuestionCircle, FaPlus, FaBan, FaPlay, FaStop, FaWallet, FaExchangeAlt, FaArrowDown, FaArrowUp, FaChevronDown, FaChevronRight, FaExclamationTriangle, FaCog, FaClock, FaCut, FaPaperPlane } from 'react-icons/fa';
+import { FaDollarSign, FaLock, FaBrain, FaInfoCircle, FaTint, FaSeedling, FaHourglassHalf, FaGift, FaExpandAlt, FaSync, FaQuestionCircle, FaPlus, FaBan, FaPlay, FaStop, FaWallet, FaExchangeAlt, FaArrowDown, FaArrowUp, FaChevronDown, FaChevronRight, FaExclamationTriangle, FaCog, FaClock, FaCut, FaPaperPlane, FaShoppingCart, FaTag } from 'react-icons/fa';
+import SwapModal from './components/SwapModal';
 
 // Constants for GLDT and sGLDT canister IDs
 const GLDT_CANISTER_ID = '6c7su-kiaaa-aaaar-qaira-cai';
 const SGLDT_CANISTER_ID = 'i2s4q-syaaa-aaaan-qz4sq-cai';
+const ICP_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 
 console.log('TokenCard constants:', { GLDT_CANISTER_ID, SGLDT_CANISTER_ID });
 
@@ -104,6 +106,13 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     const [activeTab, setActiveTab] = useState(defaultLocksExpanded ? 'locks' : 'balance'); // 'balance', 'locks', 'neurons', 'info'
     const [balanceSectionExpanded, setBalanceSectionExpanded] = useState(true);
     
+    // Swap modal state
+    const [swapOpen, setSwapOpen] = useState(false);
+    const [swapInput, setSwapInput] = useState('');
+    const [swapOutput, setSwapOutput] = useState('');
+    const tokenId = normalizeId(token.ledger_canister_id);
+    const isICP = tokenId === ICP_CANISTER_ID;
+
     // Image loading state
     const [logoLoaded, setLogoLoaded] = useState(false);
     const [logoError, setLogoError] = useState(false);
@@ -1538,6 +1547,75 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                         </button>
                     )}
 
+                    {/* Buy button - opens swap with ICP → this token */}
+                    {!isICP && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setSwapInput(ICP_CANISTER_ID);
+                                setSwapOutput(tokenId);
+                                setSwapOpen(true);
+                            }}
+                            style={{
+                                background: theme.colors.success,
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: '6px',
+                                padding: '6px 12px',
+                                cursor: 'pointer',
+                                fontSize: '0.85rem',
+                                fontWeight: '500',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                transition: 'all 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.filter = 'brightness(1.15)';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.filter = 'none';
+                            }}
+                        >
+                            <FaShoppingCart size={12} />
+                            Buy
+                        </button>
+                    )}
+
+                    {/* Sell button - opens swap with this token → ICP */}
+                    {!isICP && token.available > 0n && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setSwapInput(tokenId);
+                                setSwapOutput(ICP_CANISTER_ID);
+                                setSwapOpen(true);
+                            }}
+                            style={{
+                                background: theme.colors.warning,
+                                color: '#000',
+                                border: 'none',
+                                borderRadius: '6px',
+                                padding: '6px 12px',
+                                cursor: 'pointer',
+                                fontSize: '0.85rem',
+                                fontWeight: '500',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                transition: 'all 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.filter = 'brightness(1.15)';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.filter = 'none';
+                            }}
+                        >
+                            <FaTag size={12} />
+                            Sell
+                        </button>
+                    )}
 
                     {token.available + BigInt(token.locked) + rewardAmountOrZero(token) === 0n && (
                         <button 
@@ -4442,6 +4520,14 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     </div>
                 </div>
             )}
+
+            {/* Swap modal (Buy/Sell) */}
+            <SwapModal
+                isOpen={swapOpen}
+                onClose={() => setSwapOpen(false)}
+                initialInput={swapInput}
+                initialOutput={swapOutput}
+            />
         </div>
     );
 };
