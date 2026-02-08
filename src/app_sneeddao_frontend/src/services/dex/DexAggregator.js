@@ -17,7 +17,7 @@
  *   const result = await agg.swap({ quote: quotes[0], slippage: 0.01, onProgress });
  */
 
-import { DEFAULT_SLIPPAGE } from './types.js';
+import { DEFAULT_SLIPPAGE, SwapStep } from './types.js';
 import { getTokenInfo, resolveStandard } from './tokenStandard.js';
 
 export class DexAggregator {
@@ -148,15 +148,21 @@ export class DexAggregator {
 
   /**
    * Execute a swap using a previously obtained quote.
+   * Handles both single-DEX and split quotes transparently.
    *
    * @param {Object} params
    * @param {import('./types').SwapQuote} params.quote
    * @param {number}  [params.slippage]       - Override slippage (default: from quote)
    * @param {string}  [params.standard]       - Override standard
    * @param {function(import('./types').SwapProgress): void} [params.onProgress]
-   * @returns {Promise<{ success: boolean, amountOut: bigint, txId?: string }>}
+   * @returns {Promise<{ success: boolean, amountOut: bigint, txId?: string, isSplit?: boolean, legs?: Array }>}
    */
   async swap({ quote, slippage = DEFAULT_SLIPPAGE, standard, onProgress }) {
+    // ── Split quote → execute both legs in parallel ──
+    if (quote.isSplitQuote) {
+      return this._executeSplitSwap({ splitQuote: quote, slippage, onProgress });
+    }
+
     const dex = this._dexes.get(quote.dexId);
     if (!dex) throw new Error(`DEX "${quote.dexId}" is not registered`);
 
@@ -166,6 +172,368 @@ export class DexAggregator {
     }
 
     return dex.executeSwap({ quote, slippage, onProgress });
+  }
+
+  // ─── Split Swap Support ────────────────────────────────────────────────────
+
+  /**
+   * Get a combined quote for a given split distribution between DEXes.
+   *
+   * @param {Object} params
+   * @param {bigint}  params.totalAmount        - Total input in base units
+   * @param {number}  params.distribution       - 0-100, percentage that goes to Kong
+   * @param {string}  params.inputToken
+   * @param {string}  params.outputToken
+   * @param {number}  params.slippage
+   * @param {string}  [params.preferredStandard]
+   * @returns {Promise<{ distribution: number, totalOut: bigint, icpswapQuote: SwapQuote|null, kongQuote: SwapQuote|null }|null>}
+   * @private
+   */
+  async _getQuoteForDistribution({
+    totalAmount, distribution, inputToken, outputToken, slippage, preferredStandard,
+  }) {
+    const kongAmount = (totalAmount * BigInt(distribution)) / 100n;
+    const icpswapAmount = totalAmount - kongAmount; // subtraction avoids dust loss
+
+    const agent = this.config.agent;
+    const inputInfo = await getTokenInfo(inputToken, agent);
+
+    const icpswapDex = this._dexes.get('icpswap');
+    const kongDex = this._dexes.get('kong');
+    if (!icpswapDex || !kongDex) return null;
+
+    const getQuoteForDex = async (dex, amount) => {
+      if (amount <= 0n) return null;
+      const standard = resolveStandard(inputInfo, dex.supportedStandards, preferredStandard);
+      return dex.getQuote({ inputToken, outputToken, amount, standard, slippage });
+    };
+
+    const [icpswapQuote, kongQuote] = await Promise.all([
+      getQuoteForDex(icpswapDex, icpswapAmount).catch(() => null),
+      getQuoteForDex(kongDex, kongAmount).catch(() => null),
+    ]);
+
+    const totalOut = (icpswapQuote?.expectedOutput || 0n) + (kongQuote?.expectedOutput || 0n);
+
+    return { distribution, totalOut, icpswapQuote, kongQuote };
+  }
+
+  /**
+   * Ternary search for the optimal split ratio.
+   *
+   * Treats f(distribution) = totalOutput as a unimodal function over [0, 100]
+   * and finds its maximum. Edge-case guards handle fee-driven distortions near
+   * the endpoints.
+   *
+   * @param {Object} params
+   * @param {bigint}  params.totalAmount
+   * @param {string}  params.inputToken
+   * @param {string}  params.outputToken
+   * @param {number}  params.slippage
+   * @param {string}  [params.preferredStandard]
+   * @param {import('./types').SwapQuote} [params.icpswapFullQuote] - Existing 100% ICPSwap quote
+   * @param {import('./types').SwapQuote} [params.kongFullQuote]    - Existing 100% Kong quote
+   * @returns {Promise<{ bestDistribution: number, bestAmount: bigint, bestResult: Object }>}
+   * @private
+   */
+  async _findBestSplit({
+    totalAmount, inputToken, outputToken, slippage, preferredStandard,
+    icpswapFullQuote, kongFullQuote,
+  }) {
+    const PRECISION = 1;   // stop when range is 1% wide
+    const MAX_ITER  = 10;  // safety cap
+
+    /** @type {Map<number, bigint>} distribution → totalOut */
+    const points  = new Map();
+    /** @type {Map<number, Object>} distribution → full result */
+    const results = new Map();
+
+    // Seed endpoints from existing quotes (avoids re-fetching)
+    const zeroVal    = icpswapFullQuote?.expectedOutput || 0n;
+    const hundredVal = kongFullQuote?.expectedOutput || 0n;
+    points.set(0,   zeroVal);
+    points.set(100, hundredVal);
+    results.set(0,   { distribution: 0,   totalOut: zeroVal,    icpswapQuote: icpswapFullQuote, kongQuote: null });
+    results.set(100, { distribution: 100, totalOut: hundredVal, icpswapQuote: null,             kongQuote: kongFullQuote });
+
+    let left  = 0;
+    let right = 100;
+    let iteration = 0;
+
+    const testPoint = async (p) => {
+      if (points.has(p)) return;
+      const result = await this._getQuoteForDistribution({
+        totalAmount, distribution: p, inputToken, outputToken, slippage, preferredStandard,
+      });
+      if (result) {
+        points.set(p, result.totalOut);
+        results.set(p, result);
+      }
+    };
+
+    // ── Ternary search loop ──
+    while (right - left > PRECISION && iteration < MAX_ITER) {
+      const m1 = left  + Math.floor((right - left) / 3);
+      const m2 = right - Math.floor((right - left) / 3);
+
+      // Fetch any untested points in parallel
+      const toTest = [m1, m2].filter(p => !points.has(p));
+      if (toTest.length > 0) {
+        await Promise.all(toTest.map(testPoint));
+      }
+
+      const leftVal  = points.get(m1) || 0n;
+      const rightVal = points.get(m2) || 0n;
+
+      // Narrow the range (with edge-case guards per spec)
+      if (leftVal < rightVal) {
+        if (zeroVal > rightVal && zeroVal > hundredVal) {
+          right = m2;   // fee distortion: endpoint 0% dominates
+        } else {
+          left = m1;    // normal: peak is right of m1
+        }
+      } else if (leftVal > rightVal) {
+        if (hundredVal > leftVal && hundredVal > zeroVal) {
+          left = m1;    // fee distortion: endpoint 100% dominates
+        } else {
+          right = m2;   // normal: peak is left of m2
+        }
+      } else {
+        right = m2;     // equal → shrink from right
+      }
+
+      iteration++;
+    }
+
+    // ── Pick the best from ALL tested points ──
+    let bestDistribution = 0;
+    let bestAmount       = 0n;
+    for (const [dist, amount] of points) {
+      if (amount > bestAmount) {
+        bestAmount       = amount;
+        bestDistribution = dist;
+      }
+    }
+
+    return {
+      bestDistribution,
+      bestAmount,
+      bestResult: results.get(bestDistribution),
+    };
+  }
+
+  /**
+   * Find the best split swap quote across ICPSwap and Kong.
+   *
+   * Returns `null` if:
+   * - Fewer than 2 DEXes are registered
+   * - Only one DEX supports the pair
+   * - Splitting doesn't beat the best single-DEX quote
+   *
+   * @param {Object} params
+   * @param {string}  params.inputToken
+   * @param {string}  params.outputToken
+   * @param {bigint}  params.amount             - Total raw input amount
+   * @param {number}  [params.slippage]
+   * @param {string}  [params.preferredStandard]
+   * @param {import('./types').SwapQuote[]} [params.existingQuotes] - Existing 100% quotes to reuse as endpoints
+   * @returns {Promise<import('./types').SwapQuote|null>} A split quote, or null
+   */
+  async getSplitQuote({
+    inputToken, outputToken, amount,
+    slippage = DEFAULT_SLIPPAGE,
+    preferredStandard,
+    existingQuotes = [],
+  }) {
+    const icpswapDex = this._dexes.get('icpswap');
+    const kongDex    = this._dexes.get('kong');
+    if (!icpswapDex || !kongDex) return null;
+
+    // Reuse existing full-amount quotes as search endpoints
+    const icpswapFullQuote = existingQuotes.find(q => q.dexId === 'icpswap') || null;
+    const kongFullQuote    = existingQuotes.find(q => q.dexId === 'kong')    || null;
+
+    // Need both endpoints — if only one DEX has a quote, splitting can't help
+    if (!icpswapFullQuote || !kongFullQuote) return null;
+
+    const { bestDistribution, bestAmount, bestResult } = await this._findBestSplit({
+      totalAmount: amount,
+      inputToken,
+      outputToken,
+      slippage,
+      preferredStandard,
+      icpswapFullQuote,
+      kongFullQuote,
+    });
+
+    // Split only helps if distribution is strictly between 0 and 100
+    if (bestDistribution <= 0 || bestDistribution >= 100) return null;
+
+    // Must strictly beat the best single-DEX output
+    const bestSingleOutput = icpswapFullQuote.expectedOutput > kongFullQuote.expectedOutput
+      ? icpswapFullQuote.expectedOutput
+      : kongFullQuote.expectedOutput;
+    if (bestAmount <= bestSingleOutput) return null;
+
+    // ── Build the split quote object ──
+    const { icpswapQuote, kongQuote } = bestResult;
+
+    const legs = [];
+    if (icpswapQuote) legs.push({ dexId: 'icpswap', dexName: 'ICPSwap',  quote: icpswapQuote });
+    if (kongQuote)    legs.push({ dexId: 'kong',     dexName: 'KongSwap', quote: kongQuote });
+
+    // Aggregated fields
+    const totalExpected  = legs.reduce((s, l) => s + l.quote.expectedOutput, 0n);
+    const totalMinimum   = legs.reduce((s, l) => s + l.quote.minimumOutput, 0n);
+    const totalEffInput  = legs.reduce((s, l) => s + l.quote.effectiveInputAmount, 0n);
+
+    // Worst (highest) price impact — per spec
+    const worstImpact = Math.max(...legs.map(l => l.quote.priceImpact));
+
+    // Weighted-average DEX fee
+    const totalInputNum = Number(amount);
+    const weightedFee   = legs.reduce((s, l) => {
+      const weight = Number(l.quote.inputAmount) / totalInputNum;
+      return s + l.quote.dexFeePercent * weight;
+    }, 0);
+
+    // Combined fee breakdown
+    const totalInputFees      = legs.reduce((s, l) => s + l.quote.feeBreakdown.inputTransferFees, 0n);
+    const totalOutputFees     = legs.reduce((s, l) => s + l.quote.feeBreakdown.outputWithdrawalFees, 0n);
+    const totalInputFeesCount = legs.reduce((s, l) => s + l.quote.feeBreakdown.totalInputFeesCount, 0);
+    const totalOutputFeesCount= legs.reduce((s, l) => s + l.quote.feeBreakdown.totalOutputFeesCount, 0);
+
+    // Best spot price from the legs
+    const bestSpotPrice = Math.max(...legs.map(l => l.quote.spotPrice || 0));
+
+    return {
+      dexId:    'split',
+      dexName:  `Split (${100 - bestDistribution}% ICPSwap / ${bestDistribution}% Kong)`,
+      isSplitQuote: true,
+      distribution: bestDistribution,
+      legs,
+
+      inputToken,
+      outputToken,
+      inputAmount:          amount,
+      effectiveInputAmount: totalEffInput,
+      expectedOutput:       totalExpected,
+      minimumOutput:        totalMinimum,
+      spotPrice:            bestSpotPrice,
+      priceImpact:          worstImpact,
+      dexFeePercent:        weightedFee,
+      feeBreakdown: {
+        inputTransferFees:    totalInputFees,
+        outputWithdrawalFees: totalOutputFees,
+        dexTradingFee:        weightedFee,
+        totalInputFeesCount,
+        totalOutputFeesCount,
+      },
+      standard:  'mixed',
+      route:     legs.flatMap(l => l.quote.route || []),
+      timestamp: Date.now(),
+    };
+  }
+
+  /**
+   * Execute a split swap — both legs in parallel.
+   *
+   * Progress reporting provides `isSplit: true` with per-leg status in `legs[]`.
+   *
+   * @param {Object} params
+   * @param {import('./types').SwapQuote} params.splitQuote  - A split quote from getSplitQuote()
+   * @param {number}  params.slippage
+   * @param {function} [params.onProgress]
+   * @returns {Promise<{ success: boolean, amountOut: bigint, isSplit: true, legs: Array }>}
+   * @private
+   */
+  async _executeSplitSwap({ splitQuote, slippage, onProgress }) {
+    const activeLegQuotes = splitQuote.legs.filter(l => l.quote && l.quote.inputAmount > 0n);
+    if (activeLegQuotes.length === 0) throw new Error('No active legs in split quote');
+
+    // Per-leg progress tracking
+    const legStates = {};
+    for (const leg of activeLegQuotes) {
+      legStates[leg.dexId] = {
+        step: 'pending', message: 'Waiting...', stepIndex: 0, totalSteps: 1,
+        completed: false, failed: false,
+      };
+    }
+
+    const reportCombined = () => {
+      if (!onProgress) return;
+      const legs = Object.entries(legStates).map(([dexId, state]) => ({
+        dexId,
+        dexName: activeLegQuotes.find(l => l.dexId === dexId)?.dexName || dexId,
+        ...state,
+      }));
+      const allDone       = legs.every(l => l.completed || l.failed);
+      const anyFailed     = legs.some(l => l.failed);
+      const completedCnt  = legs.filter(l => l.completed).length;
+
+      onProgress({
+        isSplit: true,
+        legs,
+        step:    allDone ? (anyFailed ? SwapStep.FAILED : SwapStep.COMPLETE) : SwapStep.SWAPPING,
+        message: allDone
+          ? (anyFailed
+            ? `Split swap: ${completedCnt}/${legs.length} legs succeeded`
+            : 'Split swap completed!')
+          : legs.map(l => `${l.dexName}: ${l.message}`).join(' | '),
+        stepIndex:  completedCnt,
+        totalSteps: legs.length,
+        completed:  allDone && !anyFailed,
+        failed:     allDone && anyFailed,
+        error:      anyFailed
+          ? legs.filter(l => l.failed).map(l => `${l.dexName}: ${l.error || 'failed'}`).join('; ')
+          : undefined,
+      });
+    };
+
+    reportCombined(); // initial state
+
+    // Execute all legs in parallel
+    const settled = await Promise.allSettled(
+      activeLegQuotes.map(leg => {
+        const dex = this._dexes.get(leg.dexId);
+        if (!dex) return Promise.reject(new Error(`DEX "${leg.dexId}" not registered`));
+        return dex.executeSwap({
+          quote: leg.quote,
+          slippage,
+          onProgress: (p) => {
+            legStates[leg.dexId] = p;
+            reportCombined();
+          },
+        });
+      })
+    );
+
+    // Combine results
+    let totalOut   = 0n;
+    let allSuccess = true;
+    const legResults = [];
+
+    for (let i = 0; i < settled.length; i++) {
+      const r       = settled[i];
+      const legDexId = activeLegQuotes[i].dexId;
+      if (r.status === 'fulfilled') {
+        totalOut += r.value.amountOut || 0n;
+        if (r.value.success === false) allSuccess = false;
+        legResults.push({ dexId: legDexId, ...r.value });
+      } else {
+        allSuccess = false;
+        legResults.push({ dexId: legDexId, success: false, amountOut: 0n, error: r.reason?.message || 'Unknown error' });
+      }
+    }
+
+    reportCombined(); // final state
+
+    return {
+      success:  allSuccess,
+      amountOut: totalOut,
+      isSplit:  true,
+      legs:     legResults,
+    };
   }
 
   // ─── Pair Discovery ──────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useWalletOptional } from '../contexts/WalletContext';
@@ -101,6 +101,7 @@ function QuoteCard({ quote, selected, onSelect, inputDecimals, outputDecimals, o
   const impactPct = (quote.priceImpact * 100).toFixed(2);
   const feePct = (quote.dexFeePercent * 100).toFixed(2);
   const isRouted = quote.route?.length > 1;
+  const isSplit = !!quote.isSplitQuote;
 
   const outputNum = Number(quote.expectedOutput) / (10 ** outputDecimals);
   const usdValue = outputUsdPrice ? formatUSD(outputNum * outputUsdPrice) : null;
@@ -112,8 +113,12 @@ function QuoteCard({ quote, selected, onSelect, inputDecimals, outputDecimals, o
       style={{
         padding: '12px 14px',
         borderRadius: 12,
-        border: selected ? '1.5px solid var(--color-accent)' : '1px solid var(--color-border)',
-        background: selected ? 'var(--color-accent)08' : 'var(--color-primaryBg)',
+        border: selected
+          ? (isSplit ? '1.5px solid #8b5cf6' : '1.5px solid var(--color-accent)')
+          : '1px solid var(--color-border)',
+        background: selected
+          ? (isSplit ? 'rgba(139, 92, 246, 0.06)' : 'var(--color-accent)08')
+          : 'var(--color-primaryBg)',
         cursor: 'pointer',
         position: 'relative',
       }}
@@ -128,10 +133,29 @@ function QuoteCard({ quote, selected, onSelect, inputDecimals, outputDecimals, o
           boxShadow: '0 2px 8px rgba(46, 204, 113, 0.3)',
         }}>BEST</span>
       )}
+      {isSplit && !isBest && (
+        <span style={{
+          position: 'absolute', top: -8, right: 12,
+          fontSize: 10, fontWeight: 700, padding: '2px 8px',
+          borderRadius: 6, letterSpacing: '0.04em',
+          background: 'linear-gradient(135deg, #3498db, #8b5cf6)',
+          color: '#fff',
+          boxShadow: '0 2px 8px rgba(139, 92, 246, 0.3)',
+        }}>SPLIT</span>
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-primaryText)' }}>{quote.dexName}</span>
-          {isRouted && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-primaryText)' }}>
+            {isSplit ? 'Split Swap' : quote.dexName}
+          </span>
+          {isSplit && (
+            <span style={{
+              fontSize: 10, padding: '1px 6px', borderRadius: 4,
+              background: 'linear-gradient(135deg, rgba(52,152,219,0.15), rgba(139,92,246,0.15))',
+              color: '#8b5cf6', fontWeight: 600,
+            }}>{100 - quote.distribution}% ICPSwap / {quote.distribution}% Kong</span>
+          )}
+          {isRouted && !isSplit && (
             <span style={{
               fontSize: 10, padding: '1px 6px', borderRadius: 4,
               background: 'var(--color-warning)', color: '#000', fontWeight: 600,
@@ -145,10 +169,25 @@ function QuoteCard({ quote, selected, onSelect, inputDecimals, outputDecimals, o
           )}
         </div>
       </div>
+      {/* Split leg breakdown */}
+      {isSplit && quote.legs && (
+        <div style={{
+          display: 'flex', gap: 8, fontSize: 11, color: 'var(--color-mutedText)',
+          marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--color-border)',
+        }}>
+          {quote.legs.map(leg => (
+            <div key={leg.dexId} style={{ flex: 1 }}>
+              <span style={{ fontWeight: 500, color: 'var(--color-secondaryText)' }}>{leg.dexName}:</span>{' '}
+              {formatAmount(leg.quote.expectedOutput, outputDecimals)}
+            </div>
+          ))}
+        </div>
+      )}
       <div style={{
         display: 'flex', justifyContent: 'space-between',
         fontSize: 11, color: 'var(--color-mutedText)', marginTop: 6,
-        paddingTop: 6, borderTop: '1px solid var(--color-border)',
+        paddingTop: isSplit ? 0 : 6,
+        borderTop: isSplit ? 'none' : '1px solid var(--color-border)',
       }}>
         <span>Min: {minStr}</span>
         <span>Impact: {impactPct}%</span>
@@ -195,6 +234,67 @@ function ProgressPanel({ progress }) {
   );
 }
 
+function SplitProgressPanel({ progress }) {
+  if (!progress || !progress.isSplit) return null;
+  const { legs = [], completed, failed } = progress;
+
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 10,
+      padding: '14px 16px', borderRadius: 12,
+      background: failed ? 'rgba(231, 76, 60, 0.06)' : completed ? 'rgba(46, 204, 113, 0.06)' : 'var(--color-primaryBg)',
+      border: `1px solid ${failed ? 'var(--color-error)' : completed ? 'var(--color-success)' : 'var(--color-border)'}`,
+    }}>
+      <div style={{
+        fontSize: 13, fontWeight: 600, color: 'var(--color-primaryText)',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      }}>
+        <span>Split Swap Progress</span>
+        <span style={{ fontSize: 11, color: 'var(--color-mutedText)', fontWeight: 400 }}>
+          {completed ? 'Done' : failed ? 'Failed' : 'In progress...'}
+        </span>
+      </div>
+      {legs.map(leg => {
+        const pct = leg.totalSteps > 0
+          ? ((leg.stepIndex + (leg.completed ? 1 : 0.5)) / leg.totalSteps) * 100
+          : 0;
+        return (
+          <div key={leg.dexId} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', fontSize: 12,
+            }}>
+              <span style={{ fontWeight: 500, color: 'var(--color-primaryText)' }}>{leg.dexName}</span>
+              <span style={{ color: 'var(--color-mutedText)' }}>
+                {leg.completed ? 'Done' : leg.failed ? 'Failed' : `${leg.stepIndex + 1} / ${leg.totalSteps}`}
+              </span>
+            </div>
+            <div style={{
+              height: 3, borderRadius: 2, background: 'var(--color-border)', overflow: 'hidden',
+            }}>
+              <div style={{
+                height: '100%', borderRadius: 2,
+                width: `${Math.min(pct, 100)}%`,
+                background: leg.failed
+                  ? 'var(--color-error)'
+                  : leg.completed
+                    ? 'var(--color-success)'
+                    : `linear-gradient(90deg, ${SWAP_BLUE}, ${SWAP_PURPLE})`,
+                transition: 'width 0.4s ease',
+              }} />
+            </div>
+            {leg.message && !leg.completed && (
+              <div style={{ fontSize: 11, color: 'var(--color-mutedText)' }}>{leg.message}</div>
+            )}
+            {leg.error && (
+              <div style={{ fontSize: 11, color: 'var(--color-error)' }}>{leg.error}</div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Main Widget ────────────────────────────────────────────────────────────
 
 export default function SwapWidget({ initialInput, initialOutput, initialOutputAmount, onClose, onInputTokenChange, onOutputTokenChange, onSwapComplete }) {
@@ -213,9 +313,15 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
   const [outputTokenInfo, setOutputTokenInfo] = useState(null);
 
   const [quotes, setQuotes] = useState([]);
-  const [selectedQuoteIdx, setSelectedQuoteIdx] = useState(0);
+  const [selectedDexId, setSelectedDexId] = useState(null);
   const [loadingQuotes, setLoadingQuotes] = useState(false);
   const [quoteError, setQuoteError] = useState('');
+
+  // Split swap state
+  const [splitQuote, setSplitQuote] = useState(null);
+  const [loadingSplit, setLoadingSplit] = useState(false);
+  const splitCancelRef = useRef(0);
+  const splitSearchKeyRef = useRef('');
 
   const [swapping, setSwapping] = useState(false);
   const [progress, setProgress] = useState(null);
@@ -238,6 +344,24 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
 
   const aggregatorRef = useRef(null);
   const quoteTimerRef = useRef(null);
+
+  // ── Combined quotes list (individual + split), sorted best-first ──
+  const allQuotes = useMemo(() => {
+    const combined = [...quotes];
+    if (splitQuote) combined.push(splitQuote);
+    combined.sort((a, b) => {
+      if (b.expectedOutput > a.expectedOutput) return 1;
+      if (b.expectedOutput < a.expectedOutput) return -1;
+      return 0;
+    });
+    return combined;
+  }, [quotes, splitQuote]);
+
+  // Resolve selected quote by dexId (fallback to first)
+  const selectedQuote = useMemo(() => {
+    if (!selectedDexId) return allQuotes[0] || null;
+    return allQuotes.find(q => q.dexId === selectedDexId) || allQuotes[0] || null;
+  }, [allQuotes, selectedDexId]);
 
   // ── Target output amount refinement (for pre-filling from external context) ──
   const targetOutputRef = useRef({
@@ -477,16 +601,35 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
         amount,
         slippage,
       });
-      // Preserve user's DEX selection across quote refreshes
-      const prevQuote = quotes[selectedQuoteIdx];
       setQuotes(q);
-      if (prevQuote && q.length > 0) {
-        const matchIdx = q.findIndex(newQ => newQ.dexId === prevQuote.dexId);
-        setSelectedQuoteIdx(matchIdx >= 0 ? matchIdx : 0);
-      } else {
-        setSelectedQuoteIdx(0);
-      }
+      // selectedDexId is preserved automatically — useMemo resolves it
       if (q.length === 0) setQuoteError('No quotes available for this pair');
+
+      // ── Trigger split search (only once per unique parameter combo) ──
+      const splitKey = `${inputToken}:${outputToken}:${inputAmountStr}:${slippage}`;
+      if (q.length >= 2 && splitKey !== splitSearchKeyRef.current) {
+        splitSearchKeyRef.current = splitKey;
+        const searchId = ++splitCancelRef.current;
+        setLoadingSplit(true);
+
+        aggregatorRef.current.getSplitQuote({
+          inputToken, outputToken, amount, slippage,
+          existingQuotes: q,
+        }).then(sq => {
+          if (searchId !== splitCancelRef.current) return;
+          setSplitQuote(sq);
+          setLoadingSplit(false);
+        }).catch(e => {
+          console.warn('Split search failed:', e);
+          if (searchId !== splitCancelRef.current) return;
+          setSplitQuote(null);
+          setLoadingSplit(false);
+        });
+      } else if (q.length < 2 && splitKey !== splitSearchKeyRef.current) {
+        splitSearchKeyRef.current = splitKey;
+        setSplitQuote(null);
+        setLoadingSplit(false);
+      }
     } catch (e) {
       setQuoteError(e.message || 'Failed to fetch quotes');
       setQuotes([]);
@@ -501,6 +644,10 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
     setQuotes([]);
     setResult(null);
     setProgress(null);
+    setSelectedDexId(null);
+    setSplitQuote(null);
+    setLoadingSplit(false);
+    splitSearchKeyRef.current = '';
 
     const timeout = setTimeout(() => {
       fetchQuotes();
@@ -536,6 +683,8 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
     onOutputTokenChange?.(newOutput);
     setInputAmountStr('');
     setQuotes([]);
+    setSplitQuote(null);
+    setSelectedDexId(null);
     setResult(null);
   };
 
@@ -560,8 +709,8 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
 
   // ── Execute swap ──
   const handleSwap = async () => {
-    if (!aggregatorRef.current || quotes.length === 0) return;
-    const quote = quotes[selectedQuoteIdx];
+    if (!aggregatorRef.current || allQuotes.length === 0) return;
+    const quote = selectedQuote;
     if (!quote) return;
 
     setSwapping(true);
@@ -647,9 +796,6 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
       setSwapping(false);
     }
   };
-
-  // ── Selected quote ──
-  const selectedQuote = quotes[selectedQuoteIdx];
 
   // ── USD value computations ──
   const inputUsdValue = (inputAmountStr && inputUsdPrice !== null)
@@ -999,27 +1145,27 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
         )}
 
         {/* ─── Quotes list ─── */}
-        {quotes.length > 0 && (
+        {allQuotes.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{
               fontSize: 13, color: theme.colors.mutedText, fontWeight: 500,
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             }}>
-              <span>Quotes ({quotes.length})</span>
-              {loadingQuotes && (
-                <span style={{ fontSize: 11, opacity: 0.7 }}>Refreshing...</span>
-              )}
+              <span>Quotes ({allQuotes.length})</span>
+              <span style={{ fontSize: 11, opacity: 0.7 }}>
+                {loadingSplit ? 'Finding best split...' : loadingQuotes ? 'Refreshing...' : ''}
+              </span>
             </div>
-            {quotes.map((q, i) => (
+            {allQuotes.map((q, i) => (
               <QuoteCard
-                key={`${q.dexId}-${i}`}
+                key={q.dexId}
                 quote={q}
-                selected={i === selectedQuoteIdx}
-                onSelect={() => setSelectedQuoteIdx(i)}
+                selected={selectedQuote?.dexId === q.dexId}
+                onSelect={() => setSelectedDexId(q.dexId)}
                 inputDecimals={inputTokenInfo?.decimals || 8}
                 outputDecimals={outputTokenInfo?.decimals || 8}
                 outputUsdPrice={outputUsdPrice}
-                isBest={i === 0 && quotes.length > 1}
+                isBest={i === 0 && allQuotes.length > 1}
               />
             ))}
           </div>
@@ -1035,7 +1181,8 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
         )}
 
         {/* ─── Progress panel ─── */}
-        {progress && <ProgressPanel progress={progress} />}
+        {progress && progress.isSplit && <SplitProgressPanel progress={progress} />}
+        {progress && !progress.isSplit && <ProgressPanel progress={progress} />}
 
         {/* ─── Result ─── */}
         {result && result.success && outputTokenInfo && (
@@ -1048,7 +1195,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
               fontSize: 15, fontWeight: 700, color: theme.colors.success,
               marginBottom: 4,
             }}>
-              Swap successful!
+              {result.isSplit ? 'Split swap successful!' : 'Swap successful!'}
             </div>
             <div style={{ fontSize: 13, color: theme.colors.secondaryText }}>
               Received: <strong>{formatAmount(result.amountOut, outputTokenInfo.decimals)} {outputTokenInfo.symbol}</strong>
@@ -1058,6 +1205,51 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
                 </span>
               )}
             </div>
+            {result.isSplit && result.legs && (
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 6, fontSize: 11, color: theme.colors.mutedText }}>
+                {result.legs.map(leg => (
+                  <span key={leg.dexId}>
+                    {leg.dexId === 'icpswap' ? 'ICPSwap' : 'Kong'}:{' '}
+                    <strong style={{ color: theme.colors.secondaryText }}>
+                      {formatAmount(leg.amountOut, outputTokenInfo.decimals)}
+                    </strong>
+                    {!leg.success && <span style={{ color: theme.colors.error }}> (failed)</span>}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {/* Partial split failure */}
+        {result && !result.success && result.isSplit && outputTokenInfo && (
+          <div style={{
+            textAlign: 'center', padding: '14px 16px', borderRadius: 12,
+            background: 'rgba(231, 76, 60, 0.06)',
+            border: `1px solid ${theme.colors.error}40`,
+          }}>
+            <div style={{
+              fontSize: 15, fontWeight: 700, color: theme.colors.error,
+              marginBottom: 4,
+            }}>
+              Split swap partially failed
+            </div>
+            <div style={{ fontSize: 13, color: theme.colors.secondaryText }}>
+              {result.amountOut > 0n
+                ? <>Received: <strong>{formatAmount(result.amountOut, outputTokenInfo.decimals)} {outputTokenInfo.symbol}</strong> (partial)</>
+                : 'No output received'}
+            </div>
+            {result.legs && (
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 6, fontSize: 11, color: theme.colors.mutedText }}>
+                {result.legs.map(leg => (
+                  <span key={leg.dexId}>
+                    {leg.dexId === 'icpswap' ? 'ICPSwap' : 'Kong'}:{' '}
+                    {leg.success
+                      ? <strong style={{ color: theme.colors.success }}>{formatAmount(leg.amountOut, outputTokenInfo.decimals)}</strong>
+                      : <span style={{ color: theme.colors.error }}>failed{leg.error ? ` — ${leg.error}` : ''}</span>}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -1086,7 +1278,8 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
            swapping ? 'Swapping...' :
            !inputToken || !outputToken ? 'Select Tokens' :
            !inputAmountStr ? 'Enter Amount' :
-           quotes.length === 0 ? (loadingQuotes ? 'Loading...' : 'No Quotes') :
+           allQuotes.length === 0 ? (loadingQuotes ? 'Loading...' : 'No Quotes') :
+           selectedQuote?.isSplitQuote ? 'Split Swap' :
            'Swap'}
         </button>
 
@@ -1096,8 +1289,20 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
             fontSize: 12, color: theme.colors.mutedText, lineHeight: 1.7,
             padding: '10px 14px', borderRadius: 12,
             background: theme.colors.primaryBg,
-            border: `1px solid ${theme.colors.border}`,
+            border: `1px solid ${selectedQuote.isSplitQuote ? '#8b5cf620' : theme.colors.border}`,
           }}>
+            {selectedQuote.isSplitQuote && (
+              <div style={{
+                display: 'flex', justifyContent: 'space-between',
+                paddingBottom: 6, marginBottom: 4,
+                borderBottom: `1px solid ${theme.colors.border}`,
+              }}>
+                <span style={{ fontWeight: 600, color: theme.colors.primaryText }}>Split Swap</span>
+                <span style={{ color: '#8b5cf6', fontWeight: 500 }}>
+                  {100 - selectedQuote.distribution}% ICPSwap / {selectedQuote.distribution}% Kong
+                </span>
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span>Rate</span>
               <span style={{ color: theme.colors.secondaryText }}>
@@ -1108,7 +1313,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
               </span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>Price impact</span>
+              <span>Price impact{selectedQuote.isSplitQuote ? ' (worst leg)' : ''}</span>
               <span style={{ color: selectedQuote.priceImpact > 0.05 ? theme.colors.error : theme.colors.secondaryText }}>
                 {(selectedQuote.priceImpact * 100).toFixed(2)}%
               </span>
@@ -1137,8 +1342,18 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span>Standard</span>
-              <span style={{ color: theme.colors.secondaryText }}>{selectedQuote.standard?.toUpperCase()}</span>
+              <span style={{ color: theme.colors.secondaryText }}>
+                {selectedQuote.isSplitQuote ? 'MIXED' : selectedQuote.standard?.toUpperCase()}
+              </span>
             </div>
+            {selectedQuote.isSplitQuote && (
+              <div style={{
+                marginTop: 6, paddingTop: 6, borderTop: `1px solid ${theme.colors.border}`,
+                fontSize: 11, color: theme.colors.mutedText, opacity: 0.8,
+              }}>
+                Both legs execute in parallel. If one leg fails, the other may still succeed (partial fill).
+              </div>
+            )}
           </div>
         )}
       </div>
