@@ -134,7 +134,7 @@ function Users() {
                             </div>
                             <div>
                                 <h1 style={{ color: theme.colors.primaryText, fontSize: '1.75rem', fontWeight: '700', margin: 0 }}>
-                                    Named Users
+                                    User Explorer
                                 </h1>
                                 <p style={{ color: theme.colors.secondaryText, fontSize: '0.95rem', margin: '0.25rem 0 0 0' }}>
                                     Browse all principals with public names or nicknames
