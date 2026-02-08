@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../AuthContext';
 import { useSns } from '../contexts/SnsContext';
 import { useForum } from '../contexts/ForumContext';
-import { useSearchParams, Link, useNavigate, useLocation } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 import { getPrincipalName, setPrincipalName, setPrincipalNickname, getPrincipalNickname, getPostsByUser, getRepliesToUser, getThreadsByUser, getPostsByThread } from '../utils/BackendUtils';
@@ -128,8 +128,6 @@ export default function PrincipalPage() {
     const { createForumActor } = useForum();
     const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
-    const { pathname } = useLocation();
-    const isUserPage = pathname === '/user';
     const [principalInfo, setPrincipalInfo] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -1569,68 +1567,23 @@ export default function PrincipalPage() {
             
             <div style={{ maxWidth: '1200px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', marginBottom: '1rem' }}>
-                    {/* SNS Logo - hidden on /user page */}
-                    {!isUserPage && (
-                        <div style={{
-                            width: '56px',
-                            height: '56px',
-                            minWidth: '56px',
-                            maxWidth: '56px',
-                            flexShrink: 0,
-                            borderRadius: '14px',
-                            overflow: 'hidden'
-                        }}>
-                            {loadingLogo ? (
-                                <div style={{
-                                    width: '100%',
-                                    height: '100%',
-                                    background: theme.colors.tertiaryBg,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center'
-                                }}>
-                                    <span className="principal-pulse" style={{ color: theme.colors.mutedText }}>...</span>
-                                </div>
-                            ) : snsLogo ? (
-                                <img 
-                                    src={snsLogo} 
-                                    alt={snsInfo?.name || 'SNS'} 
-                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                                />
-                            ) : (
-                                <div style={{
-                                    width: '100%',
-                                    height: '100%',
-                                    background: `linear-gradient(135deg, ${principalPrimary}, ${principalSecondary})`,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    boxShadow: `0 4px 20px ${principalPrimary}40`
-                                }}>
-                                    <FaUser size={24} color="white" />
-                                </div>
-                            )}
-                        </div>
-                    )}
-                    {/* User icon on /user page */}
-                    {isUserPage && (
-                        <div style={{
-                            width: '56px',
-                            height: '56px',
-                            minWidth: '56px',
-                            maxWidth: '56px',
-                            flexShrink: 0,
-                            borderRadius: '14px',
-                            overflow: 'hidden',
-                            background: `linear-gradient(135deg, ${principalPrimary}, ${principalSecondary})`,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            boxShadow: `0 4px 20px ${principalPrimary}40`
-                        }}>
-                            <FaUser size={24} color="white" />
-                        </div>
-                    )}
+                    {/* User icon - same header for both /user and /principal */}
+                    <div style={{
+                        width: '56px',
+                        height: '56px',
+                        minWidth: '56px',
+                        maxWidth: '56px',
+                        flexShrink: 0,
+                        borderRadius: '14px',
+                        overflow: 'hidden',
+                        background: `linear-gradient(135deg, ${principalPrimary}, ${principalSecondary})`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: `0 4px 20px ${principalPrimary}40`
+                    }}>
+                        <FaUser size={24} color="white" />
+                    </div>
                     
                     <div style={{ flex: 1, minWidth: 0 }}>
                         <h1 style={{ 
@@ -1643,7 +1596,7 @@ export default function PrincipalPage() {
                             gap: '12px',
                             flexWrap: 'wrap'
                         }}>
-                            {isUserPage ? 'User Explorer' : (snsInfo ? `${snsInfo.name} ` : '') + 'User Explorer'}
+                            User Explorer
                         </h1>
                         <p style={{ 
                             color: theme.colors.secondaryText, 
@@ -1655,33 +1608,6 @@ export default function PrincipalPage() {
                     </div>
                 </div>
                 
-                {/* Quick Stats Row - hide SNS context on /user page */}
-                <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
-                    {snsInfo && !isUserPage && (
-                        <div style={{ 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            gap: '8px',
-                            color: theme.colors.secondaryText,
-                            fontSize: '0.9rem'
-                        }}>
-                            <FaNetworkWired style={{ color: principalPrimary }} />
-                            <span>Viewing <strong style={{ color: theme.colors.primaryText }}>{snsInfo.name}</strong> context</span>
-                        </div>
-                    )}
-                    {tokenSymbol && tokenSymbol !== 'SNS' && !isUserPage && (
-                        <div style={{ 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            gap: '8px',
-                            color: theme.colors.secondaryText,
-                            fontSize: '0.9rem'
-                        }}>
-                            <FaCoins style={{ color: principalAccent }} />
-                            <span><strong style={{ color: theme.colors.primaryText }}>{tokenSymbol}</strong> token</span>
-                        </div>
-                    )}
-                </div>
             </div>
         </div>
     );
@@ -2034,22 +1960,23 @@ export default function PrincipalPage() {
                                             flexWrap: 'wrap',
                                             justifyContent: 'space-between'
                                         }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                                                <h2 style={{ 
-                                                    color: theme.colors.primaryText,
-                                                    margin: '0',
-                                                    fontSize: '1.5rem',
-                                                    fontWeight: '700',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '0.5rem'
-                                                }}>
-                                                    {principalInfo?.name || principalNames?.get(stablePrincipalId.current?.toString() || '') || (isCanisterPrincipal(stablePrincipalId.current?.toString() || '') ? 'Canister' : 'Anonymous')}
-                                                    {principalInfo?.isVerified && (
-                                                        <FaCheckCircle size={16} color={principalPrimary} title="Verified name" />
-                                                    )}
-                                                </h2>
-                                                {isCanisterPrincipal(stablePrincipalId.current?.toString() || '') && (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                                                    <h2 style={{ 
+                                                        color: theme.colors.primaryText,
+                                                        margin: '0',
+                                                        fontSize: '1.5rem',
+                                                        fontWeight: '700',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.5rem'
+                                                    }}>
+                                                        {principalInfo?.name || principalNames?.get(stablePrincipalId.current?.toString() || '') || (isCanisterPrincipal(stablePrincipalId.current?.toString() || '') ? 'Canister' : 'Anonymous')}
+                                                        {principalInfo?.isVerified && (
+                                                            <FaCheckCircle size={16} color={principalPrimary} title="Verified name" />
+                                                        )}
+                                                    </h2>
+                                                    {isCanisterPrincipal(stablePrincipalId.current?.toString() || '') && (
                                                     <span style={{
                                                         background: `${principalAccent}20`,
                                                         color: principalAccent,
@@ -2064,6 +1991,16 @@ export default function PrincipalPage() {
                                                         <FaCube size={10} />
                                                         Canister
                                                     </span>
+                                                )}
+                                                </div>
+                                                {(principalInfo?.nickname || principalNicknames?.get(stablePrincipalId.current?.toString() || '')) && (
+                                                    <div style={{ 
+                                                        color: theme.colors.mutedText, 
+                                                        fontSize: '0.95rem', 
+                                                        fontStyle: 'italic' 
+                                                    }}>
+                                                        "{principalInfo?.nickname || principalNicknames?.get(stablePrincipalId.current?.toString() || '')}"
+                                                    </div>
                                                 )}
                                             </div>
                                             <span style={{
