@@ -554,6 +554,79 @@ function SplitProgressPanel({ progress }) {
   );
 }
 
+function SplitTradeProgressPanel({ progress }) {
+  if (!progress || !progress.isSplitTrade || !progress.legs) return null;
+  const legs = progress.legs; // object keyed by leg ID
+
+  const allDone = Object.values(legs).every(l => l.status === 'done');
+  const anyFailed = Object.values(legs).some(l => l.status === 'failed');
+
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 10,
+      padding: '14px 16px', borderRadius: 12,
+      background: anyFailed ? 'rgba(231, 76, 60, 0.06)' : allDone ? 'rgba(46, 204, 113, 0.06)' : 'var(--color-primaryBg)',
+      border: `1px solid ${anyFailed ? 'var(--color-error)' : allDone ? 'var(--color-success)' : 'var(--color-border)'}`,
+    }}>
+      <div style={{
+        fontSize: 13, fontWeight: 600, color: 'var(--color-primaryText)',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      }}>
+        <span>Split Trade Progress</span>
+        <span style={{ fontSize: 11, color: 'var(--color-mutedText)', fontWeight: 400 }}>
+          {allDone ? 'Done' : anyFailed ? 'Partial failure' : 'In progress...'}
+        </span>
+      </div>
+      {Object.entries(legs).map(([key, leg]) => {
+        const isDone = leg.status === 'done';
+        const isFailed = leg.status === 'failed';
+        const isActive = leg.status === 'active';
+        const isPending = leg.status === 'pending';
+
+        const color = isFailed ? 'var(--color-error)'
+          : isDone ? 'var(--color-success)'
+          : leg.type === 'buyout' ? '#f39c12'
+          : `linear-gradient(90deg, ${SWAP_BLUE}, ${SWAP_PURPLE})`;
+
+        return (
+          <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+              <span style={{
+                fontWeight: 500,
+                color: isPending ? 'var(--color-mutedText)' : 'var(--color-primaryText)',
+              }}>
+                {leg.label}
+              </span>
+              <span style={{
+                color: isDone ? 'var(--color-success)' : isFailed ? 'var(--color-error)' : 'var(--color-mutedText)',
+                fontSize: 11,
+              }}>
+                {isDone ? '✓ Done' : isFailed ? '✕ Failed' : isActive ? 'Running...' : 'Pending'}
+              </span>
+            </div>
+            <div style={{
+              height: 3, borderRadius: 2, background: 'var(--color-border)', overflow: 'hidden',
+            }}>
+              <div style={{
+                height: '100%', borderRadius: 2,
+                width: isDone ? '100%' : isFailed ? '100%' : isActive ? '60%' : '0%',
+                background: typeof color === 'string' && !color.startsWith('linear') ? color : color,
+                transition: 'width 0.4s ease',
+              }} />
+            </div>
+            {isActive && leg.message && (
+              <div style={{ fontSize: 11, color: 'var(--color-mutedText)' }}>{leg.message}</div>
+            )}
+            {isFailed && leg.message && (
+              <div style={{ fontSize: 11, color: 'var(--color-error)' }}>{leg.message}</div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Main Widget ────────────────────────────────────────────────────────────
 
 export default function SwapWidget({ initialInput, initialOutput, initialOutputAmount, onClose, onInputTokenChange, onOutputTokenChange, onSwapComplete }) {
@@ -1323,11 +1396,15 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
 
       if (quote.isAuctionQuote) {
         // ── Single auction buyout ──
-        setProgress({ step: 'RESERVING', message: 'Starting buyout...', isBuyout: true });
+        setProgress({ step: 'RESERVING', message: 'Starting buyout...', isBuyout: true, stepIndex: 0, totalSteps: 3 });
         const buyoutResult = await executeBuyout(
           quote.auctionOffer,
           quote.auctionBuyoutPrice,
-          setProgress,
+          (p) => setProgress(prev => ({
+            ...prev, ...p, isBuyout: true,
+            stepIndex: p.step === 'RESERVING' ? 0 : p.step === 'TRANSFERRING' ? 1 : 2,
+            totalSteps: 3,
+          })),
         );
         res = {
           success: true,
@@ -1337,72 +1414,99 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
         };
 
       } else if (quote.isSplitTrade) {
-        // ── Split Trade: execute buyouts in sequence, then swap remainder ──
-        let totalOut = 0n;
-        const legs = [];
+        // ── Split Trade: execute buyouts AND swap in PARALLEL ──
+        const splitTradeLegs = {};
 
-        // Execute buyouts
-        for (let i = 0; i < quote.usedBuyouts.length; i++) {
-          const b = quote.usedBuyouts[i];
-          setProgress({
-            step: 'BUYOUT',
-            message: `Buying from Sneedex #${Number(b.offer.id)} (${i + 1}/${quote.usedBuyouts.length})...`,
-            isSplitTrade: true,
-            buyoutIndex: i,
-            totalBuyouts: quote.usedBuyouts.length,
-            hasSwapLeg: quote.swapLegRemaining > 0n,
+        // Initialize progress for all legs
+        const initLegs = () => {
+          const l = {};
+          quote.usedBuyouts.forEach((b, i) => {
+            l[`buyout-${Number(b.offer.id)}`] = {
+              label: `Sneedex #${Number(b.offer.id)}`,
+              status: 'pending', message: 'Waiting...', type: 'buyout',
+            };
           });
-          try {
-            await executeBuyout(b.offer, b.buyoutPrice, (p) => {
-              setProgress(prev => ({ ...prev, ...p }));
-            });
-            totalOut += b.outputAmount;
-            legs.push({ type: 'buyout', offerId: Number(b.offer.id), success: true, amountOut: b.outputAmount });
-          } catch (e) {
-            legs.push({ type: 'buyout', offerId: Number(b.offer.id), success: false, error: e.message, amountOut: 0n });
+          if (quote.swapLegRemaining > 0n) {
+            l['swap'] = {
+              label: quote.swapLegQuote?.dexName || 'DEX Swap',
+              status: 'pending', message: 'Waiting...', type: 'swap',
+            };
           }
-        }
+          return l;
+        };
+        const legStatus = initLegs();
 
-        // Execute swap for remainder
-        if (quote.swapLegRemaining > 0n && quote.swapLegQuote) {
+        const updateLegProgress = (legKey, update) => {
+          legStatus[legKey] = { ...legStatus[legKey], ...update };
           setProgress({
-            step: 'SWAPPING',
-            message: `Swapping remaining ${formatAmount(quote.swapLegRemaining, inputTokenInfo?.decimals || 8)} via ${quote.swapLegQuote.dexName}...`,
             isSplitTrade: true,
+            legs: { ...legStatus },
           });
+        };
 
-          try {
-            // Fetch a fresh quote for the actual remainder amount so expectedOutput
-            // and minimumOutput are accurate (not the full-amount quote's values)
-            const freshQuotes = await aggregatorRef.current.getQuotes({
-              inputToken: quote.inputToken,
-              outputToken: quote.outputToken,
-              amountIn: quote.swapLegRemaining,
-            });
-            // Prefer the same DEX, fall back to best available
-            const preferredDexId = quote.swapLegQuote.dexId;
-            const remainderQuote = freshQuotes.find(q => q.dexId === preferredDexId)
-              || freshQuotes[0];
+        setProgress({ isSplitTrade: true, legs: { ...legStatus } });
 
-            if (!remainderQuote) {
-              throw new Error('No swap quote available for remainder');
+        // Build all tasks to run in parallel
+        const tasks = [];
+
+        // Buyout tasks
+        for (const b of quote.usedBuyouts) {
+          const legKey = `buyout-${Number(b.offer.id)}`;
+          tasks.push((async () => {
+            try {
+              updateLegProgress(legKey, { status: 'active', message: 'Reserving...' });
+              await executeBuyout(b.offer, b.buyoutPrice, (p) => {
+                updateLegProgress(legKey, { status: 'active', message: p.message });
+              });
+              updateLegProgress(legKey, { status: 'done', message: 'Buyout complete' });
+              return { type: 'buyout', offerId: Number(b.offer.id), success: true, amountOut: b.outputAmount };
+            } catch (e) {
+              updateLegProgress(legKey, { status: 'failed', message: e.message });
+              return { type: 'buyout', offerId: Number(b.offer.id), success: false, error: e.message, amountOut: 0n };
             }
-
-            const swapRes = await aggregatorRef.current.swap({
-              quote: remainderQuote,
-              slippage,
-              onProgress: (p) => {
-                setProgress(prev => ({ ...prev, ...p, isSplitTrade: true }));
-              },
-            });
-            totalOut += swapRes.amountOut || 0n;
-            legs.push({ type: 'swap', dexId: remainderQuote.dexId, success: swapRes.success !== false, amountOut: swapRes.amountOut || 0n });
-          } catch (e) {
-            legs.push({ type: 'swap', dexId: quote.swapLegQuote.dexId, success: false, error: e.message, amountOut: 0n });
-          }
+          })());
         }
 
+        // Swap task (runs in parallel with buyouts)
+        if (quote.swapLegRemaining > 0n && quote.swapLegQuote) {
+          tasks.push((async () => {
+            const legKey = 'swap';
+            try {
+              updateLegProgress(legKey, { status: 'active', message: 'Getting fresh quote...' });
+              const freshQuotes = await aggregatorRef.current.getQuotes({
+                inputToken: quote.inputToken,
+                outputToken: quote.outputToken,
+                amountIn: quote.swapLegRemaining,
+              });
+              const preferredDexId = quote.swapLegQuote.dexId;
+              const remainderQuote = freshQuotes.find(q => q.dexId === preferredDexId)
+                || freshQuotes[0];
+
+              if (!remainderQuote) throw new Error('No swap quote available for remainder');
+
+              updateLegProgress(legKey, { status: 'active', message: `Swapping via ${remainderQuote.dexName}...` });
+              const swapRes = await aggregatorRef.current.swap({
+                quote: remainderQuote,
+                slippage,
+                onProgress: (p) => {
+                  updateLegProgress(legKey, { status: 'active', message: p.message || `${p.step}...` });
+                },
+              });
+              updateLegProgress(legKey, { status: 'done', message: 'Swap complete' });
+              return { type: 'swap', dexId: remainderQuote.dexId, success: swapRes.success !== false, amountOut: swapRes.amountOut || 0n };
+            } catch (e) {
+              updateLegProgress(legKey, { status: 'failed', message: e.message });
+              return { type: 'swap', dexId: quote.swapLegQuote.dexId, success: false, error: e.message, amountOut: 0n };
+            }
+          })());
+        }
+
+        // Run ALL legs in parallel
+        const results = await Promise.allSettled(tasks);
+        const legs = results.map(r => r.status === 'fulfilled' ? r.value : { success: false, error: r.reason?.message, amountOut: 0n });
+        const totalOut = legs.reduce((sum, l) => sum + (l.amountOut || 0n), 0n);
         const allSuccess = legs.every(l => l.success);
+
         res = {
           success: allSuccess,
           amountOut: totalOut,
@@ -1992,8 +2096,9 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
         )}
 
         {/* ─── Progress panel ─── */}
-        {progress && progress.isSplit && <SplitProgressPanel progress={progress} />}
-        {progress && !progress.isSplit && <ProgressPanel progress={progress} />}
+        {progress && progress.isSplitTrade && <SplitTradeProgressPanel progress={progress} />}
+        {progress && progress.isSplit && !progress.isSplitTrade && <SplitProgressPanel progress={progress} />}
+        {progress && !progress.isSplit && !progress.isSplitTrade && <ProgressPanel progress={progress} />}
 
         {/* ─── Result ─── */}
         {result && result.success && outputTokenInfo && (
