@@ -50,7 +50,8 @@ function Users() {
             return getPrincipalDisplayInfoFromContext(
                 Principal.fromText(principalStr),
                 principalNames,
-                principalNicknames
+                principalNicknames,
+                verifiedNames
             );
         } catch {
             return null;

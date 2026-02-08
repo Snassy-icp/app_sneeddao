@@ -17,7 +17,7 @@ function Canisters() {
     const { theme } = useTheme();
     const { identity, isAuthenticated } = useAuth();
     const navigate = useNavigate();
-    const { principalNames, principalNicknames } = useNaming();
+    const { principalNames, principalNicknames, verifiedNames } = useNaming();
 
     const [searchTerm, setSearchTerm] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
@@ -50,7 +50,8 @@ function Canisters() {
             return getPrincipalDisplayInfoFromContext(
                 Principal.fromText(principalStr),
                 principalNames,
-                principalNicknames
+                principalNicknames,
+                verifiedNames
             );
         } catch {
             return null;

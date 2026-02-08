@@ -88,14 +88,16 @@ export const getPrincipalColor = (principal) => {
 };
 
 // Get display info from naming context (optimized version)
-export const getPrincipalDisplayInfoFromContext = (principal, principalNames, principalNicknames) => {
+// verifiedNames is optional - when provided (e.g. from useNaming()), isVerified will be set correctly
+export const getPrincipalDisplayInfoFromContext = (principal, principalNames, principalNicknames, verifiedNames) => {
     if (!principal) return { name: null, nickname: null, isVerified: false };
     
-    const principalStr = principal.toString();
+    const principalStr = typeof principal === 'string' ? principal : principal.toString();
     const name = principalNames?.get(principalStr) || null;
     const nickname = principalNicknames?.get(principalStr) || null;
+    const isVerified = verifiedNames?.get(principalStr) || false;
     
-    return { name, nickname, isVerified: false }; // Note: verification status not available in context yet
+    return { name, nickname, isVerified };
 };
 
 // Get the display name for a principal, including name and verification status (fallback version)

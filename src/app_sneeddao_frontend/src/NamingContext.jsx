@@ -263,6 +263,39 @@ export function NamingProvider({ children }) {
         return merged;
     }, [principalNames, snsCacheVersion, whitelistCacheVersion]);
 
+    // Mark SNS canister names and whitelist ledger names as verified (they come from trusted sources)
+    const verifiedNamesWithSns = useMemo(() => {
+        const merged = new Map(verifiedNames);
+        const snses = getAllSnses() || [];
+        snses.forEach(sns => {
+            const entries = [
+                sns.canisters?.root,
+                sns.canisters?.governance,
+                sns.canisters?.ledger,
+                sns.canisters?.swap,
+                sns.canisters?.index,
+                ...(sns.canisters?.dapps || []),
+                ...(sns.canisters?.archives || []),
+            ];
+            entries.forEach(canisterId => {
+                if (canisterId) {
+                    const id = canisterId?.toString?.() ?? String(canisterId);
+                    if (!principalNames.has(id)) {
+                        merged.set(id, true);
+                    }
+                }
+            });
+        });
+        const whitelist = getCachedWhitelistTokens();
+        whitelist.forEach(token => {
+            const ledgerId = token.ledger_id?.toString?.() ?? String(token.ledger_id);
+            if (ledgerId && !principalNames.has(ledgerId)) {
+                merged.set(ledgerId, true);
+            }
+        });
+        return merged;
+    }, [verifiedNames, principalNames, snsCacheVersion, whitelistCacheVersion]);
+
     const getNeuronDisplayName = (neuronId, snsRoot) => {
         if (!neuronId || !snsRoot) return null;
         const mapKey = `${snsRoot}:${neuronId}`;
@@ -287,7 +320,7 @@ export function NamingProvider({ children }) {
             neuronNicknames,
             principalNames: principalNamesWithSns,
             principalNicknames,
-            verifiedNames,
+            verifiedNames: verifiedNamesWithSns,
             loading,
             fetchAllNames,
             getNeuronDisplayName,
