@@ -6188,6 +6188,7 @@ function SneedexOffer() {
             <SwapModal
                 isOpen={swapOpen}
                 onClose={() => setSwapOpen(false)}
+                initialInput="ryjl3-tyaaa-aaaaa-aaaba-cai"
                 initialOutput={offer ? offer.price_token_ledger.toString() : ''}
                 onSwapComplete={() => {
                     // Refresh user balance after swap
