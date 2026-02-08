@@ -131,6 +131,7 @@ const SwapStep = {
   DEPOSITING:         'depositing',
   SWAPPING:           'swapping',
   WITHDRAWING:        'withdrawing',
+  CLAIMING:           'claiming',       // Kong: claiming output after swap
   COMPLETE:           'complete',
   FAILED:             'failed',
 };
@@ -590,36 +591,62 @@ getOutputFeeCount('icrc2') → 1   // withdraw
 
 #### ICPSwap Canister Methods Used
 
-**Factory canister** (`4mmnk-kiaaa-aaaag-qbllq-cai`):
+**Factory canister** (`4mmnk-kiaaa-aaaag-qbllq-cai`) — DID: `src/external/icp_swap_factory/`:
 ```
-getPool : ({ token0: Token, token1: Token, fee: Nat }) → Result<PoolData>
-getPools : () → Result<[PoolData]>    // or paginated variant
+getPool  : (GetPoolArgs) → Result<PoolData>    // query — look up one pool
+getPools : ()            → Result<vec PoolData> // query — bulk-load all pools
+
+GetPoolArgs = { fee: Nat, token0: Token, token1: Token }
+Token       = { address: Text, standard: Text }
+PoolData    = { canisterId: Principal, fee: Nat, key: Text,
+                tickSpacing: Int, token0: Token, token1: Token }
 ```
 
-**Pool canister** (per pair):
+**Pool canister** (per pair) — DID: `src/external/icp_swap/`:
 ```
-metadata  : () → Result<PoolMetadata>       // contains sqrtPriceX96, token0, token1, fee, liquidity
-quote     : (SwapArgs) → Result<Nat>        // query — returns expected output
-swap      : (SwapArgs) → Result<Nat>        // execute swap
-deposit   : (DepositArgs) → Result<Nat>     // ICRC1 deposit from subaccount
-depositFrom : (DepositArgs) → Result<Nat>   // ICRC2 deposit via transferFrom
-withdraw  : (WithdrawArgs) → Result<Nat>    // withdraw output tokens
+// ── Queries ───────────────────────────────────────────────
+metadata     : () → Result<PoolMetadata>   // sqrtPriceX96, token0, token1, fee, liquidity, tick
+quote        : (SwapArgs) → Result<Nat>    // query — expected output
+quoteForAll  : (SwapArgs) → Result<Nat>    // query — quote ignoring whitelist
 
-// New combined methods (newer pool canisters):
-depositAndSwap     : (...) → Result<Nat>    // ICRC1: deposit + swap + withdraw
-depositFromAndSwap : (...) → Result<Nat>    // ICRC2: transferFrom + swap + withdraw
+// ── Old multi-step swap ───────────────────────────────────
+deposit      : (DepositArgs) → Result<Nat>     // ICRC1: deposit from user's subaccount
+depositFrom  : (DepositArgs) → Result<Nat>     // ICRC2: deposit via transferFrom
+swap         : (SwapArgs)    → Result<Nat>     // execute swap on deposited balance
+withdraw     : (WithdrawArgs) → Result<Nat>    // withdraw output to user
+withdrawToSubaccount : (WithdrawToSubaccountArgs) → Result<Nat>
+
+// ── New combined one-step swap (confirmed in DID) ─────────
+depositAndSwap     : (DepositAndSwapArgs) → Result<Nat>   // ICRC1: deposit + swap + withdraw
+depositFromAndSwap : (DepositAndSwapArgs) → Result<Nat>   // ICRC2: transferFrom + swap + withdraw
+
+// ── Helpers ───────────────────────────────────────────────
+getCachedTokenFee  : () → { token0Fee: Nat, token1Fee: Nat }  // query — cached token fees
+getTransactions    : () → Result<vec Transaction>               // query — tx history
+getTransactionsByOwner : (Principal) → Result<vec Transaction>  // query
+getUserUnusedBalance   : (Principal) → Result<{ balance0: Nat, balance1: Nat }> // query
 ```
 
-Where:
+Types:
 ```
-SwapArgs    = { amountIn: Text, zeroForOne: Bool, amountOutMinimum: Text }
-DepositArgs = { token: Text, amount: Nat, fee: Nat }
-WithdrawArgs= { token: Text, amount: Nat, fee: Nat }
+SwapArgs            = { amountIn: Text, zeroForOne: Bool, amountOutMinimum: Text }
+DepositArgs         = { token: Text, amount: Nat, fee: Nat }
+WithdrawArgs        = { token: Text, amount: Nat, fee: Nat }
+WithdrawToSubaccountArgs = { token: Text, amount: Nat, fee: Nat, subaccount: Blob }
+DepositAndSwapArgs  = { amountIn: Text, zeroForOne: Bool, amountOutMinimum: Text,
+                        tokenInFee: Nat, tokenOutFee: Nat }
+PoolMetadata        = { fee: Nat, key: Text, sqrtPriceX96: Nat, tick: Int,
+                        liquidity: Nat, token0: Token, token1: Token,
+                        maxLiquidityPerTick: Nat, nextPositionId: Nat }
 ```
+
+> **`DepositAndSwapArgs` confirmed:** The new combined methods take `tokenInFee` and `tokenOutFee` explicitly — the pool uses these to handle the internal deposit and withdrawal fee deductions. No separate slippage field; slippage is still baked into `amountOutMinimum`.
+
+> **`OneStepSwapInfo`:** The transaction log for combined swaps includes sub-statuses: `Created → DepositTransferCompleted → DepositCreditCompleted → PreSwapCompleted → SwapCompleted → WithdrawCreditCompleted → Completed`. This can be useful for debugging failed swaps via `getTransactionsByOwner`.
 
 > **Note on `zeroForOne`:** ICPSwap sorts tokens lexicographically. `token0` has the smaller canister ID string. `zeroForOne = true` means swapping token0 → token1. Our implementation must sort and set this correctly.
 
-> **Note on `depositAndSwap` / `depositFromAndSwap`:** These methods are on newer pool canisters and may not exist on older pools. The implementation should detect support (try-catch or version check) and fall back to the old multi-step API if they are unavailable. We will need to add these methods to our ICPSwap DID file (`src/external/icp_swap/icp_swap.did.js`).
+> **Note on old vs new pool canisters:** Both `depositAndSwap` and `depositFromAndSwap` are now confirmed in the updated DID. However, older deployed pool canisters may not support them. The implementation should try the new API first and fall back to the old multi-step API on failure.
 
 ---
 
@@ -628,8 +655,10 @@ WithdrawArgs= { token: Text, amount: Nat, fee: Nat }
 ### 7.1 Constants
 
 ```js
-const KONG_SWAP_CANISTER = '2ipq2-uqaaa-aaaar-qailq-cai';  // Verify current canister ID
+const KONG_SWAP_CANISTER = '2ipq2-uqaaa-aaaar-qailq-cai';  // Confirmed — DID at src/external/kong/
 ```
+
+> **File naming issue:** `src/external/kong/index.js` imports from `./kongswap.did.js` but the actual DID file is named `kong.did.js`. Either rename the file to `kongswap.did.js` or update the import in `index.js`. Must fix before use.
 
 ### 7.2 Transaction Recovery Cache
 
@@ -702,58 +731,148 @@ class KongDex extends BaseDex {
 
 ### 7.4 Kong Fee Model
 
+Kong swap results include `claim_ids`. After a swap, output tokens are held as "claims" which must be claimed by the user via `claim(claim_id)`. The claim triggers a transfer to the user, which costs 1 output token fee (the `gas_fee` shown in `SwapTxReply`).
+
 | Standard | Step | Who pays | Cost |
 |----------|------|----------|------|
 | ICRC1 | `icrc1_transfer` to Kong canister (main account) | User | 1 × input fee |
 | ICRC1 | (no deposit step) | — | 0 |
-| ICRC1 | Output credited directly | — | 0 × output fee |
+| ICRC1 | `claim(claim_id)` — Kong sends output to user | Deducted from claim amount | 1 × output fee |
 | ICRC2 | `icrc2_approve` (if allowance insufficient) | User | 1 × input fee |
 | ICRC2 | Kong calls `icrc2_transfer_from` | Deducted from user balance | 1 × input fee |
-| ICRC2 | Output credited directly | — | 0 × output fee |
+| ICRC2 | `claim(claim_id)` — Kong sends output to user | Deducted from claim amount | 1 × output fee |
 
 **Summary:**
 
 ```js
 getInputFeeCount('icrc1')  → 1   // transfer only
 getInputFeeCount('icrc2')  → 2   // approve + transferFrom
-getOutputFeeCount('icrc1') → 0
-getOutputFeeCount('icrc2') → 0
+getOutputFeeCount('icrc1') → 1   // claim transfer
+getOutputFeeCount('icrc2') → 1   // claim transfer
 ```
 
-| Standard | Effective swap input | User balance cost |
-|----------|---------------------|-------------------|
-| ICRC1 | `amount` (Kong receives full amount) | `amount + 1 fee` |
-| ICRC2 | `amount` (Kong receives full amount) | `amount + 2 fees` |
+| Standard | Effective swap input | User balance cost | Output deduction |
+|----------|---------------------|-------------------|------------------|
+| ICRC1 | `amount` (Kong receives full amount) | `amount + 1 fee` | 1 × output fee |
+| ICRC2 | `amount` (Kong receives full amount) | `amount + 2 fees` | 1 × output fee |
 
-> **Note:** Kong ICRC1 is the most fee-efficient path — only 1 input fee, 0 output fees, and the full amount enters the swap.
+> **Note:** Kong ICRC1 is still the most fee-efficient input path (only 1 input fee and full amount enters swap), though both paths have 1 output fee for the claim transfer.
+
+> **Auto-claim vs manual claim:** The `SwapReply` includes `claim_ids`. If the list is non-empty, we should automatically call `claim(claim_id)` for each as part of the swap flow. If a claim fails (e.g. temporary issue), we should cache the unclaimed IDs so the user can retry later. The `claims(principal_id)` query can list all pending claims for recovery.
 
 ### 7.5 Kong — API Call Mapping
 
 | Aggregator method | Kong call (ICRC1) | Kong call (ICRC2) |
 |---|---|---|
-| `hasPair` | `kong.tokens()` + pair check, or `kong.quote(...)` | same |
-| `getPairsForToken` | `kong.tokens()` + filter | same |
-| `getSpotPrice` | `kong.quote(...)` with tiny amount (no dedicated spot price API) | same |
-| `getQuote` | `kong.swap_amounts(...)` or similar quote endpoint | same |
+| `hasPair` | `kong.pools(null)` + pair check | same |
+| `getPairsForToken` | `kong.pools(null)` + filter by `address_0`/`address_1` | same |
+| `getSpotPrice` | `kong.pools(symbol)` → `price` field (already a float64 spot price!) | same |
+| `getQuote` | `kong.swap_amounts(pay_token, pay_amount, receive_token)` | same |
 | `executeSwap` | 1. `ledger.icrc1_transfer(to: kong canister)` | 1. `ledger.icrc2_allowance(...)` |
 | | 2. **Immediately save block index to KongTxCache** | 2. `ledger.icrc2_approve(...)` (if needed) |
-| | 3. `kong.swap({ pay_tx_id: blockIndex, ... })` | 3. `kong.swap({ ... })` (Kong calls transferFrom) |
+| | 3. `kong.swap({ pay_tx_id: [{BlockIndex: blockIndex}], ... })` | 3. `kong.swap({ ... })` (Kong calls transferFrom) |
+| | 4. `kong.claim(claim_id)` for each `claim_ids` in result | 4. `kong.claim(claim_id)` for each `claim_ids` in result |
 
 #### Kong Canister Methods Used
 
-**Swap canister** (`2ipq2-uqaaa-aaaar-qailq-cai`):
+**Swap canister** (`2ipq2-uqaaa-aaaar-qailq-cai`) — DID: `src/external/kong/`:
+
 ```
-swap          : ({ pay_token: Text, pay_amount: Nat, receive_token: Text,
-                   receive_amount: Nat?, receive_address: Text?,
-                   pay_tx_id: Nat? }) → Result<SwapResult>
+// ── Queries ───────────────────────────────────────────────
+tokens       : (opt Text) → TokensResult      // query — all tokens (opt wildcard filter)
+pools        : (opt Text) → PoolsResult        // query — all pools (opt wildcard filter)
+swap_amounts : (Text, Nat, Text) → SwapAmountsResult  // query — quote: (pay_token, pay_amount, receive_token)
+claims       : (Text) → ClaimsResult           // query — pending claims for a principal_id
+requests     : (opt Nat64) → RequestsResult    // query — poll async request status
+get_user     : () → UserResult                 // query — user info & referral code
 
-swap_amounts  : ({ pay_token: Text, pay_amount: Nat,
-                   receive_token: Text }) → Result<QuoteResult>
-
-tokens        : () → Result<[TokenInfo]>
+// ── Mutations ─────────────────────────────────────────────
+swap         : (SwapArgs) → SwapResult         // execute swap
+swap_async   : (SwapArgs) → SwapAsyncResult    // async swap — returns request_id to poll
+claim        : (Nat64)    → ClaimResult        // claim output tokens after swap
 ```
 
-> **Note:** The exact Kong canister ID and method signatures need to be verified against their current deployed canister. We will need to create a DID file at `src/external/kong_swap/kong_swap.did.js`.
+Types:
+```
+TxId = variant { BlockIndex: Nat, TransactionId: Text }
+
+SwapArgs = {
+  pay_token:       Text,        // canister ID or "IC.symbol" format
+  pay_amount:      Nat,         // amount in smallest unit
+  pay_tx_id:       opt TxId,    // ICRC1: block index from transfer. ICRC2: omit (null)
+  receive_token:   Text,        // canister ID or "IC.symbol" format
+  receive_amount:  opt Nat,     // minimum acceptable output (slippage protection)
+  receive_address: opt Text,    // recipient (default: caller)
+  max_slippage:    opt Float64, // alternative slippage as percentage (e.g. 1.0 = 1%)
+  referred_by:     opt Text,    // referral code
+}
+
+SwapReply = {
+  tx_id:           Nat64,
+  request_id:      Nat64,
+  status:          Text,
+  pay_chain:       Text,        // "IC"
+  pay_symbol:      Text,
+  pay_address:     Text,        // canister ID
+  pay_amount:      Nat,
+  receive_chain:   Text,
+  receive_symbol:  Text,
+  receive_address: Text,
+  receive_amount:  Nat,         // actual output amount
+  mid_price:       Float64,     // spot/mid price
+  price:           Float64,     // execution price
+  slippage:        Float64,     // actual slippage that occurred
+  txs:             vec SwapTxReply,    // per-hop details (Kong routes internally!)
+  transfer_ids:    vec TransferIdReply,
+  claim_ids:       vec Nat64,          // MUST call claim() for each!
+  ts:              Nat64,
+}
+
+SwapTxReply = {
+  pool_symbol:     Text,        // e.g. "ICP_SNEED"
+  pay_chain/symbol/address/amount,
+  receive_chain/symbol/address/amount,
+  price:           Float64,
+  lp_fee:          Nat,         // LP fee for this hop
+  gas_fee:         Nat,         // gas/transfer fee for this hop
+}
+
+SwapAmountsReply = {
+  pay_chain/symbol/address:  Text,
+  pay_amount:      Nat,
+  receive_chain/symbol/address: Text,
+  receive_amount:  Nat,         // expected output
+  price:           Float64,     // execution price for this amount
+  mid_price:       Float64,     // spot/mid price (for price impact calc)
+  slippage:        Float64,     // predicted price impact
+  txs:             vec SwapAmountsTxReply,  // per-hop breakdown
+}
+
+ICTokenReply = {
+  token_id: Nat32, chain: Text, canister_id: Text,
+  name: Text, symbol: Text, decimals: Nat8, fee: Nat,
+  icrc1: Bool, icrc2: Bool, icrc3: Bool,     // ← standard support flags!
+  is_removed: Bool,
+}
+
+PoolReply = {
+  pool_id: Nat32, name: Text, symbol: Text,
+  chain_0/symbol_0/address_0: Text, balance_0: Nat, lp_fee_0: Nat,
+  chain_1/symbol_1/address_1: Text, balance_1: Nat, lp_fee_1: Nat,
+  price: Float64,                    // ← spot price directly available!
+  lp_fee_bps: Nat8,                  // LP fee in basis points
+  lp_token_symbol: Text,
+  is_removed: Bool,
+}
+```
+
+> **Key insight — Kong does its own multi-hop routing:** The `txs` array in both `SwapReply` and `SwapAmountsReply` shows per-hop details. If no direct pool exists for A→B, Kong automatically routes through intermediate tokens (e.g. A→ICP→B). This means we do NOT need to implement routing logic for Kong — it's built-in. We just need to surface the route info from `txs` to the UI.
+
+> **Key insight — Kong provides spot price directly:** `PoolReply.price` is the current spot price. And `SwapAmountsReply.mid_price` gives the mid-market price while `slippage` gives the predicted price impact. We can use these directly instead of computing them.
+
+> **Key insight — Kong token standard flags:** `ICTokenReply` includes `icrc1: Bool, icrc2: Bool` fields. We can use `tokens()` to determine which standards Kong supports per token, without needing to query the token ledger.
+
+> **Slippage on Kong:** Kong's `SwapArgs` has BOTH `receive_amount: opt Nat` (minimum output) AND `max_slippage: opt Float64` (percentage). You can use either or both. Our implementation should pass `receive_amount` as the computed minimum (expectedOutput × (1 - slippage)) for precision. We can also pass `max_slippage` as a safety net.
 
 ---
 
@@ -909,9 +1028,12 @@ For a swap of TokenA → TokenB:
 
 | Cache | Storage | Key | Injected by caller? | Used by |
 |-------|---------|-----|---------------------|---------|
-| Pool canister IDs | localStorage | `icpswap_pool_cache` | Yes (optional) | ICPSwapDex |
+| ICPSwap pool canister IDs | localStorage | `icpswap_pool_cache` | Yes (optional) | ICPSwapDex |
 | Token metadata | Caller's cache or internal Map | canisterId | Yes (optional) | DexAggregator, tokenStandard.js |
 | Kong pending TXs | localStorage | `kong_pending_tx` | Yes (optional) | KongDex |
+| Kong tokens list | Internal Map + TTL | `kong_tokens` | No | KongDex |
+| Kong pools list | Internal Map + TTL | `kong_pools` | No | KongDex |
+| Kong unclaimed IDs | localStorage | `kong_unclaimed` | No | KongDex |
 | Spot prices | Internal Map + TTL | `dexId:tokenA:tokenB` | No | DexAggregator |
 
 All caches follow the pattern:
@@ -944,18 +1066,20 @@ Each DEX implementation calls `onProgress` at each step. The progress object alw
 { step: COMPLETE, ... }
 ```
 
-### Kong ICRC1 — 2 steps
+### Kong ICRC1 — 3 steps
 ```
-{ step: TRANSFERRING, stepIndex: 0, totalSteps: 2, message: "Transferring tokens to KongSwap..." }
-{ step: SWAPPING,     stepIndex: 1, totalSteps: 2, message: "Executing swap..." }
+{ step: TRANSFERRING, stepIndex: 0, totalSteps: 3, message: "Transferring tokens to KongSwap..." }
+{ step: SWAPPING,     stepIndex: 1, totalSteps: 3, message: "Executing swap..." }
+{ step: CLAIMING,     stepIndex: 2, totalSteps: 3, message: "Claiming output tokens..." }
 { step: COMPLETE, ... }
 ```
 
-### Kong ICRC2 — 3 steps
+### Kong ICRC2 — 4 steps
 ```
-{ step: CHECKING_ALLOWANCE, stepIndex: 0, totalSteps: 3, message: "Checking approval..." }
-{ step: APPROVING,          stepIndex: 1, totalSteps: 3, message: "Approving token spend..." }
-{ step: SWAPPING,           stepIndex: 2, totalSteps: 3, message: "Executing swap..." }
+{ step: CHECKING_ALLOWANCE, stepIndex: 0, totalSteps: 4, message: "Checking approval..." }
+{ step: APPROVING,          stepIndex: 1, totalSteps: 4, message: "Approving token spend..." }  // skipped if sufficient
+{ step: SWAPPING,           stepIndex: 2, totalSteps: 4, message: "Executing swap..." }
+{ step: CLAIMING,           stepIndex: 3, totalSteps: 4, message: "Claiming output tokens..." }
 { step: COMPLETE, ... }
 ```
 
@@ -978,7 +1102,7 @@ For multi-hop, progress is reported per hop:
 
 ### Spot Price
 - **ICPSwap:** Use `pool.metadata()` → extract `sqrtPriceX96` → `price = (sqrtPriceX96 / 2^96)^2`, adjusted for decimal differences. This is already implemented in `PriceService.js`.
-- **Kong:** No dedicated spot price API. Quote a small amount: `quote(inputToken, 10^(decimals-3), outputToken)` and derive the ratio.
+- **Kong:** Use `pools(null)` → find the matching `PoolReply` → `price: Float64` gives the spot price directly. Alternatively, `swap_amounts()` returns `mid_price` which is the mid-market price for that pair.
 
 ### Price Impact
 ```
@@ -1000,10 +1124,13 @@ This is passed to the DEX:
 
 | DEX | How slippage is applied |
 |-----|------------------------|
-| ICPSwap | `SwapArgs.amountOutMinimum = minimumOutput.toString()` |
-| Kong | `swap({ receive_amount: minimumOutput, ... })` — passed as minimum accepted |
+| ICPSwap | `SwapArgs.amountOutMinimum = minimumOutput.toString()` — slippage baked into minimum |
+| ICPSwap (new) | `DepositAndSwapArgs.amountOutMinimum = minimumOutput.toString()` — same approach, also takes `tokenInFee`/`tokenOutFee` |
+| Kong | `SwapArgs.receive_amount = [minimumOutput]` AND optionally `SwapArgs.max_slippage = [slippagePercent]` |
 
-> **Clarification:** Based on the ICPSwap DID, `SwapArgs` only has `amountIn`, `zeroForOne`, and `amountOutMinimum`. There is **no separate slippage parameter** — the slippage is baked into `amountOutMinimum`. The newer combined methods (`depositAndSwap`, `depositFromAndSwap`) may have additional parameters, but the core slippage mechanism is the same: you pass the minimum you'll accept. See [Inconsistencies](#16-questions--inconsistencies) note #1.
+> **Clarification on ICPSwap:** Both `SwapArgs` and `DepositAndSwapArgs` use `amountOutMinimum` with no separate slippage field. The `DepositAndSwapArgs` adds `tokenInFee` and `tokenOutFee` so the pool knows the ledger fees for the internal deposit/withdrawal steps.
+
+> **Clarification on Kong:** Kong supports BOTH `receive_amount` (absolute minimum output) AND `max_slippage` (percentage, e.g. `1.0` = 1%). Our implementation should pass `receive_amount` for precision (computed as `expectedOutput × (1 - slippage)`) and can optionally also pass `max_slippage` as a redundant safety net.
 
 ---
 
@@ -1208,12 +1335,21 @@ const swapResult = await kongActor.swap({
   pay_token: inputToken,
   pay_amount: amountIn,
   receive_token: outputToken,
-  receive_amount: minimumOutput,  // slippage baked in
-  pay_tx_id: [blockIndex.Ok],     // wrapped in opt
-  // ...
+  receive_amount: [minimumOutput],             // opt Nat — slippage baked in
+  receive_address: [],                          // opt — default to caller
+  pay_tx_id: [{ BlockIndex: blockIndex.Ok }],  // opt TxId variant
+  max_slippage: [slippageTolerance * 100],     // opt Float64 — redundant safety
+  referred_by: [],                              // opt
 });
 
-// Step 4: Clean up on success
+// Step 4: Claim output tokens
+if (swapResult.Ok && swapResult.Ok.claim_ids.length > 0) {
+  for (const claimId of swapResult.Ok.claim_ids) {
+    await kongActor.claim(claimId);
+  }
+}
+
+// Step 5: Clean up on success
 this.txCache.remove(txKey);
 this.txCache.save();
 ```
@@ -1255,22 +1391,24 @@ async _ensureAllowance(ledgerActor, spender, amount, tokenFee, onProgress) {
 
 ## 16. Questions & Inconsistencies
 
-### 1. ICPSwap slippage parameter
+### 1. ICPSwap slippage parameter — RESOLVED
 
 > You mentioned: "IIRC icpswap takes the expected amount from the quote in one input parameter, and the slippage tolerance in another."
 
-From the ICPSwap DID, `SwapArgs` has only three fields: `{ amountIn, zeroForOne, amountOutMinimum }`. There is **no separate slippage tolerance field**. Slippage is baked into `amountOutMinimum = expectedOutput * (1 - slippage)`. This is actually the same approach as Kong (pass the minimum acceptable output). The difference is just naming.
+**Confirmed from DID:** ICPSwap has NO separate slippage parameter. Both `SwapArgs` and the new `DepositAndSwapArgs` use `amountOutMinimum` — slippage is baked in. The new `DepositAndSwapArgs` adds `tokenInFee` and `tokenOutFee` for the pool to handle deposit/withdrawal fees internally, but nothing for slippage.
 
-The newer `depositAndSwap`/`depositFromAndSwap` methods *might* have an explicit slippage field — we need to verify against the actual candid interface for newer pool canisters. **Action: Verify the DID for depositAndSwap.**
+Kong, on the other hand, DOES have a separate `max_slippage: opt Float64` field in its `SwapArgs`, alongside `receive_amount: opt Nat`. So your memory was slightly mixed up — it's Kong that has the dual approach, not ICPSwap.
 
-### 2. `depositAndSwap` / `depositFromAndSwap` availability
+### 2. `depositAndSwap` / `depositFromAndSwap` — RESOLVED
 
-These methods are **not present** in our current ICPSwap pool DID file (`src/external/icp_swap/icp_swap.did.js`). They exist only on newer pool canisters. We need to:
-- Get the updated DID from ICPSwap
-- Handle pools that don't support them (fallback to old multi-step API)
-- Consider maintaining two DID files or a superset DID
+**Now confirmed in the updated DID.** Both methods exist with this signature:
+```
+DepositAndSwapArgs = { amountIn: Text, zeroForOne: Bool, amountOutMinimum: Text,
+                       tokenInFee: Nat, tokenOutFee: Nat }
+```
+Still need to handle older pool canisters that may not support them (fallback to old multi-step API).
 
-### 3. ICRC2 fee accounting nuance
+### 3. ICRC2 fee accounting nuance — unchanged
 
 For ICRC2, the approve fee and the transferFrom fee are both charged to the user's balance, but `transferFrom` charges `amount + fee` (the full amount reaches the spender). This means:
 - User needs `amount + 2×fee` in their balance (1 for approve, 1 for transferFrom)
@@ -1279,23 +1417,27 @@ For ICRC2, the approve fee and the transferFrom fee are both charged to the user
 
 However, the user's total cost is higher with ICRC2 (2 fees vs 1 for Kong ICRC1). The comparison should be: **what does the user get out, given what they put in?** We compare `netOutput` relative to the user's total cost (`amount + N×fee`).
 
-### 4. Kong canister ID verification
+### 4. Kong canister ID — RESOLVED
 
-The Kong swap canister ID `2ipq2-uqaaa-aaaar-qailq-cai` needs to be verified. Kong may have migrated to a newer canister. **Action: Verify before implementation.**
+**Confirmed:** `2ipq2-uqaaa-aaaar-qailq-cai` — exported in `src/external/kong/index.js`.
 
-### 5. Kong DID file
+### 5. Kong DID file — RESOLVED
 
-We don't have a Kong DID file yet. We need to create `src/external/kong_swap/kong_swap.did.js` with the correct candid interface. **Action: Get Kong's candid interface.**
+**DID files added** at `src/external/kong/kong.did` and `src/external/kong/kong.did.js`.
+
+**BUG:** `src/external/kong/index.js` imports from `"./kongswap.did.js"` but the file is named `kong.did.js`. **Must rename one or the other before use.**
 
 ### 6. Standard preference: ICRC2 default may not always be optimal
 
 You specified: "When a token supports both, we should prefer using the ICRC2 API to swap per default."
 
-However, for Kong specifically, ICRC1 is cheaper (1 fee vs 2 fees) and has the same effective swap input. The "prefer ICRC2" default may not be optimal in all cases. Consider:
+However, for Kong specifically, ICRC1 is cheaper (1 input fee vs 2 for ICRC2) and has the same effective swap input. The "prefer ICRC2" default may not be optimal in all cases. Consider:
 - **Option A:** Always prefer ICRC2 (as specified) — simpler UX, consistent behavior
 - **Option B:** Auto-pick cheapest standard per DEX — better for users, slightly more complex
 
 The spec follows **Option A** (prefer ICRC2) as you specified, but the `preferredStandard` parameter allows the caller to override. We could add a `'cheapest'` option that auto-selects.
+
+**Additional consideration from Kong DID:** Kong's `ICTokenReply` has `icrc1: Bool, icrc2: Bool` flags per token. Some tokens on Kong may only support ICRC1. We should cross-reference Kong's token standard flags with our own `icrc1_supported_standards` detection.
 
 ### 7. Routing discovery performance
 
@@ -1304,28 +1446,54 @@ The spec follows **Option A** (prefer ICRC2) as you specified, but the `preferre
 - Cached aggressively (pools don't change often)
 - Potentially paginated in the UI ("Finding routes..." spinner)
 
-### 8. Output token fee for ICPSwap withdrawal
+**Kong routing is built-in:** Kong's `swap_amounts` and `swap` automatically route through intermediate tokens when no direct pool exists. The `txs` array shows the hops. We should surface this in the UI but don't need to implement routing logic for Kong. We only need custom routing for ICPSwap and for cross-DEX routes.
 
-In the old API, `withdraw` sends tokens to the user, costing 1 output token fee. In the new combined API (`depositAndSwap`), the withdrawal is handled internally. Does the new API still charge an output fee? **Action: Verify — the fee might be deducted internally from the output amount.**
+### 8. Output token fee for ICPSwap withdrawal — PARTIALLY RESOLVED
 
-### 9. Price impact sign convention
+The new `DepositAndSwapArgs` takes `tokenOutFee: Nat`, confirming the pool DOES deduct an output fee internally. This fee is used for the withdrawal step. The effective output the user receives = swap output - `tokenOutFee`.
 
-The spec defines `priceImpact = (expectedAtSpot - actualQuoted) / expectedAtSpot`. This will be **positive** when the actual output is less than spot (which is normal — the user gets less due to their trade moving the price). Some UIs show this as negative (e.g. "-0.12%"). We should decide on a convention and document it clearly. **Recommendation:** Store as positive number, display with "-" prefix in the UI.
+### 9. Kong claim step — NEW
 
-### 10. Quote staleness
+**From DID:** Kong's `SwapReply` includes `claim_ids: vec Nat64`. After a swap, the user must call `claim(claim_id)` to receive their output tokens. This is a critical step — if we don't claim, the user doesn't receive tokens. Claims can also fail, so we need:
+- Auto-claim immediately after swap succeeds
+- Cache unclaimed IDs if claim fails
+- Recovery UI for pending claims
+- Use `claims(principal_id)` to list all pending claims
+
+### 10. Price impact — Kong provides it directly
+
+Kong's `SwapAmountsReply` includes `mid_price` (spot), `price` (execution), and `slippage` (predicted impact as Float64). We can use `slippage` directly from Kong instead of computing it. For ICPSwap we still compute from `sqrtPriceX96` vs quote.
+
+### 11. Price impact sign convention
+
+The spec defines `priceImpact = (expectedAtSpot - actualQuoted) / expectedAtSpot`. This will be **positive** when the actual output is less than spot. Some UIs show this as negative (e.g. "-0.12%"). **Recommendation:** Store as positive number, display with "-" prefix in the UI.
+
+### 12. Quote staleness
 
 Quotes go stale quickly on AMMs. We should:
 - Auto-refresh quotes every ~10 seconds
 - Show a "quote expired" warning if the user waits too long
 - Re-quote immediately before executing a swap (and abort if the new quote is significantly worse)
 
+### 13. Kong token identifier format
+
+Kong's API accepts tokens in multiple formats: `"Symbol"`, `"Chain.Symbol"` (e.g. `"IC.ckBTC"`), `"CanisterId"`, or `"Chain.CanisterId"` (e.g. `"IC.ryjl3-tyaaa-aaaaa-aaaba-cai"`). Our implementation should use the canister ID format for precision (avoid symbol ambiguity). We should use the plain canister ID string.
+
 ---
 
-## 17. Future Considerations
+## 17. Pre-Implementation Checklist
+
+- [ ] **Fix Kong DID import:** Rename `src/external/kong/kong.did.js` → `kongswap.did.js` OR update `index.js` import
+- [ ] **Create ICPSwap factory index.js** if missing (need `createActor` + `canisterId` export like other externals)
+- [ ] **Verify ICPSwap factory canister ID** — currently using `4mmnk-kiaaa-aaaag-qbllq-cai` from `PriceService.js`
+
+## 18. Future Considerations
 
 - **More DEXes:** Sonic, Helix, etc. — just add a new file in `dexes/`
-- **Limit orders:** Some DEXes support these; could extend the interface
+- **Limit orders:** ICPSwap now supports limit orders (visible in DID); could extend the interface
+- **Kong async swaps:** Kong has `swap_async` which returns a `request_id` for polling via `requests(request_id)`. Could use for large swaps or when timeouts are a concern.
+- **Kong referrals:** Kong supports `referred_by` in SwapArgs. Could integrate with a referral system.
 - **Analytics:** Track which DEX wins most often, average slippage, etc.
-- **Kong pending TX recovery UI:** A small panel showing "You have X pending swaps" with resume buttons
+- **Kong pending TX recovery UI:** A small panel showing "You have X pending swaps/claims" with resume buttons
 - **Price chart:** Show a small price chart for the selected pair
 - **Token allowance management:** A utility page to review/revoke ICRC2 approvals
