@@ -40,7 +40,7 @@ const managementCanisterIdlFactory = ({ IDL }) => {
                 }),
                 module_hash: IDL.Opt(IDL.Vec(IDL.Nat8)),
             })],
-            ['query']
+            [] // Must be update call (not query) — management canister doesn't support queries
         ),
     });
 };
@@ -125,8 +125,17 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const trackedCanistersLoading = walletContext?.trackedCanistersLoading || false;
     const hasFetchedTrackedCanisters = walletContext?.hasFetchedTrackedCanisters || false;
     
+    // Stable serialised key for trackedCanisters — prevents re-firing the
+    // fetchCanisterStatus effect when the array reference changes but the
+    // content is identical (e.g. cache-restore followed by fresh-fetch).
+    const trackedCanistersKey = useMemo(
+        () => trackedCanisters.join(','),
+        [trackedCanisters]
+    );
+    
     // Neuron manager detection state for tracked canisters
     const [officialVersions, setOfficialVersions] = useState([]);
+    const fetchCanisterStatusIdRef = useRef(0); // dedup guard for fetchCanisterStatus
     const [trackedCanisterStatus, setTrackedCanisterStatus] = useState({}); // canisterId -> { cycles, memory, moduleHash }
     const [detectedNeuronManagers, setDetectedNeuronManagers] = useState({}); // canisterId -> { version, neuronCount, cycles, memory, isController, isValid }
     
@@ -202,11 +211,16 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         fetchOfficialVersions();
     }, [identity]);
 
-    // Fetch canister status (cycles, memory, moduleHash) for tracked canisters
+    // Fetch canister status (cycles, memory, moduleHash) for tracked canisters.
+    // Uses trackedCanistersKey (a serialised string) instead of the array reference
+    // so the effect only re-fires when the *content* of the array changes, not when
+    // React creates a new array reference with the same items.
     useEffect(() => {
+        if (!identity || trackedCanisters.length === 0) return;
+
+        const currentFetchId = ++fetchCanisterStatusIdRef.current;
+
         const fetchCanisterStatus = async () => {
-            if (!identity || trackedCanisters.length === 0) return;
-            
             try {
                 const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
                     ? 'https://ic0.app' 
@@ -215,6 +229,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                 if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
                     await agent.fetchRootKey();
                 }
+                
+                if (currentFetchId !== fetchCanisterStatusIdRef.current) return; // superseded
                 
                 const statusMap = {};
                 await Promise.all(trackedCanisters.map(async (canisterId) => {
@@ -252,14 +268,16 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                     
                     statusMap[canisterId] = { cycles, memory, isController, moduleHash };
                 }));
+                if (currentFetchId !== fetchCanisterStatusIdRef.current) return; // superseded
                 setTrackedCanisterStatus(statusMap);
             } catch (err) {
+                if (currentFetchId !== fetchCanisterStatusIdRef.current) return;
                 console.warn('[QuickWallet] Error fetching canister status:', err);
             }
         };
         
         fetchCanisterStatus();
-    }, [identity, trackedCanisters]);
+    }, [identity, trackedCanistersKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Check if a module hash matches any known neuron manager version
     const isKnownNeuronManagerHash = useCallback((moduleHash) => {
