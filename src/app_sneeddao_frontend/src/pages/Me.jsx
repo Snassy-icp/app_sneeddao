@@ -61,7 +61,7 @@ import InfoTooltip from '../components/InfoTooltip';
 import TokenIcon from '../components/TokenIcon';
 import { Principal } from '@dfinity/principal';
 import { createSneedexActor } from '../utils/SneedexUtils';
-import { FaUser, FaCrown, FaKey, FaWallet, FaComments, FaCoins, FaEnvelope, FaGift, FaLock, FaServer, FaAddressBook, FaCog, FaBrain, FaExchangeAlt, FaCheckCircle, FaBell, FaPalette, FaGavel, FaShareAlt, FaExternalLinkAlt, FaCopy, FaPen, FaChevronRight, FaChevronDown, FaVoteYea, FaUserShield, FaQuestion } from 'react-icons/fa';
+import { FaUser, FaCrown, FaKey, FaWallet, FaComments, FaCoins, FaEnvelope, FaGift, FaLock, FaServer, FaAddressBook, FaCog, FaBrain, FaExchangeAlt, FaCheckCircle, FaBell, FaPalette, FaGavel, FaShareAlt, FaExternalLinkAlt, FaCopy, FaPen, FaChevronRight, FaChevronDown, FaVoteYea, FaUserShield, FaQuestion, FaTimes } from 'react-icons/fa';
 
 // Custom CSS for animations
 const customStyles = `
@@ -480,6 +480,9 @@ export default function Me() {
     const [cacheManagementExpanded, setCacheManagementExpanded] = useState(false);
     const [clearingCache, setClearingCache] = useState(false);
     const [cacheCleared, setCacheCleared] = useState(false);
+    const [clearingGrayList, setClearingGrayList] = useState(false);
+    const [grayListCleared, setGrayListCleared] = useState(false);
+    const [grayListCount, setGrayListCount] = useState(0);
     
     // Quick access expanded state (persisted) - must be before any early returns
     const [quickAccessExpanded, setQuickAccessExpanded] = useState(() => {
@@ -659,6 +662,35 @@ export default function Me() {
             setClearingCache(false);
         }
     };
+
+    // Clear the gray list (ledger skip list) only
+    const clearGrayList = async () => {
+        setClearingGrayList(true);
+        try {
+            const { clearSkipList } = await import('../utils/LedgerSkipList');
+            clearSkipList();
+            setGrayListCleared(true);
+            setGrayListCount(0);
+            setTimeout(() => setGrayListCleared(false), 3000);
+        } catch (err) {
+            console.error('Failed to clear gray list:', err);
+            alert('Failed to clear the gray list.');
+        } finally {
+            setClearingGrayList(false);
+        }
+    };
+
+    // Load gray list count when cache management section expands
+    useEffect(() => {
+        if (cacheManagementExpanded) {
+            try {
+                const { getSkipListLedgerIds } = require('../utils/LedgerSkipList');
+                setGrayListCount(getSkipListLedgerIds().length);
+            } catch (e) {
+                // Ignore
+            }
+        }
+    }, [cacheManagementExpanded]);
     
     // Get naming context
     const { neuronNames, neuronNicknames, fetchAllNames, verifiedNames, principalNames, principalNicknames } = useNaming();
@@ -2549,6 +2581,64 @@ export default function Me() {
                                         }}>
                                             This clears: wallet data, token metadata, logos, neurons cache
                                         </p>
+
+                                        {/* Gray List (Ledger Skip List) */}
+                                        <div style={{
+                                            marginTop: '1.25rem',
+                                            paddingTop: '1rem',
+                                            borderTop: `1px solid ${theme.colors.border}`
+                                        }}>
+                                            <p style={{ 
+                                                color: theme.colors.secondaryText, 
+                                                fontSize: '0.85rem', 
+                                                marginBottom: '0.75rem',
+                                                lineHeight: '1.5'
+                                            }}>
+                                                The <strong>gray list</strong> tracks ledgers that failed during balance scans (e.g., broken or unresponsive canisters). 
+                                                These are temporarily skipped to speed up loading. Clear it to re-scan all ledgers.
+                                            </p>
+                                            
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                                                <button
+                                                    onClick={clearGrayList}
+                                                    disabled={clearingGrayList || grayListCount === 0}
+                                                    style={{
+                                                        padding: '0.6rem 1.2rem',
+                                                        background: (clearingGrayList || grayListCount === 0) ? theme.colors.border : '#f59e0b',
+                                                        color: '#fff',
+                                                        border: 'none',
+                                                        borderRadius: '8px',
+                                                        cursor: (clearingGrayList || grayListCount === 0) ? 'not-allowed' : 'pointer',
+                                                        fontWeight: '600',
+                                                        fontSize: '0.9rem',
+                                                        opacity: (clearingGrayList || grayListCount === 0) ? 0.6 : 1,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.5rem'
+                                                    }}
+                                                >
+                                                    <FaTimes size={14} />
+                                                    {clearingGrayList ? 'Clearing...' : `Clear Gray List${grayListCount > 0 ? ` (${grayListCount})` : ''}`}
+                                                </button>
+                                                
+                                                {grayListCleared && (
+                                                    <span style={{ color: '#22c55e', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                                        <FaCheckCircle size={14} /> Gray list cleared!
+                                                    </span>
+                                                )}
+                                            </div>
+                                            
+                                            {grayListCount === 0 && !grayListCleared && (
+                                                <p style={{ 
+                                                    color: theme.colors.secondaryText, 
+                                                    fontSize: '0.75rem', 
+                                                    marginTop: '0.5rem',
+                                                    opacity: 0.7
+                                                }}>
+                                                    No ledgers are currently graylisted.
+                                                </p>
+                                            )}
+                                        </div>
                                     </div>
                                 </SettingsSection>
                             </div>

@@ -18,6 +18,9 @@ import {
   isDefaultSubaccount,
   getSubaccountForTransfer
 } from './utils/AccountParser';
+import { computeAccountId, validateAccountId, accountIdHexToBytes } from './utils/PrincipalUtils';
+
+const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 
 // Wallet accent colors
 const walletPrimary = '#10b981';
@@ -247,12 +250,15 @@ function SendTokenModal({ show, onClose, onSend, token }) {
       return;
     }
 
-    if (!parsedAccount || !parsedAccount.principal) {
-      setErrorText("Invalid recipient address! Please enter a valid principal ID or extended address.");
+    // For ICP account ID input, we don't need a parsedAccount
+    const isAccountIdSend = isICP && detectedAccountId;
+
+    if (!isAccountIdSend && (!parsedAccount || !parsedAccount.principal)) {
+      setErrorText("Invalid recipient address! Please enter a valid principal ID, extended address" + (isICP ? ", or ICP account ID." : "."));
       return;
     }
 
-    if (showSubaccountInput && subaccountValue.trim() && !resolvedManualSubaccount) {
+    if (!isAccountIdSend && showSubaccountInput && subaccountValue.trim() && !resolvedManualSubaccount) {
       setErrorText("Invalid subaccount format! Please check your input.");
       return;
     }
@@ -283,22 +289,37 @@ function SendTokenModal({ show, onClose, onSend, token }) {
       return;
     }
 
-    // Prepare review data
-    const subaccountForTransfer = getSubaccountForTransfer(parsedAccount);
-    const hasSubaccount = parsedAccount.subaccount && !isDefaultSubaccount(parsedAccount.subaccount.resolved);
-    
-    // Generate extended address string
-    const extendedAddress = encodeExtendedAddress(parsedAccount);
+    if (isAccountIdSend) {
+      // Account ID send (ICP only, legacy transfer)
+      setReviewData({
+        principal: null,
+        subaccount: null,
+        extendedAddress: null,
+        accountId: detectedAccountId,
+        amount: amount,
+        amountBigInt: bigIntAmount,
+        fee: token.fee,
+        subaccountForTransfer: []
+      });
+    } else {
+      // Normal principal-based send
+      const subaccountForTransfer = getSubaccountForTransfer(parsedAccount);
+      const hasSubaccount = parsedAccount.subaccount && !isDefaultSubaccount(parsedAccount.subaccount.resolved);
+      
+      // Generate extended address string
+      const extendedAddress = encodeExtendedAddress(parsedAccount);
 
-    setReviewData({
-      principal: parsedAccount.principal.toText(),
-      subaccount: hasSubaccount ? bytesToHex(parsedAccount.subaccount.resolved) : null,
-      extendedAddress: extendedAddress,
-      amount: amount,
-      amountBigInt: bigIntAmount,
-      fee: token.fee,
-      subaccountForTransfer
-    });
+      setReviewData({
+        principal: parsedAccount.principal.toText(),
+        subaccount: hasSubaccount ? bytesToHex(parsedAccount.subaccount.resolved) : null,
+        extendedAddress: extendedAddress,
+        accountId: recipientAccountId || null,
+        amount: amount,
+        amountBigInt: bigIntAmount,
+        fee: token.fee,
+        subaccountForTransfer
+      });
+    }
 
     setShowReviewScreen(true);
   };
@@ -309,7 +330,8 @@ function SendTokenModal({ show, onClose, onSend, token }) {
     try {
       setIsLoading(true);
       setErrorText('');
-      await onSend(token, reviewData.principal, reviewData.amount, reviewData.subaccountForTransfer);
+      // Pass accountId as 5th param for ICP account ID transfers
+      await onSend(token, reviewData.principal, reviewData.amount, reviewData.subaccountForTransfer, reviewData.accountId && !reviewData.principal ? reviewData.accountId : undefined);
       onClose();
     } catch (error) {
       console.error('Error sending tokens:', error);
@@ -319,6 +341,29 @@ function SendTokenModal({ show, onClose, onSend, token }) {
       setIsLoading(false);
     }
   };
+
+  // Check if token is ICP (for account ID display/input)
+  const isICP = useMemo(() => {
+    const ledgerId = token?.ledger_canister_id?.toString?.() || token?.ledger_canister_id?.toText?.() || '';
+    return ledgerId === ICP_LEDGER_CANISTER_ID;
+  }, [token?.ledger_canister_id]);
+
+  // Detect if recipient input is a valid ICP account ID (64-char hex with valid CRC32)
+  const detectedAccountId = useMemo(() => {
+    if (!recipient || !isICP) return null;
+    const trimmed = recipient.trim().toLowerCase().replace(/^0x/, '');
+    // Only detect as account ID if it's exactly 64 hex chars (not a principal)
+    if (trimmed.length !== 64 || !/^[0-9a-f]{64}$/.test(trimmed)) return null;
+    if (validateAccountId(trimmed)) return trimmed;
+    return null;
+  }, [recipient, isICP]);
+
+  // Compute the ICP account ID for the recipient when we have a principal
+  const recipientAccountId = useMemo(() => {
+    if (!isICP || !parsedAccount?.principal) return null;
+    const subaccount = parsedAccount?.subaccount?.resolved || null;
+    return computeAccountId(parsedAccount.principal, subaccount);
+  }, [isICP, parsedAccount]);
 
   if (!show || !token) {
     return null;
@@ -515,40 +560,108 @@ function SendTokenModal({ show, onClose, onSend, token }) {
               <span style={{ color: theme.colors.mutedText, fontSize: '0.75rem', fontWeight: '600', textTransform: 'uppercase' }}>
                 To
               </span>
-              {reviewData.subaccount && (
-                <span style={{
-                  background: `${theme.colors.warning}20`,
-                  color: theme.colors.warning,
-                  fontSize: '0.65rem',
-                  padding: '2px 6px',
-                  borderRadius: '4px',
-                  fontWeight: '600'
-                }}>
-                  + SUBACCOUNT
-                </span>
-              )}
+              <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                {reviewData.accountId && !reviewData.principal && (
+                  <span style={{
+                    background: `${theme.colors.accent}20`,
+                    color: theme.colors.accent,
+                    fontSize: '0.65rem',
+                    padding: '2px 6px',
+                    borderRadius: '4px',
+                    fontWeight: '600'
+                  }}>
+                    ACCOUNT ID
+                  </span>
+                )}
+                {reviewData.subaccount && (
+                  <span style={{
+                    background: `${theme.colors.warning}20`,
+                    color: theme.colors.warning,
+                    fontSize: '0.65rem',
+                    padding: '2px 6px',
+                    borderRadius: '4px',
+                    fontWeight: '600'
+                  }}>
+                    + SUBACCOUNT
+                  </span>
+                )}
+              </div>
             </div>
             
-            {/* Principal with PrincipalDisplay */}
+            {/* Principal with PrincipalDisplay (or Account ID for account-ID-only sends) */}
             <div style={{
               background: theme.colors.tertiaryBg,
               padding: '10px 12px',
               borderRadius: '6px',
               marginBottom: '8px'
             }}>
-              {reviewPrincipalObj ? (
+              {reviewData.principal && reviewPrincipalObj ? (
                 <PrincipalDisplay
                   principal={reviewPrincipalObj}
                   showCopyButton={true}
                   noLink={true}
                   style={{ fontSize: '0.85rem' }}
                 />
+              ) : reviewData.accountId && !reviewData.principal ? (
+                <div style={{
+                  fontFamily: 'monospace',
+                  fontSize: '0.8rem',
+                  color: theme.colors.primaryText,
+                  wordBreak: 'break-all',
+                  overflowWrap: 'anywhere'
+                }}>
+                  {reviewData.accountId}
+                </div>
               ) : (
                 <div style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>
                   {reviewData.principal}
                 </div>
               )}
             </div>
+
+            {/* ICP Account ID display (when we have a principal and can compute the account ID) */}
+            {isICP && reviewData.accountId && reviewData.principal && (
+              <div style={{
+                background: theme.colors.tertiaryBg,
+                padding: '8px 12px',
+                borderRadius: '6px',
+                marginBottom: '8px',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '8px'
+              }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ color: theme.colors.mutedText, fontSize: '0.7rem', marginBottom: '4px', fontWeight: '500' }}>
+                    ICP Account ID
+                  </div>
+                  <div style={{
+                    fontFamily: 'monospace',
+                    fontSize: '0.75rem',
+                    color: theme.colors.secondaryText,
+                    wordBreak: 'break-all',
+                    overflowWrap: 'anywhere'
+                  }}>
+                    {reviewData.accountId}
+                  </div>
+                </div>
+                <button
+                  onClick={() => navigator.clipboard.writeText(reviewData.accountId)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: '2px',
+                    cursor: 'pointer',
+                    color: theme.colors.mutedText,
+                    fontSize: '12px',
+                    flexShrink: 0,
+                    marginTop: '14px'
+                  }}
+                  title="Copy account ID"
+                >
+                  📋
+                </button>
+              </div>
+            )}
 
             {/* Expandable Details */}
             <button
@@ -582,16 +695,40 @@ function SendTokenModal({ show, onClose, onSend, token }) {
                 background: theme.colors.tertiaryBg,
                 borderRadius: '6px'
               }}>
-                <CopyableRow label="Principal" value={reviewData.principal} />
+                {reviewData.principal && (
+                  <CopyableRow label="Principal" value={reviewData.principal} />
+                )}
                 {reviewData.subaccount && (
                   <CopyableRow label="Subaccount" value={reviewData.subaccount} />
                 )}
                 {reviewData.extendedAddress && (
                   <CopyableRow label="Extended" value={reviewData.extendedAddress} />
                 )}
+                {reviewData.accountId && (
+                  <CopyableRow label="Account ID" value={reviewData.accountId} />
+                )}
               </div>
             )}
           </div>
+
+          {/* Warning for account ID send */}
+          {reviewData.accountId && !reviewData.principal && (
+            <div style={{
+              padding: '10px 12px',
+              background: `${theme.colors.accent}15`,
+              border: `1px solid ${theme.colors.accent}40`,
+              borderRadius: '6px',
+              marginBottom: '12px',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '8px'
+            }}>
+              <span style={{ fontSize: '14px' }}>ℹ️</span>
+              <div style={{ fontSize: '0.75rem', color: theme.colors.accent, lineHeight: 1.4 }}>
+                <strong>Account ID transfer.</strong> This will use the ICP ledger's legacy transfer method to send directly to this account identifier.
+              </div>
+            </div>
+          )}
 
           {/* Warning for subaccount - compact */}
           {reviewData.subaccount && (
@@ -812,7 +949,7 @@ function SendTokenModal({ show, onClose, onSend, token }) {
           <PrincipalInput
             value={recipient}
             onChange={setRecipient}
-            placeholder="Enter principal ID, name, or extended address"
+            placeholder={isICP ? "Enter principal ID, name, extended address, or account ID" : "Enter principal ID, name, or extended address"}
             style={{
               width: '100%',
               maxWidth: 'none'
@@ -823,8 +960,27 @@ function SendTokenModal({ show, onClose, onSend, token }) {
             }}
           />
 
+          {/* ICP Account ID detection feedback */}
+          {detectedAccountId && (
+            <div style={{
+              marginTop: '8px',
+              padding: '12px',
+              background: `${theme.colors.success}15`,
+              border: `1px solid ${theme.colors.success}40`,
+              borderRadius: '8px',
+              fontSize: '0.85rem'
+            }}>
+              <div style={{ color: theme.colors.success, fontWeight: '600', marginBottom: '6px' }}>
+                ✓ Valid ICP Account Identifier
+              </div>
+              <div style={{ color: theme.colors.secondaryText, fontSize: '0.8rem', lineHeight: 1.4 }}>
+                This will be sent using the ICP ledger's legacy transfer to this account ID directly.
+              </div>
+            </div>
+          )}
+
           {/* Extended address detection feedback */}
-          {extendedAddressDetected && (
+          {!detectedAccountId && extendedAddressDetected && (
             <div style={{
               marginTop: '8px',
               padding: '12px',
@@ -950,14 +1106,63 @@ function SendTokenModal({ show, onClose, onSend, token }) {
             </div>
           )}
 
-          {/* Valid principal indicator (when not extended address) */}
-          {parsedAccount && !extendedAddressDetected && (
+          {/* Valid principal indicator (when not extended address or account ID) */}
+          {parsedAccount && !extendedAddressDetected && !detectedAccountId && (
             <div style={{
               marginTop: '8px',
               fontSize: '0.85rem',
               color: theme.colors.success
             }}>
               ✓ Valid principal ID
+            </div>
+          )}
+
+          {/* ICP Account ID computed from principal (shown when entering a principal for ICP) */}
+          {isICP && recipientAccountId && parsedAccount && !detectedAccountId && (
+            <div style={{
+              marginTop: '8px',
+              padding: '10px 12px',
+              background: theme.colors.secondaryBg,
+              border: `1px solid ${theme.colors.border}`,
+              borderRadius: '8px'
+            }}>
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'flex-start', 
+                justifyContent: 'space-between',
+                gap: '8px'
+              }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ color: theme.colors.mutedText, fontSize: '0.75rem', marginBottom: '4px', fontWeight: '500' }}>
+                    ICP Account ID (for reference)
+                  </div>
+                  <div style={{
+                    fontFamily: 'monospace',
+                    fontSize: '0.75rem',
+                    color: theme.colors.secondaryText,
+                    wordBreak: 'break-all',
+                    overflowWrap: 'anywhere'
+                  }}>
+                    {recipientAccountId}
+                  </div>
+                </div>
+                <button
+                  onClick={() => navigator.clipboard.writeText(recipientAccountId)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: '2px',
+                    cursor: 'pointer',
+                    color: theme.colors.mutedText,
+                    fontSize: '14px',
+                    flexShrink: 0,
+                    marginTop: '14px'
+                  }}
+                  title="Copy account ID"
+                >
+                  📋
+                </button>
+              </div>
             </div>
           )}
 
@@ -994,7 +1199,7 @@ function SendTokenModal({ show, onClose, onSend, token }) {
         </div>
 
         {/* Advanced subaccount section */}
-        {!extendedAddressDetected && !isDIP20 && (
+        {!extendedAddressDetected && !detectedAccountId && !isDIP20 && (
           <div style={{ marginBottom: '20px' }}>
             <button
               onClick={() => setShowSubaccountInput(!showSubaccountInput)}

@@ -1,7 +1,7 @@
 // Wallet.jsx
 import { principalToSubAccount } from "@dfinity/utils";
 import { Principal } from "@dfinity/principal";
-import { HttpAgent } from "@dfinity/agent";
+import { HttpAgent, Actor } from "@dfinity/agent";
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { app_sneeddao_backend, createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
@@ -59,7 +59,6 @@ import { useWallet } from './contexts/WalletContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, computeAccountId } from './utils/PrincipalUtils';
 import { getCyclesColor, formatCyclesCompact, formatMemory, getNeuronManagerSettings, getCanisterManagerSettings } from './utils/NeuronManagerSettings';
 import { PERM } from './utils/NeuronPermissionUtils.jsx';
-import { Actor } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
 import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle, FaTint, FaSeedling, FaGift, FaHourglassHalf, FaWater, FaUnlock, FaCheck, FaExclamationTriangle, FaCrown, FaBox, FaDatabase, FaCog, FaExternalLinkAlt, FaTimes, FaLightbulb, FaArrowRight, FaDollarSign, FaChartBar, FaBullseye, FaMoneyBillWave, FaBug, FaCopy, FaExpandAlt, FaSearch, FaArrowUp } from 'react-icons/fa';
 
@@ -3089,7 +3088,7 @@ function Wallet() {
         };
     };
 
-    const handleSendToken = async (token, recipient, amount, subaccount = []) => {
+    const handleSendToken = async (token, recipient, amount, subaccount = [], accountId = undefined) => {
         console.log('=== Wallet.handleSendToken START ===');
         console.log('Parameters:', { 
             tokenSymbol: token.symbol, 
@@ -3097,7 +3096,8 @@ function Wallet() {
             amount,
             tokenAvailable: token.available?.toString(),
             tokenFee: token.fee?.toString(),
-            hasSubaccount: subaccount.length > 0
+            hasSubaccount: subaccount.length > 0,
+            accountId: accountId || null
         });
 
         try {
@@ -3120,6 +3120,78 @@ function Wallet() {
                 scaledAmount, 
                 bigintAmount: bigintAmount.toString()
             });
+
+            // ICP Account ID transfer (legacy transfer method)
+            if (accountId && !recipient) {
+                console.log('Using ICP legacy transfer to account ID:', accountId);
+                
+                // Convert hex account ID to bytes
+                const accountIdClean = accountId.trim().toLowerCase().replace(/^0x/, '');
+                const accountIdBytes = new Uint8Array(32);
+                for (let i = 0; i < 32; i++) {
+                    accountIdBytes[i] = parseInt(accountIdClean.slice(i * 2, i * 2 + 2), 16);
+                }
+
+                // Create ICP NNS Ledger actor with legacy transfer interface
+                const icpLedgerIdlFactory = ({ IDL: idl }) => {
+                    const Tokens = idl.Record({ e8s: idl.Nat64 });
+                    const AccountIdentifier = idl.Vec(idl.Nat8);
+                    const SubAccount = idl.Vec(idl.Nat8);
+                    const TimeStamp = idl.Record({ timestamp_nanos: idl.Nat64 });
+                    const TransferArgs = idl.Record({
+                        to: AccountIdentifier,
+                        fee: Tokens,
+                        memo: idl.Nat64,
+                        from_subaccount: idl.Opt(SubAccount),
+                        created_at_time: idl.Opt(TimeStamp),
+                        amount: Tokens
+                    });
+                    const TransferError = idl.Variant({
+                        TxTooOld: idl.Record({ allowed_window_nanos: idl.Nat64 }),
+                        BadFee: idl.Record({ expected_fee: Tokens }),
+                        TxDuplicate: idl.Record({ duplicate_of: idl.Nat64 }),
+                        TxCreatedInFuture: idl.Null,
+                        InsufficientFunds: idl.Record({ balance: Tokens })
+                    });
+                    const TransferResult = idl.Variant({
+                        Ok: idl.Nat64,
+                        Err: TransferError
+                    });
+                    return idl.Service({
+                        transfer: idl.Func([TransferArgs], [TransferResult], [])
+                    });
+                };
+
+                const agent = new HttpAgent({ identity, host: process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943' });
+                if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                    await agent.fetchRootKey();
+                }
+
+                const icpLedgerActor = Actor.createActor(icpLedgerIdlFactory, {
+                    agent,
+                    canisterId: ledgerCanisterId
+                });
+
+                const result = await icpLedgerActor.transfer({
+                    to: Array.from(accountIdBytes),
+                    fee: { e8s: BigInt(token.fee) },
+                    memo: BigInt(0),
+                    from_subaccount: [],
+                    created_at_time: [],
+                    amount: { e8s: bigintAmount }
+                });
+
+                if (result.Err) {
+                    const errKey = Object.keys(result.Err)[0];
+                    const errVal = result.Err[errKey];
+                    throw new Error(`Transfer failed: ${errKey} - ${JSON.stringify(errVal, (k, v) => typeof v === 'bigint' ? v.toString() : v)}`);
+                }
+
+                console.log('ICP legacy transfer result: block index', result.Ok?.toString());
+                await fetchBalancesAndLocks(ledgerCanisterId);
+                console.log('=== Wallet.handleSendToken SUCCESS (account ID) ===');
+                return;
+            }
             
             const send_amounts = calc_send_amounts(token, bigintAmount);
             console.log('Send amounts calculated:', {

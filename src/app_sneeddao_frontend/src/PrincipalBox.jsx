@@ -623,9 +623,9 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     };
     
     // Handle send token
-    const handleSendToken = async (token, recipient, amount, subaccount = []) => {
+    const handleSendToken = async (token, recipient, amount, subaccount = [], accountId = undefined) => {
         if (sendToken) {
-            await sendToken(token, recipient, amount, subaccount);
+            await sendToken(token, recipient, amount, subaccount, accountId);
         }
     };
     

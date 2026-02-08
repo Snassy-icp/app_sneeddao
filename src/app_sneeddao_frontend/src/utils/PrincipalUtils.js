@@ -63,6 +63,37 @@ export const computeAccountId = (principal, subaccountBytes = null) => {
     }
 };
 
+// Validate an ICP account identifier (64-char hex with valid CRC32 checksum)
+// Returns true if the string is a valid account ID, false otherwise
+export const validateAccountId = (input) => {
+    if (!input || typeof input !== 'string') return false;
+    const clean = input.trim().toLowerCase().replace(/^0x/, '');
+    if (clean.length !== 64) return false;
+    if (!/^[0-9a-f]{64}$/.test(clean)) return false;
+    // Decode bytes
+    const bytes = new Uint8Array(32);
+    for (let i = 0; i < 32; i++) {
+        bytes[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
+    }
+    // First 4 bytes are CRC32 of the remaining 28 bytes (SHA-224 hash)
+    const expectedCrc = (bytes[0] << 24 | bytes[1] << 16 | bytes[2] << 8 | bytes[3]) >>> 0;
+    const hashPart = bytes.slice(4);
+    const actualCrc = crc32(hashPart);
+    return expectedCrc === actualCrc;
+};
+
+// Convert a hex account ID string to a Uint8Array (32 bytes)
+export const accountIdHexToBytes = (hex) => {
+    if (!hex || typeof hex !== 'string') return null;
+    const clean = hex.trim().toLowerCase().replace(/^0x/, '');
+    if (clean.length !== 64 || !/^[0-9a-f]{64}$/.test(clean)) return null;
+    const bytes = new Uint8Array(32);
+    for (let i = 0; i < 32; i++) {
+        bytes[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
+    }
+    return bytes;
+};
+
 // ============================================
 // PRINCIPAL DISPLAY UTILITIES  
 // ============================================

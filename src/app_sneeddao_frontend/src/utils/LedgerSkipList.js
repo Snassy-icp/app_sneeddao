@@ -89,3 +89,15 @@ export function filterSkipList(ledgerIds) {
     const skipSet = new Set(getSkipListLedgerIds());
     return ledgerIds.filter(id => !skipSet.has(id));
 }
+
+/**
+ * Clear the entire skip list (gray list).
+ * After clearing, all previously skipped ledgers will be scanned again on next balance check.
+ */
+export function clearSkipList() {
+    try {
+        localStorage.removeItem(STORAGE_KEY);
+    } catch (e) {
+        console.warn('[LedgerSkipList] Error clearing skip list:', e);
+    }
+}
