@@ -1514,7 +1514,76 @@ Kong's API accepts tokens in multiple formats: `"Symbol"`, `"Chain.Symbol"` (e.g
 
 ---
 
-## 19. Future Considerations
+## 19. Sneedex Auction Integration
+
+The swap widget integrates with the Sneedex auction system to surface relevant auction buyout opportunities alongside DEX swap quotes.
+
+### 19.1 Matching Auctions
+
+When a user selects a swap pair (inputToken → outputToken), the widget fetches active public Sneedex auctions where:
+- `price_token_ledger` matches `inputToken` (what you pay)
+- At least one `ICRC1Token` asset has `ledger_canister_id` matching `outputToken` (what you receive)
+
+Matching auctions are displayed as **mini ad cards** below the quotes section, always visible regardless of whether they qualify as better deals.
+
+### 19.2 Qualifying Buyout Quotes
+
+An auction buyout qualifies to be shown as a **quote card** alongside swap quotes when ALL criteria are met:
+
+1. **Has a buyout price** — `offer.buyout_price` is set
+2. **Better rate** — The buyout rate (outputAmount / buyoutPrice) exceeds the best swap quote rate
+3. **Affordable** — `buyout_price ≤ inputAmount` (user has enough input to cover the buyout)
+4. **Active** — The auction is in `Active` state (not completed, expired, etc.)
+5. **Public** — The auction is publicly accessible
+
+Qualifying buyouts appear as quote cards with an "AUCTION" badge, showing:
+- Exact output amount (no slippage)
+- Buyout cost in input token
+- Rate (output per input)
+- Link to full auction page
+
+### 19.3 Split Trade
+
+When one or more qualifying buyouts exist and stacking them yields a better total output than any single swap/buyout, a **Split Trade** card appears. This combines:
+
+1. **Stacked buyouts** — sorted by rate (best first), accumulated until they use up as much of the input amount as possible
+2. **Remainder swap** — the leftover input amount is swapped via the best DEX quote
+
+The Split Trade card shows:
+- Breakdown of each buyout leg (amount, cost, auction ID)
+- Swap leg (amount, DEX)
+- Total expected output
+
+### 19.4 Execution
+
+**Single Auction Buyout:**
+1. `reserveBid(offerId)` — reserves a bid slot
+2. `getBidEscrowSubaccount(principal, bidId)` — gets the escrow subaccount
+3. `icrc1_transfer` — transfers buyout amount to the escrow
+4. `confirmBid(bidId, amount)` — completes the buyout
+
+**Split Trade:**
+1. Execute all stacked buyouts in sequence (each following the 4-step flow above)
+2. Execute the remainder swap via the aggregator (normal DEX swap or split swap)
+3. Report per-leg results including partial failures
+
+Progress is reported throughout via the `onProgress` callback, with step indicators for RESERVING, TRANSFERRING, CONFIRMING, and SWAPPING.
+
+### 19.5 Data Flow
+
+```
+Token pair selected
+    → getOfferFeed({ states: [Active], public_only: true })
+    → filterMatchingAuctions(offers, inputToken, outputToken)
+    → Display as mini ad cards (always)
+    → buildBuyoutQuotes(matching, inputAmount, outputToken, bestSwapRate)
+    → Qualifying buyouts → QuoteCards (sorted with swap quotes)
+    → Stack qualifying buyouts + remainder swap → Split Trade card (if better)
+```
+
+---
+
+## 20. Future Considerations
 
 - **More DEXes:** Sonic, Helix, etc. — just add a new file in `dexes/`
 - **Limit orders:** ICPSwap now supports limit orders (visible in DID); could extend the interface
@@ -1524,3 +1593,5 @@ Kong's API accepts tokens in multiple formats: `"Symbol"`, `"Chain.Symbol"` (e.g
 - **Kong pending TX recovery UI:** A small panel showing "You have X pending swaps/claims" with resume buttons
 - **Price chart:** Show a small price chart for the selected pair
 - **Token allowance management:** A utility page to review/revoke ICRC2 approvals
+- **Private auction support:** Allow authenticated users to see matching private auctions they're approved for
+- **Auction bid tracking:** Show pending/active bids alongside buyout options

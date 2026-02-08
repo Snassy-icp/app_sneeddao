@@ -13,8 +13,15 @@ import {
   getHost,
   getTokenInfo,
 } from '../services/dex';
+import { Link } from 'react-router-dom';
 import priceService from '../services/PriceService';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
+import {
+  createSneedexActor,
+  getAssetDetails,
+  SNEEDEX_CANISTER_ID,
+} from '../utils/SneedexUtils';
+import { Principal } from '@dfinity/principal';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -95,13 +102,15 @@ function SlippageSettings({ value, onChange }) {
   );
 }
 
-function QuoteCard({ quote, selected, onSelect, inputDecimals, outputDecimals, outputUsdPrice, isBest, splitAdvantage }) {
+function QuoteCard({ quote, selected, onSelect, inputDecimals, outputDecimals, outputUsdPrice, isBest, splitAdvantage, inputSymbol, outputSymbol }) {
   const outputStr = formatAmount(quote.expectedOutput, outputDecimals);
   const minStr = formatAmount(quote.minimumOutput, outputDecimals);
   const impactPct = (quote.priceImpact * 100).toFixed(2);
   const feePct = (quote.dexFeePercent * 100).toFixed(2);
   const isRouted = quote.route?.length > 1;
   const isSplit = !!quote.isSplitQuote;
+  const isAuction = !!quote.isAuctionQuote;
+  const isSplitTrade = !!quote.isSplitTrade;
 
   const outputNum = Number(quote.expectedOutput) / (10 ** outputDecimals);
   const usdValue = outputUsdPrice ? formatUSD(outputNum * outputUsdPrice) : null;
@@ -114,10 +123,14 @@ function QuoteCard({ quote, selected, onSelect, inputDecimals, outputDecimals, o
         padding: '12px 14px',
         borderRadius: 12,
         border: selected
-          ? (isSplit ? '1.5px solid #8b5cf6' : '1.5px solid var(--color-accent)')
+          ? (isSplit ? '1.5px solid #8b5cf6'
+            : (isAuction || isSplitTrade) ? '1.5px solid #f39c12'
+            : '1.5px solid var(--color-accent)')
           : '1px solid var(--color-border)',
         background: selected
-          ? (isSplit ? 'rgba(139, 92, 246, 0.06)' : 'var(--color-accent)08')
+          ? (isSplit ? 'rgba(139, 92, 246, 0.06)'
+            : (isAuction || isSplitTrade) ? 'rgba(243, 156, 18, 0.06)'
+            : 'var(--color-accent)08')
           : 'var(--color-primaryBg)',
         cursor: 'pointer',
         position: 'relative',
@@ -143,10 +156,30 @@ function QuoteCard({ quote, selected, onSelect, inputDecimals, outputDecimals, o
           boxShadow: '0 2px 8px rgba(139, 92, 246, 0.3)',
         }}>SPLIT</span>
       )}
+      {isAuction && !isBest && (
+        <span style={{
+          position: 'absolute', top: -8, right: 12,
+          fontSize: 10, fontWeight: 700, padding: '2px 8px',
+          borderRadius: 6, letterSpacing: '0.04em',
+          background: 'linear-gradient(135deg, #f39c12, #e67e22)',
+          color: '#fff',
+          boxShadow: '0 2px 8px rgba(243, 156, 18, 0.3)',
+        }}>AUCTION</span>
+      )}
+      {isSplitTrade && !isBest && (
+        <span style={{
+          position: 'absolute', top: -8, right: 12,
+          fontSize: 10, fontWeight: 700, padding: '2px 8px',
+          borderRadius: 6, letterSpacing: '0.04em',
+          background: 'linear-gradient(135deg, #f39c12, #8b5cf6)',
+          color: '#fff',
+          boxShadow: '0 2px 8px rgba(243, 156, 18, 0.3)',
+        }}>SPLIT TRADE</span>
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-primaryText)' }}>
-            {isSplit ? 'Split Swap' : quote.dexName}
+            {isSplitTrade ? 'Split Trade' : isSplit ? 'Split Swap' : quote.dexName}
           </span>
           {isSplit && (
             <span style={{
@@ -183,8 +216,49 @@ function QuoteCard({ quote, selected, onSelect, inputDecimals, outputDecimals, o
           ))}
         </div>
       )}
-      {/* Split advantage vs next best */}
-      {isSplit && isBest && splitAdvantage && (
+      {/* Auction buyout info */}
+      {isAuction && (
+        <div style={{
+          fontSize: 11, color: 'var(--color-mutedText)', marginTop: 6,
+          paddingTop: 6, borderTop: '1px solid var(--color-border)',
+        }}>
+          <span>Buyout: {formatAmount(quote.auctionBuyoutPrice, inputDecimals)} {inputSymbol}</span>
+          <span style={{ float: 'right' }}>
+            Rate: 1 {inputSymbol} = {quote.auctionRate?.toPrecision(6)} {outputSymbol}
+          </span>
+        </div>
+      )}
+      {/* Split trade breakdown */}
+      {isSplitTrade && quote.usedBuyouts && (
+        <div style={{
+          display: 'flex', flexDirection: 'column', gap: 3,
+          fontSize: 11, color: 'var(--color-mutedText)',
+          marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--color-border)',
+        }}>
+          {quote.usedBuyouts.map(b => (
+            <div key={Number(b.offer.id)} style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#f39c12', fontWeight: 500 }}>
+                Sneedex #{Number(b.offer.id)}
+              </span>
+              <span>
+                {formatAmount(b.outputAmount, outputDecimals)} {outputSymbol} for {formatAmount(b.buyoutPrice, inputDecimals)} {inputSymbol}
+              </span>
+            </div>
+          ))}
+          {quote.swapLegRemaining > 0n && (
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--color-accent)', fontWeight: 500 }}>
+                {quote.swapLegQuote?.dexName || 'DEX Swap'}
+              </span>
+              <span>
+                {formatAmount(quote.swapLegOutput, outputDecimals)} {outputSymbol} for {formatAmount(quote.swapLegRemaining, inputDecimals)} {inputSymbol}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+      {/* Advantage vs next best (for split, auction, split trade) */}
+      {(isSplit || isSplitTrade || isAuction) && isBest && splitAdvantage && (
         <div style={{
           fontSize: 11, fontWeight: 600, marginTop: 4,
           color: 'var(--color-success)',
@@ -198,12 +272,27 @@ function QuoteCard({ quote, selected, onSelect, inputDecimals, outputDecimals, o
       <div style={{
         display: 'flex', justifyContent: 'space-between',
         fontSize: 11, color: 'var(--color-mutedText)', marginTop: 6,
-        paddingTop: isSplit ? 0 : 6,
-        borderTop: isSplit ? 'none' : '1px solid var(--color-border)',
+        paddingTop: (isSplit || isAuction || isSplitTrade) ? 0 : 6,
+        borderTop: (isSplit || isAuction || isSplitTrade) ? 'none' : '1px solid var(--color-border)',
       }}>
-        <span>Min: {minStr}</span>
-        <span>Impact: {impactPct}%</span>
-        <span style={{ opacity: 0.7 }}>Fee: {feePct}%</span>
+        {isAuction ? (
+          <>
+            <span>Exact amount (no slippage)</span>
+            <span style={{ opacity: 0.7 }}>
+              <Link to={`/sneedex_offer/${Number(quote.auctionOffer?.id)}`}
+                style={{ color: 'inherit', textDecoration: 'underline' }}
+                onClick={e => e.stopPropagation()}>
+                View offer
+              </Link>
+            </span>
+          </>
+        ) : (
+          <>
+            <span>Min: {minStr}</span>
+            <span>Impact: {impactPct}%</span>
+            <span style={{ opacity: 0.7 }}>Fee: {feePct}%</span>
+          </>
+        )}
       </div>
     </div>
   );
@@ -243,6 +332,120 @@ function ProgressPanel({ progress }) {
       </div>
       {error && <div style={{ color: 'var(--color-error)', fontSize: 12, marginTop: 6 }}>{error}</div>}
     </div>
+  );
+}
+
+// ─── Auction helpers ─────────────────────────────────────────────────────
+
+/**
+ * Filter active auctions that match a swap pair.
+ * Match: price_token_ledger === inputToken AND at least one ICRC1Token asset
+ * with ledger_canister_id === outputToken.
+ */
+function filterMatchingAuctions(auctions, inputToken, outputToken) {
+  if (!auctions || !inputToken || !outputToken) return [];
+  return auctions.filter(offer => {
+    if (!offer.price_token_ledger) return false;
+    const priceToken = offer.price_token_ledger.toString();
+    if (priceToken !== inputToken) return false;
+    // Must have at least one ICRC1Token asset matching the output token
+    return (offer.assets || []).some(ae => {
+      const d = getAssetDetails(ae);
+      return d.type === 'ICRC1Token' && d.ledger_id === outputToken;
+    });
+  });
+}
+
+/**
+ * Build "buyout quotes" from matching auctions that qualify as better-than-swap deals.
+ * Qualifying: has buyout_price, buyout_price <= inputAmount, rate > best swap rate.
+ *
+ * @returns {{ qualifyingBuyouts: Array, allBuyouts: Array }}
+ *   qualifyingBuyouts: sorted by rate desc, each with { offer, outputAmount, buyoutPrice, rate }
+ *   allBuyouts: same but without the rate filter (for ads section)
+ */
+function buildBuyoutQuotes(matchingAuctions, inputAmount, outputToken, bestSwapRate, inputDecimals, outputDecimals) {
+  const all = [];
+  for (const offer of matchingAuctions) {
+    if (!offer.buyout_price?.[0]) continue;
+    const buyoutPrice = BigInt(offer.buyout_price[0]);
+    if (buyoutPrice <= 0n) continue;
+
+    // Sum all ICRC1Token assets matching outputToken
+    let outputAmount = 0n;
+    for (const ae of offer.assets || []) {
+      const d = getAssetDetails(ae);
+      if (d.type === 'ICRC1Token' && d.ledger_id === outputToken) {
+        outputAmount += BigInt(d.amount);
+      }
+    }
+    if (outputAmount <= 0n) continue;
+
+    // Rate: output per 1 unit of input (in human-readable terms)
+    const rate = (Number(outputAmount) / (10 ** outputDecimals)) /
+                 (Number(buyoutPrice) / (10 ** inputDecimals));
+
+    all.push({ offer, outputAmount, buyoutPrice, rate });
+  }
+
+  // Sort by rate descending (best deal first)
+  all.sort((a, b) => b.rate - a.rate);
+
+  // Filter qualifying: buyout_price <= inputAmount AND rate > bestSwapRate
+  const qualifying = all.filter(b => b.buyoutPrice <= inputAmount && b.rate > bestSwapRate);
+
+  return { qualifyingBuyouts: qualifying, allBuyouts: all };
+}
+
+// ─── Mini Auction Card (ads) ─────────────────────────────────────────────
+
+function MiniAuctionCard({ offer, outputAmount, buyoutPrice, rate, inputTokenInfo, outputTokenInfo, outputUsdPrice }) {
+  const outputStr = formatAmount(outputAmount, outputTokenInfo?.decimals || 8);
+  const priceStr = formatAmount(buyoutPrice, inputTokenInfo?.decimals || 8);
+  const rateStr = rate < 0.000001 ? rate.toExponential(3) : rate.toPrecision(6);
+  const outputNum = Number(outputAmount) / (10 ** (outputTokenInfo?.decimals || 8));
+  const usdValue = outputUsdPrice ? formatUSD(outputNum * outputUsdPrice) : null;
+  const offerId = Number(offer.id);
+
+  return (
+    <Link
+      to={`/sneedex_offer/${offerId}`}
+      style={{ textDecoration: 'none', display: 'block' }}
+    >
+      <div className="swap-quote-card" style={{
+        padding: '10px 12px', borderRadius: 10,
+        border: '1px solid var(--color-border)',
+        background: 'var(--color-primaryBg)',
+        cursor: 'pointer', position: 'relative',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontWeight: 600, fontSize: 12, color: 'var(--color-primaryText)' }}>
+              Sneedex #{offerId}
+            </span>
+            <span style={{
+              fontSize: 9, padding: '1px 5px', borderRadius: 4,
+              background: 'rgba(243, 156, 18, 0.12)', color: '#f39c12', fontWeight: 600,
+            }}>BUYOUT</span>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--color-success)' }}>
+              {outputStr} {outputTokenInfo?.symbol}
+            </div>
+            {usdValue && (
+              <div style={{ fontSize: 10, color: 'var(--color-mutedText)' }}>{usdValue}</div>
+            )}
+          </div>
+        </div>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between',
+          fontSize: 10, color: 'var(--color-mutedText)', marginTop: 4,
+        }}>
+          <span>Cost: {priceStr} {inputTokenInfo?.symbol}</span>
+          <span>Rate: 1 {inputTokenInfo?.symbol} = {rateStr} {outputTokenInfo?.symbol}</span>
+        </div>
+      </div>
+    </Link>
   );
 }
 
@@ -381,6 +584,11 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
   const sliderDebounceRef = useRef(null);
   const splitFetchRef = useRef(0);
 
+  // Sneedex auction state
+  const [matchingAuctions, setMatchingAuctions] = useState([]);
+  const [auctionBuyouts, setAuctionBuyouts] = useState({ qualifyingBuyouts: [], allBuyouts: [] });
+  const [loadingAuctions, setLoadingAuctions] = useState(false);
+
   const [swapping, setSwapping] = useState(false);
   const [progress, setProgress] = useState(null);
   const [result, setResult] = useState(null);
@@ -408,19 +616,139 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
   const icpswapQuote = useMemo(() => quotes.find(q => q.dexId === 'icpswap') || null, [quotes]);
   const kongQuote = useMemo(() => quotes.find(q => q.dexId === 'kong') || null, [quotes]);
 
-  // ── Combined quotes list (individual + split), sorted best-first ──
+  // ── Build buyout quote objects (compatible with QuoteCard) ──
+  const buyoutQuoteCards = useMemo(() => {
+    if (!inputTokenInfo || !outputTokenInfo) return [];
+    return auctionBuyouts.qualifyingBuyouts.map(b => ({
+      dexId:    `auction-${Number(b.offer.id)}`,
+      dexName:  `Sneedex #${Number(b.offer.id)}`,
+      isAuctionQuote: true,
+      auctionOffer: b.offer,
+      auctionBuyoutPrice: b.buyoutPrice,
+      auctionOutputAmount: b.outputAmount,
+      auctionRate: b.rate,
+      inputToken:          inputToken,
+      outputToken:         outputToken,
+      inputAmount:         b.buyoutPrice,
+      effectiveInputAmount: b.buyoutPrice,
+      expectedOutput:      b.outputAmount,
+      minimumOutput:       b.outputAmount, // buyout is exact
+      spotPrice:           b.rate,
+      priceImpact:         0,              // no slippage on buyout
+      dexFeePercent:       0,
+      feeBreakdown: {
+        inputTransferFees: inputTokenInfo.fee,
+        outputWithdrawalFees: 0n,
+        dexTradingFee: 0,
+        totalInputFeesCount: 1,
+        totalOutputFeesCount: 0,
+      },
+      standard: 'icrc1',
+      route: [],
+      timestamp: Date.now(),
+    }));
+  }, [auctionBuyouts.qualifyingBuyouts, inputTokenInfo, outputTokenInfo, inputToken, outputToken]);
+
+  // ── Build "Split Trade" card (stacked buyouts + swap remainder) ──
+  const splitTradeQuote = useMemo(() => {
+    if (buyoutQuoteCards.length === 0 || !inputTokenInfo || !outputTokenInfo) return null;
+    const inputAmount = inputAmountStr ? parseToBigInt(inputAmountStr, inputTokenInfo.decimals) : 0n;
+    if (inputAmount <= 0n) return null;
+
+    // Stack buyouts (sorted best rate first) until we hit the input amount
+    let remaining = inputAmount;
+    const usedBuyouts = [];
+    let totalBuyoutOutput = 0n;
+    let totalBuyoutCost = 0n;
+
+    for (const b of auctionBuyouts.qualifyingBuyouts) {
+      if (remaining <= 0n) break;
+      if (b.buyoutPrice > remaining) continue; // Can't afford this one
+      usedBuyouts.push(b);
+      totalBuyoutCost += b.buyoutPrice;
+      totalBuyoutOutput += b.outputAmount;
+      remaining -= b.buyoutPrice;
+    }
+
+    if (usedBuyouts.length === 0) return null;
+
+    // If there's remaining input, find the best swap for it
+    let swapLegOutput = 0n;
+    let swapLegQuote = null;
+    if (remaining > 0n) {
+      // The best swap for the remainder — check if the split swap is better, or a single DEX
+      // Use the best from allQuotes scaled proportionally, or just the best individual rate
+      const bestSwap = quotes[0]; // best single-DEX quote
+      if (bestSwap && bestSwap.inputAmount > 0n) {
+        // Scale: what would we get for `remaining` at this rate?
+        const swapRate = Number(bestSwap.expectedOutput) / Number(bestSwap.inputAmount);
+        swapLegOutput = BigInt(Math.floor(Number(remaining) * swapRate));
+        swapLegQuote = bestSwap;
+      }
+    }
+
+    const totalOutput = totalBuyoutOutput + swapLegOutput;
+
+    // Only show split trade if it's better than the best single option
+    const bestSingleSwap = quotes[0]?.expectedOutput || 0n;
+    const bestSingleBuyout = buyoutQuoteCards[0]?.expectedOutput || 0n;
+    const bestExisting = bestSingleSwap > bestSingleBuyout ? bestSingleSwap : bestSingleBuyout;
+    if (totalOutput <= bestExisting) return null;
+
+    return {
+      dexId: 'split-trade',
+      dexName: 'Split Trade',
+      isSplitTrade: true,
+      usedBuyouts,
+      swapLegQuote,
+      swapLegRemaining: remaining,
+      swapLegOutput,
+      totalBuyoutCost,
+      totalBuyoutOutput,
+
+      inputToken,
+      outputToken,
+      inputAmount,
+      effectiveInputAmount: inputAmount,
+      expectedOutput: totalOutput,
+      minimumOutput: totalBuyoutOutput + (swapLegOutput > 0n
+        ? swapLegOutput - BigInt(Math.ceil(Number(swapLegOutput) * slippage))
+        : 0n),
+      spotPrice: (Number(totalOutput) / (10 ** outputTokenInfo.decimals)) /
+                 (Number(inputAmount) / (10 ** inputTokenInfo.decimals)),
+      priceImpact: 0,
+      dexFeePercent: 0,
+      feeBreakdown: {
+        inputTransferFees: inputTokenInfo.fee * BigInt(usedBuyouts.length + (remaining > 0n ? 1 : 0)),
+        outputWithdrawalFees: 0n,
+        dexTradingFee: 0,
+        totalInputFeesCount: usedBuyouts.length + (remaining > 0n ? 1 : 0),
+        totalOutputFeesCount: 0,
+      },
+      standard: 'mixed',
+      route: [],
+      timestamp: Date.now(),
+    };
+  }, [buyoutQuoteCards, auctionBuyouts.qualifyingBuyouts, quotes, inputAmountStr, inputTokenInfo, outputTokenInfo, inputToken, outputToken, slippage]);
+
+  // ── Combined quotes list (individual + split + auctions), sorted best-first ──
   const allQuotes = useMemo(() => {
     const list = [...quotes];
     if (splitQuoteResult && splitDistribution > 0 && splitDistribution < 100) {
       list.push(splitQuoteResult);
     }
+    // Add qualifying buyout quotes
+    for (const bq of buyoutQuoteCards) list.push(bq);
+    // Add split trade if beneficial
+    if (splitTradeQuote) list.push(splitTradeQuote);
+
     list.sort((a, b) => {
       if (b.expectedOutput > a.expectedOutput) return 1;
       if (b.expectedOutput < a.expectedOutput) return -1;
       return 0;
     });
     return list;
-  }, [quotes, splitQuoteResult, splitDistribution]);
+  }, [quotes, splitQuoteResult, splitDistribution, buyoutQuoteCards, splitTradeQuote]);
 
   // Resolve selected quote by dexId (fallback to first)
   const selectedQuote = useMemo(() => {
@@ -572,6 +900,71 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
 
     return () => { cancelled = true; };
   }, [inputToken, outputToken, aggregatorReady]);
+
+  // ── Fetch matching Sneedex auctions when pair changes ──
+  useEffect(() => {
+    if (!inputToken || !outputToken) {
+      setMatchingAuctions([]);
+      setAuctionBuyouts({ qualifyingBuyouts: [], allBuyouts: [] });
+      return;
+    }
+    let cancelled = false;
+    setLoadingAuctions(true);
+
+    (async () => {
+      try {
+        const actor = createSneedexActor(identity || null);
+        const resp = await actor.getOfferFeed({
+          start_id: [],
+          length: 50,
+          filter: [{
+            states: [[ { Active: null } ]],
+            asset_types: [], // Filter client-side for matching token pair
+            creator: [],
+            has_bids: [],
+            public_only: [true],
+            viewer: [],
+          }],
+        });
+        if (cancelled) return;
+        const matching = filterMatchingAuctions(resp.offers || [], inputToken, outputToken);
+        setMatchingAuctions(matching);
+      } catch (e) {
+        console.warn('Failed to fetch Sneedex auctions:', e);
+        if (!cancelled) setMatchingAuctions([]);
+      } finally {
+        if (!cancelled) setLoadingAuctions(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [inputToken, outputToken, identity]);
+
+  // ── Compute qualifying buyout quotes when auctions or quotes change ──
+  useEffect(() => {
+    if (matchingAuctions.length === 0 || !inputTokenInfo || !outputTokenInfo) {
+      setAuctionBuyouts({ qualifyingBuyouts: [], allBuyouts: [] });
+      return;
+    }
+
+    const inputAmount = inputAmountStr ? parseToBigInt(inputAmountStr, inputTokenInfo.decimals) : 0n;
+
+    // Best swap rate: highest output per input among swap quotes
+    let bestSwapRate = 0;
+    for (const q of quotes) {
+      if (q.expectedOutput > 0n && q.inputAmount > 0n) {
+        const r = (Number(q.expectedOutput) / (10 ** outputTokenInfo.decimals)) /
+                  (Number(q.inputAmount) / (10 ** inputTokenInfo.decimals));
+        if (r > bestSwapRate) bestSwapRate = r;
+      }
+    }
+
+    const result = buildBuyoutQuotes(
+      matchingAuctions, inputAmount, outputToken,
+      bestSwapRate, inputTokenInfo.decimals, outputTokenInfo.decimals,
+    );
+    setAuctionBuyouts(result);
+  }, [matchingAuctions, quotes, inputAmountStr, inputTokenInfo, outputTokenInfo, outputToken]);
 
   // ── Initial input estimate from target output amount (using USD or spot prices) ──
   useEffect(() => {
@@ -858,6 +1251,60 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
   }, [identity]);
 
   // ── Execute swap ──
+  // ── Execute a single auction buyout ──
+  const executeBuyout = async (offer, buyoutPrice, onProgress) => {
+    if (!identity) throw new Error('Not authenticated');
+    const actor = createSneedexActor(identity);
+    const offerId = BigInt(offer.id);
+
+    // Step 1: Reserve a bid
+    onProgress?.({ step: 'RESERVING', message: `Sneedex #${Number(offerId)}: Reserving buyout...` });
+    const reserveResult = await actor.reserveBid(offerId);
+    if ('err' in reserveResult) {
+      const errMsg = typeof reserveResult.err === 'object' ? JSON.stringify(reserveResult.err) : String(reserveResult.err);
+      throw new Error(`Reserve failed: ${errMsg}`);
+    }
+    const bidId = reserveResult.ok;
+
+    // Get escrow subaccount
+    const subaccount = await actor.getBidEscrowSubaccount(identity.getPrincipal(), bidId);
+
+    // Step 2: Transfer payment to escrow
+    onProgress?.({ step: 'TRANSFERRING', message: `Sneedex #${Number(offerId)}: Transferring ${formatAmount(buyoutPrice, inputTokenInfo?.decimals || 8)} ${inputTokenInfo?.symbol}...` });
+    const ledgerActor = createLedgerActor(offer.price_token_ledger.toString(), { agentOptions: { identity, host: getHost() } });
+
+    const fee = await ledgerActor.icrc1_fee();
+    const transferResult = await ledgerActor.icrc1_transfer({
+      to: {
+        owner: Principal.fromText(SNEEDEX_CANISTER_ID),
+        subaccount: [Array.from(subaccount)],
+      },
+      fee: [fee],
+      memo: [],
+      from_subaccount: [],
+      created_at_time: [],
+      amount: buyoutPrice,
+    });
+
+    if ('Err' in transferResult) {
+      const err = transferResult.Err;
+      if ('InsufficientFunds' in err) {
+        throw new Error(`Insufficient funds. Balance: ${formatAmount(err.InsufficientFunds.balance, inputTokenInfo?.decimals || 8)} ${inputTokenInfo?.symbol}`);
+      }
+      throw new Error(`Transfer failed: ${JSON.stringify(err)}`);
+    }
+
+    // Step 3: Confirm bid (completes the buyout)
+    onProgress?.({ step: 'CONFIRMING', message: `Sneedex #${Number(offerId)}: Confirming buyout...` });
+    const confirmResult = await actor.confirmBid(bidId, buyoutPrice);
+    if ('err' in confirmResult) {
+      const errMsg = typeof confirmResult.err === 'object' ? JSON.stringify(confirmResult.err) : String(confirmResult.err);
+      throw new Error(`Confirm failed: ${errMsg}`);
+    }
+
+    return { success: true, offerId: Number(offerId), bidId };
+  };
+
   const handleSwap = async () => {
     if (!aggregatorRef.current || allQuotes.length === 0) return;
     const quote = selectedQuote;
@@ -869,11 +1316,96 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
     setProgress(null);
 
     try {
-      const res = await aggregatorRef.current.swap({
-        quote,
-        slippage,
-        onProgress: setProgress,
-      });
+      let res;
+
+      if (quote.isAuctionQuote) {
+        // ── Single auction buyout ──
+        setProgress({ step: 'RESERVING', message: 'Starting buyout...', isBuyout: true });
+        const buyoutResult = await executeBuyout(
+          quote.auctionOffer,
+          quote.auctionBuyoutPrice,
+          setProgress,
+        );
+        res = {
+          success: true,
+          amountOut: quote.auctionOutputAmount,
+          isBuyout: true,
+          offerId: buyoutResult.offerId,
+        };
+
+      } else if (quote.isSplitTrade) {
+        // ── Split Trade: execute buyouts in sequence, then swap remainder ──
+        let totalOut = 0n;
+        const legs = [];
+
+        // Execute buyouts
+        for (let i = 0; i < quote.usedBuyouts.length; i++) {
+          const b = quote.usedBuyouts[i];
+          setProgress({
+            step: 'BUYOUT',
+            message: `Buying from Sneedex #${Number(b.offer.id)} (${i + 1}/${quote.usedBuyouts.length})...`,
+            isSplitTrade: true,
+            buyoutIndex: i,
+            totalBuyouts: quote.usedBuyouts.length,
+            hasSwapLeg: quote.swapLegRemaining > 0n,
+          });
+          try {
+            await executeBuyout(b.offer, b.buyoutPrice, (p) => {
+              setProgress(prev => ({ ...prev, ...p }));
+            });
+            totalOut += b.outputAmount;
+            legs.push({ type: 'buyout', offerId: Number(b.offer.id), success: true, amountOut: b.outputAmount });
+          } catch (e) {
+            legs.push({ type: 'buyout', offerId: Number(b.offer.id), success: false, error: e.message, amountOut: 0n });
+          }
+        }
+
+        // Execute swap for remainder
+        if (quote.swapLegRemaining > 0n && quote.swapLegQuote) {
+          setProgress({
+            step: 'SWAPPING',
+            message: `Swapping remaining ${formatAmount(quote.swapLegRemaining, inputTokenInfo?.decimals || 8)} via ${quote.swapLegQuote.dexName}...`,
+            isSplitTrade: true,
+          });
+
+          try {
+            // Build a quote-like object for the remaining amount
+            const remainderQuote = {
+              ...quote.swapLegQuote,
+              inputAmount: quote.swapLegRemaining,
+              effectiveInputAmount: quote.swapLegRemaining,
+            };
+            const swapRes = await aggregatorRef.current.swap({
+              quote: remainderQuote,
+              slippage,
+              onProgress: (p) => {
+                setProgress(prev => ({ ...prev, ...p, isSplitTrade: true }));
+              },
+            });
+            totalOut += swapRes.amountOut || 0n;
+            legs.push({ type: 'swap', dexId: quote.swapLegQuote.dexId, success: swapRes.success !== false, amountOut: swapRes.amountOut || 0n });
+          } catch (e) {
+            legs.push({ type: 'swap', dexId: quote.swapLegQuote.dexId, success: false, error: e.message, amountOut: 0n });
+          }
+        }
+
+        const allSuccess = legs.every(l => l.success);
+        res = {
+          success: allSuccess,
+          amountOut: totalOut,
+          isSplitTrade: true,
+          legs,
+        };
+
+      } else {
+        // ── Normal DEX swap or split swap ──
+        res = await aggregatorRef.current.swap({
+          quote,
+          slippage,
+          onProgress: setProgress,
+        });
+      }
+
       setResult(res);
       
       // Capture tokens for post-swap refresh (before any state changes)
@@ -1357,9 +1889,10 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
               </span>
             </div>
             {allQuotes.map((q, i) => {
-              // Compute split advantage when the split card is the best
+              // Compute advantage when a special card (split, auction, split trade) is best
               let splitAdv = null;
-              if (q.isSplitQuote && i === 0 && allQuotes.length > 1) {
+              const isSpecial = q.isSplitQuote || q.isAuctionQuote || q.isSplitTrade;
+              if (isSpecial && i === 0 && allQuotes.length > 1) {
                 const nextBest = allQuotes[1];
                 const diff = q.expectedOutput - nextBest.expectedOutput;
                 if (diff > 0n) {
@@ -1384,6 +1917,52 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
                   outputUsdPrice={outputUsdPrice}
                   isBest={i === 0 && allQuotes.length > 1}
                   splitAdvantage={splitAdv}
+                  inputSymbol={inputTokenInfo?.symbol || ''}
+                  outputSymbol={outputTokenInfo?.symbol || ''}
+                />
+              );
+            })}
+          </div>
+        )}
+
+        {/* ─── Matching Sneedex Auctions (ads) ─── */}
+        {matchingAuctions.length > 0 && inputTokenInfo && outputTokenInfo && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{
+              fontSize: 12, color: 'var(--color-mutedText)', fontWeight: 500,
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ color: '#f39c12' }}>★</span>
+                Sneedex Auctions ({matchingAuctions.length})
+              </span>
+              {loadingAuctions && <span style={{ fontSize: 10, opacity: 0.6 }}>Loading...</span>}
+            </div>
+            {matchingAuctions.map(offer => {
+              // Find the ICRC1Token output for this pair
+              let outputAmount = 0n;
+              for (const ae of offer.assets || []) {
+                const d = getAssetDetails(ae);
+                if (d.type === 'ICRC1Token' && d.ledger_id === outputToken) {
+                  outputAmount += BigInt(d.amount);
+                }
+              }
+              const buyoutPrice = offer.buyout_price?.[0] ? BigInt(offer.buyout_price[0]) : null;
+              const rate = buyoutPrice && buyoutPrice > 0n
+                ? (Number(outputAmount) / (10 ** outputTokenInfo.decimals)) /
+                  (Number(buyoutPrice) / (10 ** inputTokenInfo.decimals))
+                : 0;
+
+              return (
+                <MiniAuctionCard
+                  key={Number(offer.id)}
+                  offer={offer}
+                  outputAmount={outputAmount}
+                  buyoutPrice={buyoutPrice || 0n}
+                  rate={rate}
+                  inputTokenInfo={inputTokenInfo}
+                  outputTokenInfo={outputTokenInfo}
+                  outputUsdPrice={outputUsdPrice}
                 />
               );
             })}
@@ -1414,7 +1993,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
               fontSize: 15, fontWeight: 700, color: theme.colors.success,
               marginBottom: 4,
             }}>
-              {result.isSplit ? 'Split swap successful!' : 'Swap successful!'}
+              {result.isSplitTrade ? 'Split trade successful!' : result.isBuyout ? 'Buyout successful!' : result.isSplit ? 'Split swap successful!' : 'Swap successful!'}
             </div>
             <div style={{ fontSize: 13, color: theme.colors.secondaryText }}>
               Received: <strong>{formatAmount(result.amountOut, outputTokenInfo.decimals)} {outputTokenInfo.symbol}</strong>
@@ -1435,6 +2014,29 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
                     {!leg.success && <span style={{ color: theme.colors.error }}> (failed)</span>}
                   </span>
                 ))}
+              </div>
+            )}
+            {result.isSplitTrade && result.legs && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, marginTop: 6, fontSize: 11, color: theme.colors.mutedText }}>
+                {result.legs.map((leg, idx) => (
+                  <span key={idx}>
+                    {leg.type === 'buyout' ? `Sneedex #${leg.offerId}` : leg.dexId === 'icpswap' ? 'ICPSwap' : leg.dexId === 'kong' ? 'Kong' : leg.dexId}:{' '}
+                    {leg.success ? (
+                      <strong style={{ color: theme.colors.secondaryText }}>
+                        {formatAmount(leg.amountOut, outputTokenInfo.decimals)} {outputTokenInfo.symbol}
+                      </strong>
+                    ) : (
+                      <span style={{ color: theme.colors.error }}>failed{leg.error ? ` — ${leg.error}` : ''}</span>
+                    )}
+                  </span>
+                ))}
+              </div>
+            )}
+            {result.isBuyout && result.offerId && (
+              <div style={{ fontSize: 11, color: theme.colors.mutedText, marginTop: 4 }}>
+                <Link to={`/sneedex_offer/${result.offerId}`} style={{ color: 'var(--color-accent)' }}>
+                  View auction #{result.offerId}
+                </Link>
               </div>
             )}
           </div>
@@ -1499,6 +2101,8 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
            !inputAmountStr ? 'Enter Amount' :
            allQuotes.length === 0 ? (loadingQuotes ? 'Loading...' : 'No Quotes') :
            selectedQuote?.isSplitQuote ? 'Split Swap' :
+           selectedQuote?.isAuctionQuote ? 'Buy from Auction' :
+           selectedQuote?.isSplitTrade ? 'Split Trade' :
            'Swap'}
         </button>
 
@@ -1508,8 +2112,13 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
             fontSize: 12, color: theme.colors.mutedText, lineHeight: 1.7,
             padding: '10px 14px', borderRadius: 12,
             background: theme.colors.primaryBg,
-            border: `1px solid ${selectedQuote.isSplitQuote ? '#8b5cf620' : theme.colors.border}`,
+            border: `1px solid ${
+              selectedQuote.isSplitTrade ? '#f39c1220' :
+              selectedQuote.isAuctionQuote ? '#f39c1220' :
+              selectedQuote.isSplitQuote ? '#8b5cf620' :
+              theme.colors.border}`,
           }}>
+            {/* Header for special quote types */}
             {selectedQuote.isSplitQuote && (
               <div style={{
                 display: 'flex', justifyContent: 'space-between',
@@ -1522,6 +2131,32 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
                 </span>
               </div>
             )}
+            {selectedQuote.isAuctionQuote && (
+              <div style={{
+                display: 'flex', justifyContent: 'space-between',
+                paddingBottom: 6, marginBottom: 4,
+                borderBottom: `1px solid ${theme.colors.border}`,
+              }}>
+                <span style={{ fontWeight: 600, color: theme.colors.primaryText }}>Auction Buyout</span>
+                <span style={{ color: '#f39c12', fontWeight: 500 }}>
+                  Sneedex #{Number(selectedQuote.auctionOffer?.id)}
+                </span>
+              </div>
+            )}
+            {selectedQuote.isSplitTrade && (
+              <div style={{
+                display: 'flex', justifyContent: 'space-between',
+                paddingBottom: 6, marginBottom: 4,
+                borderBottom: `1px solid ${theme.colors.border}`,
+              }}>
+                <span style={{ fontWeight: 600, color: theme.colors.primaryText }}>Split Trade</span>
+                <span style={{ color: '#f39c12', fontWeight: 500 }}>
+                  {selectedQuote.usedBuyouts?.length} buyout{selectedQuote.usedBuyouts?.length > 1 ? 's' : ''}
+                  {selectedQuote.swapLegRemaining > 0n ? ' + swap' : ''}
+                </span>
+              </div>
+            )}
+
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span>Rate</span>
               <span style={{ color: theme.colors.secondaryText }}>
@@ -1531,46 +2166,82 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
                 )}
               </span>
             </div>
+
+            {/* Price impact — not applicable for pure auction buyouts */}
+            {!selectedQuote.isAuctionQuote && (
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Price impact{selectedQuote.isSplitQuote ? ' (worst leg)' : ''}</span>
+                <span style={{ color: selectedQuote.priceImpact > 0.05 ? theme.colors.error : theme.colors.secondaryText }}>
+                  {(selectedQuote.priceImpact * 100).toFixed(2)}%
+                </span>
+              </div>
+            )}
+
+            {/* Slippage — not applicable for pure auction buyouts */}
+            {!selectedQuote.isAuctionQuote && (
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Slippage tolerance</span>
+                <span style={{ color: theme.colors.secondaryText }}>{(slippage * 100).toFixed(1)}%</span>
+              </div>
+            )}
+
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>Price impact{selectedQuote.isSplitQuote ? ' (worst leg)' : ''}</span>
-              <span style={{ color: selectedQuote.priceImpact > 0.05 ? theme.colors.error : theme.colors.secondaryText }}>
-                {(selectedQuote.priceImpact * 100).toFixed(2)}%
-              </span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>Slippage tolerance</span>
-              <span style={{ color: theme.colors.secondaryText }}>{(slippage * 100).toFixed(1)}%</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>Min received</span>
+              <span>{selectedQuote.isAuctionQuote ? 'You receive' : 'Min received'}</span>
               <span style={{ color: theme.colors.secondaryText }}>
-                {formatAmount(selectedQuote.minimumOutput, outputTokenInfo.decimals)} {outputTokenInfo.symbol}
+                {formatAmount(selectedQuote.isAuctionQuote ? selectedQuote.expectedOutput : selectedQuote.minimumOutput, outputTokenInfo.decimals)} {outputTokenInfo.symbol}
                 {outputUsdPrice !== null && (
                   <span style={{ color: theme.colors.mutedText }}>
-                    {' '}({formatUSD((Number(selectedQuote.minimumOutput) / (10 ** outputTokenInfo.decimals)) * outputUsdPrice)})
+                    {' '}({formatUSD((Number(selectedQuote.isAuctionQuote ? selectedQuote.expectedOutput : selectedQuote.minimumOutput) / (10 ** outputTokenInfo.decimals)) * outputUsdPrice)})
                   </span>
                 )}
               </span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>Network fees</span>
-              <span style={{ color: theme.colors.secondaryText }}>
-                {selectedQuote.feeBreakdown.totalInputFeesCount}&times; in +{' '}
-                {selectedQuote.feeBreakdown.totalOutputFeesCount}&times; out
-              </span>
-            </div>
+
+            {!selectedQuote.isAuctionQuote && (
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Network fees</span>
+                <span style={{ color: theme.colors.secondaryText }}>
+                  {selectedQuote.feeBreakdown.totalInputFeesCount}&times; in +{' '}
+                  {selectedQuote.feeBreakdown.totalOutputFeesCount}&times; out
+                </span>
+              </div>
+            )}
+
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span>Standard</span>
               <span style={{ color: theme.colors.secondaryText }}>
-                {selectedQuote.isSplitQuote ? 'MIXED' : selectedQuote.standard?.toUpperCase()}
+                {selectedQuote.isSplitQuote || selectedQuote.isSplitTrade ? 'MIXED' :
+                 selectedQuote.isAuctionQuote ? 'ICRC1 (transfer)' :
+                 selectedQuote.standard?.toUpperCase()}
               </span>
             </div>
+
+            {selectedQuote.isAuctionQuote && (
+              <div style={{
+                marginTop: 6, paddingTop: 6, borderTop: `1px solid ${theme.colors.border}`,
+                fontSize: 11, color: theme.colors.mutedText, opacity: 0.8,
+              }}>
+                Exact amount — no slippage or price impact. You are buying out a Sneedex auction.
+              </div>
+            )}
+
             {selectedQuote.isSplitQuote && (
               <div style={{
                 marginTop: 6, paddingTop: 6, borderTop: `1px solid ${theme.colors.border}`,
                 fontSize: 11, color: theme.colors.mutedText, opacity: 0.8,
               }}>
                 Both legs execute in parallel. If one leg fails, the other may still succeed (partial fill).
+              </div>
+            )}
+
+            {selectedQuote.isSplitTrade && (
+              <div style={{
+                marginTop: 6, paddingTop: 6, borderTop: `1px solid ${theme.colors.border}`,
+                fontSize: 11, color: theme.colors.mutedText, opacity: 0.8,
+              }}>
+                Buyouts execute first, then the remaining amount is swapped.
+                {selectedQuote.usedBuyouts?.length > 1 ? ' Multiple buyouts execute in sequence.' : ''}
+                {' '}If a buyout fails, the remaining buyouts and swap may still proceed.
               </div>
             )}
           </div>
