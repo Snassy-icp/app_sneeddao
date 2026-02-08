@@ -17,6 +17,8 @@ import priceService from '../services/PriceService';
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const QUOTE_REFRESH_MS = 15_000;
+const SWAP_BLUE = '#3498db';
+const SWAP_PURPLE = '#8b5cf6';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -52,14 +54,20 @@ function SlippageSettings({ value, onChange }) {
   const active = value * 100;
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-      <span style={{ color: 'var(--color-mutedText)', fontSize: 13 }}>Slippage:</span>
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+      padding: '8px 12px', borderRadius: 10,
+      background: 'var(--color-primaryBg)',
+      border: '1px solid var(--color-border)',
+    }}>
+      <span style={{ color: 'var(--color-mutedText)', fontSize: 12, fontWeight: 500 }}>Slippage</span>
       {presets.map(p => (
         <button
           key={p}
           onClick={() => { onChange(p / 100); setCustom(''); }}
           style={{
-            padding: '3px 8px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
+            padding: '4px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+            cursor: 'pointer', transition: 'all 0.15s ease',
             border: Math.abs(active - p) < 0.001 ? '1px solid var(--color-accent)' : '1px solid var(--color-border)',
             background: Math.abs(active - p) < 0.001 ? 'var(--color-accent)' : 'transparent',
             color: Math.abs(active - p) < 0.001 ? '#fff' : 'var(--color-secondaryText)',
@@ -76,57 +84,70 @@ function SlippageSettings({ value, onChange }) {
           if (!isNaN(n) && n > 0 && n < 100) onChange(n / 100);
         }}
         style={{
-          width: 58, padding: '3px 6px', borderRadius: 6, fontSize: 12,
+          width: 54, padding: '4px 8px', borderRadius: 8, fontSize: 12,
           border: '1px solid var(--color-border)', background: 'transparent',
-          color: 'var(--color-primaryText)',
+          color: 'var(--color-primaryText)', outline: 'none',
         }}
       />
     </div>
   );
 }
 
-function QuoteCard({ quote, selected, onSelect, inputDecimals, outputDecimals, outputUsdPrice }) {
+function QuoteCard({ quote, selected, onSelect, inputDecimals, outputDecimals, outputUsdPrice, isBest }) {
   const outputStr = formatAmount(quote.expectedOutput, outputDecimals);
   const minStr = formatAmount(quote.minimumOutput, outputDecimals);
   const impactPct = (quote.priceImpact * 100).toFixed(2);
   const feePct = (quote.dexFeePercent * 100).toFixed(2);
   const isRouted = quote.route?.length > 1;
 
-  // Calculate USD value of expected output
   const outputNum = Number(quote.expectedOutput) / (10 ** outputDecimals);
   const usdValue = outputUsdPrice ? formatUSD(outputNum * outputUsdPrice) : null;
 
   return (
     <div
+      className="swap-quote-card"
       onClick={onSelect}
       style={{
         padding: '12px 14px',
-        borderRadius: 10,
+        borderRadius: 12,
         border: selected ? '1.5px solid var(--color-accent)' : '1px solid var(--color-border)',
-        background: selected ? 'rgba(52, 152, 219, 0.08)' : 'var(--color-cardBg)',
+        background: selected ? 'var(--color-accent)08' : 'var(--color-primaryBg)',
         cursor: 'pointer',
-        transition: 'all 0.15s',
-        boxShadow: selected ? 'var(--color-accentShadow)' : 'none',
+        position: 'relative',
       }}
     >
+      {isBest && (
+        <span style={{
+          position: 'absolute', top: -8, right: 12,
+          fontSize: 10, fontWeight: 700, padding: '2px 8px',
+          borderRadius: 6, letterSpacing: '0.04em',
+          background: 'linear-gradient(135deg, var(--color-success), #27ae60)',
+          color: '#fff',
+          boxShadow: '0 2px 8px rgba(46, 204, 113, 0.3)',
+        }}>BEST</span>
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <span style={{ fontWeight: 600, fontSize: 15, color: 'var(--color-primaryText)' }}>{quote.dexName}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-primaryText)' }}>{quote.dexName}</span>
           {isRouted && (
             <span style={{
-              marginLeft: 8, fontSize: 11, padding: '1px 6px', borderRadius: 4,
+              fontSize: 10, padding: '1px 6px', borderRadius: 4,
               background: 'var(--color-warning)', color: '#000', fontWeight: 600,
             }}>Multi-hop</span>
           )}
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--color-success)' }}>{outputStr}</div>
+          <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--color-success)' }}>{outputStr}</div>
           {usdValue && (
             <div style={{ fontSize: 11, color: 'var(--color-mutedText)', fontWeight: 400 }}>{usdValue}</div>
           )}
         </div>
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--color-mutedText)', marginTop: 6 }}>
+      <div style={{
+        display: 'flex', justifyContent: 'space-between',
+        fontSize: 11, color: 'var(--color-mutedText)', marginTop: 6,
+        paddingTop: 6, borderTop: '1px solid var(--color-border)',
+      }}>
         <span>Min: {minStr}</span>
         <span>Impact: {impactPct}%</span>
         <span style={{ opacity: 0.7 }}>Fee: {feePct}%</span>
@@ -143,8 +164,8 @@ function ProgressPanel({ progress }) {
 
   return (
     <div style={{
-      padding: '14px 16px', borderRadius: 10,
-      background: failed ? 'rgba(231, 76, 60, 0.08)' : completed ? 'rgba(46, 204, 113, 0.08)' : 'var(--color-cardBg)',
+      padding: '14px 16px', borderRadius: 12,
+      background: failed ? 'rgba(231, 76, 60, 0.06)' : completed ? 'rgba(46, 204, 113, 0.06)' : 'var(--color-primaryBg)',
       border: `1px solid ${failed ? 'var(--color-error)' : completed ? 'var(--color-success)' : 'var(--color-border)'}`,
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 8 }}>
@@ -159,7 +180,11 @@ function ProgressPanel({ progress }) {
         <div style={{
           height: '100%', borderRadius: 2,
           width: `${Math.min(pct, 100)}%`,
-          background: failed ? 'var(--color-error)' : completed ? 'var(--color-success)' : 'var(--color-accent)',
+          background: failed
+            ? 'var(--color-error)'
+            : completed
+              ? 'var(--color-success)'
+              : `linear-gradient(90deg, ${SWAP_BLUE}, ${SWAP_PURPLE})`,
           transition: 'width 0.4s ease',
         }} />
       </div>
@@ -194,7 +219,7 @@ export default function SwapWidget({ initialInput, initialOutput, onClose, onInp
   const [result, setResult] = useState(null);
 
   // Spot prices per DEX (fetched as soon as pair is selected)
-  const [spotPrices, setSpotPrices] = useState(null); // { icpswap: 0.001, kong: 0.00102 }
+  const [spotPrices, setSpotPrices] = useState(null);
   const [loadingSpot, setLoadingSpot] = useState(false);
 
   // USD prices
@@ -222,7 +247,6 @@ export default function SwapWidget({ initialInput, initialOutput, onClose, onInp
     const host = getHost();
     const agent = new HttpAgent({ host, identity });
 
-    // Fetch root key in local dev
     if (host.includes('localhost')) {
       agent.fetchRootKey().catch(console.warn);
     }
@@ -339,7 +363,6 @@ export default function SwapWidget({ initialInput, initialOutput, onClose, onInp
 
     const timeout = setTimeout(() => {
       fetchQuotes();
-      // Auto-refresh
       quoteTimerRef.current = setInterval(fetchQuotes, QUOTE_REFRESH_MS);
     }, 500);
 
@@ -404,201 +427,295 @@ export default function SwapWidget({ initialInput, initialOutput, onClose, onInp
     ? formatUSD((Number(selectedQuote.expectedOutput) / (10 ** outputTokenInfo.decimals)) * outputUsdPrice)
     : null;
 
+  const isSwapEnabled = isAuthenticated && selectedQuote && !swapping && inputAmountStr;
+
   // ── Render ──
-  const cardStyle = {
-    width: '100%',
-    maxWidth: 480,
-    margin: '0 auto',
-    borderRadius: 16,
-    background: 'var(--color-secondaryBg)',
-    border: '1px solid var(--color-border)',
-    boxShadow: 'var(--color-cardShadow)',
-    padding: 24,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 16,
-    boxSizing: 'border-box',
-  };
-
-  const inputBoxStyle = {
-    padding: '14px 16px',
-    borderRadius: 12,
-    background: 'var(--color-primaryBg)',
-    border: '1px solid var(--color-border)',
-  };
-
   return (
     <>
       <style>{`
+        .swap-flip-btn {
+          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        }
+        .swap-flip-btn:not(:disabled):hover {
+          background: var(--color-accent) !important;
+          color: #fff !important;
+          transform: rotate(180deg);
+          box-shadow: 0 4px 12px rgba(52, 152, 219, 0.35);
+        }
+        .swap-btn-primary {
+          transition: all 0.25s ease !important;
+        }
+        .swap-btn-primary:not(:disabled):hover {
+          transform: translateY(-1px);
+          filter: brightness(1.1);
+        }
+        .swap-btn-primary:not(:disabled):active {
+          transform: translateY(0);
+        }
+        .swap-quote-card {
+          transition: all 0.2s ease;
+        }
+        .swap-quote-card:hover {
+          border-color: var(--color-accent) !important;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+        }
+        .swap-settings-btn {
+          transition: all 0.2s ease !important;
+        }
+        .swap-settings-btn:hover {
+          background: var(--color-tertiaryBg) !important;
+          border-color: var(--color-accent) !important;
+          color: var(--color-accent) !important;
+        }
+        .swap-amount-input::placeholder {
+          color: var(--color-mutedText);
+          opacity: 0.5;
+        }
         @media (max-width: 480px) {
           .swap-card {
-            padding: 16px !important;
-            gap: 12px !important;
+            padding: 14px !important;
           }
-          .swap-input-box {
-            padding: 10px 12px !important;
+          .swap-input-section {
+            padding: 12px !important;
           }
           .swap-amount-input {
-            font-size: 18px !important;
+            font-size: 20px !important;
           }
           .swap-token-selector-wrap {
             min-width: 110px !important;
           }
         }
       `}</style>
-      <div className="swap-card" style={cardStyle}>
-        {/* Header */}
+
+      <div className="swap-card" style={{
+        width: '100%',
+        maxWidth: 480,
+        margin: '0 auto',
+        borderRadius: 20,
+        background: theme.colors.cardGradient,
+        border: `1px solid ${theme.colors.border}`,
+        boxShadow: theme.colors.cardShadow,
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        padding: 20,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 14,
+        boxSizing: 'border-box',
+      }}>
+
+        {/* ─── Header ─── */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: 'var(--color-primaryText)' }}>Swap</h2>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <h2 style={{
+            margin: 0, fontSize: 18, fontWeight: 700,
+            color: theme.colors.primaryText,
+            letterSpacing: '-0.01em',
+          }}>Swap</h2>
+          <div style={{ display: 'flex', gap: 6 }}>
             <button
+              className="swap-settings-btn"
               onClick={() => setShowSettings(s => !s)}
               title="Slippage settings"
               style={{
-                background: 'transparent', border: '1px solid var(--color-border)',
-                borderRadius: 8, padding: '4px 10px', cursor: 'pointer', color: 'var(--color-secondaryText)', fontSize: 16,
+                background: 'transparent',
+                border: `1px solid ${theme.colors.border}`,
+                borderRadius: 10,
+                padding: '5px 10px',
+                cursor: 'pointer',
+                color: showSettings ? theme.colors.accent : theme.colors.secondaryText,
+                fontSize: 15,
+                display: 'flex', alignItems: 'center',
               }}
             >&#9881;</button>
             {onClose && (
               <button
+                className="swap-settings-btn"
                 onClick={onClose}
                 style={{
-                  background: 'transparent', border: '1px solid var(--color-border)',
-                  borderRadius: 8, padding: '4px 10px', cursor: 'pointer', color: 'var(--color-secondaryText)', fontSize: 16,
+                  background: 'transparent',
+                  border: `1px solid ${theme.colors.border}`,
+                  borderRadius: 10,
+                  padding: '5px 10px',
+                  cursor: 'pointer',
+                  color: theme.colors.secondaryText,
+                  fontSize: 15,
                 }}
               >&times;</button>
             )}
           </div>
         </div>
 
-        {/* Slippage settings (collapsible) */}
-        {showSettings && (
-          <div style={{ padding: '8px 0' }}>
-            <SlippageSettings value={slippage} onChange={setSlippage} />
+        {/* ─── Slippage settings (collapsible) ─── */}
+        {showSettings && <SlippageSettings value={slippage} onChange={setSlippage} />}
+
+        {/* ─── Token pair stack ─── */}
+        <div style={{ position: 'relative' }}>
+          {/* Input box (top) */}
+          <div
+            className="swap-input-section"
+            style={{
+              padding: '14px 16px 20px',
+              borderRadius: '16px 16px 4px 4px',
+              background: theme.colors.primaryBg,
+              border: `1px solid ${theme.colors.border}`,
+              borderBottom: 'none',
+            }}
+          >
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              marginBottom: 8,
+            }}>
+              <span style={{ fontSize: 13, color: theme.colors.mutedText, fontWeight: 500 }}>You pay</span>
+              {inputUsdValue && (
+                <span style={{ fontSize: 12, color: theme.colors.mutedText }}>{inputUsdValue}</span>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <input
+                className="swap-amount-input"
+                type="text"
+                placeholder="0.0"
+                value={inputAmountStr}
+                onChange={e => {
+                  const v = e.target.value.replace(/[^0-9.]/g, '');
+                  if (v.split('.').length <= 2) setInputAmountStr(v);
+                }}
+                disabled={swapping}
+                style={{
+                  flex: 1, background: 'transparent', border: 'none', outline: 'none',
+                  fontSize: 24, fontWeight: 600, color: theme.colors.primaryText,
+                  fontFamily: 'inherit', minWidth: 0,
+                }}
+              />
+              <div className="swap-token-selector-wrap" style={{ minWidth: 130, flexShrink: 0 }}>
+                <TokenSelector
+                  value={inputToken}
+                  onChange={handleSetInputToken}
+                  placeholder="Select"
+                  disabled={swapping}
+                  allowCustom
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Thin gap between boxes (card bg shows through) */}
+          <div style={{ height: 4 }} />
+
+          {/* Output box (bottom) */}
+          <div
+            className="swap-input-section"
+            style={{
+              padding: '20px 16px 14px',
+              borderRadius: '4px 4px 16px 16px',
+              background: theme.colors.primaryBg,
+              border: `1px solid ${theme.colors.border}`,
+              borderTop: 'none',
+            }}
+          >
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              marginBottom: 8,
+            }}>
+              <span style={{ fontSize: 13, color: theme.colors.mutedText, fontWeight: 500 }}>You receive</span>
+              {outputUsdValue && (
+                <span style={{ fontSize: 12, color: theme.colors.mutedText }}>{outputUsdValue}</span>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <div style={{
+                flex: 1, fontSize: 24, fontWeight: 600, minWidth: 0,
+                color: selectedQuote ? theme.colors.primaryText : theme.colors.mutedText,
+                minHeight: 34, display: 'flex', alignItems: 'center',
+              }}>
+                {loadingQuotes ? (
+                  <span style={{ fontSize: 14, color: theme.colors.mutedText, fontWeight: 400 }}>
+                    Fetching quotes...
+                  </span>
+                ) : selectedQuote && outputTokenInfo ? (
+                  formatAmount(selectedQuote.expectedOutput, outputTokenInfo.decimals)
+                ) : '0.0'}
+              </div>
+              <div className="swap-token-selector-wrap" style={{ minWidth: 130, flexShrink: 0 }}>
+                <TokenSelector
+                  value={outputToken}
+                  onChange={handleSetOutputToken}
+                  placeholder="Select"
+                  disabled={swapping}
+                  allowCustom
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* ─── Flip button (overlapping both boxes) ─── */}
+          <div style={{
+            position: 'absolute',
+            left: '50%',
+            top: '50%',
+            transform: 'translate(-50%, -50%)',
+            zIndex: 3,
+          }}>
+            <button
+              className="swap-flip-btn"
+              onClick={flipTokens}
+              disabled={swapping}
+              title="Flip tokens"
+              style={{
+                width: 38, height: 38,
+                borderRadius: 10,
+                border: `4px solid ${theme.colors.secondaryBg}`,
+                background: theme.colors.tertiaryBg,
+                cursor: swapping ? 'not-allowed' : 'pointer',
+                color: theme.colors.accent,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 16, fontWeight: 700,
+              }}
+            >&#8595;</button>
+          </div>
+        </div>
+
+        {/* ─── Spot prices ─── */}
+        {spotPrices && inputTokenInfo && outputTokenInfo && (
+          <div style={{
+            display: 'flex', flexDirection: 'column', gap: 3,
+            padding: '8px 12px',
+            borderRadius: 10,
+            background: `${theme.colors.accent}08`,
+            border: `1px solid ${theme.colors.accent}15`,
+          }}>
+            {Object.entries(spotPrices).map(([dexId, { name, price }]) => (
+              <div key={dexId} style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                fontSize: 12, color: theme.colors.mutedText,
+              }}>
+                <span style={{ fontWeight: 500 }}>{name}</span>
+                <span style={{ color: theme.colors.secondaryText, fontWeight: 500 }}>
+                  1 {inputTokenInfo.symbol} = {price < 0.000001 ? price.toExponential(3) : price.toPrecision(6)} {outputTokenInfo.symbol}
+                </span>
+              </div>
+            ))}
           </div>
         )}
+        {loadingSpot && inputToken && outputToken && !spotPrices && (
+          <div style={{
+            textAlign: 'center', fontSize: 12, color: theme.colors.mutedText,
+            padding: '6px 0',
+          }}>Loading spot prices...</div>
+        )}
 
-        {/* Input token */}
-        <div className="swap-input-box" style={inputBoxStyle}>
-          <div style={{ fontSize: 12, color: 'var(--color-mutedText)', marginBottom: 6 }}>You pay</div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <input
-              className="swap-amount-input"
-              type="text"
-              placeholder="0.0"
-              value={inputAmountStr}
-              onChange={e => {
-                const v = e.target.value.replace(/[^0-9.]/g, '');
-                if (v.split('.').length <= 2) setInputAmountStr(v);
-              }}
-              disabled={swapping}
-              style={{
-                flex: 1, background: 'transparent', border: 'none', outline: 'none',
-                fontSize: 22, fontWeight: 600, color: 'var(--color-primaryText)',
-                fontFamily: 'inherit', minWidth: 0,
-              }}
-            />
-            <div className="swap-token-selector-wrap" style={{ minWidth: 130 }}>
-              <TokenSelector
-                value={inputToken}
-                onChange={handleSetInputToken}
-                placeholder="Select token"
-                disabled={swapping}
-                allowCustom
-              />
-            </div>
-          </div>
-          {/* USD value (replaces old fee display) */}
-          {inputTokenInfo && (
-            <div style={{ fontSize: 12, color: 'var(--color-mutedText)', marginTop: 4 }}>
-              {inputUsdValue ? (
-                <span>{inputUsdValue}</span>
-              ) : (
-                <span>{inputTokenInfo.symbol}</span>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Flip button + Spot prices */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', margin: '-8px 0', gap: 4 }}>
-          <button
-            onClick={flipTokens}
-            disabled={swapping}
-            style={{
-              width: 36, height: 36, borderRadius: '50%',
-              border: '2px solid var(--color-border)', background: 'var(--color-secondaryBg)',
-              cursor: 'pointer', fontSize: 18, color: 'var(--color-accent)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transition: 'transform 0.2s',
-              zIndex: 1,
-            }}
-            title="Flip tokens"
-          >&#8595;</button>
-
-          {/* Spot prices per DEX */}
-          {spotPrices && inputTokenInfo && outputTokenInfo && (
-            <div style={{
-              display: 'flex', gap: 12, fontSize: 11, color: 'var(--color-mutedText)',
-              flexWrap: 'wrap', justifyContent: 'center',
-            }}>
-              {Object.entries(spotPrices).map(([dexId, { name, price }]) => (
-                <span key={dexId}>
-                  {name}: <span style={{ color: 'var(--color-secondaryText)', fontWeight: 500 }}>
-                    1 {inputTokenInfo.symbol} = {price < 0.000001 ? price.toExponential(3) : price.toPrecision(6)} {outputTokenInfo.symbol}
-                  </span>
-                </span>
-              ))}
-            </div>
-          )}
-          {loadingSpot && inputToken && outputToken && !spotPrices && (
-            <span style={{ fontSize: 11, color: 'var(--color-mutedText)' }}>Loading spot prices...</span>
-          )}
-        </div>
-
-        {/* Output token */}
-        <div className="swap-input-box" style={inputBoxStyle}>
-          <div style={{ fontSize: 12, color: 'var(--color-mutedText)', marginBottom: 6 }}>You receive</div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <div style={{
-              flex: 1, fontSize: 22, fontWeight: 600,
-              color: selectedQuote ? 'var(--color-primaryText)' : 'var(--color-mutedText)',
-              minHeight: 32, display: 'flex', alignItems: 'center',
-              minWidth: 0,
-            }}>
-              {loadingQuotes ? (
-                <span style={{ fontSize: 14, color: 'var(--color-mutedText)' }}>Fetching quotes...</span>
-              ) : selectedQuote && outputTokenInfo ? (
-                formatAmount(selectedQuote.expectedOutput, outputTokenInfo.decimals)
-              ) : '0.0'}
-            </div>
-            <div className="swap-token-selector-wrap" style={{ minWidth: 130 }}>
-              <TokenSelector
-                value={outputToken}
-                onChange={handleSetOutputToken}
-                placeholder="Select token"
-                disabled={swapping}
-                allowCustom
-              />
-            </div>
-          </div>
-          {/* USD value (replaces old fee display) */}
-          {outputTokenInfo && (
-            <div style={{ fontSize: 12, color: 'var(--color-mutedText)', marginTop: 4 }}>
-              {outputUsdValue ? (
-                <span>{outputUsdValue}</span>
-              ) : (
-                <span>{outputTokenInfo.symbol}</span>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Quotes list */}
+        {/* ─── Quotes list ─── */}
         {quotes.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ fontSize: 13, color: 'var(--color-mutedText)', fontWeight: 500 }}>
-              Quotes ({quotes.length})
+            <div style={{
+              fontSize: 13, color: theme.colors.mutedText, fontWeight: 500,
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            }}>
+              <span>Quotes ({quotes.length})</span>
+              {loadingQuotes && (
+                <span style={{ fontSize: 11, opacity: 0.7 }}>Refreshing...</span>
+              )}
             </div>
             {quotes.map((q, i) => (
               <QuoteCard
@@ -609,32 +726,41 @@ export default function SwapWidget({ initialInput, initialOutput, onClose, onInp
                 inputDecimals={inputTokenInfo?.decimals || 8}
                 outputDecimals={outputTokenInfo?.decimals || 8}
                 outputUsdPrice={outputUsdPrice}
+                isBest={i === 0 && quotes.length > 1}
               />
             ))}
           </div>
         )}
 
-        {/* Quote error */}
+        {/* ─── Quote error ─── */}
         {quoteError && !loadingQuotes && (
-          <div style={{ color: 'var(--color-error)', fontSize: 13, textAlign: 'center' }}>{quoteError}</div>
+          <div style={{
+            color: theme.colors.error, fontSize: 13, textAlign: 'center',
+            padding: '8px 12px', borderRadius: 10,
+            background: `${theme.colors.error}08`,
+          }}>{quoteError}</div>
         )}
 
-        {/* Progress panel */}
+        {/* ─── Progress panel ─── */}
         {progress && <ProgressPanel progress={progress} />}
 
-        {/* Result */}
+        {/* ─── Result ─── */}
         {result && result.success && outputTokenInfo && (
           <div style={{
-            textAlign: 'center', padding: 12, borderRadius: 10,
-            background: 'rgba(46, 204, 113, 0.08)', border: '1px solid var(--color-success)',
+            textAlign: 'center', padding: '14px 16px', borderRadius: 12,
+            background: 'rgba(46, 204, 113, 0.06)',
+            border: `1px solid ${theme.colors.success}40`,
           }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-success)' }}>
+            <div style={{
+              fontSize: 15, fontWeight: 700, color: theme.colors.success,
+              marginBottom: 4,
+            }}>
               Swap successful!
             </div>
-            <div style={{ fontSize: 13, color: 'var(--color-secondaryText)', marginTop: 4 }}>
-              Received: {formatAmount(result.amountOut, outputTokenInfo.decimals)} {outputTokenInfo.symbol}
+            <div style={{ fontSize: 13, color: theme.colors.secondaryText }}>
+              Received: <strong>{formatAmount(result.amountOut, outputTokenInfo.decimals)} {outputTokenInfo.symbol}</strong>
               {outputUsdPrice !== null && (
-                <span style={{ color: 'var(--color-mutedText)' }}>
+                <span style={{ color: theme.colors.mutedText }}>
                   {' '}({formatUSD((Number(result.amountOut) / (10 ** outputTokenInfo.decimals)) * outputUsdPrice)})
                 </span>
               )}
@@ -642,20 +768,25 @@ export default function SwapWidget({ initialInput, initialOutput, onClose, onInp
           </div>
         )}
 
-        {/* Swap button */}
+        {/* ─── Swap button ─── */}
         <button
+          className="swap-btn-primary"
           onClick={handleSwap}
-          disabled={!isAuthenticated || !selectedQuote || swapping || !inputAmountStr}
+          disabled={!isSwapEnabled}
           style={{
-            width: '100%', padding: '14px 0', borderRadius: 12, fontSize: 16, fontWeight: 700,
-            border: 'none', cursor: (!isAuthenticated || !selectedQuote || swapping) ? 'not-allowed' : 'pointer',
-            background: (!isAuthenticated || !selectedQuote || swapping)
-              ? 'var(--color-tertiaryBg)'
-              : 'var(--color-accent)',
-            color: (!isAuthenticated || !selectedQuote || swapping)
-              ? 'var(--color-mutedText)'
-              : '#fff',
-            transition: 'all 0.2s',
+            width: '100%',
+            padding: '14px 0',
+            borderRadius: 14,
+            fontSize: 16,
+            fontWeight: 700,
+            border: 'none',
+            letterSpacing: '0.01em',
+            cursor: isSwapEnabled ? 'pointer' : 'not-allowed',
+            background: isSwapEnabled
+              ? `linear-gradient(135deg, ${SWAP_BLUE}, ${SWAP_PURPLE})`
+              : theme.colors.tertiaryBg,
+            color: isSwapEnabled ? '#fff' : theme.colors.mutedText,
+            boxShadow: isSwapEnabled ? `0 4px 20px ${SWAP_BLUE}35` : 'none',
           }}
         >
           {!isAuthenticated ? 'Connect Wallet' :
@@ -666,34 +797,39 @@ export default function SwapWidget({ initialInput, initialOutput, onClose, onInp
            'Swap'}
         </button>
 
-        {/* Selected quote details */}
+        {/* ─── Selected quote details ─── */}
         {selectedQuote && inputTokenInfo && outputTokenInfo && !swapping && !result?.success && (
-          <div style={{ fontSize: 12, color: 'var(--color-mutedText)', lineHeight: 1.6 }}>
+          <div style={{
+            fontSize: 12, color: theme.colors.mutedText, lineHeight: 1.7,
+            padding: '10px 14px', borderRadius: 12,
+            background: theme.colors.primaryBg,
+            border: `1px solid ${theme.colors.border}`,
+          }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span>Rate</span>
-              <span>
+              <span style={{ color: theme.colors.secondaryText }}>
                 1 {inputTokenInfo.symbol} = {selectedQuote.spotPrice?.toFixed(6)} {outputTokenInfo.symbol}
                 {inputUsdPrice !== null && (
-                  <span style={{ opacity: 0.7 }}> ({formatUSD(inputUsdPrice)})</span>
+                  <span style={{ color: theme.colors.mutedText }}> ({formatUSD(inputUsdPrice)})</span>
                 )}
               </span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span>Price impact</span>
-              <span style={{ color: selectedQuote.priceImpact > 0.05 ? 'var(--color-error)' : 'inherit' }}>
+              <span style={{ color: selectedQuote.priceImpact > 0.05 ? theme.colors.error : theme.colors.secondaryText }}>
                 {(selectedQuote.priceImpact * 100).toFixed(2)}%
               </span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span>Slippage tolerance</span>
-              <span>{(slippage * 100).toFixed(1)}%</span>
+              <span style={{ color: theme.colors.secondaryText }}>{(slippage * 100).toFixed(1)}%</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span>Min received</span>
-              <span>
+              <span style={{ color: theme.colors.secondaryText }}>
                 {formatAmount(selectedQuote.minimumOutput, outputTokenInfo.decimals)} {outputTokenInfo.symbol}
                 {outputUsdPrice !== null && (
-                  <span style={{ opacity: 0.7 }}>
+                  <span style={{ color: theme.colors.mutedText }}>
                     {' '}({formatUSD((Number(selectedQuote.minimumOutput) / (10 ** outputTokenInfo.decimals)) * outputUsdPrice)})
                   </span>
                 )}
@@ -701,14 +837,14 @@ export default function SwapWidget({ initialInput, initialOutput, onClose, onInp
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span>Network fees</span>
-              <span>
+              <span style={{ color: theme.colors.secondaryText }}>
                 {selectedQuote.feeBreakdown.totalInputFeesCount}&times; in +{' '}
                 {selectedQuote.feeBreakdown.totalOutputFeesCount}&times; out
               </span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span>Standard</span>
-              <span>{selectedQuote.standard?.toUpperCase()}</span>
+              <span style={{ color: theme.colors.secondaryText }}>{selectedQuote.standard?.toUpperCase()}</span>
             </div>
           </div>
         )}
