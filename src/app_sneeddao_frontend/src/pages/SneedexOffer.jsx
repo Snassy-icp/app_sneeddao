@@ -473,6 +473,21 @@ function SneedexOffer() {
             fetchUserBalance();
         }
     }, [offer, identity, fetchUserBalance]);
+
+    // Sync balance from wallet context when the payment token's balance changes
+    // This covers swaps done from the quick wallet or /wallet page while on this page
+    const walletTokens = walletContext?.walletTokens;
+    useEffect(() => {
+        if (!offer || !walletTokens || walletTokens.length === 0) return;
+        const paymentLedgerId = normalizeId(offer.price_token_ledger);
+        if (!paymentLedgerId) return;
+        const walletToken = walletTokens.find(t =>
+            (normalizeId(t.principal) || normalizeId(t.ledger_canister_id)) === paymentLedgerId
+        );
+        if (walletToken && walletToken.balance != null) {
+            setUserBalance(walletToken.balance);
+        }
+    }, [offer, walletTokens]);
     
     // Fetch canister info for an escrowed canister asset
     const fetchCanisterInfo = useCallback(async (assetIndex) => {
@@ -5181,8 +5196,8 @@ function SneedexOffer() {
                                                 <span style={{ color: theme.colors.mutedText }}>
                                                     Min: {formatAmount(getMinimumBidE8s(), tokenInfo.decimals)} {tokenInfo.symbol}
                                                 </span>
-                                                <span style={{ color: theme.colors.text }}>
-                                                    <FaWallet style={{ marginRight: '6px', opacity: 0.7 }} />
+                                                <span style={{ color: theme.colors.text, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                                    <FaWallet style={{ opacity: 0.7 }} />
                                                     {userBalance !== null ? (
                                                         <span style={{ fontWeight: '600' }}>
                                                             {formatAmount(userBalance, tokenInfo.decimals)} {tokenInfo.symbol}
@@ -5190,6 +5205,24 @@ function SneedexOffer() {
                                                     ) : (
                                                         <span style={{ opacity: 0.5 }}>Loading...</span>
                                                     )}
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); fetchUserBalance(); }}
+                                                        style={{
+                                                            background: 'none',
+                                                            border: 'none',
+                                                            cursor: 'pointer',
+                                                            padding: '2px',
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            color: theme.colors.mutedText,
+                                                            transition: 'color 0.2s ease',
+                                                        }}
+                                                        onMouseEnter={(e) => e.currentTarget.style.color = theme.colors.accent}
+                                                        onMouseLeave={(e) => e.currentTarget.style.color = theme.colors.mutedText}
+                                                        title="Refresh balance"
+                                                    >
+                                                        <FaSync size={10} />
+                                                    </button>
                                                 </span>
                                             </div>
                                             {/* Input mode toggle (only show if price available) */}
@@ -5570,8 +5603,8 @@ function SneedexOffer() {
                                             marginBottom: '0.75rem',
                                             fontSize: '0.85rem'
                                         }}>
-                                            <span style={{ color: theme.colors.text }}>
-                                                <FaWallet style={{ marginRight: '6px', opacity: 0.7 }} />
+                                            <span style={{ color: theme.colors.text, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                                <FaWallet style={{ opacity: 0.7 }} />
                                                 {userBalance !== null ? (
                                                     <span style={{ fontWeight: '600' }}>
                                                         {formatAmount(userBalance, tokenInfo.decimals)} {tokenInfo.symbol}
@@ -5579,6 +5612,24 @@ function SneedexOffer() {
                                                 ) : (
                                                     <span style={{ opacity: 0.5 }}>Loading...</span>
                                                 )}
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); fetchUserBalance(); }}
+                                                    style={{
+                                                        background: 'none',
+                                                        border: 'none',
+                                                        cursor: 'pointer',
+                                                        padding: '2px',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        color: theme.colors.mutedText,
+                                                        transition: 'color 0.2s ease',
+                                                    }}
+                                                    onMouseEnter={(e) => e.currentTarget.style.color = theme.colors.accent}
+                                                    onMouseLeave={(e) => e.currentTarget.style.color = theme.colors.mutedText}
+                                                    title="Refresh balance"
+                                                >
+                                                    <FaSync size={10} />
+                                                </button>
                                             </span>
                                         </div>
                                         {/* Insufficient balance hint for buyout-only */}
