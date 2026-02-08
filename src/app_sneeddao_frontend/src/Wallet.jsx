@@ -464,6 +464,9 @@ function Wallet() {
         if (!identity) return null;
         return computeAccountId(identity.getPrincipal());
     }, [identity]);
+    const userPrincipalText = useMemo(() => identity?.getPrincipal()?.toText() || '', [identity]);
+    const [walletShowAccountId, setWalletShowAccountId] = useState(false);
+    const [walletIdCopied, setWalletIdCopied] = useState(false);
     const location = useLocation();
     // Use WalletContext as the source of truth for tokens
     // Local state is only used for additional Wallet.jsx-specific updates
@@ -5176,6 +5179,75 @@ function Wallet() {
                             )}
                         </div>
                     </div>
+
+                    {/* Compact identity bar */}
+                    {isAuthenticated && userPrincipalText && (
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            marginBottom: '1rem',
+                            padding: '0 2px'
+                        }}>
+                            <span style={{
+                                color: theme.colors.mutedText,
+                                fontSize: '0.7rem',
+                                fontFamily: 'monospace',
+                                opacity: 0.8,
+                                userSelect: 'all',
+                                cursor: 'text'
+                            }}>
+                                {walletShowAccountId && userAccountId
+                                    ? `${userAccountId.slice(0, 8)}...${userAccountId.slice(-8)}`
+                                    : `${userPrincipalText.slice(0, 8)}...${userPrincipalText.slice(-6)}`
+                                }
+                            </span>
+                            <button
+                                onClick={() => {
+                                    const text = walletShowAccountId && userAccountId ? userAccountId : userPrincipalText;
+                                    navigator.clipboard.writeText(text);
+                                    setWalletIdCopied(true);
+                                    setTimeout(() => setWalletIdCopied(false), 1500);
+                                }}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    padding: '2px',
+                                    cursor: 'pointer',
+                                    color: walletIdCopied ? '#10b981' : theme.colors.mutedText,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    transition: 'color 0.2s ease',
+                                    opacity: 0.8
+                                }}
+                                title={`Copy ${walletShowAccountId ? 'account ID' : 'principal'}`}
+                            >
+                                {walletIdCopied ? <FaCheck size={9} /> : <FaCopy size={9} />}
+                            </button>
+                            <span style={{ color: theme.colors.border, fontSize: '0.6rem' }}>·</span>
+                            <button
+                                onClick={() => setWalletShowAccountId(!walletShowAccountId)}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    padding: 0,
+                                    cursor: 'pointer',
+                                    color: theme.colors.mutedText,
+                                    fontSize: '0.65rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '3px',
+                                    opacity: 0.7,
+                                    transition: 'opacity 0.2s ease'
+                                }}
+                                onMouseOver={(e) => e.currentTarget.style.opacity = '1'}
+                                onMouseOut={(e) => e.currentTarget.style.opacity = '0.7'}
+                            >
+                                <FaExchangeAlt size={7} />
+                                {walletShowAccountId ? 'principal' : 'account ID'}
+                            </button>
+                        </div>
+                    )}
                     
                     {/* Stats Row - Integrated cards */}
                     {isAuthenticated && (
