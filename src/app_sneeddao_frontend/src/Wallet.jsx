@@ -5647,7 +5647,7 @@ function Wallet() {
                     {[
                         { id: 'tokens', label: 'Tokens', icon: <FaCoins size={14} />, subtitle: tokensTotal > 0 ? `$${tokensTotal.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : null },
                         { id: 'positions', label: 'Liquidity', icon: <FaExchangeAlt size={14} />, subtitle: lpPositionsTotal > 0 ? `$${lpPositionsTotal.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : null },
-                        { id: 'dapps', label: 'Apps', icon: <FaBox size={14} />, subtitle: (neuronManagers.length + trackedCanisters.length) > 0 ? `${neuronManagers.length + trackedCanisters.length}` : null }
+                        { id: 'dapps', label: 'Apps', icon: <FaBox size={14} />, subtitle: (() => { const appsCount = neuronManagers.length + trackedCanisters.length; const appsUsd = managerNeuronsTotal > 0 && icpPrice ? managerNeuronsTotal * icpPrice : 0; if (appsCount === 0 && appsUsd === 0) return null; const parts = []; if (appsUsd > 0) parts.push(`$${appsUsd.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`); if (appsCount > 0 && appsUsd === 0) parts.push(`${appsCount}`); return parts.join('') || null; })() }
                     ].map(tab => (
                         <button
                             key={tab.id}
