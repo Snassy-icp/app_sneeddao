@@ -166,6 +166,11 @@ export class ICPSwapDex extends BaseDex {
       : [tokenB, tokenA];
 
     try {
+      // The factory matches on (token0.address, token1.address, fee).
+      // The `standard` field is required by the Candid type but doesn't affect
+      // which pool is returned — the pool canister supports both depositAndSwap
+      // (ICRC1) and depositFromAndSwap (ICRC2) regardless of creation label.
+      // Which method we use is determined by the token's actual capabilities.
       const result = await this.factoryActor.getPool({
         token0: { address: t0, standard: 'ICRC1' },
         token1: { address: t1, standard: 'ICRC1' },
@@ -364,7 +369,7 @@ export class ICPSwapDex extends BaseDex {
       getTokenInfo(outputToken, this.agent),
     ]);
 
-    // Re-quote to get fresh minimumOutput with slippage
+    // Re-quote to get fresh expected output with slippage protection.
     const effectiveInput = quote.effectiveInputAmount;
     const quoteResult = await pool.quote({
       amountIn: effectiveInput.toString(),
@@ -377,14 +382,17 @@ export class ICPSwapDex extends BaseDex {
     }
 
     const freshExpectedOutput = BigInt(quoteResult.ok);
-    const outputFees = BigInt(this.getOutputFeeCount(standard)) * outputInfo.fee;
-    const freshNet = freshExpectedOutput - outputFees;
-    const minimumOutput = freshNet - BigInt(Math.ceil(Number(freshNet) * slippage));
+
+    // amountOutMinimum is checked by the pool against the GROSS swap output
+    // (before the pool deducts tokenOutFee for the withdrawal transfer).
+    // So we apply slippage tolerance to the gross output, not the net output.
+    // (Confirmed from ICPSwap test-biz-flow.sh and official docs.)
+    const grossMinimum = freshExpectedOutput - BigInt(Math.ceil(Number(freshExpectedOutput) * slippage));
 
     const args = {
       amountIn: effectiveInput.toString(),
       zeroForOne,
-      amountOutMinimum: (minimumOutput > 0n ? minimumOutput : 0n).toString(),
+      amountOutMinimum: (grossMinimum > 0n ? grossMinimum : 0n).toString(),
       tokenInFee: inputInfo.fee,
       tokenOutFee: outputInfo.fee,
     };
@@ -405,11 +413,13 @@ export class ICPSwapDex extends BaseDex {
     const owner = this.config.identity.getPrincipal();
 
     try {
-      // Step 0: Check allowance
+      // Step 0: Check allowance.
+      // The pool's depositFromAndSwap calls transferFrom(amount: amountIn, fee: tokenInFee).
+      // Per ICRC-2 spec, the allowance is decremented by (amount + fee), so we need
+      // allowance >= amountIn + tokenInFee = effectiveInput + inputFee.
       report(SwapStep.CHECKING_ALLOWANCE, 'Checking token approval...', 0);
       const { allowance } = await checkAllowance(inputToken, this.agent, owner, poolPrincipal);
 
-      // We need enough for the amount the pool will transferFrom (effectiveInput + 1 fee for the transferFrom itself)
       const needed = amount + inputInfo.fee;
 
       if (allowance < needed) {
@@ -445,10 +455,15 @@ export class ICPSwapDex extends BaseDex {
     const owner = this.config.identity.getPrincipal();
 
     try {
-      // Step 0: Transfer input tokens to pool's subaccount for our principal
+      // Step 0: Transfer input tokens to pool's subaccount for our principal.
+      // The pool's depositAndSwap internally deposits from the subaccount, which
+      // costs tokenInFee. So we must transfer (amountIn + tokenInFee) to the
+      // subaccount so the pool nets amountIn after its internal deposit fee.
+      // (Confirmed from ICPSwap test-biz-flow.sh and official docs.)
       report(SwapStep.TRANSFERRING, 'Transferring tokens to ICPSwap pool...', 0);
       const subaccount = principalToSubaccount(owner);
-      await transfer(inputToken, this.agent, poolPrincipal, amount, subaccount);
+      const transferAmount = amount + inputInfo.fee;
+      await transfer(inputToken, this.agent, poolPrincipal, transferAmount, subaccount);
 
       // Step 1: depositAndSwap (combined: deposit from subaccount + swap + withdraw)
       report(SwapStep.SWAPPING, 'Executing swap...', 1);
