@@ -1996,15 +1996,6 @@ export default function PrincipalPage() {
                                                     </span>
                                                 )}
                                                 </div>
-                                                {(principalInfo?.nickname || principalNicknames?.get(stablePrincipalId.current?.toString() || '')) && (
-                                                    <div style={{ 
-                                                        color: theme.colors.mutedText, 
-                                                        fontSize: '0.95rem', 
-                                                        fontStyle: 'italic' 
-                                                    }}>
-                                                        "{principalInfo?.nickname || principalNicknames?.get(stablePrincipalId.current?.toString() || '')}"
-                                                    </div>
-                                                )}
                                             </div>
                                             <span style={{
                                                 marginLeft: 'auto',
