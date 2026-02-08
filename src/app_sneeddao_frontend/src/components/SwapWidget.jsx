@@ -13,6 +13,7 @@ import {
   getTokenInfo,
 } from '../services/dex';
 import priceService from '../services/PriceService';
+import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -226,6 +227,10 @@ export default function SwapWidget({ initialInput, initialOutput, onClose, onInp
   const [inputUsdPrice, setInputUsdPrice] = useState(null);
   const [outputUsdPrice, setOutputUsdPrice] = useState(null);
 
+  // Token balances
+  const [inputBalance, setInputBalance] = useState(null);
+  const [outputBalance, setOutputBalance] = useState(null);
+
   const aggregatorRef = useRef(null);
   const quoteTimerRef = useRef(null);
 
@@ -293,6 +298,43 @@ export default function SwapWidget({ initialInput, initialOutput, onClose, onInp
       .catch(() => { if (!cancelled) setOutputUsdPrice(null); });
     return () => { cancelled = true; };
   }, [outputToken, outputTokenInfo]);
+
+  // ── Fetch token balances when authenticated ──
+  const fetchBalances = useCallback(async () => {
+    if (!identity || !isAuthenticated) {
+      setInputBalance(null);
+      setOutputBalance(null);
+      return;
+    }
+    const principal = identity.getPrincipal();
+    const account = { owner: principal, subaccount: [] };
+
+    // Fetch input balance
+    if (inputToken) {
+      try {
+        const actor = createLedgerActor(inputToken, { agentOptions: { identity } });
+        const bal = await actor.icrc1_balance_of(account);
+        setInputBalance(bal);
+      } catch { setInputBalance(null); }
+    } else {
+      setInputBalance(null);
+    }
+
+    // Fetch output balance
+    if (outputToken) {
+      try {
+        const actor = createLedgerActor(outputToken, { agentOptions: { identity } });
+        const bal = await actor.icrc1_balance_of(account);
+        setOutputBalance(bal);
+      } catch { setOutputBalance(null); }
+    } else {
+      setOutputBalance(null);
+    }
+  }, [identity, isAuthenticated, inputToken, outputToken]);
+
+  useEffect(() => {
+    fetchBalances();
+  }, [fetchBalances]);
 
   // ── Fetch spot prices when pair changes (no amount needed) ──
   useEffect(() => {
@@ -372,6 +414,19 @@ export default function SwapWidget({ initialInput, initialOutput, onClose, onInp
     };
   }, [fetchQuotes]);
 
+  // ── Handle MAX button ──
+  const handleMax = () => {
+    if (inputBalance === null || inputBalance === undefined || !inputTokenInfo) return;
+    const bal = BigInt(inputBalance);
+    const dec = inputTokenInfo.decimals;
+    if (bal <= 0n) { setInputAmountStr('0'); return; }
+    const divisor = BigInt(10 ** dec);
+    const whole = (bal / divisor).toString();
+    const fracRaw = (bal % divisor).toString().padStart(dec, '0');
+    const frac = fracRaw.replace(/0+$/, '');
+    setInputAmountStr(frac ? `${whole}.${frac}` : whole);
+  };
+
   // ── Swap tokens (flip input/output) ──
   const flipTokens = () => {
     const newInput = outputToken;
@@ -402,6 +457,8 @@ export default function SwapWidget({ initialInput, initialOutput, onClose, onInp
         onProgress: setProgress,
       });
       setResult(res);
+      // Refresh balances after swap
+      fetchBalances();
     } catch (e) {
       setResult({ success: false, amountOut: 0n });
       setProgress(prev => ({
@@ -467,6 +524,11 @@ export default function SwapWidget({ initialInput, initialOutput, onClose, onInp
           background: var(--color-tertiaryBg) !important;
           border-color: var(--color-accent) !important;
           color: var(--color-accent) !important;
+        }
+        .swap-max-btn:not(:disabled):hover {
+          background: var(--color-accent) !important;
+          color: #fff !important;
+          border-color: var(--color-accent) !important;
         }
         .swap-amount-input::placeholder {
           color: var(--color-mutedText);
@@ -598,6 +660,42 @@ export default function SwapWidget({ initialInput, initialOutput, onClose, onInp
                 />
               </div>
             </div>
+            {/* Balance row */}
+            {isAuthenticated && inputTokenInfo && (
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                marginTop: 8, fontSize: 12, color: theme.colors.mutedText,
+              }}>
+                <span>
+                  Bal:{' '}
+                  <span style={{ color: theme.colors.secondaryText, fontWeight: 500 }}>
+                    {inputBalance !== null ? formatAmount(inputBalance, inputTokenInfo.decimals) : '...'} {inputTokenInfo.symbol}
+                  </span>
+                  {inputBalance !== null && inputUsdPrice !== null && (
+                    <span style={{ opacity: 0.7 }}>
+                      {' '}({formatUSD((Number(inputBalance) / (10 ** inputTokenInfo.decimals)) * inputUsdPrice)})
+                    </span>
+                  )}
+                </span>
+                <button
+                  onClick={handleMax}
+                  disabled={swapping || inputBalance === null || inputBalance === 0n}
+                  className="swap-max-btn"
+                  style={{
+                    padding: '2px 8px',
+                    borderRadius: 6,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    letterSpacing: '0.04em',
+                    border: `1px solid ${theme.colors.accent}40`,
+                    background: `${theme.colors.accent}15`,
+                    color: theme.colors.accent,
+                    cursor: swapping ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >MAX</button>
+              </div>
+            )}
           </div>
 
           {/* Thin gap between boxes (card bg shows through) */}
@@ -647,6 +745,25 @@ export default function SwapWidget({ initialInput, initialOutput, onClose, onInp
                 />
               </div>
             </div>
+            {/* Balance row */}
+            {isAuthenticated && outputTokenInfo && (
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                marginTop: 8, fontSize: 12, color: theme.colors.mutedText,
+              }}>
+                <span>
+                  Bal:{' '}
+                  <span style={{ color: theme.colors.secondaryText, fontWeight: 500 }}>
+                    {outputBalance !== null ? formatAmount(outputBalance, outputTokenInfo.decimals) : '...'} {outputTokenInfo.symbol}
+                  </span>
+                  {outputBalance !== null && outputUsdPrice !== null && (
+                    <span style={{ opacity: 0.7 }}>
+                      {' '}({formatUSD((Number(outputBalance) / (10 ** outputTokenInfo.decimals)) * outputUsdPrice)})
+                    </span>
+                  )}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* ─── Flip button (overlapping both boxes) ─── */}
