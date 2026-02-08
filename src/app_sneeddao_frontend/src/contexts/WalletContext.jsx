@@ -1190,16 +1190,16 @@ export const WalletProvider = ({ children }) => {
             // Mark as fetched early so UI shows loading state properly
             setHasFetchedPositions(true);
 
-            // Fetch each swap canister's positions in parallel - fire and forget pattern
-            swap_canisters.forEach(async (swap_canister) => {
-                if (positionsFetchSessionRef.current !== sessionId) return;
+            // Fetch each swap canister's positions sequentially to avoid request flood
+            for (const swap_canister of swap_canisters) {
+                if (positionsFetchSessionRef.current !== sessionId) break;
                 
                 try {
                     const swapActor = createIcpSwapActor(swap_canister);
                     
                     // Get swap metadata first
                     const swap_meta = await swapActor.metadata();
-                    if (!swap_meta.ok) return;
+                    if (!swap_meta.ok) continue;
 
                     const icrc1_ledger0 = swap_meta.ok.token0.address;
                     const icrc1_ledger1 = swap_meta.ok.token1.address;
@@ -1214,7 +1214,7 @@ export const WalletProvider = ({ children }) => {
                     const claimed_position_ids_for_swap = claimed_positions_for_swap.map(cp => cp.position_id);
                     
                     // If no positions for this user in this swap, skip
-                    if (userPositionIds.length === 0 && claimed_position_ids_for_swap.length === 0) return;
+                    if (userPositionIds.length === 0 && claimed_position_ids_for_swap.length === 0) continue;
 
                     // Get token metadata in parallel
                     const [ledgerActor0, ledgerActor1] = [
@@ -1268,7 +1268,7 @@ export const WalletProvider = ({ children }) => {
                         hasMore = allPositions.length === limit;
                     }
 
-                    if (userPositions.length === 0 || positionsFetchSessionRef.current !== sessionId) return;
+                    if (userPositions.length === 0 || positionsFetchSessionRef.current !== sessionId) continue;
 
                     // Build position details
                     const positionDetails = userPositions.map(compoundPosition => {
@@ -1315,14 +1315,12 @@ export const WalletProvider = ({ children }) => {
                 } catch (err) {
                     console.warn(`Could not fetch positions for swap ${swap_canister}:`, err);
                 }
-            });
+            }
 
-            // Set loading to false after a short delay to allow first positions to appear
-            setTimeout(() => {
-                if (positionsFetchSessionRef.current === sessionId) {
-                    setPositionsLoading(false);
-                }
-            }, 500);
+            // All swap canisters processed, mark loading complete
+            if (positionsFetchSessionRef.current === sessionId) {
+                setPositionsLoading(false);
+            }
             
         } catch (error) {
             console.error('Error fetching compact positions:', error);
@@ -1409,36 +1407,47 @@ export const WalletProvider = ({ children }) => {
             // Cache the registered ledgers list
             setLedgerList('registered', registeredLedgers);
             
-            // Start fetching registered tokens immediately (don't wait for RLL/tips)
-            // Collect promises so we know when initial fetch is done
-            const registeredTokenPromises = [];
-            registeredLedgers.forEach(ledger => {
-                const ledgerId = ledger.toString();
-                if (!knownLedgers.has(ledgerId)) {
+            // Fetch registered tokens in batches to avoid overwhelming the browser
+            // Each fetchTokenDetailsFast creates a new HttpAgent + 6 concurrent queries,
+            // so 13 tokens in parallel = ~156 HTTP requests. Batching keeps it manageable.
+            const TOKEN_BATCH_SIZE = 3;
+            const deferredUpdates = []; // Collect conversion rate + neuron total updates for later
+
+            for (let i = 0; i < registeredLedgers.length; i += TOKEN_BATCH_SIZE) {
+                if (fetchSessionRef.current !== sessionId) return;
+                
+                const batch = registeredLedgers.slice(i, i + TOKEN_BATCH_SIZE);
+                await Promise.allSettled(batch.map(ledger => {
+                    const ledgerId = ledger.toString();
+                    if (knownLedgers.has(ledgerId)) return Promise.resolve();
                     knownLedgers.add(ledgerId);
-                    // Fire and forget - will add progressively
-                    const promise = fetchTokenDetailsFast(ledger, summedLocks).then(token => {
+                    
+                    return fetchTokenDetailsFast(ledger, summedLocks).then(token => {
                         if (token && fetchSessionRef.current === sessionId) {
                             addTokenProgressively(token, sessionId);
-                            // Then fetch USD value and neuron totals in background
-                            fetchAndUpdateConversionRate(ledger, token.decimals, sessionId);
-                            fetchAndUpdateNeuronTotals(ledger, sessionId);
+                            // Defer secondary fetches to reduce concurrent request load
+                            deferredUpdates.push({ ledger, decimals: token.decimals });
                         }
                     }).catch(() => {});
-                    registeredTokenPromises.push(promise);
-                }
-            });
+                }));
+            }
             
-            // Wait for all registered token fetches to complete before marking as fetched
-            // This prevents the "No tokens" flash when network is slow
-            Promise.allSettled(registeredTokenPromises).then(() => {
-                if (fetchSessionRef.current === sessionId) {
-                    setHasFetchedInitial(true);
-                    setWalletLoading(false);
-                }
-            });
+            if (fetchSessionRef.current === sessionId) {
+                setHasFetchedInitial(true);
+                setWalletLoading(false);
+            }
 
-            // 3. Get rewards from RLL and update tokens (in parallel, don't block)
+            // Now fetch conversion rates and neuron totals in batches (deferred from above)
+            for (let i = 0; i < deferredUpdates.length; i += TOKEN_BATCH_SIZE) {
+                if (fetchSessionRef.current !== sessionId) return;
+                const batch = deferredUpdates.slice(i, i + TOKEN_BATCH_SIZE);
+                await Promise.allSettled(batch.flatMap(({ ledger, decimals }) => [
+                    fetchAndUpdateConversionRate(ledger, decimals, sessionId),
+                    fetchAndUpdateNeuronTotals(ledger, sessionId)
+                ]));
+            }
+
+            // 3. Get rewards from RLL and update tokens (sequential to avoid request flood)
             // This both discovers new tokens with rewards AND updates reward amounts on all tokens
             (async () => {
                 try {
@@ -1451,28 +1460,31 @@ export const WalletProvider = ({ children }) => {
                     const neurons = await fetchUserNeuronsForSns(identity, sneedGovernanceCanisterId);
                     const rewardBalances = await rllActor.balances_of_hotkey_neurons(neurons);
                     
-                    rewardBalances.forEach(balance => {
+                    // Process reward tokens sequentially instead of in parallel
+                    for (const balance of rewardBalances) {
                         const ledger = balance[0];
                         const ledgerId = normalizeId(ledger);
                         if (!knownLedgers.has(ledgerId) && fetchSessionRef.current === sessionId) {
                             knownLedgers.add(ledgerId);
-                            fetchTokenDetailsFast(ledger, summedLocks).then(token => {
+                            try {
+                                const token = await fetchTokenDetailsFast(ledger, summedLocks);
                                 if (token && fetchSessionRef.current === sessionId) {
-                                    // Add reward amount to token
                                     const tokenWithReward = { ...token, rewards: rewardsMap[ledgerId] || 0n };
                                     addTokenProgressively(tokenWithReward, sessionId);
-                                    fetchAndUpdateConversionRate(ledger, token.decimals, sessionId);
-                                    fetchAndUpdateNeuronTotals(ledger, sessionId);
+                                    await Promise.allSettled([
+                                        fetchAndUpdateConversionRate(ledger, token.decimals, sessionId),
+                                        fetchAndUpdateNeuronTotals(ledger, sessionId)
+                                    ]);
                                 }
-                            });
+                            } catch (e) {}
                         }
-                    });
+                    }
                 } catch (rewardErr) {
                     console.warn('Could not fetch reward tokens:', rewardErr);
                 }
             })();
 
-            // 4. Get tokens from received tips (in parallel, don't block)
+            // 4. Get tokens from received tips (sequential to avoid request flood)
             (async () => {
                 try {
                     const forumActor = createForumActor(forumCanisterId, {
@@ -1483,18 +1495,22 @@ export const WalletProvider = ({ children }) => {
                     });
                     const tipTokenSummaries = await getTipTokensReceivedByUser(forumActor, identity.getPrincipal());
                     
+                    // Process tip tokens sequentially instead of fire-and-forget parallel
                     for (const summary of tipTokenSummaries) {
                         const ledger = summary.token_ledger_principal;
                         const ledgerId = ledger.toString();
                         if (!knownLedgers.has(ledgerId) && fetchSessionRef.current === sessionId) {
                             knownLedgers.add(ledgerId);
-                            fetchTokenDetailsFast(ledger, summedLocks).then(token => {
+                            try {
+                                const token = await fetchTokenDetailsFast(ledger, summedLocks);
                                 if (token && fetchSessionRef.current === sessionId) {
                                     addTokenProgressively(token, sessionId);
-                                    fetchAndUpdateConversionRate(ledger, token.decimals, sessionId);
-                                    fetchAndUpdateNeuronTotals(ledger, sessionId);
+                                    await Promise.allSettled([
+                                        fetchAndUpdateConversionRate(ledger, token.decimals, sessionId),
+                                        fetchAndUpdateNeuronTotals(ledger, sessionId)
+                                    ]);
                                 }
-                            });
+                            } catch (e) {}
                         }
                     }
                 } catch (tipErr) {
@@ -1891,24 +1907,30 @@ export const WalletProvider = ({ children }) => {
                 isFetchingRef.current = true;
                 // Fetch ICP price for all consumers
                 fetchIcpPrice();
-                // Small delay to ensure React has committed cache state before validation starts
-                setTimeout(() => {
-                    fetchCompactWalletTokens();
+                // Delay background refresh to let page-specific fetches (transactions, etc.)
+                // complete first. Cached data is already showing, so this delay is invisible.
+                // Stagger: tokens first, then positions/managers/canisters AFTER tokens finish.
+                setTimeout(async () => {
+                    await fetchCompactWalletTokens();
+                    // Start secondary fetches only after tokens are done
                     fetchCompactPositions(false, false);
                     fetchNeuronManagers(true); // true = background refresh, don't show loading spinner
                     fetchTrackedCanisters();
-                }, 50);
-                setTimeout(() => { isFetchingRef.current = false; }, 150);
+                    isFetchingRef.current = false;
+                }, 3000);
             } else if (!hasFetchedInitial && !loadedFromCache) {
                 // No cached data, need to fetch from scratch
                 isFetchingRef.current = true;
                 // Fetch ICP price for all consumers
                 fetchIcpPrice();
-                fetchCompactWalletTokens();
-                fetchCompactPositions(true);
-                fetchNeuronManagers();
-                fetchTrackedCanisters();
-                setTimeout(() => { isFetchingRef.current = false; }, 100);
+                // Stagger: tokens first, then positions/managers/canisters after tokens finish
+                (async () => {
+                    await fetchCompactWalletTokens();
+                    fetchCompactPositions(true);
+                    fetchNeuronManagers();
+                    fetchTrackedCanisters();
+                    isFetchingRef.current = false;
+                })();
             }
         }
         if (!isAuthenticated) {
