@@ -92,7 +92,7 @@ const PrincipalInput = ({
     onAccountChange = null // Callback with { principal: string, subaccount: Uint8Array|null, encoded: string }
 }) => {
     const { theme } = useTheme();
-    const { principalNames, principalNicknames } = useNaming();
+    const { principalNames, principalNicknames, verifiedNames, principalCanisterTypes } = useNaming();
     const [inputValue, setInputValue] = useState(value);
     const [showDropdown, setShowDropdown] = useState(false);
     const [isValid, setIsValid] = useState(false);
@@ -186,7 +186,7 @@ const PrincipalInput = ({
             
             try {
                 const principal = Principal.fromText(principalStr);
-                const displayInfo = getPrincipalDisplayInfoFromContext(principal, principalNames, principalNicknames);
+                const displayInfo = getPrincipalDisplayInfoFromContext(principal, principalNames, principalNicknames, verifiedNames, principalCanisterTypes);
                 
                 const name = displayInfo.name || '';
                 const nickname = displayInfo.nickname || '';
@@ -257,7 +257,7 @@ const PrincipalInput = ({
         return results
             .sort((a, b) => b.score - a.score)
             .slice(0, 20);
-    }, [inputValue, principalNames, principalNicknames, activeTab, showUsers, showCanisters]);
+    }, [inputValue, principalNames, principalNicknames, verifiedNames, principalCanisterTypes, activeTab, showUsers, showCanisters]);
 
     // Validate input and resolve info
     useEffect(() => {
@@ -275,8 +275,8 @@ const PrincipalInput = ({
             
             // Get display info if available
             if (principalNames && principalNicknames) {
-                const displayInfo = getPrincipalDisplayInfoFromContext(principal, principalNames, principalNicknames);
-                if (displayInfo.name || displayInfo.nickname) {
+                const displayInfo = getPrincipalDisplayInfoFromContext(principal, principalNames, principalNicknames, verifiedNames, principalCanisterTypes);
+                if (displayInfo.name || displayInfo.nickname || displayInfo.canisterTypes?.length) {
                     setResolvedInfo(displayInfo);
                 } else {
                     setResolvedInfo(null);
@@ -289,7 +289,7 @@ const PrincipalInput = ({
             setIsValid(false);
             setResolvedInfo(null);
         }
-    }, [inputValue, principalNames, principalNicknames]);
+    }, [inputValue, principalNames, principalNicknames, verifiedNames, principalCanisterTypes]);
 
     // Handle input change
     const handleInputChange = (e) => {
@@ -567,7 +567,7 @@ const PrincipalInput = ({
                         {(() => {
                             try {
                                 const principal = Principal.fromText(inputValue.trim());
-                                const displayInfo = getPrincipalDisplayInfoFromContext(principal, principalNames, principalNicknames);
+                                const displayInfo = getPrincipalDisplayInfoFromContext(principal, principalNames, principalNicknames, verifiedNames, principalCanisterTypes);
                                 return (
                                     <PrincipalDisplay
                                         principal={principal}

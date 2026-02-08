@@ -296,6 +296,39 @@ export function NamingProvider({ children }) {
         return merged;
     }, [verifiedNames, principalNames, snsCacheVersion, whitelistCacheVersion]);
 
+    // Map principal ID -> canister types for icon selection (sns_root, sns_governance, sns_ledger, sns_swap, sns_index, sns_dapp, sns_archive, whitelist_ledger)
+    const principalCanisterTypes = useMemo(() => {
+        const types = new Map();
+        const addType = (id, type) => {
+            if (!id) return;
+            const key = id?.toString?.() ?? String(id);
+            const existing = types.get(key) || [];
+            if (!existing.includes(type)) existing.push(type);
+            types.set(key, existing);
+        };
+        const snses = getAllSnses() || [];
+        snses.forEach(sns => {
+            const entries = [
+                [sns.canisters?.root, 'sns_root'],
+                [sns.canisters?.governance, 'sns_governance'],
+                [sns.canisters?.ledger, 'sns_ledger'],
+                [sns.canisters?.swap, 'sns_swap'],
+                [sns.canisters?.index, 'sns_index'],
+            ];
+            entries.forEach(([canisterId, type]) => {
+                addType(canisterId, type);
+            });
+            (sns.canisters?.dapps || []).forEach((dappId) => addType(dappId, 'sns_dapp'));
+            (sns.canisters?.archives || []).forEach((archId) => addType(archId, 'sns_archive'));
+        });
+        const whitelist = getCachedWhitelistTokens();
+        whitelist.forEach(token => {
+            const ledgerId = token.ledger_id?.toString?.() ?? String(token.ledger_id);
+            addType(ledgerId, 'whitelist_ledger');
+        });
+        return types;
+    }, [snsCacheVersion, whitelistCacheVersion]);
+
     const getNeuronDisplayName = (neuronId, snsRoot) => {
         if (!neuronId || !snsRoot) return null;
         const mapKey = `${snsRoot}:${neuronId}`;
@@ -321,6 +354,7 @@ export function NamingProvider({ children }) {
             principalNames: principalNamesWithSns,
             principalNicknames,
             verifiedNames: verifiedNamesWithSns,
+            principalCanisterTypes,
             loading,
             fetchAllNames,
             getNeuronDisplayName,

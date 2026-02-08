@@ -2,7 +2,7 @@ import React, { useState, useCallback, useContext, useMemo, useRef, useEffect } 
 import { Principal } from '@dfinity/principal';
 import { sha224 } from '@dfinity/principal/lib/esm/utils/sha224';
 import { encodeIcrcAccount } from '@dfinity/ledger-icrc';
-import { FaCopy, FaCheck } from 'react-icons/fa';
+import { FaCopy, FaCheck, FaCube, FaSitemap, FaVoteYea, FaCoins, FaExchangeAlt, FaList, FaBox, FaArchive } from 'react-icons/fa';
 import { getPrincipalName, getPrincipalNickname } from './BackendUtils';
 import PrincipalContextMenu from '../components/PrincipalContextMenu';
 import MessageDialog from '../components/MessageDialog';
@@ -88,16 +88,17 @@ export const getPrincipalColor = (principal) => {
 };
 
 // Get display info from naming context (optimized version)
-// verifiedNames is optional - when provided (e.g. from useNaming()), isVerified will be set correctly
-export const getPrincipalDisplayInfoFromContext = (principal, principalNames, principalNicknames, verifiedNames) => {
-    if (!principal) return { name: null, nickname: null, isVerified: false };
+// verifiedNames, principalCanisterTypes optional - when provided (e.g. from useNaming()), isVerified and canisterTypes will be set
+export const getPrincipalDisplayInfoFromContext = (principal, principalNames, principalNicknames, verifiedNames, principalCanisterTypes) => {
+    if (!principal) return { name: null, nickname: null, isVerified: false, canisterTypes: null };
     
     const principalStr = typeof principal === 'string' ? principal : principal.toString();
     const name = principalNames?.get(principalStr) || null;
     const nickname = principalNicknames?.get(principalStr) || null;
     const isVerified = verifiedNames?.get(principalStr) || false;
+    const canisterTypes = principalCanisterTypes?.get(principalStr) || null;
     
-    return { name, nickname, isVerified };
+    return { name, nickname, isVerified, canisterTypes };
 };
 
 // Get the display name for a principal, including name and verification status (fallback version)
@@ -220,6 +221,36 @@ const UserIcon = ({ size = 14, color = '#888' }) => {
     }));
 };
 
+// Canister type -> icon mapping (monochromatic). For dapp+ledger combo, prefer ledger icon.
+const CANISTER_TYPE_ICONS = {
+    sns_root: FaSitemap,
+    sns_governance: FaVoteYea,
+    sns_ledger: FaCoins,
+    sns_swap: FaExchangeAlt,
+    sns_index: FaList,
+    sns_dapp: FaBox,
+    sns_archive: FaArchive,
+    whitelist_ledger: FaCoins,
+};
+
+// Get the best icon for canister types. Returns FaCube if no types. For dapp+ledger, uses ledger (FaCoins).
+export const getCanisterTypeIcon = (canisterTypes, size = 14, color = '#888') => {
+    if (!canisterTypes || !Array.isArray(canisterTypes) || canisterTypes.length === 0) {
+        return React.createElement(FaCube, { size, color, style: { opacity: 0.7 } });
+    }
+    const hasLedger = canisterTypes.includes('whitelist_ledger') || canisterTypes.includes('sns_ledger');
+    const hasDapp = canisterTypes.includes('sns_dapp');
+    if (hasLedger && hasDapp) return React.createElement(FaCoins, { size, color, style: { opacity: 0.8 } });
+    if (hasLedger) return React.createElement(FaCoins, { size, color, style: { opacity: 0.8 } });
+    const typeOrder = ['sns_root', 'sns_governance', 'sns_ledger', 'sns_swap', 'sns_index', 'sns_dapp', 'sns_archive', 'whitelist_ledger'];
+    for (const t of typeOrder) {
+        if (canisterTypes.includes(t) && CANISTER_TYPE_ICONS[t]) {
+            return React.createElement(CANISTER_TYPE_ICONS[t], { size, color, style: { opacity: 0.8 } });
+        }
+    }
+    return React.createElement(FaCube, { size, color, style: { opacity: 0.7 } });
+};
+
 // Canister icon component (box/cube)
 const CanisterIcon = ({ size = 14, color = '#888' }) => {
     return React.createElement('svg', {
@@ -239,8 +270,8 @@ const CanisterIcon = ({ size = 14, color = '#888' }) => {
     }));
 };
 
-// Principal type icon - shows crown for premium, user/canister icon otherwise
-export const PrincipalTypeIcon = ({ principal, isPremium = false, size = 14, color = '#888' }) => {
+// Principal type icon - shows crown for premium, user/canister icon otherwise. Canister icon uses canisterTypes when available.
+export const PrincipalTypeIcon = ({ principal, isPremium = false, size = 14, color = '#888', canisterTypes = null }) => {
     // Premium always shows crown
     if (isPremium) {
         return React.createElement(PremiumCrownIcon, { size });
@@ -249,7 +280,7 @@ export const PrincipalTypeIcon = ({ principal, isPremium = false, size = 14, col
     // Otherwise show user or canister icon
     const isCanister = isCanisterPrincipal(principal);
     if (isCanister) {
-        return React.createElement(CanisterIcon, { size, color });
+        return getCanisterTypeIcon(canisterTypes, size, color);
     }
     return React.createElement(UserIcon, { size, color });
 };
@@ -308,11 +339,15 @@ export const PrincipalDisplay = React.memo(({
         const name = namingContext.principalNames?.get(principalStr);
         const nickname = namingContext.principalNicknames?.get(principalStr);
         const isVerified = namingContext.verifiedNames?.get(principalStr) || false;
+        const canisterTypes = namingContext.principalCanisterTypes?.get(principalStr) || null;
         
-        if (!name && !nickname) return null;
+        if (!name && !nickname && !canisterTypes) return null;
         
-        return { name, nickname, isVerified };
-    }, [displayInfo, principal, namingContext?.principalNames, namingContext?.principalNicknames, namingContext?.verifiedNames]);
+        return { name, nickname, isVerified, canisterTypes };
+    }, [displayInfo, principal, namingContext?.principalNames, namingContext?.principalNicknames, namingContext?.verifiedNames, namingContext?.principalCanisterTypes]);
+
+    // Canister types for icon (even when no name - e.g. truncated ID display)
+    const canisterTypesForIcon = effectiveDisplayInfo?.canisterTypes ?? (principal && namingContext?.principalCanisterTypes?.get(principal.toString())) ?? null;
 
     const formatted = formatPrincipal(principal, effectiveDisplayInfo);
     
@@ -479,7 +514,7 @@ export const PrincipalDisplay = React.memo(({
                             style: { display: 'inline-flex', alignItems: 'center' },
                             title: principalId 
                         },
-                        React.createElement(PrincipalTypeIcon, { principal, isPremium, size: 14, color: principalColor }),
+                        React.createElement(PrincipalTypeIcon, { principal, isPremium, size: 14, color: principalColor, canisterTypes: canisterTypesForIcon }),
                         formatted
                     )
                 ),
@@ -572,7 +607,7 @@ export const PrincipalDisplay = React.memo(({
                     // Principal type icon (crown for premium, user/canister otherwise)
                     React.createElement('span', 
                         { style: { display: 'inline-flex', alignItems: 'center', verticalAlign: 'middle', marginRight: '4px' } },
-                        React.createElement(PrincipalTypeIcon, { principal, isPremium, size: 14, color: principalColor })
+                        React.createElement(PrincipalTypeIcon, { principal, isPremium, size: 14, color: principalColor, canisterTypes: canisterTypesForIcon })
                     ),
                     formatted.name && React.createElement('span',
                         {

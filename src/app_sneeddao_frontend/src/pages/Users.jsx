@@ -17,7 +17,7 @@ function Users() {
     const { theme } = useTheme();
     const { identity, isAuthenticated } = useAuth();
     const navigate = useNavigate();
-    const { principalNames, principalNicknames, verifiedNames } = useNaming();
+    const { principalNames, principalNicknames, verifiedNames, principalCanisterTypes } = useNaming();
 
     const [searchTerm, setSearchTerm] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
@@ -51,7 +51,8 @@ function Users() {
                 Principal.fromText(principalStr),
                 principalNames,
                 principalNicknames,
-                verifiedNames
+                verifiedNames,
+                principalCanisterTypes
             );
         } catch {
             return null;

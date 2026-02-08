@@ -10,7 +10,7 @@ import { IDL } from '@dfinity/candid';
 import { getCanisterGroups, setCanisterGroups, convertGroupsFromBackend, getTrackedCanisters, registerTrackedCanister, unregisterTrackedCanister, getCanisterInfo } from '../utils/BackendUtils';
 import { createActor as createBackendActor, canisterId as BACKEND_CANISTER_ID } from 'declarations/app_sneeddao_backend';
 import { usePremiumStatus } from '../hooks/usePremiumStatus';
-import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, getCanisterTypeIcon } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
 import { FaPlus, FaTrash, FaCube, FaSpinner, FaChevronDown, FaChevronRight, FaBrain, FaFolder, FaFolderOpen, FaEdit, FaCheck, FaTimes, FaCrown, FaLock, FaStar, FaArrowRight, FaWallet, FaQuestionCircle, FaBox } from 'react-icons/fa';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
@@ -2352,7 +2352,7 @@ export default function AppsPage() {
             }),
         }), [canisterId, groupId]);
 
-        const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
+        const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames, verifiedNames, principalCanisterTypes);
         const status = canisterStatus[canisterId];
         const cycles = status?.cycles;
         const memory = status?.memory;
@@ -2371,7 +2371,7 @@ export default function AppsPage() {
             >
                 <div style={styles.canisterInfo}>
                     <div style={{ ...styles.canisterIcon, position: 'relative' }}>
-                        <FaCube size={18} />
+                        {getCanisterTypeIcon(displayInfo?.canisterTypes, 18, theme.colors.accent)}
                         {isController && (
                             <FaCrown 
                                 size={10} 
@@ -2522,7 +2522,7 @@ export default function AppsPage() {
             }),
         }), [canisterId, sourceGroupId]);
 
-        const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
+        const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames, verifiedNames, principalCanisterTypes);
         const version = managerInfo?.version;
         const neuronCount = managerInfo?.neuronCount || 0;
         const cycles = managerInfo?.cycles;
@@ -4313,7 +4313,7 @@ export default function AppsPage() {
                                         
                                         <div style={styles.canisterList}>
                                             {trackedCanisters.map((canisterId) => {
-                                                const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
+                                                const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames, verifiedNames, principalCanisterTypes);
                                                 const status = trackedCanisterStatus[canisterId];
                                                 const cycles = status?.cycles;
                                                 const memory = status?.memory;
@@ -4768,7 +4768,7 @@ export default function AppsPage() {
                                     <div style={styles.canisterList}>
                                         {neuronManagers.map((manager) => {
                                             const canisterId = manager.canisterId.toText();
-                                            const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
+                                            const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames, verifiedNames, principalCanisterTypes);
                                             
                                             // Check if this is actually a valid neuron manager via WASM hash
                                             // Only show as NeuronManagerCard if WASM matches known versions
@@ -4804,7 +4804,7 @@ export default function AppsPage() {
                                                             title={`Health: ${canisterHealth}${!manager.moduleHash ? ' (WASM unknown - not controller)' : ' (WASM mismatch)'}`}
                                                         />
                                                         <div style={{ ...styles.canisterIcon, position: 'relative' }}>
-                                                            <FaCube size={18} />
+                                                            {getCanisterTypeIcon(displayInfo?.canisterTypes, 18, theme.colors.accent)}
                                                             {manager.isController && (
                                                                 <FaCrown 
                                                                     size={10} 

@@ -7,7 +7,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { Principal } from '@dfinity/principal';
 import { Actor, HttpAgent } from '@dfinity/agent';
 import { getCanisterInfo, setCanisterName, setPrincipalNickname } from '../utils/BackendUtils';
-import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, isCanisterPrincipal } from '../utils/PrincipalUtils';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, isCanisterPrincipal, getCanisterTypeIcon } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
 import { FaEdit, FaSave, FaTimes, FaExternalLinkAlt, FaGasPump, FaUpload, FaExclamationTriangle, FaCube, FaChevronDown, FaChevronRight, FaArrowLeft, FaCheckCircle, FaMemory, FaUsers, FaLock, FaUnlock, FaCode, FaSpinner, FaCoins, FaUser } from 'react-icons/fa';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
@@ -313,7 +313,7 @@ const encodeOptPrincipalArg = (principalText) => {
 export default function CanisterPage() {
     const { theme } = useTheme();
     const { identity, isAuthenticated } = useAuth();
-    const { principalNames, principalNicknames, fetchAllNames } = useNaming();
+    const { principalNames, principalNicknames, verifiedNames, principalCanisterTypes, fetchAllNames } = useNaming();
     const [searchParams, setSearchParams] = useSearchParams();
     const [canisterInput, setCanisterInput] = useState('');
     const [canisterInfo, setCanisterInfo] = useState(null);
@@ -405,7 +405,7 @@ export default function CanisterPage() {
         };
 
         updatePrincipalDisplayInfo();
-    }, [canisterInfo, principalNames, principalNicknames]);
+    }, [canisterInfo, principalNames, principalNicknames, verifiedNames, principalCanisterTypes]);
 
     const fetchCanisterInfo = async (canisterId) => {
         // Increment request ID to track this specific request
@@ -673,12 +673,15 @@ export default function CanisterPage() {
         ? getPrincipalDisplayInfoFromContext(
             canisterIdStr,
             principalNames,
-            principalNicknames
+            principalNicknames,
+            verifiedNames,
+            principalCanisterTypes
         )
         : null;
     const currentName = canisterDisplayInfo?.name || '';
     const currentNickname = canisterDisplayInfo?.nickname || '';
-    const isVerified = canisterDisplayInfo?.verified || false;
+    const isVerified = canisterDisplayInfo?.isVerified || false;
+    const canisterTypes = canisterDisplayInfo?.canisterTypes || principalCanisterTypes?.get(canisterIdStr) || null;
 
     // Start editing canister name
     const handleStartEditName = () => {
@@ -1459,7 +1462,7 @@ export default function CanisterPage() {
                                 alignItems: 'center',
                                 gap: '0.5rem'
                             }}>
-                                <FaCube style={{ color: canisterPrimary }} />
+                                {getCanisterTypeIcon(canisterTypes, 20, canisterPrimary)}
                                 Canister Details
                             </h2>
                             <span style={{
