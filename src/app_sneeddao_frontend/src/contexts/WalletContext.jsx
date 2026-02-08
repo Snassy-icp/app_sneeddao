@@ -889,6 +889,38 @@ export const WalletProvider = ({ children }) => {
         }
     }, [identity, isAuthenticated, safeGetAvailable]);
 
+    // Ensure a token is registered in the backend and present in walletTokens
+    // If already present, does nothing. Otherwise registers with backend and fetches details.
+    const ensureTokenRegistered = useCallback(async (ledgerCanisterId) => {
+        if (!identity || !isAuthenticated) return;
+        const lid = normalizeId(ledgerCanisterId);
+        if (!lid) return;
+
+        // Check if already in walletTokens
+        const currentTokens = walletTokensRef.current;
+        const exists = currentTokens.some(t =>
+            (normalizeId(t.principal) || normalizeId(t.ledger_canister_id)) === lid
+        );
+        if (exists) return; // Already registered
+
+        try {
+            console.log(`[ensureTokenRegistered] Registering ${lid} with backend`);
+            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
+            await backendActor.register_ledger_canister_id(Principal.fromText(lid));
+
+            // Fetch token details and add to wallet
+            const token = await fetchTokenDetailsFast(Principal.fromText(lid), {});
+            if (token) {
+                addTokenProgressively(token, fetchSessionRef.current);
+                // Fetch conversion rate in background
+                fetchAndUpdateConversionRate(Principal.fromText(lid), token.decimals, fetchSessionRef.current);
+            }
+            console.log(`[ensureTokenRegistered] Successfully registered ${lid}`);
+        } catch (err) {
+            console.warn(`[ensureTokenRegistered] Failed for ${lid}:`, err);
+        }
+    }, [identity, isAuthenticated, fetchTokenDetailsFast, addTokenProgressively, fetchAndUpdateConversionRate]);
+
     // Fetch neurons for a governance canister and cache them
     // Uses promise-based request deduplication - if a fetch is in-flight, subsequent callers share the same promise
     const fetchAndCacheNeurons = useCallback(async (governanceCanisterId) => {
@@ -2356,6 +2388,7 @@ export const WalletProvider = ({ children }) => {
             clearWallet,
             refreshWallet,
             refreshTokenBalance, // Refresh a single token's balance (e.g., after swap)
+            ensureTokenRegistered, // Register a token in backend + wallet if not already present
             sendToken,
             isTokenSns,
             // Liquidity positions

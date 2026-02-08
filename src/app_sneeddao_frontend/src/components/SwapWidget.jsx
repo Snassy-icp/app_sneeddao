@@ -517,7 +517,13 @@ export default function SwapWidget({ initialInput, initialOutput, onClose, onInp
           onSwapComplete(swappedInput, swappedOutput);
         }
         
-        // 3. Directly call refreshTokenBalance from wallet context for BOTH tokens
+        // 3. Ensure the output token is registered in the wallet (auto-add if new)
+        const ensureFn = walletContext?.ensureTokenRegistered;
+        if (ensureFn) {
+          ensureFn(swappedOutput);
+        }
+        
+        // 4. Directly call refreshTokenBalance from wallet context for BOTH tokens
         //    (belt-and-suspenders: ensures wallet/quick wallet updates even if callback doesn't propagate)
         const refreshFn = walletContext?.refreshTokenBalance;
         if (refreshFn) {
