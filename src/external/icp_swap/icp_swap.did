@@ -1,9 +1,33 @@
-type WithdrawErrorLog = 
+type WithdrawToSubaccountArgs = 
  record {
    amount: nat;
-   time: int;
+   fee: nat;
+   subaccount: blob;
+   token: text;
+ };
+type WithdrawStatus = 
+ variant {
+   Completed;
+   Created;
+   CreditCompleted;
+   Failed;
+ };
+type WithdrawQueueItem = 
+ record {
+   amount: nat;
+   caller: principal;
+   fee: nat;
+   from: Account;
+   memo: opt blob;
+   to: Account;
    token: Token;
-   user: principal;
+   txIndex: nat;
+ };
+type WithdrawInfo = 
+ record {
+   err: opt Error__1;
+   status: WithdrawStatus;
+   transfer: Transfer;
  };
 type WithdrawArgs = 
  record {
@@ -11,12 +35,11 @@ type WithdrawArgs =
    fee: nat;
    token: text;
  };
-type Value = 
- variant {
-   Blob: blob;
-   Int: int;
-   Nat: nat;
-   Text: text;
+type UserWithdrawQueueInfo = 
+ record {
+   items: vec WithdrawQueueItem;
+   token0TotalAmount: nat;
+   token1TotalAmount: nat;
  };
 type UserPositionInfoWithTokenAmount = 
  record {
@@ -52,35 +75,60 @@ type UserPositionInfo =
    tokensOwed0: nat;
    tokensOwed1: nat;
  };
-type TransferLog = 
- record {
-   action: text;
-   amount: nat;
-   daysFrom19700101: nat;
-   errorMsg: text;
-   fee: nat;
-   from: principal;
-   fromSubaccount: opt blob;
-   index: nat;
-   owner: principal;
-   result: text;
-   timestamp: nat;
-   to: principal;
-   token: Token;
- };
-type TransactionType = 
+type TransferPositionStatus = 
  variant {
-   addLiquidity;
-   claim;
-   decreaseLiquidity;
-   increaseLiquidity;
-   swap;
+   Completed;
+   Created;
+   Failed;
+ };
+type TransferPositionInfo = 
+ record {
+   err: opt Error__1;
+   from: Account;
+   positionId: nat;
+   status: TransferPositionStatus;
+   to: Account;
+   token0Amount: nat;
+   token1Amount: nat;
+ };
+type Transfer = 
+ record {
+   amount: nat;
+   fee: nat;
+   from: Account;
+   index: nat;
+   memo: opt blob;
+   standard: text;
+   to: Account;
+   token: principal;
+ };
+type Transaction__1 = 
+ record {
+   action: Action;
+   canisterId: principal;
+   id: nat;
+   owner: principal;
+   timestamp: Time;
+ };
+type Transaction = 
+ record {
+   action: Action;
+   canisterId: principal;
+   id: nat;
+   owner: principal;
+   timestamp: Time;
+ };
+type Token__1 = 
+ record {
+   address: principal;
+   standard: text;
  };
 type Token = 
  record {
    address: text;
    standard: text;
  };
+type Time = int;
 type TickLiquidityInfo = 
  record {
    liquidityGross: nat;
@@ -103,33 +151,30 @@ type TickInfoWithId =
    secondsPerLiquidityOutsideX128: nat;
    tickCumulativeOutside: int;
  };
+type SwapStatus = 
+ variant {
+   Completed;
+   Created;
+   Failed;
+ };
 type SwapRecordInfo = 
  record {
-   TVLToken0: int;
-   TVLToken1: int;
-   action: TransactionType;
-   feeAmount: int;
-   feeAmountTotal: int;
-   feeTire: nat;
-   from: text;
-   liquidityChange: nat;
-   liquidityTotal: nat;
-   poolId: text;
-   price: nat;
-   recipient: text;
-   tick: int;
-   timestamp: int;
-   to: text;
-   token0AmountTotal: nat;
-   token0ChangeAmount: nat;
-   token0Fee: nat;
-   token0Id: text;
-   token0Standard: text;
-   token1AmountTotal: nat;
-   token1ChangeAmount: nat;
-   token1Fee: nat;
-   token1Id: text;
-   token1Standard: text;
+   currentLiquidity: nat;
+   currentSqrtPriceX96: nat;
+   currentTick: int;
+   poolFee: nat;
+   txInfo: Transaction__1;
+ };
+type SwapInfo = 
+ record {
+   amountIn: Amount;
+   amountInFee: nat;
+   amountOut: nat;
+   amountOutFee: nat;
+   err: opt Error__1;
+   status: SwapStatus;
+   tokenIn: Token__1;
+   tokenOut: Token__1;
  };
 type SwapArgs = 
  record {
@@ -140,35 +185,32 @@ type SwapArgs =
 type Result_9 = 
  variant {
    err: Error;
-   ok: Page;
- };
-type Result_8 = 
- variant {
-   err: Error;
-   ok: vec UserPositionInfoWithId;
- };
-type Result_7 = 
- variant {
-   err: Error;
    ok: record {
          balance0: nat;
          balance1: nat;
        };
  };
-type Result_6 = 
+type Result_8 = 
  variant {
    err: Error;
-   ok: vec record {
-             nat;
-             WithdrawErrorLog;
-           };
+   ok: UserWithdrawQueueInfo;
  };
-type Result_5 = 
+type Result_7 = 
+ variant {
+   err: Error;
+   ok:
+    record {
+      isProcessing: bool;
+      items: vec WithdrawQueueItem;
+      queueSize: nat;
+    };
+ };
+type Result_6 = 
  variant {
    err: Error;
    ok: PoolMetadata;
  };
-type Result_4 = 
+type Result_5 = 
  variant {
    err: Error;
    ok: record {
@@ -176,17 +218,17 @@ type Result_4 =
          tokensOwed1: nat;
        };
  };
-type Result_3 = 
+type Result_4 = 
  variant {
-   err: Error;
-   ok: int;
+   err;
+   ok: bool;
  };
-type Result_24 = 
+type Result_33 = 
  variant {
    err: Error;
    ok: Page_5;
  };
-type Result_23 = 
+type Result_32 = 
  variant {
    err: Error;
    ok:
@@ -203,7 +245,7 @@ type Result_23 =
       totalTokensOwed1: nat;
     };
  };
-type Result_22 = 
+type Result_31 = 
  variant {
    err: Error;
    ok: record {
@@ -211,27 +253,77 @@ type Result_22 =
          amount1: nat;
        };
  };
-type Result_21 = 
+type Result_30 = 
  variant {
    err: Error;
    ok: CycleInfo;
  };
-type Result_20 = 
+type Result_3 = 
+ variant {
+   err: Error;
+   ok: int;
+ };
+type Result_29 = 
+ variant {
+   err: Error;
+   ok: record {
+         feeGrowthGlobal0X128: nat;
+         feeGrowthGlobal1X128: nat;
+       };
+ };
+type Result_28 = 
+ variant {
+   err: Error;
+   ok: PoolInitArgs;
+ };
+type Result_27 = 
+ variant {
+   err: Error;
+   ok: vec record {
+             LimitOrderType;
+             LimitOrderKey;
+             LimitOrderValue;
+           };
+ };
+type Result_26 = 
+ variant {
+   err: Error;
+   ok:
+    record {
+      lowerLimitOrders: vec record {
+                              LimitOrderKey;
+                              LimitOrderValue;
+                            };
+      upperLimitOrders: vec record {
+                              LimitOrderKey;
+                              LimitOrderValue;
+                            };
+    };
+ };
+type Result_25 = 
  variant {
    err: Error;
    ok: PositionInfo;
  };
-type Result_2 = 
- variant {
-   err: Error;
-   ok: bool;
- };
-type Result_19 = 
+type Result_24 = 
  variant {
    err: Error;
    ok: Page_4;
  };
-type Result_18 = 
+type Result_23 = 
+ variant {
+   err: Error;
+   ok:
+    vec
+     record {
+       tickLimit: int;
+       timestamp: nat;
+       token0InAmount: nat;
+       token1InAmount: nat;
+       userPositionId: nat;
+     };
+ };
+type Result_22 = 
  variant {
    err: Error;
    ok:
@@ -242,17 +334,30 @@ type Result_18 =
       retryCount: nat;
     };
  };
-type Result_17 = 
+type Result_21 = 
+ variant {
+   err: Error;
+   ok: vec record {
+             int;
+             nat;
+           };
+ };
+type Result_20 = 
  variant {
    err: Error;
    ok: Page_3;
  };
-type Result_16 = 
+type Result_2 = 
+ variant {
+   err: Error;
+   ok: bool;
+ };
+type Result_19 = 
  variant {
    err: Error;
    ok: Page_2;
  };
-type Result_15 = 
+type Result_18 = 
  variant {
    err: Error;
    ok:
@@ -264,17 +369,35 @@ type Result_15 =
       token1Amount: nat;
     };
  };
-type Result_14 = 
+type Result_17 = 
  variant {
    err: Error;
-   ok: vec TransferLog;
+   ok: vec record {
+             nat;
+             Transaction;
+           };
  };
-type Result_13 = 
+type Result_16 = 
+ variant {
+   err: Error;
+   ok:
+    record {
+      lowerLimitOrderIds: vec record {
+                                timestamp: nat;
+                                userPositionId: nat;
+                              };
+      upperLimitOrdersIds: vec record {
+                                 timestamp: nat;
+                                 userPositionId: nat;
+                               };
+    };
+ };
+type Result_15 = 
  variant {
    err: Error;
    ok: UserPositionInfo;
  };
-type Result_12 = 
+type Result_14 = 
  variant {
    err: Error;
    ok: vec record {
@@ -282,15 +405,25 @@ type Result_12 =
              vec nat;
            };
  };
-type Result_11 = 
+type Result_13 = 
  variant {
    err: Error;
    ok: vec nat;
  };
-type Result_10 = 
+type Result_12 = 
  variant {
    err: Error;
    ok: Page_1;
+ };
+type Result_11 = 
+ variant {
+   err: Error;
+   ok: Page;
+ };
+type Result_10 = 
+ variant {
+   err: Error;
+   ok: vec UserPositionInfoWithId;
  };
 type Result_1 = 
  variant {
@@ -301,6 +434,40 @@ type Result =
  variant {
    err: Error;
    ok: nat;
+ };
+type RemoveLimitOrderStatus = 
+ variant {
+   Completed;
+   Created;
+   Failed;
+   LimitOrderDeleted;
+ };
+type RemoveLimitOrderInfo = 
+ record {
+   err: opt Error__1;
+   positionId: nat;
+   status: RemoveLimitOrderStatus;
+   tickLimit: int;
+   token0: Token__1;
+   token0AmountIn: nat;
+   token0AmountOut: nat;
+   token1: Token__1;
+   token1AmountIn: nat;
+   token1AmountOut: nat;
+ };
+type RefundStatus = 
+ variant {
+   Completed;
+   Created;
+   CreditCompleted;
+   Failed;
+ };
+type RefundInfo = 
+ record {
+   err: opt Error__1;
+   relatedIndex: nat;
+   status: RefundStatus;
+   transfer: Transfer;
  };
 type PushError = 
  record {
@@ -335,6 +502,15 @@ type PoolMetadata =
    tick: int;
    token0: Token;
    token1: Token;
+ };
+type PoolInitArgs = 
+ record {
+   feeReceiverCid: principal;
+   infoCid: principal;
+   positionIndexCid: principal;
+   token0: Token;
+   token1: Token;
+   trustedCanisterManagerCid: principal;
  };
 type Page_5 = 
  record {
@@ -381,6 +557,25 @@ type Page =
    offset: nat;
    totalElements: nat;
  };
+type OneStepSwapStatus = 
+ variant {
+   Completed;
+   Created;
+   DepositCreditCompleted;
+   DepositTransferCompleted;
+   Failed;
+   PreSwapCompleted;
+   SwapCompleted;
+   WithdrawCreditCompleted;
+ };
+type OneStepSwapInfo = 
+ record {
+   deposit: DepositInfo;
+   err: opt Error__1;
+   status: OneStepSwapStatus;
+   swap: SwapInfo;
+   withdraw: WithdrawInfo;
+ };
 type MintArgs = 
  record {
    amount0Desired: text;
@@ -391,17 +586,123 @@ type MintArgs =
    token0: text;
    token1: text;
  };
+type LimitOrderValue = 
+ record {
+   owner: principal;
+   token0InAmount: nat;
+   token1InAmount: nat;
+   userPositionId: nat;
+ };
+type LimitOrderType = 
+ variant {
+   Lower;
+   Upper;
+ };
+type LimitOrderKey = 
+ record {
+   tickLimit: int;
+   timestamp: nat;
+ };
+type LimitOrderArgs = 
+ record {
+   positionId: nat;
+   tickLimit: int;
+ };
+type Level = 
+ variant {
+   Active;
+   Inactive;
+ };
+type JobInfo = 
+ record {
+   interval: nat;
+   lastRun: Time;
+   name: text;
+   timerId: opt nat;
+ };
 type IncreaseLiquidityArgs = 
  record {
    amount0Desired: text;
    amount1Desired: text;
    positionId: nat;
  };
+type Icrc28TrustedOriginsResponse = record {trusted_origins: vec text;};
+type Icrc21ErrorInfo = record {description: text;};
+type Icrc21Error = 
+ variant {
+   ConsentMessageUnavailable: Icrc21ErrorInfo;
+   GenericError: record {
+                   description: text;
+                   error_code: nat;
+                 };
+   InsufficientPayment: Icrc21ErrorInfo;
+   UnsupportedCanisterCall: Icrc21ErrorInfo;
+ };
+type Icrc21ConsentMessageSpec = 
+ record {
+   device_spec:
+    opt
+     variant {
+       GenericDisplay;
+       LineDisplay:
+        record {
+          characters_per_line: nat16;
+          lines_per_page: nat16;
+        };
+     };
+   metadata: Icrc21ConsentMessageMetadata;
+ };
+type Icrc21ConsentMessageResponse = 
+ variant {
+   Err: Icrc21Error;
+   Ok: Icrc21ConsentInfo;
+ };
+type Icrc21ConsentMessageRequest = 
+ record {
+   arg: blob;
+   method: text;
+   user_preferences: Icrc21ConsentMessageSpec;
+ };
+type Icrc21ConsentMessageMetadata = 
+ record {
+   language: text;
+   utc_offset_minutes: opt int16;
+ };
+type Icrc21ConsentMessage = 
+ variant {
+   GenericDisplayMessage: text;
+   LineDisplayMessage: record {pages: vec record {lines: vec text;};};
+ };
+type Icrc21ConsentInfo = 
+ record {
+   consent_message: Icrc21ConsentMessage;
+   metadata: Icrc21ConsentMessageMetadata;
+ };
 type GetPositionArgs = 
  record {
    tickLower: int;
    tickUpper: int;
  };
+type ExecuteLimitOrderStatus = 
+ variant {
+   Completed;
+   Created;
+   Failed;
+ };
+type ExecuteLimitOrderInfo = 
+ record {
+   err: opt Error__1;
+   positionId: nat;
+   status: ExecuteLimitOrderStatus;
+   tickLimit: int;
+   token0: Token__1;
+   token0AmountIn: nat;
+   token0AmountOut: nat;
+   token1: Token__1;
+   token1AmountIn: nat;
+   token1AmountOut: nat;
+ };
+type Error__1 = text;
 type Error = 
  variant {
    CommonError;
@@ -409,11 +710,32 @@ type Error =
    InternalError: text;
    UnsupportedToken: text;
  };
+type DepositStatus = 
+ variant {
+   Completed;
+   Created;
+   Failed;
+   TransferCompleted;
+ };
+type DepositInfo = 
+ record {
+   err: opt Error__1;
+   status: DepositStatus;
+   transfer: Transfer;
+ };
 type DepositArgs = 
  record {
    amount: nat;
    fee: nat;
    token: text;
+ };
+type DepositAndSwapArgs = 
+ record {
+   amountIn: text;
+   amountOutMinimum: text;
+   tokenInFee: nat;
+   tokenOutFee: nat;
+   zeroForOne: bool;
  };
 type DepositAndMintArgs = 
  record {
@@ -427,6 +749,23 @@ type DepositAndMintArgs =
    tickLower: int;
    tickUpper: int;
  };
+type DecreaseLiquidityStatus = 
+ variant {
+   Completed;
+   Created;
+   Failed;
+ };
+type DecreaseLiquidityInfo = 
+ record {
+   amount0: nat;
+   amount1: nat;
+   err: opt Error__1;
+   liquidity: nat;
+   positionId: nat;
+   status: DecreaseLiquidityStatus;
+   token0: Token__1;
+   token1: Token__1;
+ };
 type DecreaseLiquidityArgs = 
  record {
    liquidity: text;
@@ -437,80 +776,183 @@ type CycleInfo =
    available: nat;
    balance: nat;
  };
+type ClaimToSubaccountArgs = 
+ record {
+   positionId: nat;
+   subaccount: blob;
+ };
+type ClaimStatus = 
+ variant {
+   Completed;
+   Created;
+   Failed;
+ };
+type ClaimInfo = 
+ record {
+   amount0: nat;
+   amount1: nat;
+   err: opt Error__1;
+   positionId: nat;
+   status: ClaimStatus;
+   token0: Token__1;
+   token1: Token__1;
+ };
 type ClaimArgs = record {positionId: nat;};
+type Amount = nat;
+type AddLiquidityStatus = 
+ variant {
+   Completed;
+   Created;
+   Failed;
+ };
+type AddLiquidityInfo = 
+ record {
+   amount0: nat;
+   amount1: nat;
+   err: opt Error__1;
+   liquidity: nat;
+   positionId: nat;
+   status: AddLiquidityStatus;
+   token0: Token__1;
+   token1: Token__1;
+ };
+type AddLimitOrderStatus = 
+ variant {
+   Completed;
+   Created;
+   Failed;
+ };
+type AddLimitOrderInfo = 
+ record {
+   err: opt Error__1;
+   positionId: nat;
+   status: AddLimitOrderStatus;
+   tickLimit: int;
+   token0: Token__1;
+   token0AmountIn: nat;
+   token1: Token__1;
+   token1AmountIn: nat;
+ };
+type Action = 
+ variant {
+   AddLimitOrder: AddLimitOrderInfo;
+   AddLiquidity: AddLiquidityInfo;
+   Claim: ClaimInfo;
+   DecreaseLiquidity: DecreaseLiquidityInfo;
+   Deposit: DepositInfo;
+   ExecuteLimitOrder: ExecuteLimitOrderInfo;
+   OneStepSwap: OneStepSwapInfo;
+   Refund: RefundInfo;
+   RemoveLimitOrder: RemoveLimitOrderInfo;
+   Swap: SwapInfo;
+   TransferPosition: TransferPositionInfo;
+   Withdraw: WithdrawInfo;
+ };
 type AccountBalance = 
  record {
    balance0: nat;
    balance1: nat;
  };
+type Account = 
+ record {
+   owner: principal;
+   subaccount: opt blob;
+ };
 service : {
-  allTokenBalance: (nat, nat) -> (Result_24) query;
+  activeJobs: () -> ();
+  addLimitOrder: (LimitOrderArgs) -> (Result_2);
+  allTokenBalance: (nat, nat) -> (Result_33) query;
   approvePosition: (principal, nat) -> (Result_2);
-  batchRefreshIncome: (vec nat) -> (Result_23) query;
+  batchRefreshIncome: (vec nat) -> (Result_32) query;
   checkOwnerOfUserPosition: (principal, nat) -> (Result_2) query;
-  claim: (ClaimArgs) -> (Result_22);
-  decreaseLiquidity: (DecreaseLiquidityArgs) -> (Result_22);
+  claim: (ClaimArgs) -> (Result_31);
+  claimToSubaccount: (ClaimToSubaccountArgs) -> (Result_31);
+  decreaseLiquidity: (DecreaseLiquidityArgs) -> (Result_31);
+  deleteFailedTransaction: (nat, bool) -> (Result_2);
   deposit: (DepositArgs) -> (Result);
   depositAllAndMint: (DepositAndMintArgs) -> (Result);
+  depositAndSwap: (DepositAndSwapArgs) -> (Result);
   depositFrom: (DepositArgs) -> (Result);
+  depositFromAndSwap: (DepositAndSwapArgs) -> (Result);
   getAdmins: () -> (vec principal) query;
   getAvailabilityState: () ->
    (record {
       available: bool;
       whiteList: vec principal;
     }) query;
+  getCachedTokenFee: () -> (record {
+                              token0Fee: nat;
+                              token1Fee: nat;
+                            }) query;
   getClaimLog: () -> (vec text) query;
-  getCycleInfo: () -> (Result_21);
+  getCycleInfo: () -> (Result_30);
+  getFailedTransactions: () -> (Result_17) query;
+  getFeeGrowthGlobal: () -> (Result_29) query;
+  getInitArgs: () -> (Result_28) query;
+  getJobs: () -> (record {
+                    jobs: vec JobInfo;
+                    level: Level;
+                  }) query;
+  getLimitOrderAvailabilityState: () -> (Result_2) query;
+  getLimitOrderStack: () -> (Result_27) query;
+  getLimitOrders: () -> (Result_26) query;
   getMistransferBalance: (Token) -> (Result);
-  getPosition: (GetPositionArgs) -> (Result_20) query;
-  getPositions: (nat, nat) -> (Result_19) query;
-  getSwapRecordState: () -> (Result_18) query;
-  getTickInfos: (nat, nat) -> (Result_17) query;
-  getTicks: (nat, nat) -> (Result_16) query;
-  getTokenAmountState: () -> (Result_15) query;
+  getPosition: (GetPositionArgs) -> (Result_25) query;
+  getPositions: (nat, nat) -> (Result_24) query;
+  getSortedUserLimitOrders: (principal) -> (Result_23) query;
+  getSwapRecordState: () -> (Result_22) query;
+  getTickBitmaps: () -> (Result_21) query;
+  getTickInfos: (nat, nat) -> (Result_20) query;
+  getTicks: (nat, nat) -> (Result_19) query;
+  getTokenAmountState: () -> (Result_18) query;
   getTokenBalance: () -> (record {
                             token0: nat;
                             token1: nat;
                           });
-  getTokenMeta: () ->
-   (record {
-      token0: vec record {
-                    text;
-                    Value;
-                  };
-      token1: vec record {
-                    text;
-                    Value;
-                  };
-    });
-  getTransferLogs: () -> (Result_14) query;
+  getTransactions: () -> (Result_17) query;
+  getTransactionsByOwner: (principal) -> (Result_17) query;
   getUserByPositionId: (nat) -> (Result_1) query;
-  getUserPosition: (nat) -> (Result_13) query;
-  getUserPositionIds: () -> (Result_12) query;
-  getUserPositionIdsByPrincipal: (principal) -> (Result_11) query;
-  getUserPositionWithTokenAmount: (nat, nat) -> (Result_10) query;
-  getUserPositions: (nat, nat) -> (Result_9) query;
-  getUserPositionsByPrincipal: (principal) -> (Result_8) query;
-  getUserUnusedBalance: (principal) -> (Result_7) query;
+  getUserLimitOrders: (principal) -> (Result_16) query;
+  getUserPosition: (nat) -> (Result_15) query;
+  getUserPositionIds: () -> (Result_14) query;
+  getUserPositionIdsByPrincipal: (principal) -> (Result_13) query;
+  getUserPositionWithTokenAmount: (nat, nat) -> (Result_12) query;
+  getUserPositions: (nat, nat) -> (Result_11) query;
+  getUserPositionsByPrincipal: (principal) -> (Result_10) query;
+  getUserUnusedBalance: (principal) -> (Result_9) query;
+  getUserWithdrawQueue: () -> (Result_8) query;
   getVersion: () -> (text) query;
-  getWithdrawErrorLog: () -> (Result_6) query;
+  getWithdrawQueueInfo: () -> (Result_7) query;
+  icrc10_supported_standards: () ->
+   (vec record {
+          name: text;
+          url: text;
+        }) query;
+  icrc21_canister_call_consent_message: (Icrc21ConsentMessageRequest) ->
+   (Icrc21ConsentMessageResponse);
+  icrc28_trusted_origins: () -> (Icrc28TrustedOriginsResponse);
   increaseLiquidity: (IncreaseLiquidityArgs) -> (Result);
   init: (nat, int, nat) -> ();
-  metadata: () -> (Result_5) query;
+  metadata: () -> (Result_6) query;
   mint: (MintArgs) -> (Result);
   quote: (SwapArgs) -> (Result) query;
   quoteForAll: (SwapArgs) -> (Result) query;
-  refreshIncome: (nat) -> (Result_4) query;
-  removeErrorTransferLog: (nat, bool) -> ();
-  removeWithdrawErrorLog: (nat, bool) -> ();
-  resetTokenAmountState: (nat, nat, nat, nat) -> ();
+  refreshIncome: (nat) -> (Result_5) query;
+  removeLimitOrder: (nat) -> (Result_2);
+  restartJobs: (vec text) -> ();
+  restartWithdrawQueueProcessing: (bool) -> (Result_1);
   setAdmins: (vec principal) -> ();
   setAvailable: (bool) -> ();
+  setIcrc28TrustedOrigins: (vec text) -> (Result_4);
+  setLimitOrderAvailable: (bool) -> ();
   setWhiteList: (vec principal) -> ();
+  stopJobs: (vec text) -> ();
   sumTick: () -> (Result_3) query;
   swap: (SwapArgs) -> (Result);
   transferPosition: (principal, principal, nat) -> (Result_2);
+  updateTokenFee: () -> ();
   upgradeTokenStandard: (principal) -> (Result_1);
   withdraw: (WithdrawArgs) -> (Result);
   withdrawMistransferBalance: (Token) -> (Result);
+  withdrawToSubaccount: (WithdrawToSubaccountArgs) -> (Result);
 }
