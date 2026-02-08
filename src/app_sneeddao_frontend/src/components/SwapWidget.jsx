@@ -1372,12 +1372,22 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
           });
 
           try {
-            // Build a quote-like object for the remaining amount
-            const remainderQuote = {
-              ...quote.swapLegQuote,
-              inputAmount: quote.swapLegRemaining,
-              effectiveInputAmount: quote.swapLegRemaining,
-            };
+            // Fetch a fresh quote for the actual remainder amount so expectedOutput
+            // and minimumOutput are accurate (not the full-amount quote's values)
+            const freshQuotes = await aggregatorRef.current.getQuotes({
+              inputToken: quote.inputToken,
+              outputToken: quote.outputToken,
+              amountIn: quote.swapLegRemaining,
+            });
+            // Prefer the same DEX, fall back to best available
+            const preferredDexId = quote.swapLegQuote.dexId;
+            const remainderQuote = freshQuotes.find(q => q.dexId === preferredDexId)
+              || freshQuotes[0];
+
+            if (!remainderQuote) {
+              throw new Error('No swap quote available for remainder');
+            }
+
             const swapRes = await aggregatorRef.current.swap({
               quote: remainderQuote,
               slippage,
@@ -1386,7 +1396,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
               },
             });
             totalOut += swapRes.amountOut || 0n;
-            legs.push({ type: 'swap', dexId: quote.swapLegQuote.dexId, success: swapRes.success !== false, amountOut: swapRes.amountOut || 0n });
+            legs.push({ type: 'swap', dexId: remainderQuote.dexId, success: swapRes.success !== false, amountOut: swapRes.amountOut || 0n });
           } catch (e) {
             legs.push({ type: 'swap', dexId: quote.swapLegQuote.dexId, success: false, error: e.message, amountOut: 0n });
           }
