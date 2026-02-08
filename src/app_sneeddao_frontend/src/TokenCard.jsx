@@ -110,8 +110,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     const [swapOpen, setSwapOpen] = useState(false);
     const [swapInput, setSwapInput] = useState('');
     const [swapOutput, setSwapOutput] = useState('');
-    const tokenId = normalizeId(token.ledger_canister_id);
-    const isICP = tokenId === ICP_CANISTER_ID;
+    const tokenCanisterId = token?.ledger_canister_id ? normalizeId(token.ledger_canister_id) : '';
+    const isICP = tokenCanisterId === ICP_CANISTER_ID;
 
     // Image loading state
     const [logoLoaded, setLogoLoaded] = useState(false);
@@ -1513,47 +1513,13 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     {!hideButtons && (
                 <div className="action-buttons">
 
-
-                    {token.available > 0n && (
-                        <button 
-                            onClick={() => openSendModal(token)}
-                            style={{
-                                background: theme.colors.accent,
-                                color: theme.colors.primaryBg,
-                                border: 'none',
-                                borderRadius: '6px',
-                                padding: '6px 12px',
-                                cursor: 'pointer',
-                                fontSize: '0.85rem',
-                                fontWeight: '500',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                transition: 'all 0.2s ease'
-                            }}
-                            onMouseEnter={(e) => {
-                                e.target.style.background = theme.colors.accentHover;
-                            }}
-                            onMouseLeave={(e) => {
-                                e.target.style.background = theme.colors.accent;
-                            }}
-                        >
-                            <img 
-                                src="send-inverted.png" 
-                                alt="Send" 
-                                style={{ width: '14px', height: '14px' }}
-                            />
-                            Send
-                        </button>
-                    )}
-
                     {/* Buy button - opens swap with ICP → this token */}
                     {!isICP && (
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
                                 setSwapInput(ICP_CANISTER_ID);
-                                setSwapOutput(tokenId);
+                                setSwapOutput(tokenCanisterId);
                                 setSwapOpen(true);
                             }}
                             style={{
@@ -1587,7 +1553,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
-                                setSwapInput(tokenId);
+                                setSwapInput(tokenCanisterId);
                                 setSwapOutput(ICP_CANISTER_ID);
                                 setSwapOpen(true);
                             }}
@@ -1614,6 +1580,40 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                         >
                             <FaTag size={12} />
                             Sell
+                        </button>
+                    )}
+
+                    {/* Send button (always rightmost) */}
+                    {token.available > 0n && (
+                        <button 
+                            onClick={() => openSendModal(token)}
+                            style={{
+                                background: theme.colors.accent,
+                                color: theme.colors.primaryBg,
+                                border: 'none',
+                                borderRadius: '6px',
+                                padding: '6px 12px',
+                                cursor: 'pointer',
+                                fontSize: '0.85rem',
+                                fontWeight: '500',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                transition: 'all 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.target.style.background = theme.colors.accentHover;
+                            }}
+                            onMouseLeave={(e) => {
+                                e.target.style.background = theme.colors.accent;
+                            }}
+                        >
+                            <img 
+                                src="send-inverted.png" 
+                                alt="Send" 
+                                style={{ width: '14px', height: '14px' }}
+                            />
+                            Send
                         </button>
                     )}
 
