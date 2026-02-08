@@ -187,9 +187,8 @@ export class DexAggregator {
    * @param {number}  params.slippage
    * @param {string}  [params.preferredStandard]
    * @returns {Promise<{ distribution: number, totalOut: bigint, icpswapQuote: SwapQuote|null, kongQuote: SwapQuote|null }|null>}
-   * @private
    */
-  async _getQuoteForDistribution({
+  async getQuoteForDistribution({
     totalAmount, distribution, inputToken, outputToken, slippage, preferredStandard,
   }) {
     const kongAmount = (totalAmount * BigInt(distribution)) / 100n;
@@ -219,6 +218,69 @@ export class DexAggregator {
   }
 
   /**
+   * Build a SwapQuote-compatible split object from a distribution result.
+   *
+   * @param {Object} params
+   * @param {number}  params.distribution       - 0-100 (Kong %)
+   * @param {import('./types').SwapQuote|null} params.icpswapQuote
+   * @param {import('./types').SwapQuote|null} params.kongQuote
+   * @param {bigint}  params.totalAmount
+   * @param {string}  params.inputToken
+   * @param {string}  params.outputToken
+   * @returns {import('./types').SwapQuote|null}
+   */
+  buildSplitQuote({ distribution, icpswapQuote, kongQuote, totalAmount, inputToken, outputToken }) {
+    const legs = [];
+    if (icpswapQuote) legs.push({ dexId: 'icpswap', dexName: 'ICPSwap',  quote: icpswapQuote });
+    if (kongQuote)    legs.push({ dexId: 'kong',     dexName: 'KongSwap', quote: kongQuote });
+    if (legs.length === 0) return null;
+
+    const totalExpected  = legs.reduce((s, l) => s + l.quote.expectedOutput, 0n);
+    const totalMinimum   = legs.reduce((s, l) => s + l.quote.minimumOutput, 0n);
+    const totalEffInput  = legs.reduce((s, l) => s + l.quote.effectiveInputAmount, 0n);
+    const worstImpact    = Math.max(...legs.map(l => l.quote.priceImpact));
+
+    const totalInputNum = Number(totalAmount);
+    const weightedFee   = totalInputNum > 0
+      ? legs.reduce((s, l) => s + l.quote.dexFeePercent * (Number(l.quote.inputAmount) / totalInputNum), 0)
+      : 0;
+
+    const totalInputFees       = legs.reduce((s, l) => s + l.quote.feeBreakdown.inputTransferFees, 0n);
+    const totalOutputFees      = legs.reduce((s, l) => s + l.quote.feeBreakdown.outputWithdrawalFees, 0n);
+    const totalInputFeesCount  = legs.reduce((s, l) => s + l.quote.feeBreakdown.totalInputFeesCount, 0);
+    const totalOutputFeesCount = legs.reduce((s, l) => s + l.quote.feeBreakdown.totalOutputFeesCount, 0);
+    const bestSpotPrice        = Math.max(...legs.map(l => l.quote.spotPrice || 0));
+
+    return {
+      dexId:    'split',
+      dexName:  `Split (${100 - distribution}% ICPSwap / ${distribution}% Kong)`,
+      isSplitQuote: true,
+      distribution,
+      legs,
+
+      inputToken,
+      outputToken,
+      inputAmount:          totalAmount,
+      effectiveInputAmount: totalEffInput,
+      expectedOutput:       totalExpected,
+      minimumOutput:        totalMinimum,
+      spotPrice:            bestSpotPrice,
+      priceImpact:          worstImpact,
+      dexFeePercent:        weightedFee,
+      feeBreakdown: {
+        inputTransferFees:    totalInputFees,
+        outputWithdrawalFees: totalOutputFees,
+        dexTradingFee:        weightedFee,
+        totalInputFeesCount,
+        totalOutputFeesCount,
+      },
+      standard:  'mixed',
+      route:     legs.flatMap(l => l.quote.route || []),
+      timestamp: Date.now(),
+    };
+  }
+
+  /**
    * Ternary search for the optimal split ratio.
    *
    * Treats f(distribution) = totalOutput as a unimodal function over [0, 100]
@@ -233,12 +295,13 @@ export class DexAggregator {
    * @param {string}  [params.preferredStandard]
    * @param {import('./types').SwapQuote} [params.icpswapFullQuote] - Existing 100% ICPSwap quote
    * @param {import('./types').SwapQuote} [params.kongFullQuote]    - Existing 100% Kong quote
+   * @param {function} [params.onUpdate]  - Called with { distribution, totalOut, icpswapQuote, kongQuote }
+   *                                        whenever a better interior split is found during search
    * @returns {Promise<{ bestDistribution: number, bestAmount: bigint, bestResult: Object }>}
-   * @private
    */
-  async _findBestSplit({
+  async findBestSplit({
     totalAmount, inputToken, outputToken, slippage, preferredStandard,
-    icpswapFullQuote, kongFullQuote,
+    icpswapFullQuote, kongFullQuote, onUpdate,
   }) {
     const PRECISION = 1;   // stop when range is 1% wide
     const MAX_ITER  = 10;  // safety cap
@@ -259,10 +322,34 @@ export class DexAggregator {
     let left  = 0;
     let right = 100;
     let iteration = 0;
+    let lastReportedDist = -1;
+
+    // Report the best interior point (1-99) whenever it changes
+    const reportBestInterior = () => {
+      if (!onUpdate) return;
+      let bestDist = -1;
+      let bestAmt  = 0n;
+      for (const [dist, amt] of points) {
+        if (dist > 0 && dist < 100 && amt > bestAmt) {
+          bestAmt  = amt;
+          bestDist = dist;
+        }
+      }
+      if (bestDist >= 0 && bestDist !== lastReportedDist) {
+        lastReportedDist = bestDist;
+        const r = results.get(bestDist);
+        onUpdate({
+          distribution: bestDist,
+          totalOut:     bestAmt,
+          icpswapQuote: r?.icpswapQuote || null,
+          kongQuote:    r?.kongQuote || null,
+        });
+      }
+    };
 
     const testPoint = async (p) => {
       if (points.has(p)) return;
-      const result = await this._getQuoteForDistribution({
+      const result = await this.getQuoteForDistribution({
         totalAmount, distribution: p, inputToken, outputToken, slippage, preferredStandard,
       });
       if (result) {
@@ -281,6 +368,9 @@ export class DexAggregator {
       if (toTest.length > 0) {
         await Promise.all(toTest.map(testPoint));
       }
+
+      // Report intermediate best to animate the UI
+      reportBestInterior();
 
       const leftVal  = points.get(m1) || 0n;
       const rightVal = points.get(m2) || 0n;
@@ -324,115 +414,55 @@ export class DexAggregator {
 
   /**
    * Find the best split swap quote across ICPSwap and Kong.
+   * Convenience method: runs findBestSplit + buildSplitQuote.
    *
-   * Returns `null` if:
-   * - Fewer than 2 DEXes are registered
-   * - Only one DEX supports the pair
-   * - Splitting doesn't beat the best single-DEX quote
+   * Returns `null` if splitting doesn't beat the best single-DEX quote.
    *
    * @param {Object} params
    * @param {string}  params.inputToken
    * @param {string}  params.outputToken
-   * @param {bigint}  params.amount             - Total raw input amount
+   * @param {bigint}  params.amount
    * @param {number}  [params.slippage]
    * @param {string}  [params.preferredStandard]
-   * @param {import('./types').SwapQuote[]} [params.existingQuotes] - Existing 100% quotes to reuse as endpoints
-   * @returns {Promise<import('./types').SwapQuote|null>} A split quote, or null
+   * @param {import('./types').SwapQuote[]} [params.existingQuotes]
+   * @param {function} [params.onUpdate] - Forwarded to findBestSplit
+   * @returns {Promise<import('./types').SwapQuote|null>}
    */
   async getSplitQuote({
     inputToken, outputToken, amount,
     slippage = DEFAULT_SLIPPAGE,
     preferredStandard,
     existingQuotes = [],
+    onUpdate,
   }) {
     const icpswapDex = this._dexes.get('icpswap');
     const kongDex    = this._dexes.get('kong');
     if (!icpswapDex || !kongDex) return null;
 
-    // Reuse existing full-amount quotes as search endpoints
     const icpswapFullQuote = existingQuotes.find(q => q.dexId === 'icpswap') || null;
     const kongFullQuote    = existingQuotes.find(q => q.dexId === 'kong')    || null;
-
-    // Need both endpoints — if only one DEX has a quote, splitting can't help
     if (!icpswapFullQuote || !kongFullQuote) return null;
 
-    const { bestDistribution, bestAmount, bestResult } = await this._findBestSplit({
-      totalAmount: amount,
-      inputToken,
-      outputToken,
-      slippage,
-      preferredStandard,
-      icpswapFullQuote,
-      kongFullQuote,
+    const { bestDistribution, bestAmount, bestResult } = await this.findBestSplit({
+      totalAmount: amount, inputToken, outputToken, slippage, preferredStandard,
+      icpswapFullQuote, kongFullQuote, onUpdate,
     });
 
-    // Split only helps if distribution is strictly between 0 and 100
     if (bestDistribution <= 0 || bestDistribution >= 100) return null;
 
-    // Must strictly beat the best single-DEX output
     const bestSingleOutput = icpswapFullQuote.expectedOutput > kongFullQuote.expectedOutput
       ? icpswapFullQuote.expectedOutput
       : kongFullQuote.expectedOutput;
     if (bestAmount <= bestSingleOutput) return null;
 
-    // ── Build the split quote object ──
-    const { icpswapQuote, kongQuote } = bestResult;
-
-    const legs = [];
-    if (icpswapQuote) legs.push({ dexId: 'icpswap', dexName: 'ICPSwap',  quote: icpswapQuote });
-    if (kongQuote)    legs.push({ dexId: 'kong',     dexName: 'KongSwap', quote: kongQuote });
-
-    // Aggregated fields
-    const totalExpected  = legs.reduce((s, l) => s + l.quote.expectedOutput, 0n);
-    const totalMinimum   = legs.reduce((s, l) => s + l.quote.minimumOutput, 0n);
-    const totalEffInput  = legs.reduce((s, l) => s + l.quote.effectiveInputAmount, 0n);
-
-    // Worst (highest) price impact — per spec
-    const worstImpact = Math.max(...legs.map(l => l.quote.priceImpact));
-
-    // Weighted-average DEX fee
-    const totalInputNum = Number(amount);
-    const weightedFee   = legs.reduce((s, l) => {
-      const weight = Number(l.quote.inputAmount) / totalInputNum;
-      return s + l.quote.dexFeePercent * weight;
-    }, 0);
-
-    // Combined fee breakdown
-    const totalInputFees      = legs.reduce((s, l) => s + l.quote.feeBreakdown.inputTransferFees, 0n);
-    const totalOutputFees     = legs.reduce((s, l) => s + l.quote.feeBreakdown.outputWithdrawalFees, 0n);
-    const totalInputFeesCount = legs.reduce((s, l) => s + l.quote.feeBreakdown.totalInputFeesCount, 0);
-    const totalOutputFeesCount= legs.reduce((s, l) => s + l.quote.feeBreakdown.totalOutputFeesCount, 0);
-
-    // Best spot price from the legs
-    const bestSpotPrice = Math.max(...legs.map(l => l.quote.spotPrice || 0));
-
-    return {
-      dexId:    'split',
-      dexName:  `Split (${100 - bestDistribution}% ICPSwap / ${bestDistribution}% Kong)`,
-      isSplitQuote: true,
+    return this.buildSplitQuote({
       distribution: bestDistribution,
-      legs,
-
+      icpswapQuote: bestResult?.icpswapQuote,
+      kongQuote:    bestResult?.kongQuote,
+      totalAmount:  amount,
       inputToken,
       outputToken,
-      inputAmount:          amount,
-      effectiveInputAmount: totalEffInput,
-      expectedOutput:       totalExpected,
-      minimumOutput:        totalMinimum,
-      spotPrice:            bestSpotPrice,
-      priceImpact:          worstImpact,
-      dexFeePercent:        weightedFee,
-      feeBreakdown: {
-        inputTransferFees:    totalInputFees,
-        outputWithdrawalFees: totalOutputFees,
-        dexTradingFee:        weightedFee,
-        totalInputFeesCount,
-        totalOutputFeesCount,
-      },
-      standard:  'mixed',
-      route:     legs.flatMap(l => l.quote.route || []),
-      timestamp: Date.now(),
-    };
+    });
   }
 
   /**

@@ -234,6 +234,47 @@ function ProgressPanel({ progress }) {
   );
 }
 
+function SplitSlider({ distribution, onChange, disabled, loading, autoSearching }) {
+  return (
+    <div style={{
+      padding: '10px 14px',
+      borderRadius: 12,
+      background: 'var(--color-primaryBg)',
+      border: '1px solid var(--color-border)',
+    }}>
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        fontSize: 12, color: 'var(--color-mutedText)', marginBottom: 8,
+      }}>
+        <span style={{ fontWeight: 600, color: 'var(--color-primaryText)' }}>Split Ratio</span>
+        <span style={{ fontSize: 10, opacity: 0.8 }}>
+          {autoSearching ? 'Finding optimal...' : loading ? 'Updating...' : ''}
+        </span>
+      </div>
+      <div style={{ position: 'relative', padding: '0 2px' }}>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          step={1}
+          value={distribution}
+          onChange={e => onChange(Number(e.target.value))}
+          disabled={disabled}
+          className="split-slider"
+          style={{ width: '100%', height: 6, cursor: disabled ? 'not-allowed' : 'pointer' }}
+        />
+      </div>
+      <div style={{
+        display: 'flex', justifyContent: 'space-between',
+        fontSize: 11, marginTop: 6, fontWeight: 600,
+      }}>
+        <span style={{ color: SWAP_BLUE }}>ICPSwap {100 - distribution}%</span>
+        <span style={{ color: SWAP_PURPLE }}>Kong {distribution}%</span>
+      </div>
+    </div>
+  );
+}
+
 function SplitProgressPanel({ progress }) {
   if (!progress || !progress.isSplit) return null;
   const { legs = [], completed, failed } = progress;
@@ -318,10 +359,15 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
   const [quoteError, setQuoteError] = useState('');
 
   // Split swap state
-  const [splitQuote, setSplitQuote] = useState(null);
-  const [loadingSplit, setLoadingSplit] = useState(false);
-  const splitCancelRef = useRef(0);
-  const splitSearchKeyRef = useRef('');
+  const [splitDistribution, setSplitDistribution] = useState(50);   // 0-100 (Kong %)
+  const [splitQuoteResult, setSplitQuoteResult] = useState(null);    // SwapQuote for current slider pos
+  const [loadingSplitQuote, setLoadingSplitQuote] = useState(false);
+  const [autoSearching, setAutoSearching] = useState(false);
+  const autoSearchKeyRef = useRef('');
+  const autoSearchCancelRef = useRef(0);
+  const userOverrideRef = useRef(false);
+  const sliderDebounceRef = useRef(null);
+  const splitFetchRef = useRef(0);
 
   const [swapping, setSwapping] = useState(false);
   const [progress, setProgress] = useState(null);
@@ -345,17 +391,23 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
   const aggregatorRef = useRef(null);
   const quoteTimerRef = useRef(null);
 
+  // ── Individual DEX quotes (extracted for convenience) ──
+  const icpswapQuote = useMemo(() => quotes.find(q => q.dexId === 'icpswap') || null, [quotes]);
+  const kongQuote = useMemo(() => quotes.find(q => q.dexId === 'kong') || null, [quotes]);
+
   // ── Combined quotes list (individual + split), sorted best-first ──
   const allQuotes = useMemo(() => {
-    const combined = [...quotes];
-    if (splitQuote) combined.push(splitQuote);
-    combined.sort((a, b) => {
+    const list = [...quotes];
+    if (splitQuoteResult && splitDistribution > 0 && splitDistribution < 100) {
+      list.push(splitQuoteResult);
+    }
+    list.sort((a, b) => {
       if (b.expectedOutput > a.expectedOutput) return 1;
       if (b.expectedOutput < a.expectedOutput) return -1;
       return 0;
     });
-    return combined;
-  }, [quotes, splitQuote]);
+    return list;
+  }, [quotes, splitQuoteResult, splitDistribution]);
 
   // Resolve selected quote by dexId (fallback to first)
   const selectedQuote = useMemo(() => {
@@ -602,33 +654,71 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
         slippage,
       });
       setQuotes(q);
-      // selectedDexId is preserved automatically — useMemo resolves it
       if (q.length === 0) setQuoteError('No quotes available for this pair');
 
-      // ── Trigger split search (only once per unique parameter combo) ──
-      const splitKey = `${inputToken}:${outputToken}:${inputAmountStr}:${slippage}`;
-      if (q.length >= 2 && splitKey !== splitSearchKeyRef.current) {
-        splitSearchKeyRef.current = splitKey;
-        const searchId = ++splitCancelRef.current;
-        setLoadingSplit(true);
+      // ── Auto-search for best split (once per unique parameter combo) ──
+      const icpQ = q.find(x => x.dexId === 'icpswap');
+      const kngQ = q.find(x => x.dexId === 'kong');
+      const searchKey = `${inputToken}:${outputToken}:${inputAmountStr}:${slippage}`;
 
-        aggregatorRef.current.getSplitQuote({
-          inputToken, outputToken, amount, slippage,
-          existingQuotes: q,
-        }).then(sq => {
-          if (searchId !== splitCancelRef.current) return;
-          setSplitQuote(sq);
-          setLoadingSplit(false);
+      if (icpQ && kngQ && searchKey !== autoSearchKeyRef.current) {
+        autoSearchKeyRef.current = searchKey;
+        userOverrideRef.current = false;
+        setSplitDistribution(50);
+        setAutoSearching(true);
+
+        const searchId = ++autoSearchCancelRef.current;
+        const agg = aggregatorRef.current;
+
+        // Immediately fetch a 50/50 split quote so the card appears right away
+        agg.getQuoteForDistribution({
+          totalAmount: amount, distribution: 50, inputToken, outputToken, slippage,
+        }).then(result => {
+          if (searchId !== autoSearchCancelRef.current || userOverrideRef.current) return;
+          if (result) {
+            setSplitQuoteResult(agg.buildSplitQuote({
+              distribution: 50, icpswapQuote: result.icpswapQuote, kongQuote: result.kongQuote,
+              totalAmount: amount, inputToken, outputToken,
+            }));
+          }
+        }).catch(() => {});
+
+        // Start ternary search — onUpdate animates the slider in real time
+        agg.findBestSplit({
+          totalAmount: amount, inputToken, outputToken, slippage,
+          icpswapFullQuote: icpQ, kongFullQuote: kngQ,
+          onUpdate: ({ distribution, icpswapQuote, kongQuote }) => {
+            if (searchId !== autoSearchCancelRef.current || userOverrideRef.current) return;
+            setSplitDistribution(distribution);
+            setSplitQuoteResult(agg.buildSplitQuote({
+              distribution, icpswapQuote, kongQuote,
+              totalAmount: amount, inputToken, outputToken,
+            }));
+          },
+        }).then(({ bestDistribution, bestResult }) => {
+          if (searchId !== autoSearchCancelRef.current) return;
+          setAutoSearching(false);
+          if (!userOverrideRef.current && bestResult) {
+            setSplitDistribution(bestDistribution);
+            if (bestDistribution > 0 && bestDistribution < 100) {
+              setSplitQuoteResult(agg.buildSplitQuote({
+                distribution: bestDistribution,
+                icpswapQuote: bestResult.icpswapQuote, kongQuote: bestResult.kongQuote,
+                totalAmount: amount, inputToken, outputToken,
+              }));
+            } else {
+              setSplitQuoteResult(null);
+            }
+          }
         }).catch(e => {
-          console.warn('Split search failed:', e);
-          if (searchId !== splitCancelRef.current) return;
-          setSplitQuote(null);
-          setLoadingSplit(false);
+          console.warn('Auto-search failed:', e);
+          if (searchId !== autoSearchCancelRef.current) return;
+          setAutoSearching(false);
         });
-      } else if (q.length < 2 && splitKey !== splitSearchKeyRef.current) {
-        splitSearchKeyRef.current = splitKey;
-        setSplitQuote(null);
-        setLoadingSplit(false);
+      } else if ((!icpQ || !kngQ) && searchKey !== autoSearchKeyRef.current) {
+        autoSearchKeyRef.current = searchKey;
+        setSplitQuoteResult(null);
+        setAutoSearching(false);
       }
     } catch (e) {
       setQuoteError(e.message || 'Failed to fetch quotes');
@@ -645,9 +735,12 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
     setResult(null);
     setProgress(null);
     setSelectedDexId(null);
-    setSplitQuote(null);
-    setLoadingSplit(false);
-    splitSearchKeyRef.current = '';
+    setSplitQuoteResult(null);
+    setSplitDistribution(50);
+    setLoadingSplitQuote(false);
+    setAutoSearching(false);
+    autoSearchKeyRef.current = '';
+    userOverrideRef.current = false;
 
     const timeout = setTimeout(() => {
       fetchQuotes();
@@ -673,6 +766,48 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
     setInputAmountStr(frac ? `${whole}.${frac}` : whole);
   };
 
+  // ── Handle split slider change (user-driven) ──
+  const handleSliderChange = useCallback((newDist) => {
+    userOverrideRef.current = true;
+    setSplitDistribution(newDist);
+
+    if (sliderDebounceRef.current) clearTimeout(sliderDebounceRef.current);
+
+    if (newDist <= 0 || newDist >= 100) {
+      setSplitQuoteResult(null);
+      setLoadingSplitQuote(false);
+      return;
+    }
+    if (!aggregatorRef.current || !inputToken || !outputToken || !inputAmountStr || !inputTokenInfo) return;
+
+    setLoadingSplitQuote(true);
+    const cancelId = ++splitFetchRef.current;
+    const amount = parseToBigInt(inputAmountStr, inputTokenInfo.decimals);
+
+    sliderDebounceRef.current = setTimeout(async () => {
+      try {
+        const result = await aggregatorRef.current.getQuoteForDistribution({
+          totalAmount: amount, distribution: newDist, inputToken, outputToken, slippage,
+        });
+        if (cancelId !== splitFetchRef.current) return;
+        if (result) {
+          setSplitQuoteResult(aggregatorRef.current.buildSplitQuote({
+            distribution: newDist,
+            icpswapQuote: result.icpswapQuote, kongQuote: result.kongQuote,
+            totalAmount: amount, inputToken, outputToken,
+          }));
+        } else {
+          setSplitQuoteResult(null);
+        }
+      } catch (e) {
+        if (cancelId !== splitFetchRef.current) return;
+        setSplitQuoteResult(null);
+      } finally {
+        if (cancelId === splitFetchRef.current) setLoadingSplitQuote(false);
+      }
+    }, 250);
+  }, [inputToken, outputToken, inputAmountStr, inputTokenInfo, slippage]);
+
   // ── Swap tokens (flip input/output) ──
   const flipTokens = () => {
     const newInput = outputToken;
@@ -683,7 +818,8 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
     onOutputTokenChange?.(newOutput);
     setInputAmountStr('');
     setQuotes([]);
-    setSplitQuote(null);
+    setSplitQuoteResult(null);
+    setSplitDistribution(50);
     setSelectedDexId(null);
     setResult(null);
   };
@@ -855,6 +991,43 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
         .swap-amount-input::placeholder {
           color: var(--color-mutedText);
           opacity: 0.5;
+        }
+        .split-slider {
+          -webkit-appearance: none;
+          appearance: none;
+          border-radius: 3px;
+          outline: none;
+          background: linear-gradient(to right, ${SWAP_BLUE}, ${SWAP_PURPLE});
+          opacity: 0.85;
+          transition: opacity 0.15s ease;
+        }
+        .split-slider:hover {
+          opacity: 1;
+        }
+        .split-slider::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          appearance: none;
+          width: 18px;
+          height: 18px;
+          border-radius: 50%;
+          background: #fff;
+          border: 2.5px solid ${SWAP_PURPLE};
+          cursor: pointer;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+          transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .split-slider::-webkit-slider-thumb:hover {
+          transform: scale(1.15);
+          box-shadow: 0 2px 12px rgba(139, 92, 246, 0.4);
+        }
+        .split-slider::-moz-range-thumb {
+          width: 18px;
+          height: 18px;
+          border-radius: 50%;
+          background: #fff;
+          border: 2.5px solid ${SWAP_PURPLE};
+          cursor: pointer;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.2);
         }
         @media (max-width: 480px) {
           .swap-card {
@@ -1144,6 +1317,17 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
           }}>Loading spot prices...</div>
         )}
 
+        {/* ─── Split slider (shown when both DEXes have quotes) ─── */}
+        {icpswapQuote && kongQuote && (
+          <SplitSlider
+            distribution={splitDistribution}
+            onChange={handleSliderChange}
+            disabled={swapping}
+            loading={loadingSplitQuote}
+            autoSearching={autoSearching}
+          />
+        )}
+
         {/* ─── Quotes list ─── */}
         {allQuotes.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1153,7 +1337,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
             }}>
               <span>Quotes ({allQuotes.length})</span>
               <span style={{ fontSize: 11, opacity: 0.7 }}>
-                {loadingSplit ? 'Finding best split...' : loadingQuotes ? 'Refreshing...' : ''}
+                {loadingQuotes ? 'Refreshing...' : ''}
               </span>
             </div>
             {allQuotes.map((q, i) => (
