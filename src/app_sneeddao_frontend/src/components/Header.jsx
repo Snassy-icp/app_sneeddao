@@ -145,7 +145,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         if (['/me', '/names', '/premium', '/rewards', '/tips', '/posts', '/sms', '/wallet', '/canister', '/apps', '/active_proposals'].includes(path)) return 'Sneed Me';
         if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) return 'Sneed DAO';
         if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock', '/lock_wizard'].includes(path) || path.startsWith('/lock/')) return 'Sneed Lock';
-        if (['/sneedex', '/sneedex_offers', '/sneedex_create', '/sneedex_my'].includes(path) || path.startsWith('/sneedex_offer/')) return 'Sneedex';
+        if (['/sneedex', '/sneedex_offers', '/sneedex_create', '/sneedex_my', '/swap'].includes(path) || path.startsWith('/sneedex_offer/')) return 'Sneedex';
         if (['/tools/main', '/tools/sns_jailbreak', '/tools/sns_jailbreak_list'].includes(path) || path.startsWith('/tools/')) return 'Tools';
         if (['/admin'].includes(path) || location.pathname.startsWith('/admin/')) return 'Admin';
         if (['/help'].includes(path) || location.pathname.startsWith('/help/')) return 'Help';
@@ -465,6 +465,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             displayName: 'Sneedex',
             defaultPath: '/sneedex_offers',
             subMenu: [
+                { name: 'Swap', path: '/swap' },
                 { name: 'Marketplace', path: '/sneedex_offers' },
                 { name: 'Create Offer', path: '/sneedex_create' },
                 { name: 'My Sneedex', path: '/sneedex_my' },

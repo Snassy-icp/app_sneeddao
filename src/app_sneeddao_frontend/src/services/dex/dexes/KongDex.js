@@ -280,10 +280,15 @@ export class KongDex extends BaseDex {
     // Minimum output with slippage tolerance
     const minimumOutput = netOutput - BigInt(Math.ceil(Number(netOutput) * slippage));
 
-    // DEX fee — extract from swap txs if available
+    // DEX fee — use pool's lp_fee_bps (basis points) for accuracy
     let dexFeePercent = 0.003; // default 0.3%
-    if (quoteData.txs && quoteData.txs.length > 0) {
-      // lp_fee is in smallest unit of the pay token for that hop
+    const pool = await this._findPool(inputToken, outputToken);
+    if (pool && pool.lp_fee_bps !== undefined) {
+      // lp_fee_bps is in basis points: 30 bps = 0.3%
+      dexFeePercent = Number(pool.lp_fee_bps) / 10_000;
+    } else if (quoteData.txs && quoteData.txs.length > 0) {
+      // Fallback: compute from tx-level lp_fee (actual amount) vs pay_amount
+      // For multi-hop, aggregate across hops
       const totalLpFee = quoteData.txs.reduce((sum, tx) => sum + Number(tx.lp_fee || 0), 0);
       const totalPay = quoteData.txs.reduce((sum, tx) => sum + Number(tx.pay_amount || 0), 0);
       if (totalPay > 0) dexFeePercent = totalLpFee / totalPay;
