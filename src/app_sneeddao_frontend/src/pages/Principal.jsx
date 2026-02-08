@@ -1172,11 +1172,21 @@ export default function PrincipalPage() {
             let completedCount = 0;
             const maxConcurrency = 8;
 
-            const isCanisterError = (err) => {
+            const shouldAddToSkipList = (err) => {
                 if (!err) return false;
                 if (err && typeof err === 'object' && 'CanisterError' in err) return true;
                 const msg = err?.message ?? String(err);
-                return typeof msg === 'string' && msg.toLowerCase().includes('canistererror');
+                const full = typeof msg === 'string' ? msg : JSON.stringify(err);
+                const lower = full.toLowerCase();
+                return (
+                    lower.includes('canistererror') ||
+                    lower.includes('systransient') ||
+                    lower.includes('timestamp failed to pass the watermark') ||
+                    lower.includes('frozen') ||
+                    lower.includes('unable to process query') ||
+                    lower.includes('no wasm module') ||
+                    lower.includes('install code to this canister')
+                );
             };
 
             const runScanForLedger = async (ledgerId) => {
@@ -1218,7 +1228,7 @@ export default function PrincipalPage() {
                         });
                     }
                 } catch (err) {
-                    if (isCanisterError(err)) {
+                    if (shouldAddToSkipList(err)) {
                         addToSkipList(ledgerId);
                     }
                     console.warn(`[Principal Scan] Failed to check ${ledgerId}:`, err?.message || err);
