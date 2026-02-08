@@ -2093,6 +2093,135 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
           </div>
         </div>
 
+        {/* ─── Swap button ─── */}
+        <button
+          className="swap-btn-primary"
+          onClick={handleSwap}
+          disabled={!isSwapEnabled}
+          style={{
+            width: '100%',
+            padding: '14px 0',
+            borderRadius: 14,
+            fontSize: 16,
+            fontWeight: 700,
+            border: 'none',
+            letterSpacing: '0.01em',
+            cursor: isSwapEnabled ? 'pointer' : 'not-allowed',
+            background: isSwapEnabled
+              ? `linear-gradient(135deg, ${SWAP_BLUE}, ${SWAP_PURPLE})`
+              : theme.colors.tertiaryBg,
+            color: isSwapEnabled ? '#fff' : theme.colors.mutedText,
+            boxShadow: isSwapEnabled ? `0 4px 20px ${SWAP_BLUE}35` : 'none',
+          }}
+        >
+          {!isAuthenticated ? 'Connect Wallet' :
+           swapping ? 'Swapping...' :
+           !inputToken || !outputToken ? 'Select Tokens' :
+           !inputAmountStr ? 'Enter Amount' :
+           allQuotes.length === 0 ? (loadingQuotes ? 'Loading...' : 'No Quotes') :
+           selectedQuote?.isSplitQuote ? 'Split Swap' :
+           selectedQuote?.isAuctionQuote ? 'Buy from Auction' :
+           selectedQuote?.isSplitTrade ? 'Split Trade' :
+           'Swap'}
+        </button>
+
+        {/* ─── Progress panel ─── */}
+        {progress && progress.isSplitTrade && <SplitTradeProgressPanel progress={progress} />}
+        {progress && progress.isSplit && !progress.isSplitTrade && <SplitProgressPanel progress={progress} />}
+        {progress && !progress.isSplit && !progress.isSplitTrade && <ProgressPanel progress={progress} />}
+
+        {/* ─── Result ─── */}
+        {result && result.success && outputTokenInfo && (
+          <div style={{
+            textAlign: 'center', padding: '14px 16px', borderRadius: 12,
+            background: 'rgba(46, 204, 113, 0.06)',
+            border: `1px solid ${theme.colors.success}40`,
+          }}>
+            <div style={{
+              fontSize: 15, fontWeight: 700, color: theme.colors.success,
+              marginBottom: 4,
+            }}>
+              {result.isSplitTrade ? 'Split trade successful!' : result.isBuyout ? 'Buyout successful!' : result.isSplit ? 'Split swap successful!' : 'Swap successful!'}
+            </div>
+            <div style={{ fontSize: 13, color: theme.colors.secondaryText }}>
+              Received: <strong>{formatAmount(result.amountOut, outputTokenInfo.decimals)} {outputTokenInfo.symbol}</strong>
+              {outputUsdPrice !== null && (
+                <span style={{ color: theme.colors.mutedText }}>
+                  {' '}({formatUSD((Number(result.amountOut) / (10 ** outputTokenInfo.decimals)) * outputUsdPrice)})
+                </span>
+              )}
+            </div>
+            {result.isSplit && result.legs && (
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 6, fontSize: 11, color: theme.colors.mutedText }}>
+                {result.legs.map(leg => (
+                  <span key={leg.dexId}>
+                    {leg.dexId === 'icpswap' ? 'ICPSwap' : 'Kong'}:{' '}
+                    <strong style={{ color: theme.colors.secondaryText }}>
+                      {formatAmount(leg.amountOut, outputTokenInfo.decimals)}
+                    </strong>
+                    {!leg.success && <span style={{ color: theme.colors.error }}> (failed)</span>}
+                  </span>
+                ))}
+              </div>
+            )}
+            {result.isSplitTrade && result.legs && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, marginTop: 6, fontSize: 11, color: theme.colors.mutedText }}>
+                {result.legs.map((leg, idx) => (
+                  <span key={idx}>
+                    {leg.type === 'buyout' ? `Sneedex #${leg.offerId}` : leg.dexId === 'icpswap' ? 'ICPSwap' : leg.dexId === 'kong' ? 'Kong' : leg.dexId}:{' '}
+                    {leg.success ? (
+                      <strong style={{ color: theme.colors.secondaryText }}>
+                        {formatAmount(leg.amountOut, outputTokenInfo.decimals)} {outputTokenInfo.symbol}
+                      </strong>
+                    ) : (
+                      <span style={{ color: theme.colors.error }}>failed{leg.error ? ` — ${leg.error}` : ''}</span>
+                    )}
+                  </span>
+                ))}
+              </div>
+            )}
+            {result.isBuyout && result.offerId && (
+              <div style={{ fontSize: 11, color: theme.colors.mutedText, marginTop: 4 }}>
+                <Link to={`/sneedex_offer/${result.offerId}`} style={{ color: 'var(--color-accent)' }}>
+                  View auction #{result.offerId}
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
+        {/* Partial split failure */}
+        {result && !result.success && result.isSplit && outputTokenInfo && (
+          <div style={{
+            textAlign: 'center', padding: '14px 16px', borderRadius: 12,
+            background: 'rgba(231, 76, 60, 0.06)',
+            border: `1px solid ${theme.colors.error}40`,
+          }}>
+            <div style={{
+              fontSize: 15, fontWeight: 700, color: theme.colors.error,
+              marginBottom: 4,
+            }}>
+              Split swap partially failed
+            </div>
+            <div style={{ fontSize: 13, color: theme.colors.secondaryText }}>
+              {result.amountOut > 0n
+                ? <>Received: <strong>{formatAmount(result.amountOut, outputTokenInfo.decimals)} {outputTokenInfo.symbol}</strong> (partial)</>
+                : 'No output received'}
+            </div>
+            {result.legs && (
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 6, fontSize: 11, color: theme.colors.mutedText }}>
+                {result.legs.map(leg => (
+                  <span key={leg.dexId}>
+                    {leg.dexId === 'icpswap' ? 'ICPSwap' : 'Kong'}:{' '}
+                    {leg.success
+                      ? <strong style={{ color: theme.colors.success }}>{formatAmount(leg.amountOut, outputTokenInfo.decimals)}</strong>
+                      : <span style={{ color: theme.colors.error }}>failed{leg.error ? ` — ${leg.error}` : ''}</span>}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ─── Spot prices ─── */}
         {spotPrices && inputTokenInfo && outputTokenInfo && (
           <div style={{
@@ -2202,135 +2331,6 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
             background: `${theme.colors.error}08`,
           }}>{quoteError}</div>
         )}
-
-        {/* ─── Progress panel ─── */}
-        {progress && progress.isSplitTrade && <SplitTradeProgressPanel progress={progress} />}
-        {progress && progress.isSplit && !progress.isSplitTrade && <SplitProgressPanel progress={progress} />}
-        {progress && !progress.isSplit && !progress.isSplitTrade && <ProgressPanel progress={progress} />}
-
-        {/* ─── Result ─── */}
-        {result && result.success && outputTokenInfo && (
-          <div style={{
-            textAlign: 'center', padding: '14px 16px', borderRadius: 12,
-            background: 'rgba(46, 204, 113, 0.06)',
-            border: `1px solid ${theme.colors.success}40`,
-          }}>
-            <div style={{
-              fontSize: 15, fontWeight: 700, color: theme.colors.success,
-              marginBottom: 4,
-            }}>
-              {result.isSplitTrade ? 'Split trade successful!' : result.isBuyout ? 'Buyout successful!' : result.isSplit ? 'Split swap successful!' : 'Swap successful!'}
-            </div>
-            <div style={{ fontSize: 13, color: theme.colors.secondaryText }}>
-              Received: <strong>{formatAmount(result.amountOut, outputTokenInfo.decimals)} {outputTokenInfo.symbol}</strong>
-              {outputUsdPrice !== null && (
-                <span style={{ color: theme.colors.mutedText }}>
-                  {' '}({formatUSD((Number(result.amountOut) / (10 ** outputTokenInfo.decimals)) * outputUsdPrice)})
-                </span>
-              )}
-            </div>
-            {result.isSplit && result.legs && (
-              <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 6, fontSize: 11, color: theme.colors.mutedText }}>
-                {result.legs.map(leg => (
-                  <span key={leg.dexId}>
-                    {leg.dexId === 'icpswap' ? 'ICPSwap' : 'Kong'}:{' '}
-                    <strong style={{ color: theme.colors.secondaryText }}>
-                      {formatAmount(leg.amountOut, outputTokenInfo.decimals)}
-                    </strong>
-                    {!leg.success && <span style={{ color: theme.colors.error }}> (failed)</span>}
-                  </span>
-                ))}
-              </div>
-            )}
-            {result.isSplitTrade && result.legs && (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, marginTop: 6, fontSize: 11, color: theme.colors.mutedText }}>
-                {result.legs.map((leg, idx) => (
-                  <span key={idx}>
-                    {leg.type === 'buyout' ? `Sneedex #${leg.offerId}` : leg.dexId === 'icpswap' ? 'ICPSwap' : leg.dexId === 'kong' ? 'Kong' : leg.dexId}:{' '}
-                    {leg.success ? (
-                      <strong style={{ color: theme.colors.secondaryText }}>
-                        {formatAmount(leg.amountOut, outputTokenInfo.decimals)} {outputTokenInfo.symbol}
-                      </strong>
-                    ) : (
-                      <span style={{ color: theme.colors.error }}>failed{leg.error ? ` — ${leg.error}` : ''}</span>
-                    )}
-                  </span>
-                ))}
-              </div>
-            )}
-            {result.isBuyout && result.offerId && (
-              <div style={{ fontSize: 11, color: theme.colors.mutedText, marginTop: 4 }}>
-                <Link to={`/sneedex_offer/${result.offerId}`} style={{ color: 'var(--color-accent)' }}>
-                  View auction #{result.offerId}
-                </Link>
-              </div>
-            )}
-          </div>
-        )}
-        {/* Partial split failure */}
-        {result && !result.success && result.isSplit && outputTokenInfo && (
-          <div style={{
-            textAlign: 'center', padding: '14px 16px', borderRadius: 12,
-            background: 'rgba(231, 76, 60, 0.06)',
-            border: `1px solid ${theme.colors.error}40`,
-          }}>
-            <div style={{
-              fontSize: 15, fontWeight: 700, color: theme.colors.error,
-              marginBottom: 4,
-            }}>
-              Split swap partially failed
-            </div>
-            <div style={{ fontSize: 13, color: theme.colors.secondaryText }}>
-              {result.amountOut > 0n
-                ? <>Received: <strong>{formatAmount(result.amountOut, outputTokenInfo.decimals)} {outputTokenInfo.symbol}</strong> (partial)</>
-                : 'No output received'}
-            </div>
-            {result.legs && (
-              <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 6, fontSize: 11, color: theme.colors.mutedText }}>
-                {result.legs.map(leg => (
-                  <span key={leg.dexId}>
-                    {leg.dexId === 'icpswap' ? 'ICPSwap' : 'Kong'}:{' '}
-                    {leg.success
-                      ? <strong style={{ color: theme.colors.success }}>{formatAmount(leg.amountOut, outputTokenInfo.decimals)}</strong>
-                      : <span style={{ color: theme.colors.error }}>failed{leg.error ? ` — ${leg.error}` : ''}</span>}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ─── Swap button ─── */}
-        <button
-          className="swap-btn-primary"
-          onClick={handleSwap}
-          disabled={!isSwapEnabled}
-          style={{
-            width: '100%',
-            padding: '14px 0',
-            borderRadius: 14,
-            fontSize: 16,
-            fontWeight: 700,
-            border: 'none',
-            letterSpacing: '0.01em',
-            cursor: isSwapEnabled ? 'pointer' : 'not-allowed',
-            background: isSwapEnabled
-              ? `linear-gradient(135deg, ${SWAP_BLUE}, ${SWAP_PURPLE})`
-              : theme.colors.tertiaryBg,
-            color: isSwapEnabled ? '#fff' : theme.colors.mutedText,
-            boxShadow: isSwapEnabled ? `0 4px 20px ${SWAP_BLUE}35` : 'none',
-          }}
-        >
-          {!isAuthenticated ? 'Connect Wallet' :
-           swapping ? 'Swapping...' :
-           !inputToken || !outputToken ? 'Select Tokens' :
-           !inputAmountStr ? 'Enter Amount' :
-           allQuotes.length === 0 ? (loadingQuotes ? 'Loading...' : 'No Quotes') :
-           selectedQuote?.isSplitQuote ? 'Split Swap' :
-           selectedQuote?.isAuctionQuote ? 'Buy from Auction' :
-           selectedQuote?.isSplitTrade ? 'Split Trade' :
-           'Swap'}
-        </button>
 
         {/* ─── Selected quote details ─── */}
         {selectedQuote && inputTokenInfo && outputTokenInfo && !swapping && !result?.success && (
