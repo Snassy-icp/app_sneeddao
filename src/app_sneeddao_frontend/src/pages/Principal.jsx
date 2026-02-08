@@ -1141,7 +1141,8 @@ export default function PrincipalPage() {
 
     // Scan for tokens - check all whitelisted tokens for balances
     const handleScanForTokens = async () => {
-        if (!stablePrincipalId.current || scanningTokens) return;
+        const principalToScan = stablePrincipalId.current;
+        if (!principalToScan || scanningTokens) return;
         if (!whitelistedTokens || whitelistedTokens.length === 0) {
             setScanError('No whitelisted tokens available to scan yet.');
             return;
@@ -1183,7 +1184,9 @@ export default function PrincipalPage() {
                     lower.includes('frozen') ||
                     lower.includes('unable to process query') ||
                     lower.includes('no wasm module') ||
-                    lower.includes('install code to this canister')
+                    lower.includes('install code to this canister') ||
+                    lower.includes('invalid principal argument') ||
+                    lower.includes('invalid record')
                 );
             };
 
@@ -1191,7 +1194,7 @@ export default function PrincipalPage() {
                 try {
                     const ledgerActor = createIcrc1Actor(ledgerId, { agent });
                     const balance = await ledgerActor.icrc1_balance_of({ 
-                        owner: stablePrincipalId.current, 
+                        owner: principalToScan, 
                         subaccount: [] 
                     });
 
