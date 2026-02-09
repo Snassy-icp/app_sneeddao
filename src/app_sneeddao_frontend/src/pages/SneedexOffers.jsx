@@ -1451,18 +1451,19 @@ function SneedexOffers() {
                                 to="/swap"
                                 className="sneedex-action-btn"
                                 style={{
-                                    background: theme.colors.tertiaryBg,
-                                    color: theme.colors.primaryText,
+                                    background: `linear-gradient(135deg, #3498db, #8b5cf6)`,
+                                    color: 'white',
                                     padding: '10px 18px',
                                     borderRadius: '10px',
-                                    border: `1px solid ${theme.colors.border}`,
+                                    border: 'none',
                                     fontSize: '0.9rem',
-                                    fontWeight: '500',
+                                    fontWeight: '600',
                                     cursor: 'pointer',
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: '8px',
                                     textDecoration: 'none',
+                                    boxShadow: '0 4px 16px #3498db30',
                                 }}
                             >
                                 <FaExchangeAlt />

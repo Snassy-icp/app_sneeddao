@@ -1218,6 +1218,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
   const fetchQuotes = useCallback(async () => {
     if (swappingRef.current) return; // Don't refresh while a swap is in progress
     if (!aggregatorRef.current || !inputToken || !outputToken || !inputAmountStr || !inputTokenInfo) return;
+    if (inputToken === outputToken) return; // Don't fetch quotes when swapping a token to itself
 
     const amount = parseToBigInt(inputAmountStr, inputTokenInfo.decimals);
     if (amount <= 0n) return;
@@ -1747,7 +1748,8 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
     ? formatUSD((Number(selectedQuote.expectedOutput) / (10 ** outputTokenInfo.decimals)) * outputUsdPrice)
     : null;
 
-  const isSwapEnabled = isAuthenticated && selectedQuote && !swapping && inputAmountStr;
+  const isSameToken = inputToken && outputToken && inputToken === outputToken;
+  const isSwapEnabled = isAuthenticated && selectedQuote && !swapping && inputAmountStr && !isSameToken;
 
   // ── Render ──
   return (
@@ -2117,6 +2119,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
           {!isAuthenticated ? 'Connect Wallet' :
            swapping ? 'Swapping...' :
            !inputToken || !outputToken ? 'Select Tokens' :
+           isSameToken ? 'Select Different Tokens' :
            !inputAmountStr ? 'Enter Amount' :
            allQuotes.length === 0 ? (loadingQuotes ? 'Loading...' : 'No Quotes') :
            selectedQuote?.isSplitQuote ? 'Split Swap' :
