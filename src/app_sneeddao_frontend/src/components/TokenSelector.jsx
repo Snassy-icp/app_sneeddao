@@ -6,6 +6,7 @@ import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { getTokenLogo } from '../utils/TokenUtils';
 import { Principal } from '@dfinity/principal';
+import { getLogoSync, getLogo, setLogo } from '../hooks/useLogoCache';
 
 // Global cache for token metadata (logos and errors)
 const metadataCache = new Map();
@@ -13,6 +14,10 @@ const failedTokens = new Set(); // Track tokens that failed to load
 // Stable empty array reference to avoid infinite re-render loops
 // (default `[]` in function params creates a new reference each render)
 const EMPTY_EXCLUDE_TOKENS = [];
+
+// Fallback logo service — serves logos for most ICP tokens by canister ID
+const LOGO_PROXY_BASE = 'https://static.icpswap.com/logo';
+const getProxyLogoUrl = (canisterId) => `${LOGO_PROXY_BASE}/${canisterId}`;
 
 /**
  * TokenSelector - A reusable dropdown component for selecting tokens
@@ -155,105 +160,122 @@ function TokenSelector({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [whitelistFromContext, excludeTokensKey, whitelistLoading]);
 
-    // Fetch logos for tokens progressively (using cache)
+    // Fetch logos: instant proxy URLs → cached logos → parallel canister fetch (capped concurrency)
     useEffect(() => {
         if (tokens.length === 0) return;
 
         let isMounted = true;
         setLoadingLogos(true);
 
-        const fetchLogosProgressively = async () => {
-            // Initialize with cached or placeholder data
+        const fetchLogos = async () => {
+            // ── Phase 1: Instant render with cached or proxy logos ──
             const initialTokens = tokens.map(token => {
                 const principalStr = token.ledger_id.toString();
-                
+
+                // Check local in-memory cache first (fastest)
                 if (metadataCache.has(principalStr)) {
-                    const cached = metadataCache.get(principalStr);
-                    return { ...token, ...cached };
+                    return { ...token, ...metadataCache.get(principalStr) };
                 }
-                
-                return {
-                    ...token,
-                    logo: '',
-                    loading: true
-                };
+
+                // Check centralized logo cache (synchronous memory layer)
+                const cachedLogo = getLogoSync(principalStr);
+                if (cachedLogo) {
+                    const tokenData = { logo: cachedLogo, loading: false, failed: false };
+                    metadataCache.set(principalStr, tokenData);
+                    return { ...token, ...tokenData };
+                }
+
+                // Use proxy URL as instant placeholder (ICP gets its own icon)
+                const defaultLogo = token.symbol.toLowerCase() === 'icp'
+                    ? 'icp_symbol.svg'
+                    : getProxyLogoUrl(principalStr);
+
+                return { ...token, logo: defaultLogo, loading: false, failed: false };
             });
 
-            if (isMounted) {
-                setTokensWithLogos(initialTokens);
+            if (isMounted) setTokensWithLogos(initialTokens);
+
+            // ── Phase 2: Parallel fetch with concurrency limit ──
+            const tokensToFetch = tokens.filter(t => {
+                const id = t.ledger_id.toString();
+                return !metadataCache.has(id) && !failedTokens.has(id);
+            });
+
+            if (tokensToFetch.length === 0) {
+                if (isMounted) setLoadingLogos(false);
+                return;
             }
 
-            // Fetch logos progressively
-            for (let i = 0; i < tokens.length; i++) {
-                if (!isMounted) break;
+            // Helper: update a single token in state immediately
+            const updateToken = (principalStr) => {
+                if (!isMounted) return;
+                const cached = metadataCache.get(principalStr);
+                if (!cached) return;
+                setTokensWithLogos(prev => prev.map(t =>
+                    t.ledger_id.toString() === principalStr ? { ...t, ...cached } : t
+                ));
+            };
 
-                const token = tokens[i];
-                const principalStr = token.ledger_id.toString();
+            // Concurrency-limited parallel fetch (max 8 at once)
+            const CONCURRENCY = 8;
+            const queue = [...tokensToFetch];
+            const runNext = async () => {
+                while (queue.length > 0) {
+                    if (!isMounted) return;
+                    const token = queue.shift();
+                    const principalStr = token.ledger_id.toString();
 
-                // Skip if already cached or previously failed
-                if (metadataCache.has(principalStr) || failedTokens.has(principalStr)) {
-                    continue;
-                }
-
-                try {
-                    const ledgerActor = createLedgerActor(token.ledger_id, {
-                        agentOptions: { identity }
-                    });
-                    const metadata = await ledgerActor.icrc1_metadata();
-                    const logo = getTokenLogo(metadata);
-                    const finalLogo = token.symbol.toLowerCase() === "icp" && logo === "" 
-                        ? "icp_symbol.svg" 
-                        : logo;
-                    
-                    // Cache successful result
-                    const tokenData = {
-                        logo: finalLogo,
-                        loading: false,
-                        failed: false
-                    };
-                    metadataCache.set(principalStr, tokenData);
-                    
-                    // Update state progressively
-                    if (isMounted) {
-                        setTokensWithLogos(prev => prev.map(t => 
-                            t.ledger_id.toString() === principalStr 
-                                ? { ...t, ...tokenData }
-                                : t
-                        ));
+                    // Check centralized logo cache (async, includes IndexedDB)
+                    const persistedLogo = await getLogo(principalStr);
+                    if (persistedLogo) {
+                        metadataCache.set(principalStr, { logo: persistedLogo, loading: false, failed: false });
+                        updateToken(principalStr);
+                        continue;
                     }
-                } catch (error) {
-                    // Silently handle error, cache as failed
-                    const failedData = {
-                        logo: '',
-                        loading: false,
-                        failed: true,
-                        symbol: 'Unknown',
-                        name: 'Unknown Token'
-                    };
-                    metadataCache.set(principalStr, failedData);
-                    failedTokens.add(principalStr);
-                    
-                    // Update state with failed token
-                    if (isMounted) {
-                        setTokensWithLogos(prev => prev.map(t => 
-                            t.ledger_id.toString() === principalStr 
-                                ? { ...t, ...failedData }
-                                : t
-                        ));
+
+                    try {
+                        const ledgerActor = createLedgerActor(token.ledger_id, {
+                            agentOptions: { identity }
+                        });
+                        const metadata = await ledgerActor.icrc1_metadata();
+                        const logo = getTokenLogo(metadata);
+                        const finalLogo = token.symbol.toLowerCase() === "icp" && logo === ""
+                            ? "icp_symbol.svg"
+                            : logo;
+
+                        if (finalLogo) {
+                            metadataCache.set(principalStr, { logo: finalLogo, loading: false, failed: false });
+                            setLogo(principalStr, finalLogo); // Persist to IndexedDB
+                        } else {
+                            // No on-chain logo — keep proxy URL
+                            metadataCache.set(principalStr, {
+                                logo: getProxyLogoUrl(principalStr), loading: false, failed: false
+                            });
+                        }
+                        updateToken(principalStr);
+                    } catch (error) {
+                        // Canister unreachable — mark as failed so it's filtered out
+                        failedTokens.add(principalStr);
+                        metadataCache.set(principalStr, {
+                            logo: '', loading: false, failed: true,
+                            symbol: 'Unknown', name: 'Unknown Token'
+                        });
+                        updateToken(principalStr);
                     }
                 }
-            }
+            };
 
-            if (isMounted) {
-                setLoadingLogos(false);
-            }
+            // Launch CONCURRENCY workers that pull from the shared queue
+            await Promise.all(
+                Array.from({ length: Math.min(CONCURRENCY, tokensToFetch.length) }, () => runNext())
+            );
+
+            if (isMounted) setLoadingLogos(false);
         };
 
-        fetchLogosProgressively();
+        fetchLogos();
 
-        return () => {
-            isMounted = false;
-        };
+        return () => { isMounted = false; };
     }, [tokens, identity]);
 
     // Filter tokens based on search term (exclude failed tokens)
@@ -355,19 +377,16 @@ function TokenSelector({
                     <span>Loading tokens...</span>
                 ) : selectedToken ? (
                     <>
-                        {selectedToken.logo && (
-                            <img 
-                                src={selectedToken.logo} 
-                                alt={selectedToken.symbol}
-                                style={{
-                                    width: '24px',
-                                    height: '24px',
-                                    borderRadius: '50%',
-                                    objectFit: 'cover'
-                                }}
-                                onError={(e) => e.target.style.display = 'none'}
-                            />
-                        )}
+                        <img 
+                            src={selectedToken.logo || getProxyLogoUrl(selectedToken.ledger_id.toString())} 
+                            alt={selectedToken.symbol}
+                            style={{
+                                width: 24, height: 24, flexShrink: 0,
+                                borderRadius: '50%',
+                                objectFit: 'cover'
+                            }}
+                            onError={(e) => { e.target.onerror = null; e.target.src = getProxyLogoUrl(selectedToken.ledger_id.toString()); }}
+                        />
                         <span style={{ fontWeight: '600', color: theme.colors.primaryText }}>
                             {selectedToken.symbol}
                         </span>
@@ -488,36 +507,16 @@ function TokenSelector({
                                         }
                                     }}
                                 >
-                                    {token.logo ? (
-                                        <img 
-                                            src={token.logo} 
-                                            alt={token.symbol}
-                                            style={{
-                                                width: '32px',
-                                                height: '32px',
-                                                borderRadius: '50%',
-                                                objectFit: 'cover',
-                                                flexShrink: 0
-                                            }}
-                                            onError={(e) => e.target.style.display = 'none'}
-                                        />
-                                    ) : (
-                                        <div style={{
-                                            width: '32px',
-                                            height: '32px',
+                                    <img 
+                                        src={token.logo || getProxyLogoUrl(token.ledger_id.toString())} 
+                                        alt={token.symbol}
+                                        style={{
+                                            width: 32, height: 32, flexShrink: 0,
                                             borderRadius: '50%',
-                                            background: theme.colors.secondaryBg,
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            fontWeight: '600',
-                                            fontSize: '0.9rem',
-                                            color: theme.colors.mutedText,
-                                            flexShrink: 0
-                                        }}>
-                                            {token.symbol.slice(0, 2).toUpperCase()}
-                                        </div>
-                                    )}
+                                            objectFit: 'cover'
+                                        }}
+                                        onError={(e) => { e.target.onerror = null; e.target.src = getProxyLogoUrl(token.ledger_id.toString()); }}
+                                    />
                                     <div style={{ flex: 1, minWidth: 0 }}>
                                         <div style={{ 
                                             fontWeight: '600', 
