@@ -480,6 +480,8 @@ function RLL() {
     const [importedPropsCount, setImportedPropsCount] = useState(0);
     const [importStage, setImportStage] = useState('');
     const [orchestratorStage, setOrchestratorStage] = useState('');
+    const [tokenCheckStatus, setTokenCheckStatus] = useState(null);
+    const [walletTokenCheckStatus, setWalletTokenCheckStatus] = useState(null);
     const [mainLoopStatus, setMainLoopStatus] = useState({
         isRunning: null,
         lastStarted: null,
@@ -671,14 +673,18 @@ function RLL() {
                     props,
                     stage,
                     proposalId,
-                    loopStatus
+                    loopStatus,
+                    tokenBalCheckStatus,
+                    walletBalCheckStatus
                 ] = await Promise.all([
                     rllActor.imported_neurons_count(),
                     rllActor.imported_owners_count(),
                     rllActor.imported_props_count(),
                     rllActor.get_import_stage(),
                     rllActor.get_highest_closed_proposal_id(),
-                    rllActor.get_main_loop_status()
+                    rllActor.get_main_loop_status(),
+                    rllActor.get_token_balance_check_status(),
+                    rllActor.get_wallet_token_check_status()
                 ]);
 
                 console.log('Received import status:', {
@@ -687,7 +693,9 @@ function RLL() {
                     props,
                     stage,
                     proposalId,
-                    loopStatus
+                    loopStatus,
+                    tokenBalCheckStatus,
+                    walletBalCheckStatus
                 });
 
                 setImportedNeuronsCount(neurons);
@@ -695,6 +703,8 @@ function RLL() {
                 setImportedPropsCount(props);
                 setImportStage(stage);
                 setHighestClosedProposalId(proposalId);
+                setTokenCheckStatus(tokenBalCheckStatus);
+                setWalletTokenCheckStatus(walletBalCheckStatus);
                 setMainLoopStatus({
                     isRunning: loopStatus.is_running,
                     lastStarted: loopStatus.last_started,
@@ -714,6 +724,8 @@ function RLL() {
                 setImportedPropsCount(0);
                 setImportStage('');
                 setHighestClosedProposalId(null);
+                setTokenCheckStatus(null);
+                setWalletTokenCheckStatus(null);
                 setMainLoopStatus({
                     isRunning: null,
                     lastStarted: null,
@@ -729,11 +741,13 @@ function RLL() {
 
         fetchImportStatus();
         
-        // Set up periodic refresh
-        const intervalId = setInterval(fetchImportStatus, 30000); // Refresh every 30 seconds
+        // Poll faster (5s) when cycle is active, slower (30s) when idle
+        const isActive = importStage && !importStage.includes('idle');
+        const intervalMs = isActive ? 5000 : 30000;
+        const intervalId = setInterval(fetchImportStatus, intervalMs);
         
         return () => clearInterval(intervalId);
-    }, []);
+    }, [importStage]);
 
     // Fetch balance reconciliation
     useEffect(() => {
@@ -1790,6 +1804,173 @@ function RLL() {
                             <span>Frequency:</span>
                             <span>{mainLoopStatus?.frequencySeconds ? formatDuration(Number(mainLoopStatus.frequencySeconds)) : 'Unknown'}</span>
                         </div>
+
+                        {/* Balance Check Progress */}
+                        {(tokenCheckStatus?.is_running || walletTokenCheckStatus?.is_running || 
+                          (importStage && !importStage.includes('idle'))) && (
+                            <div style={{ 
+                                marginTop: '16px', 
+                                padding: '16px', 
+                                background: `${rllPrimary}08`, 
+                                border: `1px solid ${rllPrimary}20`,
+                                borderRadius: '12px' 
+                            }}>
+                                <div style={{ ...styles.heading, fontSize: '0.95rem', marginBottom: '12px' }}>
+                                    <FaSpinner className="rll-spin" size={14} style={{ color: rllPrimary }} />
+                                    Live Cycle Progress
+                                </div>
+
+                                {/* Parsed stage display */}
+                                {importStage && !importStage.includes('idle') && (
+                                    <div style={{ marginBottom: '12px' }}>
+                                        <div style={{ 
+                                            display: 'flex', 
+                                            gap: '6px', 
+                                            flexWrap: 'wrap',
+                                            marginBottom: '8px'
+                                        }}>
+                                            {['importing whitelist', 'checking balances', 'importing neurons', 'importing proposals', 'distributing tokens'].map((step) => {
+                                                const stageText = importStage.toLowerCase();
+                                                const isActive = stageText.includes(step);
+                                                const stageOrder = ['importing whitelist', 'checking balances', 'importing neurons', 'importing proposals', 'distributing tokens'];
+                                                const currentIdx = stageOrder.findIndex(s => stageText.includes(s));
+                                                const stepIdx = stageOrder.indexOf(step);
+                                                const isCompleted = currentIdx > stepIdx;
+                                                return (
+                                                    <span key={step} style={{
+                                                        padding: '4px 10px',
+                                                        borderRadius: '20px',
+                                                        fontSize: '0.75rem',
+                                                        fontWeight: '600',
+                                                        background: isActive ? `${rllPrimary}30` : isCompleted ? 'rgba(46, 204, 113, 0.15)' : `${rllPrimary}08`,
+                                                        color: isActive ? rllPrimary : isCompleted ? '#2ecc71' : theme.colors.secondaryText,
+                                                        border: `1px solid ${isActive ? rllPrimary + '50' : isCompleted ? '#2ecc7130' : 'transparent'}`,
+                                                    }}>
+                                                        {isCompleted ? '✓ ' : isActive ? '● ' : '○ '}
+                                                        {step.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                                                    </span>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Token balance check progress */}
+                                {tokenCheckStatus && (tokenCheckStatus.is_running || Number(tokenCheckStatus.total) > 0) && (
+                                    <div style={{ marginBottom: '10px' }}>
+                                        <div style={{ ...styles.statusItem, marginBottom: '4px' }}>
+                                            <span style={{ fontWeight: '600', fontSize: '0.85rem' }}>
+                                                {tokenCheckStatus.is_running ? <FaSpinner className="rll-spin" size={10} style={{ marginRight: '6px' }} /> : <FaCheckCircle size={10} style={{ marginRight: '6px', color: '#2ecc71' }} />}
+                                                Canister Token Balances
+                                            </span>
+                                            <span style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: rllPrimary }}>
+                                                {Number(tokenCheckStatus.processed)} / {Number(tokenCheckStatus.total)}
+                                                {tokenCheckStatus.ticks ? ` (${Number(tokenCheckStatus.ticks)} ticks)` : ''}
+                                            </span>
+                                        </div>
+                                        <div style={{
+                                            width: '100%',
+                                            height: '6px',
+                                            background: theme.colors.tertiaryBg,
+                                            borderRadius: '3px',
+                                            overflow: 'hidden'
+                                        }}>
+                                            <div style={{
+                                                width: Number(tokenCheckStatus.total) > 0 
+                                                    ? `${(Number(tokenCheckStatus.processed) / Number(tokenCheckStatus.total)) * 100}%` 
+                                                    : '0%',
+                                                height: '100%',
+                                                background: tokenCheckStatus.is_running 
+                                                    ? `linear-gradient(90deg, ${rllPrimary}, ${rllSecondary})` 
+                                                    : '#2ecc71',
+                                                borderRadius: '3px',
+                                                transition: 'width 0.5s ease'
+                                            }} />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Wallet token check progress */}
+                                {walletTokenCheckStatus && (walletTokenCheckStatus.is_running || Number(walletTokenCheckStatus.total) > 0) && (
+                                    <div style={{ marginBottom: '10px' }}>
+                                        <div style={{ ...styles.statusItem, marginBottom: '4px' }}>
+                                            <span style={{ fontWeight: '600', fontSize: '0.85rem' }}>
+                                                {walletTokenCheckStatus.is_running ? <FaSpinner className="rll-spin" size={10} style={{ marginRight: '6px' }} /> : <FaCheckCircle size={10} style={{ marginRight: '6px', color: '#2ecc71' }} />}
+                                                Wallet Token Balances
+                                                {walletTokenCheckStatus.wallet?.[0] && (
+                                                    <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', marginLeft: '6px', color: theme.colors.secondaryText }}>
+                                                        ({walletTokenCheckStatus.wallet[0].toString().slice(0, 8)}...)
+                                                    </span>
+                                                )}
+                                            </span>
+                                            <span style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: rllPrimary }}>
+                                                {Number(walletTokenCheckStatus.processed)} / {Number(walletTokenCheckStatus.total)}
+                                                {walletTokenCheckStatus.ticks ? ` (${Number(walletTokenCheckStatus.ticks)} ticks)` : ''}
+                                            </span>
+                                        </div>
+                                        <div style={{
+                                            width: '100%',
+                                            height: '6px',
+                                            background: theme.colors.tertiaryBg,
+                                            borderRadius: '3px',
+                                            overflow: 'hidden'
+                                        }}>
+                                            <div style={{
+                                                width: Number(walletTokenCheckStatus.total) > 0 
+                                                    ? `${(Number(walletTokenCheckStatus.processed) / Number(walletTokenCheckStatus.total)) * 100}%` 
+                                                    : '0%',
+                                                height: '100%',
+                                                background: walletTokenCheckStatus.is_running 
+                                                    ? `linear-gradient(90deg, ${rllPrimary}, ${rllSecondary})` 
+                                                    : '#2ecc71',
+                                                borderRadius: '3px',
+                                                transition: 'width 0.5s ease'
+                                            }} />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Distribution progress from import stage string */}
+                                {importStage && importStage.includes('distributing tokens') && importStage.includes('/') && (
+                                    <div style={{ marginBottom: '10px' }}>
+                                        <div style={{ ...styles.statusItem, marginBottom: '4px' }}>
+                                            <span style={{ fontWeight: '600', fontSize: '0.85rem' }}>
+                                                <FaSpinner className="rll-spin" size={10} style={{ marginRight: '6px' }} />
+                                                Token Distribution
+                                            </span>
+                                            <span style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: rllPrimary }}>
+                                                {(() => {
+                                                    const match = importStage.match(/(\d+)\/(\d+)/);
+                                                    return match ? `${match[1]} / ${match[2]}` : '';
+                                                })()}
+                                            </span>
+                                        </div>
+                                        <div style={{
+                                            width: '100%',
+                                            height: '6px',
+                                            background: theme.colors.tertiaryBg,
+                                            borderRadius: '3px',
+                                            overflow: 'hidden'
+                                        }}>
+                                            <div style={{
+                                                width: (() => {
+                                                    const match = importStage.match(/(\d+)\/(\d+)/);
+                                                    if (match) {
+                                                        const pct = (parseInt(match[1]) / parseInt(match[2])) * 100;
+                                                        return `${Math.min(pct, 100)}%`;
+                                                    }
+                                                    return '0%';
+                                                })(),
+                                                height: '100%',
+                                                background: `linear-gradient(90deg, ${rllPrimary}, ${rllSecondary})`,
+                                                borderRadius: '3px',
+                                                transition: 'width 0.5s ease'
+                                            }} />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>}
                 </section>
 

@@ -325,6 +325,30 @@ export default function RewardsAdmin() {
         }
     }, [isAdmin, getRllActor]);
     
+    // Fetch distribution cycle status (import stage, balance checks, import statuses)
+    const fetchCycleStatus = useCallback(async () => {
+        if (!isAdmin) return;
+        
+        try {
+            const actor = getRllActor();
+            const [stage, tokenCheck, walletCheck, neuronStatus, proposalStatus] = await Promise.all([
+                actor.get_import_stage(),
+                actor.get_token_balance_check_status(),
+                actor.get_wallet_token_check_status(),
+                actor.get_neuron_import_status(),
+                actor.get_proposal_import_status()
+            ]);
+            
+            setImportStage(stage);
+            setTokenCheckStatus(tokenCheck);
+            setWalletTokenCheckStatus(walletCheck);
+            setNeuronImportStatus(neuronStatus);
+            setProposalImportStatus(proposalStatus);
+        } catch (err) {
+            console.error('Error fetching cycle status:', err);
+        }
+    }, [isAdmin, getRllActor]);
+    
     // Fetch admins
     const fetchAdmins = useCallback(async () => {
         if (!isAdmin) return;
@@ -343,10 +367,29 @@ export default function RewardsAdmin() {
         if (isAdmin) {
             fetchStats();
             fetchMainLoopStatus();
+            fetchCycleStatus();
             fetchAdmins();
             fetchTokensInitial();
         }
-    }, [isAdmin, fetchStats, fetchMainLoopStatus, fetchAdmins, fetchTokensInitial]);
+    }, [isAdmin, fetchStats, fetchMainLoopStatus, fetchCycleStatus, fetchAdmins, fetchTokensInitial]);
+    
+    // Auto-poll cycle status when distribution is active (every 5s), slower when idle (every 30s)
+    useEffect(() => {
+        if (!isAdmin) return;
+        
+        const isActive = importStage && !importStage.includes('idle');
+        const intervalMs = isActive ? 5000 : 30000;
+        
+        const intervalId = setInterval(() => {
+            fetchCycleStatus();
+            if (isActive) {
+                fetchMainLoopStatus();
+                fetchStats();
+            }
+        }, intervalMs);
+        
+        return () => clearInterval(intervalId);
+    }, [isAdmin, importStage, fetchCycleStatus, fetchMainLoopStatus, fetchStats]);
     
     // Toggle main loop
     const handleToggleMainLoop = async () => {
@@ -1431,6 +1474,310 @@ export default function RewardsAdmin() {
                                             >
                                                 <FaPlay /> Run Distribution Cycle Now
                                             </button>
+                                        </div>
+                                        
+                                        {/* Distribution Cycle Live Status */}
+                                        <div style={{ ...styles.subSection }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                                                <h3 style={{ ...styles.subSectionTitle, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <FaClock style={{ color: goldPrimary }} />
+                                                    Distribution Cycle Status
+                                                </h3>
+                                                <button
+                                                    onClick={fetchCycleStatus}
+                                                    style={{ ...styles.button, ...styles.secondaryButton, padding: '4px 12px', fontSize: '0.8rem' }}
+                                                >
+                                                    <FaSync /> Refresh
+                                                </button>
+                                            </div>
+                                            
+                                            {/* Current Stage Badge */}
+                                            <div style={{ marginBottom: '16px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                                                    <span style={styles.infoLabel}>Current Stage:</span>
+                                                    <span style={{
+                                                        ...styles.statusBadge,
+                                                        ...(importStage.includes('idle') ? styles.statusPending : styles.statusRunning),
+                                                        fontSize: '0.8rem',
+                                                        padding: '4px 12px'
+                                                    }}>
+                                                        {importStage.includes('idle') ? (
+                                                            <><FaClock /> Idle</>
+                                                        ) : (
+                                                            <><FaSpinner className="spin" /> Active</>
+                                                        )}
+                                                    </span>
+                                                </div>
+                                                {importStage && (
+                                                    <div style={{ 
+                                                        fontFamily: 'monospace', 
+                                                        fontSize: '0.85rem', 
+                                                        color: theme.colors.secondaryText,
+                                                        background: theme.colors.tertiaryBg,
+                                                        padding: '8px 12px',
+                                                        borderRadius: '6px',
+                                                        wordBreak: 'break-all'
+                                                    }}>
+                                                        {importStage}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            
+                                            {/* Stage Pipeline */}
+                                            {importStage && !importStage.includes('idle') && (
+                                                <div style={{ marginBottom: '20px' }}>
+                                                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                                        {['importing whitelist', 'checking balances', 'importing neurons', 'importing proposals', 'distributing tokens'].map((step, idx, arr) => {
+                                                            const stageText = importStage.toLowerCase();
+                                                            const isActive = stageText.includes(step);
+                                                            const stageOrder = ['importing whitelist', 'checking balances', 'importing neurons', 'importing proposals', 'distributing tokens'];
+                                                            const currentIdx = stageOrder.findIndex(s => stageText.includes(s));
+                                                            const stepIdx = stageOrder.indexOf(step);
+                                                            const isCompleted = currentIdx > stepIdx;
+                                                            return (
+                                                                <React.Fragment key={step}>
+                                                                    <span style={{
+                                                                        padding: '6px 12px',
+                                                                        borderRadius: '20px',
+                                                                        fontSize: '0.75rem',
+                                                                        fontWeight: '600',
+                                                                        background: isActive ? `${goldPrimary}30` : isCompleted ? 'rgba(46, 204, 113, 0.15)' : theme.colors.tertiaryBg,
+                                                                        color: isActive ? goldPrimary : isCompleted ? '#2ecc71' : theme.colors.secondaryText,
+                                                                        border: `1px solid ${isActive ? goldPrimary + '50' : isCompleted ? '#2ecc7130' : theme.colors.border}`,
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '4px',
+                                                                        whiteSpace: 'nowrap'
+                                                                    }}>
+                                                                        {isCompleted ? <FaCheckCircle size={10} /> : isActive ? <FaSpinner className="spin" size={10} /> : null}
+                                                                        {step.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                                                                    </span>
+                                                                    {idx < arr.length - 1 && (
+                                                                        <span style={{ color: theme.colors.secondaryText, fontSize: '0.7rem' }}>→</span>
+                                                                    )}
+                                                                </React.Fragment>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+                                            
+                                            {/* Token Balance Check Progress */}
+                                            {tokenCheckStatus && (tokenCheckStatus.is_running || Number(tokenCheckStatus.total) > 0) && (
+                                                <div style={{ marginBottom: '16px', padding: '12px', background: theme.colors.tertiaryBg, borderRadius: '8px' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                                        <span style={{ fontSize: '0.9rem', fontWeight: '600', color: theme.colors.primaryText, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            {tokenCheckStatus.is_running ? <FaSpinner className="spin" size={12} style={{ color: goldPrimary }} /> : <FaCheckCircle size={12} style={{ color: '#2ecc71' }} />}
+                                                            Canister Token Balance Check
+                                                        </span>
+                                                        <span style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: goldPrimary, fontWeight: '600' }}>
+                                                            {Number(tokenCheckStatus.processed)} / {Number(tokenCheckStatus.total)}
+                                                        </span>
+                                                    </div>
+                                                    <div style={{
+                                                        width: '100%',
+                                                        height: '8px',
+                                                        background: theme.colors.primaryBg,
+                                                        borderRadius: '4px',
+                                                        overflow: 'hidden'
+                                                    }}>
+                                                        <div style={{
+                                                            width: Number(tokenCheckStatus.total) > 0 
+                                                                ? `${(Number(tokenCheckStatus.processed) / Number(tokenCheckStatus.total)) * 100}%` 
+                                                                : '0%',
+                                                            height: '100%',
+                                                            background: tokenCheckStatus.is_running 
+                                                                ? `linear-gradient(90deg, ${goldPrimary}, ${goldLight})` 
+                                                                : '#2ecc71',
+                                                            borderRadius: '4px',
+                                                            transition: 'width 0.5s ease'
+                                                        }} />
+                                                    </div>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
+                                                        <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>
+                                                            {tokenCheckStatus.is_running ? 'In progress...' : 'Complete'}
+                                                        </span>
+                                                        <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>
+                                                            {Number(tokenCheckStatus.ticks)} ticks
+                                                            {Number(tokenCheckStatus.total) > 0 && ` · ${Math.round((Number(tokenCheckStatus.processed) / Number(tokenCheckStatus.total)) * 100)}%`}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            
+                                            {/* Wallet Token Check Progress */}
+                                            {walletTokenCheckStatus && (walletTokenCheckStatus.is_running || Number(walletTokenCheckStatus.total) > 0) && (
+                                                <div style={{ marginBottom: '16px', padding: '12px', background: theme.colors.tertiaryBg, borderRadius: '8px' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                                        <span style={{ fontSize: '0.9rem', fontWeight: '600', color: theme.colors.primaryText, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            {walletTokenCheckStatus.is_running ? <FaSpinner className="spin" size={12} style={{ color: goldPrimary }} /> : <FaCheckCircle size={12} style={{ color: '#2ecc71' }} />}
+                                                            Wallet Token Balance Check
+                                                            {walletTokenCheckStatus.wallet?.[0] && (
+                                                                <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
+                                                                    ({walletTokenCheckStatus.wallet[0].toString().slice(0, 12)}...)
+                                                                </span>
+                                                            )}
+                                                        </span>
+                                                        <span style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: goldPrimary, fontWeight: '600' }}>
+                                                            {Number(walletTokenCheckStatus.processed)} / {Number(walletTokenCheckStatus.total)}
+                                                        </span>
+                                                    </div>
+                                                    <div style={{
+                                                        width: '100%',
+                                                        height: '8px',
+                                                        background: theme.colors.primaryBg,
+                                                        borderRadius: '4px',
+                                                        overflow: 'hidden'
+                                                    }}>
+                                                        <div style={{
+                                                            width: Number(walletTokenCheckStatus.total) > 0 
+                                                                ? `${(Number(walletTokenCheckStatus.processed) / Number(walletTokenCheckStatus.total)) * 100}%` 
+                                                                : '0%',
+                                                            height: '100%',
+                                                            background: walletTokenCheckStatus.is_running 
+                                                                ? `linear-gradient(90deg, ${goldPrimary}, ${goldLight})` 
+                                                                : '#2ecc71',
+                                                            borderRadius: '4px',
+                                                            transition: 'width 0.5s ease'
+                                                        }} />
+                                                    </div>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
+                                                        <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>
+                                                            {walletTokenCheckStatus.is_running ? 'In progress...' : 'Complete'}
+                                                        </span>
+                                                        <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>
+                                                            {Number(walletTokenCheckStatus.ticks)} ticks
+                                                            {Number(walletTokenCheckStatus.total) > 0 && ` · ${Math.round((Number(walletTokenCheckStatus.processed) / Number(walletTokenCheckStatus.total)) * 100)}%`}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            
+                                            {/* Distribution Token Progress (parsed from import stage string) */}
+                                            {importStage && importStage.includes('distributing tokens') && importStage.includes('/') && (
+                                                <div style={{ marginBottom: '16px', padding: '12px', background: theme.colors.tertiaryBg, borderRadius: '8px' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                                        <span style={{ fontSize: '0.9rem', fontWeight: '600', color: theme.colors.primaryText, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            <FaSpinner className="spin" size={12} style={{ color: goldPrimary }} />
+                                                            Token Distribution
+                                                        </span>
+                                                        <span style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: goldPrimary, fontWeight: '600' }}>
+                                                            {(() => {
+                                                                const match = importStage.match(/(\d+)\/(\d+)/);
+                                                                return match ? `${match[1]} / ${match[2]}` : '';
+                                                            })()}
+                                                        </span>
+                                                    </div>
+                                                    <div style={{
+                                                        width: '100%',
+                                                        height: '8px',
+                                                        background: theme.colors.primaryBg,
+                                                        borderRadius: '4px',
+                                                        overflow: 'hidden'
+                                                    }}>
+                                                        <div style={{
+                                                            width: (() => {
+                                                                const match = importStage.match(/(\d+)\/(\d+)/);
+                                                                if (match) {
+                                                                    const pct = (parseInt(match[1]) / parseInt(match[2])) * 100;
+                                                                    return `${Math.min(pct, 100)}%`;
+                                                                }
+                                                                return '0%';
+                                                            })(),
+                                                            height: '100%',
+                                                            background: `linear-gradient(90deg, ${goldPrimary}, ${goldLight})`,
+                                                            borderRadius: '4px',
+                                                            transition: 'width 0.5s ease'
+                                                        }} />
+                                                    </div>
+                                                    {/* Show which token is being processed */}
+                                                    {importStage.includes('processing') && (
+                                                        <div style={{ marginTop: '6px', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
+                                                            <span>Processing: </span>
+                                                            <span style={{ fontFamily: 'monospace' }}>
+                                                                {(() => {
+                                                                    const match = importStage.match(/processing\s+([a-z0-9-]+)/i);
+                                                                    return match ? match[1].slice(0, 16) + '...' : '';
+                                                                })()}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                            
+                                            {/* Import Statuses */}
+                                            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                                                {neuronImportStatus && (
+                                                    <div style={{ 
+                                                        flex: '1', 
+                                                        minWidth: '180px',
+                                                        padding: '10px 14px', 
+                                                        background: theme.colors.tertiaryBg, 
+                                                        borderRadius: '8px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px'
+                                                    }}>
+                                                        <FaDatabase size={14} style={{ color: goldPrimary, flexShrink: 0 }} />
+                                                        <div>
+                                                            <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>Neuron Import</div>
+                                                            <div style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.primaryText }}>
+                                                                {'ok' in neuronImportStatus 
+                                                                    ? (neuronImportStatus.ok.includes('running') 
+                                                                        ? <span style={{ color: '#2ecc71' }}>Running</span> 
+                                                                        : <span style={{ color: theme.colors.secondaryText }}>Idle</span>)
+                                                                    : <span style={{ color: '#e74c3c' }}>Error</span>
+                                                                }
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {proposalImportStatus && (
+                                                    <div style={{ 
+                                                        flex: '1', 
+                                                        minWidth: '180px',
+                                                        padding: '10px 14px', 
+                                                        background: theme.colors.tertiaryBg, 
+                                                        borderRadius: '8px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px'
+                                                    }}>
+                                                        <FaFileImport size={14} style={{ color: goldPrimary, flexShrink: 0 }} />
+                                                        <div>
+                                                            <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>Proposal Import</div>
+                                                            <div style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.primaryText }}>
+                                                                {'ok' in proposalImportStatus 
+                                                                    ? (proposalImportStatus.ok.includes('running') 
+                                                                        ? <span style={{ color: '#2ecc71' }}>Running</span> 
+                                                                        : <span style={{ color: theme.colors.secondaryText }}>Idle</span>)
+                                                                    : <span style={{ color: '#e74c3c' }}>Error</span>
+                                                                }
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            
+                                            {/* Idle state message */}
+                                            {(!importStage || importStage.includes('idle')) && 
+                                             !tokenCheckStatus?.is_running && 
+                                             !walletTokenCheckStatus?.is_running && (
+                                                <div style={{ 
+                                                    textAlign: 'center', 
+                                                    padding: '20px', 
+                                                    color: theme.colors.secondaryText,
+                                                    fontSize: '0.9rem'
+                                                }}>
+                                                    <FaClock size={24} style={{ color: theme.colors.secondaryText, opacity: 0.5, marginBottom: '8px', display: 'block', margin: '0 auto 8px' }} />
+                                                    No distribution cycle currently running.
+                                                    {mainLoopStatus?.next_scheduled?.[0] && (
+                                                        <div style={{ marginTop: '4px', fontSize: '0.8rem' }}>
+                                                            Next scheduled: {formatTimestamp(mainLoopStatus.next_scheduled[0])}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     </>
                                 ) : (
