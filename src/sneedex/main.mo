@@ -1152,6 +1152,13 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         });
     };
     
+    /// Get only confirmed bids for an offer (excludes unconfirmed reservations with amount=0)
+    func getConfirmedBidsForOffer(offerId : T.OfferId) : [T.Bid] {
+        Array.filter<T.Bid>(bids, func(b : T.Bid) : Bool {
+            b.offer_id == offerId and b.tokens_escrowed;
+        });
+    };
+    
     func getActiveBidsForOffer(offerId : T.OfferId) : [T.Bid] {
         Array.filter<T.Bid>(bids, func(b : T.Bid) : Bool {
             b.offer_id == offerId and b.state == #Pending and b.tokens_escrowed;
@@ -3020,7 +3027,8 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         switch (getOffer(offerId)) {
             case null { null };
             case (?offer) {
-                let offerBids = getBidsForOffer(offerId);
+                // Only return confirmed bids (excludes abandoned reservations with amount=0)
+                let offerBids = getConfirmedBidsForOffer(offerId);
                 let highestBid = getHighestBid(offerId);
                 
                 // Determine if caller can see the private note
@@ -3368,10 +3376,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         });
     };
     
-    /// Get bids by bidder
+    /// Get bids by bidder (excludes unconfirmed reservations with amount=0)
     public query func getBidsByBidder(bidder : Principal) : async [T.Bid] {
         Array.filter<T.Bid>(bids, func(b : T.Bid) : Bool {
-            Principal.equal(b.bidder, bidder);
+            Principal.equal(b.bidder, bidder) and b.tokens_escrowed;
         });
     };
     

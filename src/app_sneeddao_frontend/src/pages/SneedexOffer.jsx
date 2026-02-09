@@ -4793,13 +4793,13 @@ function SneedexOffer() {
                         {/* Bids History */}
                         <div style={styles.card} className="sneedex-offer-bid-history-card">
                             <h3 style={styles.cardTitle}>
-                                <FaGavel /> Bid History ({bids.length})
+                                <FaGavel /> Bid History ({bids.filter(b => Number(b.amount) > 0).length})
                             </h3>
-                            {bids.length === 0 ? (
+                            {bids.filter(b => Number(b.amount) > 0).length === 0 ? (
                                 <div style={styles.noBids}>No bids yet. Be the first!</div>
                             ) : (
                                 <div style={styles.bidsList}>
-                                    {bids.sort((a, b) => Number(b.amount) - Number(a.amount)).map((bid, idx) => {
+                                    {bids.filter(b => Number(b.amount) > 0).sort((a, b) => Number(b.amount) - Number(a.amount)).map((bid, idx) => {
                                         const isHighest = idx === 0;
                                         const bidState = getBidStateString(bid.state);
                                         const stateColor = 
