@@ -6241,7 +6241,7 @@ function SneedexOffer() {
             <SwapModal
                 isOpen={swapOpen}
                 onClose={() => { setSwapOpen(false); setSwapTargetAmount(null); }}
-                initialInput="ryjl3-tyaaa-aaaaa-aaaba-cai"
+                initialInput={offer && offer.price_token_ledger.toString() === 'ryjl3-tyaaa-aaaaa-aaaba-cai' ? '' : 'ryjl3-tyaaa-aaaaa-aaaba-cai'}
                 initialOutput={offer ? offer.price_token_ledger.toString() : ''}
                 initialOutputAmount={swapTargetAmount}
                 onSwapComplete={() => {

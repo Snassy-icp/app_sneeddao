@@ -1312,6 +1312,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
   useEffect(() => {
     if (quoteTimerRef.current) clearInterval(quoteTimerRef.current);
     setQuotes([]);
+    setQuoteError('');
     setResult(null);
     setProgress(null);
     setSelectedDexId(null);
@@ -2326,8 +2327,17 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
           />
         )}
 
+        {/* ─── Same-token warning ─── */}
+        {isSameToken && (
+          <div style={{
+            color: theme.colors.warning || '#f5a623', fontSize: 13, textAlign: 'center',
+            padding: '8px 12px', borderRadius: 10,
+            background: `${theme.colors.warning || '#f5a623'}12`,
+          }}>Cannot swap a token to itself — please select a different input or output token.</div>
+        )}
+
         {/* ─── Quote error ─── */}
-        {quoteError && !loadingQuotes && (
+        {quoteError && !loadingQuotes && !isSameToken && (
           <div style={{
             color: theme.colors.error, fontSize: 13, textAlign: 'center',
             padding: '8px 12px', borderRadius: 10,
