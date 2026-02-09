@@ -3,7 +3,7 @@ import Header from '../components/Header';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { FaSearch, FaFilter, FaGavel, FaClock, FaTag, FaCubes, FaBrain, FaCoins, FaArrowRight, FaSync, FaGlobe, FaLock, FaRobot, FaChevronLeft, FaChevronRight, FaChevronDown, FaChevronUp, FaTimes, FaUnlock } from 'react-icons/fa';
+import { FaSearch, FaFilter, FaGavel, FaClock, FaTag, FaCubes, FaBrain, FaCoins, FaArrowRight, FaSync, FaGlobe, FaLock, FaRobot, FaChevronLeft, FaChevronRight, FaChevronDown, FaChevronUp, FaTimes, FaUnlock, FaExchangeAlt } from 'react-icons/fa';
 import TokenSelector from '../components/TokenSelector';
 import PrincipalInput from '../components/PrincipalInput';
 import { HttpAgent } from '@dfinity/agent';
@@ -1447,8 +1447,8 @@ function SneedexOffers() {
                             flexWrap: 'wrap',
                             marginBottom: '1.5rem'
                         }}>
-                            <button
-                                type="button"
+                            <Link
+                                to="/swap"
                                 className="sneedex-action-btn"
                                 style={{
                                     background: theme.colors.tertiaryBg,
@@ -1462,13 +1462,12 @@ function SneedexOffers() {
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: '8px',
+                                    textDecoration: 'none',
                                 }}
-                                onClick={fetchOffers}
-                                disabled={loading}
                             >
-                                <FaSync style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
-                                {loading ? 'Loading...' : 'Refresh'}
-                            </button>
+                                <FaExchangeAlt />
+                                Swap
+                            </Link>
                             {isAuthenticated && (
                                 <Link
                                     to="/sneedex_create"

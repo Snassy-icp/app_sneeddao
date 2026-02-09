@@ -1072,6 +1072,32 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                             
                             <button
                                 onClick={() => {
+                                    navigate('/swap');
+                                    setIsQuickLinksOpen(false);
+                                }}
+                                style={{
+                                    width: '100%',
+                                    background: 'none',
+                                    border: 'none',
+                                    color: theme.colors.primaryText,
+                                    cursor: 'pointer',
+                                    padding: '12px 16px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '10px',
+                                    fontSize: '14px',
+                                    textAlign: 'left',
+                                    transition: 'background-color 0.2s ease'
+                                }}
+                                onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.secondaryBg}
+                                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                            >
+                                <FaExchangeAlt size={14} />
+                                Swap
+                            </button>
+                            
+                            <button
+                                onClick={() => {
                                     navigate('/liquid_staking');
                                     setIsQuickLinksOpen(false);
                                 }}
@@ -1172,32 +1198,6 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                             >
                                 <FaGift size={14} />
                                 Rewards
-                            </button>
-                            
-                            <button
-                                onClick={() => {
-                                    navigate('/swap');
-                                    setIsQuickLinksOpen(false);
-                                }}
-                                style={{
-                                    width: '100%',
-                                    background: 'none',
-                                    border: 'none',
-                                    color: theme.colors.primaryText,
-                                    cursor: 'pointer',
-                                    padding: '12px 16px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '10px',
-                                    fontSize: '14px',
-                                    textAlign: 'left',
-                                    transition: 'background-color 0.2s ease'
-                                }}
-                                onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.secondaryBg}
-                                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                            >
-                                <FaExchangeAlt size={14} />
-                                Swap
                             </button>
                             
                             <button
