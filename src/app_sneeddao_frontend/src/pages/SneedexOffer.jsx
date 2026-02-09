@@ -6,6 +6,11 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { FaArrowLeft, FaClock, FaGavel, FaUser, FaCubes, FaBrain, FaCoins, FaCheck, FaTimes, FaExternalLinkAlt, FaSync, FaWallet, FaChevronDown, FaChevronUp, FaMicrochip, FaMemory, FaBolt, FaLock, FaUserCheck, FaRobot, FaExclamationTriangle, FaExchangeAlt, FaShoppingCart } from 'react-icons/fa';
+import { getLogoSync } from '../hooks/useLogoCache';
+
+// Fallback logo service — serves logos for most ICP tokens by canister ID
+const LOGO_PROXY_BASE = 'https://static.icpswap.com/logo';
+const getProxyLogoUrl = (canisterId) => `${LOGO_PROXY_BASE}/${canisterId}`;
 import { Principal } from '@dfinity/principal';
 import { Actor, HttpAgent } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
@@ -2693,16 +2698,12 @@ function SneedexOffer() {
                                                                 alignItems: 'center',
                                                                 justifyContent: 'center',
                                                             }}>
-                                                                {tokenLogos[details.ledger_id] ? (
-                                                                    <img 
-                                                                        src={tokenLogos[details.ledger_id]} 
-                                                                        alt="Token" 
-                                                                        style={{ width: '36px', height: '36px', borderRadius: '50%' }}
-                                                                        onError={(e) => { e.target.style.display = 'none'; }}
-                                                                    />
-                                                                ) : (
-                                                                    <FaCoins style={{ fontSize: '28px', color: theme.colors.warning }} />
-                                                                )}
+                                                                <img 
+                                                                    src={tokenLogos[details.ledger_id] || getLogoSync(details.ledger_id) || getProxyLogoUrl(details.ledger_id)} 
+                                                                    alt="Token" 
+                                                                    style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }}
+                                                                    onError={(e) => { e.target.onerror = null; e.target.src = getProxyLogoUrl(details.ledger_id); }}
+                                                                />
                                                             </div>
                                                         )}
                                                         {details.type === 'SNSNeuron' && (
@@ -4455,15 +4456,12 @@ function SneedexOffer() {
                                                                 justifyContent: 'flex-start',
                                                                 gap: '8px',
                                                             }}>
-                                                                {tokenLogos[details.ledger_id] ? (
-                                                                    <img 
-                                                                        src={tokenLogos[details.ledger_id]} 
-                                                                        alt="Token" 
-                                                                        style={{ width: '24px', height: '24px', borderRadius: '50%' }}
-                                                                    />
-                                                                ) : (
-                                                                    <FaCoins />
-                                                                )}
+                                                                <img 
+                                                                    src={tokenLogos[details.ledger_id] || getLogoSync(details.ledger_id) || getProxyLogoUrl(details.ledger_id)} 
+                                                                    alt="Token" 
+                                                                    style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover' }}
+                                                                    onError={(e) => { e.target.onerror = null; e.target.src = getProxyLogoUrl(details.ledger_id); }}
+                                                                />
                                                                 {tMeta?.name || 'Token'} Details
                                                             </h4>
                                                             
@@ -5245,7 +5243,7 @@ function SneedexOffer() {
                                                     const deficitE8s = targetE8s - userBalance;
                                                     const deficitFormatted = formatAmount(deficitE8s, tokenInfo.decimals);
                                                     const deficitUsd = paymentPrice ? (Number(deficitE8s) / Math.pow(10, tokenInfo.decimals)) * paymentPrice : null;
-                                                    const logoUrl = tokenLogos[paymentLedger];
+                                                    const logoUrl = tokenLogos[paymentLedger] || getLogoSync(paymentLedger) || getProxyLogoUrl(paymentLedger);
                                                     return (
                                                         <div style={{
                                                             marginBottom: '10px',
@@ -5668,7 +5666,7 @@ function SneedexOffer() {
                                             const deficitE8s = BigInt(offer.buyout_price[0]) - userBalance;
                                             const deficitFormatted = formatAmount(deficitE8s, tokenInfo.decimals);
                                             const deficitUsd = paymentPrice ? (Number(deficitE8s) / Math.pow(10, tokenInfo.decimals)) * paymentPrice : null;
-                                            const logoUrl = tokenLogos[paymentLedger];
+                                            const logoUrl = tokenLogos[paymentLedger] || getLogoSync(paymentLedger) || getProxyLogoUrl(paymentLedger);
                                             return (
                                                 <div style={{
                                                     marginBottom: '10px',

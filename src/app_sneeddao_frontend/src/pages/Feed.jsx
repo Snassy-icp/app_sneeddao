@@ -2279,11 +2279,7 @@ function Feed() {
                                                                 const tokenDecimals = assetTokenMeta?.decimals ?? 8;
                                                                 return (
                                                                     <>
-                                                                        {tokenLogo ? (
-                                                                            <TokenIcon logo={tokenLogo} size={18} borderRadius="4px" />
-                                                                        ) : (
-                                                                            <span style={{ color: feedAccent }}>🪙</span>
-                                                                        )}
+                                                                        <TokenIcon logo={tokenLogo} canisterId={asset.ledger_id} size={18} borderRadius="4px" />
                                                                         <span style={{ color: theme.colors.primaryText }}>
                                                                             {formatAmount(asset.amount, tokenDecimals)} {tokenSymbol}
                                                                         </span>
@@ -2309,6 +2305,7 @@ function Feed() {
                                     const decimals = tokenMeta?.decimals ?? 8;
                                     const logo = tokenMeta?.logo;
                                     const displayLogo = logo || (isIcp ? ICP_LOGO : null);
+                                    const priceTokenCanisterId = item._priceTokenLedger;
                                     
                                     const formatPrice = (price) => {
                                         if (!price) return null;
@@ -2355,9 +2352,7 @@ function Feed() {
                                                     <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>
                                                         {isBuyoutOnly ? 'Buyout Only:' : 'Buyout:'}
                                                     </span>
-                                                    {displayLogo && (
-                                                        <TokenIcon logo={displayLogo} size={16} borderRadius="4px" />
-                                                    )}
+                                                    <TokenIcon logo={displayLogo} canisterId={priceTokenCanisterId} size={16} borderRadius="4px" />
                                                     <span style={{ fontSize: '0.85rem', fontWeight: '600', color: feedGreen }}>
                                                         {isLoadingToken ? '...' : formatPrice(item._buyoutPrice)} {symbol}
                                                     </span>
@@ -2369,8 +2364,8 @@ function Feed() {
                                                     <span style={{ fontSize: '0.75rem', color: theme.colors.mutedText }}>
                                                         {item._bidInfo?.highest_bid ? 'Min Next Bid:' : 'Min Bid:'}
                                                     </span>
-                                                    {displayLogo && !item._buyoutPrice && (
-                                                        <TokenIcon logo={displayLogo} size={16} borderRadius="4px" />
+                                                    {!item._buyoutPrice && (
+                                                        <TokenIcon logo={displayLogo} canisterId={priceTokenCanisterId} size={16} borderRadius="4px" />
                                                     )}
                                                     <span style={{ fontSize: '0.85rem', fontWeight: '500', color: theme.colors.primaryText }}>
                                                         {isLoadingToken ? '...' : (minimumNextBid ? formatAmount(minimumNextBid, decimals) : formatPrice(item._minBidPrice))} {symbol}

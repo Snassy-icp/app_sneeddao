@@ -1,5 +1,10 @@
 import React from 'react';
 import { FaCoins } from 'react-icons/fa';
+import { getLogoSync } from '../hooks/useLogoCache';
+
+// Fallback logo service — serves logos for most ICP tokens by canister ID
+const LOGO_PROXY_BASE = 'https://static.icpswap.com/logo';
+const getProxyLogoUrl = (canisterId) => `${LOGO_PROXY_BASE}/${canisterId}`;
 
 /**
  * TokenIcon - A fixed-size container for token/SNS logos that prevents layout shift
@@ -10,6 +15,7 @@ import { FaCoins } from 'react-icons/fa';
  * 3. Consistent sizing regardless of whether the logo has loaded
  * 
  * @param {string} logo - URL of the logo image, or null/undefined
+ * @param {string} canisterId - Token ledger canister ID for proxy URL fallback
  * @param {string} alt - Alt text for the image
  * @param {number} size - Size in pixels (default: 18)
  * @param {React.ReactNode} fallbackIcon - Icon to show when logo is not available (default: FaCoins)
@@ -19,11 +25,13 @@ import { FaCoins } from 'react-icons/fa';
  */
 const TokenIcon = ({ 
     logo, 
+    canisterId,
     alt = '', 
     size = 18, 
     fallbackIcon,
     fallbackColor = '#d4a574',
     rounded = true,
+    borderRadius,
     style = {}
 }) => {
     // Calculate icon size (slightly smaller than container for visual balance)
@@ -32,6 +40,14 @@ const TokenIcon = ({
     // Default fallback icon
     const defaultFallback = <FaCoins size={iconSize} style={{ color: fallbackColor }} />;
     const FallbackComponent = fallbackIcon || defaultFallback;
+
+    // Resolve the best available logo: explicit logo → centralized cache → proxy URL
+    const resolvedLogo = logo 
+        || (canisterId && getLogoSync(canisterId)) 
+        || (canisterId && getProxyLogoUrl(canisterId)) 
+        || null;
+
+    const radius = borderRadius || (rounded ? '50%' : '4px');
 
     return (
         <div style={{ 
@@ -45,16 +61,24 @@ const TokenIcon = ({
             justifyContent: 'center',
             ...style
         }}>
-            {logo ? (
+            {resolvedLogo ? (
                 <img 
-                    src={logo} 
+                    src={resolvedLogo} 
                     alt={alt} 
                     style={{ 
                         width: '100%', 
                         height: '100%', 
-                        borderRadius: rounded ? '50%' : '4px', 
+                        borderRadius: radius, 
                         objectFit: 'cover' 
-                    }} 
+                    }}
+                    onError={(e) => {
+                        if (canisterId && e.target.src !== getProxyLogoUrl(canisterId)) {
+                            e.target.onerror = null;
+                            e.target.src = getProxyLogoUrl(canisterId);
+                        } else {
+                            e.target.style.display = 'none';
+                        }
+                    }}
                 />
             ) : (
                 FallbackComponent
