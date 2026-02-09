@@ -155,7 +155,7 @@ const managementCanisterIdlFactory = ({ IDL }) => {
 export default function AppsPage() {
     const { theme } = useTheme();
     const { identity, isAuthenticated } = useAuth();
-    const { principalNames, principalNicknames } = useNaming();
+    const { principalNames, principalNicknames, verifiedNames, principalCanisterTypes } = useNaming();
     const navigate = useNavigate();
     
     // Premium status for folder limits
