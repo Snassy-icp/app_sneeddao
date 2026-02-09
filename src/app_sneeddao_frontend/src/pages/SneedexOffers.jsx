@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { FaSearch, FaFilter, FaGavel, FaClock, FaTag, FaCubes, FaBrain, FaCoins, FaArrowRight, FaSync, FaGlobe, FaLock, FaRobot, FaChevronLeft, FaChevronRight, FaChevronDown, FaChevronUp, FaTimes, FaUnlock, FaExchangeAlt } from 'react-icons/fa';
+import { getLogoSync } from '../hooks/useLogoCache';
 import TokenSelector from '../components/TokenSelector';
 import PrincipalInput from '../components/PrincipalInput';
 import { HttpAgent } from '@dfinity/agent';
@@ -31,6 +32,10 @@ import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
+
+// Fallback logo service — serves logos for most ICP tokens by canister ID
+const LOGO_PROXY_BASE = 'https://static.icpswap.com/logo';
+const getProxyLogoUrl = (canisterId) => `${LOGO_PROXY_BASE}/${canisterId}`;
 
 // Accent colors for Sneedex
 const sneedexPrimary = '#8b5cf6'; // Purple
@@ -2321,16 +2326,12 @@ function SneedexOffers() {
                                                     )}
                                                     {details.type === 'ICRC1Token' && (
                                                         <>
-                                                            {assetTokenInfo?.logo ? (
-                                                                <img 
-                                                                    src={assetTokenInfo.logo} 
-                                                                    alt={assetTokenInfo?.symbol || 'Token'} 
-                                                                    style={{ width: 18, height: 18, borderRadius: '50%' }}
-                                                                    onError={(e) => { e.target.style.display = 'none'; }}
-                                                                />
-                                                            ) : (
-                                                                <FaCoins style={{ color: theme.colors.warning }} />
-                                                            )}
+                                                            <img 
+                                                                src={assetTokenInfo?.logo || getLogoSync(details.ledger_id) || getProxyLogoUrl(details.ledger_id)} 
+                                                                alt={assetTokenInfo?.symbol || 'Token'} 
+                                                                style={{ width: 18, height: 18, borderRadius: '50%', objectFit: 'cover' }}
+                                                                onError={(e) => { e.target.onerror = null; e.target.src = getProxyLogoUrl(details.ledger_id); }}
+                                                            />
                                                             {formatAmount(details.amount, assetTokenInfo?.decimals || 8)} {assetTokenInfo?.symbol || 'TOKEN'}
                                                         </>
                                                     )}
