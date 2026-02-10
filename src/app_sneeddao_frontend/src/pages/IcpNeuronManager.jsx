@@ -19,6 +19,11 @@ import PrincipalInput from '../components/PrincipalInput';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
 import { encodeIcrcAccount } from '@dfinity/ledger-icrc';
 import { getCyclesColor, getNeuronManagerSettings } from '../utils/NeuronManagerSettings';
+import TokenIcon from '../components/TokenIcon';
+import { getLogoSync } from '../hooks/useLogoCache';
+import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
+import { formatUsd, calculateUsdValue } from '../utils/SneedexUtils';
+import priceService from '../services/PriceService';
 
 // Custom CSS for animations
 const customStyles = `
@@ -410,6 +415,7 @@ function IcpNeuronManager() {
     const { theme } = useTheme();
     const { identity, isAuthenticated, login } = useAuth();
     const { principalNames, principalNicknames, fetchAllNames } = useNaming();
+    const { whitelistedTokens } = useWhitelistTokens();
     
     // Get display info for the canister
     const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
@@ -539,6 +545,23 @@ function IcpNeuronManager() {
     const [distributionLists, setDistributionLists] = useState([]);
     const [editingDistList, setEditingDistList] = useState(null); // working copy being edited
     const [editingDistListId, setEditingDistListId] = useState(null); // null = adding new, number = editing existing
+    const [distTokenPrices, setDistTokenPrices] = useState({}); // { canisterId: usdPrice }
+    const [distTokenMeta, setDistTokenMeta] = useState({}); // { canisterId: { symbol, logo, decimals } }
+
+    // Helper: look up token info from whitelist or cache
+    const getTokenInfo = useCallback((canisterId) => {
+        const cidStr = typeof canisterId === 'string' ? canisterId : canisterId?.toString?.() || '';
+        // Check our local meta cache first
+        if (distTokenMeta[cidStr]) return distTokenMeta[cidStr];
+        // Try whitelist
+        if (whitelistedTokens) {
+            const wt = whitelistedTokens.find(t => t.ledger_id?.toString?.() === cidStr || t.ledger_id === cidStr);
+            if (wt) return { symbol: wt.symbol, logo: wt.logo || getLogoSync(cidStr), decimals: wt.decimals ?? 8, name: wt.name };
+        }
+        // ICP default
+        if (cidStr === 'ryjl3-tyaaa-aaaaa-aaaba-cai') return { symbol: 'ICP', logo: getLogoSync(cidStr), decimals: 8, name: 'Internet Computer' };
+        return { symbol: '?', logo: getLogoSync(cidStr), decimals: 8, name: cidStr };
+    }, [whitelistedTokens, distTokenMeta]);
 
     // Check if current user is a controller
     const isController = identity && controllers.length > 0 && 
@@ -1416,6 +1439,22 @@ function IcpNeuronManager() {
         // Fetch official versions regardless of auth (public data)
         fetchOfficialVersions();
     }, [isAuthenticated, identity, canisterId, fetchManagerData, fetchKnownNeurons, fetchCanisterStatus, fetchConversionRate, fetchOfficialVersions, loadChoreData]);
+
+    // Fetch USD prices for distribution list tokens
+    useEffect(() => {
+        if (distributionLists.length === 0) return;
+        const uniqueTokens = [...new Set(distributionLists.map(l => l.tokenLedgerCanisterId?.toString?.() || l.tokenLedgerCanisterId))];
+        uniqueTokens.forEach(async (cid) => {
+            if (distTokenPrices[cid] !== undefined) return; // Already fetched or fetching
+            try {
+                const info = getTokenInfo(cid);
+                const price = await priceService.getTokenUSDPrice(cid, info.decimals);
+                setDistTokenPrices(prev => ({ ...prev, [cid]: price }));
+            } catch (e) {
+                setDistTokenPrices(prev => ({ ...prev, [cid]: null }));
+            }
+        });
+    }, [distributionLists, getTokenInfo]);
 
     // Fetch chore data when switching to the chores tab
     useEffect(() => {
@@ -5566,7 +5605,8 @@ function IcpNeuronManager() {
                                                             setEditingDistList({
                                                                 name: '',
                                                                 sourceSubaccount: '',
-                                                                tokenLedgerCanisterId: 'ryjl3-tyaaa-aaaaa-aaaba-cai', // ICP ledger default
+                                                                tokenLedgerCanisterId: 'ryjl3-tyaaa-aaaaa-aaaba-cai',
+                                                                tokenMeta: null,
                                                                 thresholdAmount: '',
                                                                 maxDistributionAmount: '',
                                                                 targets: [{ accountOwner: '', accountSubaccount: '', basisPoints: '' }],
@@ -5586,12 +5626,18 @@ function IcpNeuronManager() {
                                                 {/* Existing lists */}
                                                 {distributionLists.map((list) => {
                                                     const isEditing = editingDistListId === Number(list.id) && editingDistList !== null;
-                                                    // Calculate percentage warnings
-                                                    const totalBp = list.targets.reduce((sum, t) => sum + (t.basisPoints.length > 0 ? Number(t.basisPoints[0]) : 0), 0);
-                                                    const hasUnassigned = list.targets.some(t => t.basisPoints.length === 0);
-                                                    const overHundred = totalBp > 10000;
+                                                    if (isEditing) return null;
 
-                                                    if (isEditing) return null; // Render edit form below instead
+                                                    const cid = list.tokenLedgerCanisterId?.toString?.() || '';
+                                                    const tkInfo = getTokenInfo(cid);
+                                                    const tkPrice = distTokenPrices[cid];
+                                                    const tkDecimals = tkInfo.decimals || 8;
+                                                    const totalBp = list.targets.reduce((sum, t) => sum + (t.basisPoints.length > 0 ? Number(t.basisPoints[0]) : 0), 0);
+                                                    const overHundred = totalBp > 10000;
+                                                    const thresholdHuman = Number(list.thresholdAmount) / (10 ** tkDecimals);
+                                                    const maxHuman = Number(list.maxDistributionAmount) / (10 ** tkDecimals);
+                                                    const thresholdUsd = tkPrice ? formatUsd(thresholdHuman * tkPrice) : null;
+                                                    const maxUsd = tkPrice ? formatUsd(maxHuman * tkPrice) : null;
 
                                                     return (
                                                         <div key={Number(list.id)} style={{
@@ -5603,17 +5649,20 @@ function IcpNeuronManager() {
                                                         }}>
                                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
                                                                 <div>
-                                                                    <div style={{ fontSize: '0.9rem', fontWeight: '600', color: theme.colors.primaryText }}>{list.name || `List #${Number(list.id)}`}</div>
-                                                                    <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginTop: '2px' }}>
-                                                                        Token: <span style={{ fontFamily: 'monospace', fontSize: '0.7rem' }}>{list.tokenLedgerCanisterId.toString()}</span>
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                                                                        <span style={{ fontSize: '0.9rem', fontWeight: '600', color: theme.colors.primaryText }}>{list.name || `List #${Number(list.id)}`}</span>
+                                                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '12px', background: `${neuronPrimary}10`, fontSize: '0.7rem', color: neuronPrimary }}>
+                                                                            <TokenIcon logo={tkInfo.logo} canisterId={cid} alt={tkInfo.symbol} size={14} />
+                                                                            {tkInfo.symbol}
+                                                                        </span>
                                                                     </div>
                                                                     {list.sourceSubaccount.length > 0 && (
-                                                                        <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>
-                                                                            Source subaccount: <span style={{ fontFamily: 'monospace', fontSize: '0.7rem' }}>{Array.from(new Uint8Array(list.sourceSubaccount[0])).map(b => b.toString(16).padStart(2, '0')).join('')}</span>
+                                                                        <div style={{ fontSize: '0.7rem', color: theme.colors.secondaryText }}>
+                                                                            Source subaccount: <span style={{ fontFamily: 'monospace' }}>{Array.from(new Uint8Array(list.sourceSubaccount[0])).map(b => b.toString(16).padStart(2, '0')).join('')}</span>
                                                                         </div>
                                                                     )}
                                                                 </div>
-                                                                <div style={{ display: 'flex', gap: '6px' }}>
+                                                                <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
                                                                     <button
                                                                         style={{ ...buttonStyle, fontSize: '0.7rem', padding: '4px 10px', background: `${neuronPrimary}10`, color: neuronPrimary, border: `1px solid ${neuronPrimary}25` }}
                                                                         onClick={() => {
@@ -5621,9 +5670,10 @@ function IcpNeuronManager() {
                                                                             setEditingDistList({
                                                                                 name: list.name,
                                                                                 sourceSubaccount: list.sourceSubaccount.length > 0 ? Array.from(new Uint8Array(list.sourceSubaccount[0])).map(b => b.toString(16).padStart(2, '0')).join('') : '',
-                                                                                tokenLedgerCanisterId: list.tokenLedgerCanisterId.toString(),
-                                                                                thresholdAmount: (Number(list.thresholdAmount) / 1e8).toString(),
-                                                                                maxDistributionAmount: (Number(list.maxDistributionAmount) / 1e8).toString(),
+                                                                                tokenLedgerCanisterId: cid,
+                                                                                tokenMeta: tkInfo,
+                                                                                thresholdAmount: thresholdHuman.toString(),
+                                                                                maxDistributionAmount: maxHuman.toString(),
                                                                                 targets: list.targets.map(t => ({
                                                                                     accountOwner: t.account.owner.toString(),
                                                                                     accountSubaccount: t.account.subaccount.length > 0 ? Array.from(new Uint8Array(t.account.subaccount[0])).map(b => b.toString(16).padStart(2, '0')).join('') : '',
@@ -5653,14 +5703,16 @@ function IcpNeuronManager() {
                                                                 </div>
                                                             </div>
 
-                                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '8px', marginBottom: '8px' }}>
+                                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '8px', marginBottom: '8px' }}>
                                                                 <div style={{ fontSize: '0.75rem' }}>
                                                                     <span style={{ color: theme.colors.secondaryText }}>Threshold:</span>{' '}
-                                                                    <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{(Number(list.thresholdAmount) / 1e8).toFixed(4)}</span>
+                                                                    <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{thresholdHuman} {tkInfo.symbol}</span>
+                                                                    {thresholdUsd && <span style={{ color: theme.colors.secondaryText, fontSize: '0.7rem' }}> ({thresholdUsd})</span>}
                                                                 </div>
                                                                 <div style={{ fontSize: '0.75rem' }}>
                                                                     <span style={{ color: theme.colors.secondaryText }}>Max/round:</span>{' '}
-                                                                    <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{(Number(list.maxDistributionAmount) / 1e8).toFixed(4)}</span>
+                                                                    <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{maxHuman} {tkInfo.symbol}</span>
+                                                                    {maxUsd && <span style={{ color: theme.colors.secondaryText, fontSize: '0.7rem' }}> ({maxUsd})</span>}
                                                                 </div>
                                                                 <div style={{ fontSize: '0.75rem' }}>
                                                                     <span style={{ color: theme.colors.secondaryText }}>Targets:</span>{' '}
@@ -5674,29 +5726,49 @@ function IcpNeuronManager() {
                                                                 </div>
                                                             )}
 
-                                                            {/* Targets summary table */}
+                                                            {/* Targets list */}
                                                             <div style={{ fontSize: '0.75rem' }}>
-                                                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                                                    <thead>
-                                                                        <tr style={{ borderBottom: `1px solid ${theme.colors.border}` }}>
-                                                                            <th style={{ textAlign: 'left', padding: '4px 6px', color: theme.colors.secondaryText, fontWeight: '500' }}>Recipient</th>
-                                                                            <th style={{ textAlign: 'right', padding: '4px 6px', color: theme.colors.secondaryText, fontWeight: '500', width: '80px' }}>Share</th>
-                                                                        </tr>
-                                                                    </thead>
-                                                                    <tbody>
-                                                                        {list.targets.map((t, ti) => (
-                                                                            <tr key={ti} style={{ borderBottom: `1px solid ${theme.colors.border}20` }}>
-                                                                                <td style={{ padding: '3px 6px', fontFamily: 'monospace', fontSize: '0.65rem', color: theme.colors.primaryText, wordBreak: 'break-all' }}>
-                                                                                    {t.account.owner.toString().slice(0, 15)}...
-                                                                                    {t.account.subaccount.length > 0 && <span style={{ opacity: 0.6 }}>.sub</span>}
-                                                                                </td>
-                                                                                <td style={{ padding: '3px 6px', textAlign: 'right', color: theme.colors.primaryText, fontWeight: '500' }}>
-                                                                                    {t.basisPoints.length > 0 ? `${(Number(t.basisPoints[0]) / 100).toFixed(2)}%` : <span style={{ fontStyle: 'italic', color: theme.colors.secondaryText }}>auto</span>}
-                                                                                </td>
-                                                                            </tr>
-                                                                        ))}
-                                                                    </tbody>
-                                                                </table>
+                                                                {list.targets.map((t, ti) => {
+                                                                    const ownerStr = t.account.owner.toString();
+                                                                    const hasSub = t.account.subaccount.length > 0;
+                                                                    const subHex = hasSub ? Array.from(new Uint8Array(t.account.subaccount[0])).map(b => b.toString(16).padStart(2, '0')).join('') : '';
+                                                                    // Build ICRC-1 long account string
+                                                                    let longAccount = ownerStr;
+                                                                    if (hasSub) {
+                                                                        try {
+                                                                            longAccount = encodeIcrcAccount({ owner: t.account.owner, subaccount: t.account.subaccount[0] });
+                                                                        } catch (_) { longAccount = ownerStr + '.' + subHex; }
+                                                                    }
+                                                                    return (
+                                                                        <div key={ti} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '6px 0', borderBottom: ti < list.targets.length - 1 ? `1px solid ${theme.colors.border}20` : 'none' }}>
+                                                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                                    <PrincipalDisplay
+                                                                                        principal={ownerStr}
+                                                                                        displayInfo={getPrincipalDisplayInfoFromContext(ownerStr, principalNames, principalNicknames)}
+                                                                                        showCopyButton={true}
+                                                                                        isAuthenticated={isAuthenticated}
+                                                                                        short={true}
+                                                                                        enableContextMenu={true}
+                                                                                    />
+                                                                                </div>
+                                                                                {hasSub && (
+                                                                                    <>
+                                                                                    <div style={{ fontSize: '0.65rem', color: theme.colors.secondaryText, marginTop: '2px', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                                                                                        Sub: {subHex}
+                                                                                    </div>
+                                                                                    <div style={{ fontSize: '0.6rem', color: theme.colors.secondaryText, marginTop: '1px', fontFamily: 'monospace', wordBreak: 'break-all', opacity: 0.7 }}>
+                                                                                        {longAccount}
+                                                                                    </div>
+                                                                                    </>
+                                                                                )}
+                                                                            </div>
+                                                                            <div style={{ textAlign: 'right', flexShrink: 0, paddingLeft: '8px', fontWeight: '500', color: theme.colors.primaryText }}>
+                                                                                {t.basisPoints.length > 0 ? `${(Number(t.basisPoints[0]) / 100).toFixed(2)}%` : <span style={{ fontStyle: 'italic', color: theme.colors.secondaryText }}>auto</span>}
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                })}
                                                             </div>
                                                         </div>
                                                     );
@@ -5722,11 +5794,23 @@ function IcpNeuronManager() {
                                                                 onChange={e => setEditingDistList({ ...editingDistList, name: e.target.value })} />
                                                         </div>
 
-                                                        {/* Token Ledger */}
+                                                        {/* Token Selector */}
                                                         <div style={{ marginBottom: '10px' }}>
-                                                            <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Token Ledger Canister ID</label>
-                                                            <input type="text" value={editingDistList.tokenLedgerCanisterId} style={{ ...inputStyle, width: '100%', fontFamily: 'monospace', fontSize: '0.75rem' }}
-                                                                onChange={e => setEditingDistList({ ...editingDistList, tokenLedgerCanisterId: e.target.value })} />
+                                                            <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Token</label>
+                                                            <TokenSelector
+                                                                value={editingDistList.tokenLedgerCanisterId}
+                                                                onChange={(ledgerId) => setEditingDistList({ ...editingDistList, tokenLedgerCanisterId: ledgerId })}
+                                                                onSelectToken={(token) => {
+                                                                    setEditingDistList(prev => ({ ...prev, tokenMeta: token }));
+                                                                    setDistTokenMeta(prev => ({ ...prev, [token.ledger_id]: { symbol: token.symbol, logo: token.logo, decimals: token.decimals, name: token.name } }));
+                                                                    // Fetch USD price for this token
+                                                                    priceService.getTokenUSDPrice(token.ledger_id, token.decimals)
+                                                                        .then(price => setDistTokenPrices(prev => ({ ...prev, [token.ledger_id]: price })))
+                                                                        .catch(() => {});
+                                                                }}
+                                                                allowCustom={true}
+                                                                placeholder="Select token to distribute..."
+                                                            />
                                                         </div>
 
                                                         {/* Source Subaccount */}
@@ -5736,20 +5820,33 @@ function IcpNeuronManager() {
                                                                 onChange={e => setEditingDistList({ ...editingDistList, sourceSubaccount: e.target.value })} />
                                                         </div>
 
+                                                        {(() => {
+                                                            const editCid = editingDistList.tokenLedgerCanisterId;
+                                                            const editTkInfo = editingDistList.tokenMeta || getTokenInfo(editCid);
+                                                            const editDecimals = editTkInfo.decimals || 8;
+                                                            const editSymbol = editTkInfo.symbol || '?';
+                                                            const editPrice = distTokenPrices[editCid];
+                                                            const threshVal = parseFloat(editingDistList.thresholdAmount) || 0;
+                                                            const maxVal = parseFloat(editingDistList.maxDistributionAmount) || 0;
+                                                            const threshUsd = editPrice ? formatUsd(threshVal * editPrice) : null;
+                                                            const maxUsd = editPrice ? formatUsd(maxVal * editPrice) : null;
+                                                            return (
                                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
-                                                            {/* Threshold */}
                                                             <div>
-                                                                <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Threshold (token units)</label>
-                                                                <input type="number" min="0" step="0.0001" value={editingDistList.thresholdAmount} style={{ ...inputStyle, width: '100%' }}
+                                                                <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Threshold ({editSymbol})</label>
+                                                                <input type="text" inputMode="decimal" value={editingDistList.thresholdAmount} placeholder="0" style={{ ...inputStyle, width: '100%' }}
                                                                     onChange={e => setEditingDistList({ ...editingDistList, thresholdAmount: e.target.value })} />
+                                                                {threshUsd && <div style={{ fontSize: '0.7rem', color: theme.colors.secondaryText, marginTop: '2px' }}>{threshUsd}</div>}
                                                             </div>
-                                                            {/* Max per round */}
                                                             <div>
-                                                                <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Max per round (token units)</label>
-                                                                <input type="number" min="0" step="0.0001" value={editingDistList.maxDistributionAmount} style={{ ...inputStyle, width: '100%' }}
+                                                                <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Max per round ({editSymbol})</label>
+                                                                <input type="text" inputMode="decimal" value={editingDistList.maxDistributionAmount} placeholder="0" style={{ ...inputStyle, width: '100%' }}
                                                                     onChange={e => setEditingDistList({ ...editingDistList, maxDistributionAmount: e.target.value })} />
+                                                                {maxUsd && <div style={{ fontSize: '0.7rem', color: theme.colors.secondaryText, marginTop: '2px' }}>{maxUsd}</div>}
                                                             </div>
                                                         </div>
+                                                            );
+                                                        })()}
 
                                                         {/* Targets */}
                                                         <div style={{ marginBottom: '10px' }}>
@@ -5774,20 +5871,81 @@ function IcpNeuronManager() {
                                                                             Warning: Assigned percentages total {totalPct.toFixed(2)}% (over 100%). Will be renormalized at distribution time.
                                                                         </div>
                                                                     )}
-                                                                    {editingDistList.targets.map((target, ti) => (
+                                                                    {editingDistList.targets.map((target, ti) => {
+                                                                        // Build long account string for display
+                                                                        let longAcctStr = '';
+                                                                        if (target.accountOwner && target.accountSubaccount) {
+                                                                            try {
+                                                                                const hexStr = target.accountSubaccount.trim().replace(/^0x/, '');
+                                                                                if (hexStr) {
+                                                                                    const bytes = new Uint8Array(32);
+                                                                                    const hexBytes = hexStr.match(/.{1,2}/g) || [];
+                                                                                    for (let j = 0; j < Math.min(hexBytes.length, 32); j++) bytes[32 - hexBytes.length + j] = parseInt(hexBytes[j], 16);
+                                                                                    longAcctStr = encodeIcrcAccount({ owner: Principal.fromText(target.accountOwner.trim()), subaccount: bytes });
+                                                                                }
+                                                                            } catch (_) {}
+                                                                        }
+                                                                        return (
                                                                         <div key={ti} style={{
-                                                                            display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '6px', alignItems: 'end',
                                                                             marginBottom: '6px', padding: '8px', background: theme.colors.primaryBg, borderRadius: '6px', border: `1px solid ${theme.colors.border}`,
                                                                         }}>
-                                                                            <div>
-                                                                                <label style={{ fontSize: '0.65rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '2px' }}>Principal</label>
-                                                                                <input type="text" value={target.accountOwner} placeholder="Principal ID" style={{ ...inputStyle, width: '100%', fontFamily: 'monospace', fontSize: '0.7rem' }}
-                                                                                    onChange={e => {
-                                                                                        const newTargets = [...editingDistList.targets];
-                                                                                        newTargets[ti] = { ...newTargets[ti], accountOwner: e.target.value };
+                                                                            <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-end' }}>
+                                                                                <div style={{ flex: 1 }}>
+                                                                                    <label style={{ fontSize: '0.65rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '2px' }}>Recipient</label>
+                                                                                    <PrincipalInput
+                                                                                        value={target.accountOwner}
+                                                                                        onChange={(val) => {
+                                                                                            const newTargets = [...editingDistList.targets];
+                                                                                            // Check if pasted value is a long ICRC-1 account (contains '.')
+                                                                                            if (val.includes('.')) {
+                                                                                                try {
+                                                                                                    const { decodeIcrcAccount } = require('@dfinity/ledger-icrc');
+                                                                                                    const decoded = decodeIcrcAccount(val);
+                                                                                                    if (decoded && decoded.owner) {
+                                                                                                        const subBytes = decoded.subaccount;
+                                                                                                        const subHex = subBytes ? Array.from(new Uint8Array(subBytes)).map(b => b.toString(16).padStart(2, '0')).join('') : '';
+                                                                                                        newTargets[ti] = { ...newTargets[ti], accountOwner: decoded.owner.toText(), accountSubaccount: subHex };
+                                                                                                        setEditingDistList({ ...editingDistList, targets: newTargets });
+                                                                                                        return;
+                                                                                                    }
+                                                                                                } catch (_) {}
+                                                                                            }
+                                                                                            newTargets[ti] = { ...newTargets[ti], accountOwner: val };
+                                                                                            setEditingDistList({ ...editingDistList, targets: newTargets });
+                                                                                        }}
+                                                                                        onSelect={(principalStr) => {
+                                                                                            const newTargets = [...editingDistList.targets];
+                                                                                            newTargets[ti] = { ...newTargets[ti], accountOwner: principalStr };
+                                                                                            setEditingDistList({ ...editingDistList, targets: newTargets });
+                                                                                        }}
+                                                                                        placeholder="Principal ID or ICRC-1 account"
+                                                                                        isAuthenticated={isAuthenticated}
+                                                                                        defaultTab="all"
+                                                                                        defaultPrincipalType="both"
+                                                                                        inputStyle={{ fontSize: '0.75rem' }}
+                                                                                    />
+                                                                                </div>
+                                                                                <div style={{ width: '70px', flexShrink: 0 }}>
+                                                                                    <label style={{ fontSize: '0.65rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '2px' }}>% Share</label>
+                                                                                    <input type="text" inputMode="decimal" value={target.basisPoints} placeholder="auto" style={{ ...inputStyle, width: '100%', textAlign: 'right', fontSize: '0.75rem' }}
+                                                                                        onChange={e => {
+                                                                                            const newTargets = [...editingDistList.targets];
+                                                                                            newTargets[ti] = { ...newTargets[ti], basisPoints: e.target.value };
+                                                                                            setEditingDistList({ ...editingDistList, targets: newTargets });
+                                                                                        }} />
+                                                                                </div>
+                                                                                <button
+                                                                                    style={{ ...buttonStyle, fontSize: '0.65rem', padding: '4px 8px', background: `${theme.colors.error}10`, color: theme.colors.error, border: `1px solid ${theme.colors.error}25`, flexShrink: 0 }}
+                                                                                    onClick={() => {
+                                                                                        const newTargets = editingDistList.targets.filter((_, i) => i !== ti);
                                                                                         setEditingDistList({ ...editingDistList, targets: newTargets });
-                                                                                    }} />
-                                                                                <label style={{ fontSize: '0.65rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '2px', marginTop: '4px' }}>Subaccount (hex, optional)</label>
+                                                                                    }}
+                                                                                    disabled={editingDistList.targets.length <= 1}
+                                                                                >Remove</button>
+                                                                            </div>
+                                                                            {/* Subaccount field */}
+                                                                            <div style={{ marginTop: '4px' }}>
+                                                                                <label style={{ fontSize: '0.6rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '2px' }}>Subaccount (hex, optional)</label>
                                                                                 <input type="text" value={target.accountSubaccount} placeholder="optional" style={{ ...inputStyle, width: '100%', fontFamily: 'monospace', fontSize: '0.7rem' }}
                                                                                     onChange={e => {
                                                                                         const newTargets = [...editingDistList.targets];
@@ -5795,25 +5953,15 @@ function IcpNeuronManager() {
                                                                                         setEditingDistList({ ...editingDistList, targets: newTargets });
                                                                                     }} />
                                                                             </div>
-                                                                            <div>
-                                                                                <label style={{ fontSize: '0.65rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '2px' }}>% Share</label>
-                                                                                <input type="number" min="0" max="100" step="0.01" value={target.basisPoints} placeholder="auto" style={{ ...inputStyle, width: '70px', textAlign: 'right' }}
-                                                                                    onChange={e => {
-                                                                                        const newTargets = [...editingDistList.targets];
-                                                                                        newTargets[ti] = { ...newTargets[ti], basisPoints: e.target.value };
-                                                                                        setEditingDistList({ ...editingDistList, targets: newTargets });
-                                                                                    }} />
-                                                                            </div>
-                                                                            <button
-                                                                                style={{ ...buttonStyle, fontSize: '0.65rem', padding: '4px 8px', background: `${theme.colors.error}10`, color: theme.colors.error, border: `1px solid ${theme.colors.error}25`, marginBottom: '1px' }}
-                                                                                onClick={() => {
-                                                                                    const newTargets = editingDistList.targets.filter((_, i) => i !== ti);
-                                                                                    setEditingDistList({ ...editingDistList, targets: newTargets });
-                                                                                }}
-                                                                                disabled={editingDistList.targets.length <= 1}
-                                                                            >Remove</button>
+                                                                            {/* Long account string display */}
+                                                                            {longAcctStr && (
+                                                                                <div style={{ fontSize: '0.6rem', color: theme.colors.secondaryText, marginTop: '3px', fontFamily: 'monospace', wordBreak: 'break-all', opacity: 0.7 }}>
+                                                                                    Account: {longAcctStr}
+                                                                                </div>
+                                                                            )}
                                                                         </div>
-                                                                    ))}
+                                                                        );
+                                                                    })}
                                                                     </>
                                                                 );
                                                             })()}
@@ -5833,7 +5981,7 @@ function IcpNeuronManager() {
                                                                 onClick={async () => {
                                                                     // Validate
                                                                     if (!editingDistList.name.trim()) { setChoreError('Distribution list name is required.'); return; }
-                                                                    if (!editingDistList.tokenLedgerCanisterId.trim()) { setChoreError('Token ledger canister ID is required.'); return; }
+                                                                    if (!editingDistList.tokenLedgerCanisterId || !editingDistList.tokenLedgerCanisterId.trim()) { setChoreError('Please select a token.'); return; }
                                                                     if (editingDistList.targets.length === 0) { setChoreError('At least one target is required.'); return; }
                                                                     for (let i = 0; i < editingDistList.targets.length; i++) {
                                                                         if (!editingDistList.targets[i].accountOwner.trim()) { setChoreError(`Target ${i + 1}: Principal ID is required.`); return; }
@@ -5843,7 +5991,10 @@ function IcpNeuronManager() {
                                                                     setChoreError('');
                                                                     setChoreSuccess('');
                                                                     try {
-                                                                        const { Principal } = await import('@dfinity/principal');
+                                                                        // Resolve decimals from token meta
+                                                                        const editTkInfo = editingDistList.tokenMeta || getTokenInfo(editingDistList.tokenLedgerCanisterId);
+                                                                        const editDecimals = editTkInfo.decimals || 8;
+                                                                        const divisor = 10 ** editDecimals;
 
                                                                         // Build targets
                                                                         const targets = editingDistList.targets.map(t => {
@@ -5884,8 +6035,8 @@ function IcpNeuronManager() {
                                                                             name: editingDistList.name.trim(),
                                                                             sourceSubaccount,
                                                                             tokenLedgerCanisterId: Principal.fromText(editingDistList.tokenLedgerCanisterId.trim()),
-                                                                            thresholdAmount: BigInt(Math.round(parseFloat(editingDistList.thresholdAmount || '0') * 1e8)),
-                                                                            maxDistributionAmount: BigInt(Math.round(parseFloat(editingDistList.maxDistributionAmount || '0') * 1e8)),
+                                                                            thresholdAmount: BigInt(Math.round(parseFloat(editingDistList.thresholdAmount || '0') * divisor)),
+                                                                            maxDistributionAmount: BigInt(Math.round(parseFloat(editingDistList.maxDistributionAmount || '0') * divisor)),
                                                                             targets,
                                                                         };
 
