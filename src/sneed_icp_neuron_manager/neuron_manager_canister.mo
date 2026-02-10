@@ -145,9 +145,9 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     });
 
     // Mutable state for chore closures (transient, reset on upgrade)
-    // -- Refresh Voting Power chore state --
-    transient var _rvp_neurons: [T.NeuronId] = [];
-    transient var _rvp_index: Nat = 0;
+    // -- Refresh Stake chore state --
+    transient var _rs_neurons: [T.NeuronId] = [];
+    transient var _rs_index: Nat = 0;
     // -- Confirm Following chore state --
     transient var _cf_neurons: [T.NeuronId] = [];
     transient var _cf_index: Nat = 0;
@@ -1597,30 +1597,30 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // This section is at the bottom so all referenced functions
     // (e.g. listNeuronsInternal, governance) are already defined.
 
-    // Helper: create a task function that refreshes voting power for a specific neuron
-    func _rvp_makeTaskFn(nid: T.NeuronId): () -> async BotChoreTypes.TaskAction {
+    // Helper: create a task function that refreshes stake for a specific neuron.
+    // This calls ClaimOrRefresh which picks up any ICP deposited to the neuron's account.
+    func _rs_makeTaskFn(nid: T.NeuronId): () -> async BotChoreTypes.TaskAction {
         func(): async BotChoreTypes.TaskAction {
-            let request: T.ManageNeuronRequest = {
-                id = ?nid;
-                command = ?#RefreshVotingPower({});
-                neuron_id_or_subaccount = null;
-            };
-            let result = await governance.manage_neuron(request);
-            switch (result.command) {
-                case (?#Error(e)) { #Error(e.error_message) };
-                case _ { #Done };
+            let result = await refreshStakeInternal(nid);
+            switch (result) {
+                case (#Ok) { #Done };
+                case (#Err(#GovernanceError(e))) { #Error(e.error_message) };
+                case (#Err(#NoNeuron)) { #Error("Neuron not found") };
+                case (#Err(#InvalidOperation(msg))) { #Error(msg) };
+                case (#Err(#TransferFailed(msg))) { #Error(msg) };
+                case (#Err(#InsufficientFunds(_))) { #Error("Insufficient funds") };
             };
         }
     };
 
-    // Helper: start a task for the neuron at _rvp_index
-    func _rvp_startCurrentTask() {
-        if (_rvp_index < _rvp_neurons.size()) {
-            let nid = _rvp_neurons[_rvp_index];
-            let taskFn = _rvp_makeTaskFn(nid);
+    // Helper: start a refresh-stake task for the neuron at _rs_index
+    func _rs_startCurrentTask() {
+        if (_rs_index < _rs_neurons.size()) {
+            let nid = _rs_neurons[_rs_index];
+            let taskFn = _rs_makeTaskFn(nid);
             choreEngine.setPendingTask(
-                "refresh-voting-power",
-                "refresh-" # Nat.toText(_rvp_index),
+                "refresh-stake",
+                "refresh-" # Nat.toText(_rs_index),
                 taskFn
             );
         };
@@ -1681,12 +1681,12 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // This runs on every canister start (first deploy + upgrades) because
     // it's inside a transient let expression.
     transient let _choreInit: () = do {
-        // --- Chore: Refresh Voting Power ---
+        // --- Chore: Refresh Stake ---
         choreEngine.registerChore({
-            id = "refresh-voting-power";
-            name = "Refresh Voting Power";
-            description = "Periodically refreshes voting power for all managed neurons to keep them active.";
-            defaultIntervalSeconds = 7 * 24 * 60 * 60; // 1 week
+            id = "refresh-stake";
+            name = "Refresh Stake";
+            description = "Periodically refreshes the stake of all managed neurons. This picks up any ICP that was deposited directly to a neuron's account, counting it as staked. Useful when external processes send ICP to neuron accounts.";
+            defaultIntervalSeconds = 24 * 60 * 60; // 1 day
             defaultTaskTimeoutSeconds = 300; // 5 minutes per neuron refresh
             conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
                 // If a task is still running, just poll again
@@ -1705,26 +1705,26 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                                 case null {};
                             };
                         };
-                        _rvp_neurons := Buffer.toArray(neuronIds);
-                        _rvp_index := 0;
+                        _rs_neurons := Buffer.toArray(neuronIds);
+                        _rs_index := 0;
 
-                        if (_rvp_neurons.size() == 0) {
+                        if (_rs_neurons.size() == 0) {
                             return #Done; // No neurons to process
                         };
 
                         // Start first task and poll
-                        _rvp_startCurrentTask();
+                        _rs_startCurrentTask();
                         return #ContinueIn(10);
                     };
                     case (?_lastResult) {
                         // Previous task completed — advance to next neuron
-                        _rvp_index += 1;
-                        if (_rvp_index >= _rvp_neurons.size()) {
+                        _rs_index += 1;
+                        if (_rs_index >= _rs_neurons.size()) {
                             return #Done; // All neurons processed
                         };
 
                         // Start next task and poll
-                        _rvp_startCurrentTask();
+                        _rs_startCurrentTask();
                         return #ContinueIn(10);
                     };
                 };
