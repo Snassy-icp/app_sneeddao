@@ -287,6 +287,22 @@ function IcpNeuronManager() {
     const [neuronSectionExpanded, setNeuronSectionExpanded] = useState(true);
     const [createNeuronExpanded, setCreateNeuronExpanded] = useState(false); // Default collapsed, but auto-expand if no neurons
 
+    // Canister section tabs
+    const [canisterActiveTab, setCanisterActiveTab] = useState('info');
+
+    // Hotkey permissions state
+    const [hotkeyPrincipals, setHotkeyPrincipals] = useState([]);
+    const [permissionTypes, setPermissionTypes] = useState([]);
+    const [loadingPermissions, setLoadingPermissions] = useState(false);
+    const [permissionError, setPermissionError] = useState('');
+    const [permissionSuccess, setPermissionSuccess] = useState('');
+    const [savingPermissions, setSavingPermissions] = useState(false);
+    const [newHotkeyPrincipal, setNewHotkeyPrincipal] = useState('');
+    const [newHotkeyPermissions, setNewHotkeyPermissions] = useState({});
+    const [editingPrincipal, setEditingPrincipal] = useState(null);
+    const [editPermissions, setEditPermissions] = useState({});
+    const [confirmRemoveHotkey, setConfirmRemoveHotkey] = useState(null);
+
     // Check if current user is a controller
     const isController = identity && controllers.length > 0 && 
         controllers.some(c => c.toString() === identity.getPrincipal().toString());
@@ -296,7 +312,10 @@ function IcpNeuronManager() {
         if (!isController && activeTab !== 'overview') {
             setActiveTab('overview');
         }
-    }, [isController, activeTab]);
+        if (!isController && canisterActiveTab !== 'info') {
+            setCanisterActiveTab('info');
+        }
+    }, [isController, activeTab, canisterActiveTab]);
 
     const getAgent = useCallback(() => {
         const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
@@ -1045,6 +1064,212 @@ function IcpNeuronManager() {
             setCanisterSectionExpanded(true);
         }
     }, [isInvalidManager]);
+
+    // Load hotkey permissions data
+    const loadHotkeyPermissions = useCallback(async () => {
+        if (!canisterId) return;
+        setLoadingPermissions(true);
+        setPermissionError('');
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const manager = createManagerActor(canisterId, { agent });
+            const [principals, types] = await Promise.all([
+                manager.listHotkeyPrincipals(),
+                manager.listPermissionTypes(),
+            ]);
+            setHotkeyPrincipals(principals);
+            setPermissionTypes(types);
+        } catch (err) {
+            console.error('Error loading hotkey permissions:', err);
+            setPermissionError('Failed to load permissions: ' + (err.message || 'Unknown error'));
+        } finally {
+            setLoadingPermissions(false);
+        }
+    }, [canisterId, getAgent]);
+
+    // Fetch permissions when switching to the permissions tab
+    useEffect(() => {
+        if (canisterActiveTab === 'permissions' && canisterSectionExpanded) {
+            loadHotkeyPermissions();
+        }
+    }, [canisterActiveTab, canisterSectionExpanded, loadHotkeyPermissions]);
+
+    // Get permission variant key (e.g. { Vote: null } -> "Vote")
+    const getPermissionKey = (perm) => {
+        return Object.keys(perm)[0];
+    };
+
+    // Get human-readable label for a permission key
+    const getPermissionLabel = (key) => {
+        const labels = {
+            'ConfigureDissolveState': 'Configure Dissolve State',
+            'ManagePermissions': 'Manage Permissions',
+            'Vote': 'Vote',
+            'Disburse': 'Disburse',
+            'Split': 'Split',
+            'MergeMaturity': 'Merge Maturity',
+            'DisburseMaturity': 'Disburse Maturity',
+            'StakeMaturity': 'Stake Maturity',
+            'ManageFollowees': 'Manage Followees',
+            'Spawn': 'Spawn',
+            'ManageNeuronHotkeys': 'Manage NNS Hotkeys',
+            'StakeNeuron': 'Stake Neuron',
+            'MergeNeurons': 'Merge Neurons',
+            'AutoStakeMaturity': 'Auto-Stake Maturity',
+            'ManageVisibility': 'Manage Visibility',
+            'WithdrawFunds': 'Withdraw Funds',
+        };
+        return labels[key] || key;
+    };
+
+    // Get description for a permission key
+    const getPermissionDescription = (key) => {
+        const descriptions = {
+            'ConfigureDissolveState': 'Start/stop dissolving, set dissolve delay',
+            'ManagePermissions': 'Add/remove hotkey principals and manage their permissions',
+            'Vote': 'Vote on proposals, refresh voting power',
+            'Disburse': 'Disburse neuron stake',
+            'Split': 'Split neuron into multiple neurons',
+            'MergeMaturity': 'Merge maturity into stake',
+            'DisburseMaturity': 'Disburse maturity rewards',
+            'StakeMaturity': 'Stake maturity rewards',
+            'ManageFollowees': 'Set followees and confirm following',
+            'Spawn': 'Spawn maturity to create new neuron',
+            'ManageNeuronHotkeys': 'Add/remove NNS hotkeys on the neuron',
+            'StakeNeuron': 'Create neurons, increase/refresh stake',
+            'MergeNeurons': 'Merge neurons together',
+            'AutoStakeMaturity': 'Set auto-stake maturity setting',
+            'ManageVisibility': 'Set neuron visibility',
+            'WithdrawFunds': 'Withdraw ICP or tokens from the canister',
+        };
+        return descriptions[key] || '';
+    };
+
+    const handleAddHotkeyPrincipal = async () => {
+        if (!newHotkeyPrincipal.trim()) return;
+        
+        const selectedPerms = Object.entries(newHotkeyPermissions)
+            .filter(([_, checked]) => checked)
+            .map(([key, _]) => ({ [key]: null }));
+        
+        if (selectedPerms.length === 0) {
+            setPermissionError('Please select at least one permission');
+            return;
+        }
+        
+        setSavingPermissions(true);
+        setPermissionError('');
+        setPermissionSuccess('');
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const manager = createManagerActor(canisterId, { agent });
+            const principal = Principal.fromText(newHotkeyPrincipal.trim());
+            const result = await manager.addHotkeyPermissions(principal, selectedPerms);
+            if ('Ok' in result) {
+                setPermissionSuccess('Hotkey principal added successfully');
+                setNewHotkeyPrincipal('');
+                setNewHotkeyPermissions({});
+                await loadHotkeyPermissions();
+            } else {
+                const err = result.Err;
+                setPermissionError('Failed: ' + (err.InvalidOperation || err.GovernanceError?.error_message || 'Unknown error'));
+            }
+        } catch (err) {
+            setPermissionError('Error: ' + (err.message || 'Unknown error'));
+        } finally {
+            setSavingPermissions(false);
+        }
+    };
+
+    const handleUpdateHotkeyPermissions = async (principalText) => {
+        const currentPerms = hotkeyPrincipals.find(h => h.principal.toString() === principalText);
+        if (!currentPerms) return;
+        
+        const currentKeys = new Set(currentPerms.permissions.map(p => getPermissionKey(p)));
+        const editKeys = new Set(Object.entries(editPermissions).filter(([_, v]) => v).map(([k, _]) => k));
+        
+        // Permissions to add (in edit but not in current)
+        const toAdd = [...editKeys].filter(k => !currentKeys.has(k)).map(k => ({ [k]: null }));
+        // Permissions to remove (in current but not in edit)
+        const toRemove = [...currentKeys].filter(k => !editKeys.has(k)).map(k => ({ [k]: null }));
+        
+        if (toAdd.length === 0 && toRemove.length === 0) {
+            setEditingPrincipal(null);
+            return;
+        }
+        
+        setSavingPermissions(true);
+        setPermissionError('');
+        setPermissionSuccess('');
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const manager = createManagerActor(canisterId, { agent });
+            const principal = Principal.fromText(principalText);
+            
+            if (toAdd.length > 0) {
+                const addResult = await manager.addHotkeyPermissions(principal, toAdd);
+                if ('Err' in addResult) {
+                    const err = addResult.Err;
+                    setPermissionError('Failed to add permissions: ' + (err.InvalidOperation || err.GovernanceError?.error_message || 'Unknown error'));
+                    setSavingPermissions(false);
+                    return;
+                }
+            }
+            if (toRemove.length > 0) {
+                const removeResult = await manager.removeHotkeyPermissions(principal, toRemove);
+                if ('Err' in removeResult) {
+                    const err = removeResult.Err;
+                    setPermissionError('Failed to remove permissions: ' + (err.InvalidOperation || err.GovernanceError?.error_message || 'Unknown error'));
+                    setSavingPermissions(false);
+                    return;
+                }
+            }
+            
+            setPermissionSuccess('Permissions updated successfully');
+            setEditingPrincipal(null);
+            await loadHotkeyPermissions();
+        } catch (err) {
+            setPermissionError('Error: ' + (err.message || 'Unknown error'));
+        } finally {
+            setSavingPermissions(false);
+        }
+    };
+
+    const handleRemoveHotkeyPrincipal = async (principalText) => {
+        setSavingPermissions(true);
+        setPermissionError('');
+        setPermissionSuccess('');
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const manager = createManagerActor(canisterId, { agent });
+            const principal = Principal.fromText(principalText);
+            const result = await manager.removeHotkeyPrincipal(principal);
+            if ('Ok' in result) {
+                setPermissionSuccess('Hotkey principal removed');
+                setConfirmRemoveHotkey(null);
+                await loadHotkeyPermissions();
+            } else {
+                const err = result.Err;
+                setPermissionError('Failed: ' + (err.InvalidOperation || err.GovernanceError?.error_message || 'Unknown error'));
+            }
+        } catch (err) {
+            setPermissionError('Error: ' + (err.message || 'Unknown error'));
+        } finally {
+            setSavingPermissions(false);
+        }
+    };
 
     // Action handlers
     const handleStakeNeuron = async () => {
@@ -2744,7 +2969,26 @@ function IcpNeuronManager() {
                                     overflow: 'hidden',
                                     padding: '20px',
                                 }}>
-                        
+
+                                {/* Canister Section Tabs */}
+                                <div style={{ 
+                                    display: 'flex', 
+                                    flexWrap: 'wrap', 
+                                    marginBottom: '16px',
+                                    gap: '0'
+                                }}>
+                                    <button style={tabStyle(canisterActiveTab === 'info')} onClick={() => setCanisterActiveTab('info')}>
+                                        Info
+                                    </button>
+                                    {isController && (
+                                        <button style={tabStyle(canisterActiveTab === 'permissions')} onClick={() => setCanisterActiveTab('permissions')}>
+                                            Permissions
+                                        </button>
+                                    )}
+                                </div>
+
+                        {canisterActiveTab === 'info' && (
+                        <>
                         {/* Manager Info Card */}
                         <div style={cardStyle}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '20px' }}>
@@ -3736,6 +3980,346 @@ function IcpNeuronManager() {
                             )}
                         </div>
                         )}
+                        </>
+                        )}
+
+                        {/* Permissions Tab */}
+                        {canisterActiveTab === 'permissions' && isController && (
+                        <div>
+                            {/* Permissions Error/Success */}
+                            {permissionError && (
+                                <div style={{
+                                    padding: '10px 14px',
+                                    backgroundColor: `${theme.colors.error || '#ef4444'}15`,
+                                    border: `1px solid ${theme.colors.error || '#ef4444'}40`,
+                                    borderRadius: '8px',
+                                    color: theme.colors.error || '#ef4444',
+                                    fontSize: '13px',
+                                    marginBottom: '16px',
+                                }}>
+                                    {permissionError}
+                                </div>
+                            )}
+                            {permissionSuccess && (
+                                <div style={{
+                                    padding: '10px 14px',
+                                    backgroundColor: `${theme.colors.success || '#22c55e'}15`,
+                                    border: `1px solid ${theme.colors.success || '#22c55e'}40`,
+                                    borderRadius: '8px',
+                                    color: theme.colors.success || '#22c55e',
+                                    fontSize: '13px',
+                                    marginBottom: '16px',
+                                }}>
+                                    {permissionSuccess}
+                                </div>
+                            )}
+
+                            <p style={{ color: theme.colors.secondaryText, fontSize: '13px', margin: '0 0 16px 0', lineHeight: '1.5' }}>
+                                Manage hotkey principals and their permissions on this canister. 
+                                Controllers always have full permissions. Hotkey principals can be granted granular access to specific operations.
+                            </p>
+
+                            {loadingPermissions ? (
+                                <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
+                                    Loading permissions...
+                                </div>
+                            ) : (
+                            <>
+                            {/* Current Hotkey Principals */}
+                            <div style={cardStyle}>
+                                <h3 style={{ color: theme.colors.primaryText, margin: '0 0 12px 0', fontSize: '0.95rem', fontWeight: '600' }}>
+                                    Hotkey Principals ({hotkeyPrincipals.length})
+                                </h3>
+                                
+                                {hotkeyPrincipals.length === 0 ? (
+                                    <div style={{ 
+                                        color: theme.colors.mutedText, 
+                                        fontSize: '13px', 
+                                        padding: '1.5rem',
+                                        textAlign: 'center',
+                                        background: theme.colors.tertiaryBg || theme.colors.secondaryBg,
+                                        borderRadius: '8px',
+                                    }}>
+                                        No hotkey principals configured. Add one below.
+                                    </div>
+                                ) : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                        {hotkeyPrincipals.map((entry, idx) => {
+                                            const principalStr = entry.principal.toString();
+                                            const permKeys = entry.permissions.map(p => getPermissionKey(p));
+                                            const isEditing = editingPrincipal === principalStr;
+                                            const isConfirming = confirmRemoveHotkey === principalStr;
+                                            
+                                            return (
+                                                <div key={idx} style={{
+                                                    background: theme.colors.tertiaryBg || theme.colors.secondaryBg,
+                                                    borderRadius: '8px',
+                                                    padding: '12px',
+                                                    border: `1px solid ${theme.colors.border}`,
+                                                }}>
+                                                    <div style={{ 
+                                                        display: 'flex', 
+                                                        justifyContent: 'space-between', 
+                                                        alignItems: 'center',
+                                                        marginBottom: isEditing ? '12px' : '6px',
+                                                        flexWrap: 'wrap',
+                                                        gap: '8px',
+                                                    }}>
+                                                        <span style={{ 
+                                                            color: theme.colors.primaryText, 
+                                                            fontFamily: 'monospace', 
+                                                            fontSize: '12px',
+                                                            wordBreak: 'break-all',
+                                                            flex: 1,
+                                                            minWidth: '150px',
+                                                        }}>
+                                                            {principalStr}
+                                                        </span>
+                                                        <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                                                            {!isEditing && (
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setEditingPrincipal(principalStr);
+                                                                        const perms = {};
+                                                                        permKeys.forEach(k => { perms[k] = true; });
+                                                                        setEditPermissions(perms);
+                                                                        setPermissionError('');
+                                                                        setPermissionSuccess('');
+                                                                    }}
+                                                                    style={{ ...secondaryButtonStyle, padding: '4px 10px', fontSize: '11px' }}
+                                                                >
+                                                                    Edit
+                                                                </button>
+                                                            )}
+                                                            {isConfirming ? (
+                                                                <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                                                    <span style={{ color: theme.colors.error, fontSize: '11px' }}>Remove?</span>
+                                                                    <button
+                                                                        onClick={() => handleRemoveHotkeyPrincipal(principalStr)}
+                                                                        disabled={savingPermissions}
+                                                                        style={{
+                                                                            backgroundColor: theme.colors.error || '#ef4444',
+                                                                            color: '#fff',
+                                                                            border: 'none',
+                                                                            borderRadius: '4px',
+                                                                            padding: '3px 8px',
+                                                                            fontSize: '11px',
+                                                                            cursor: savingPermissions ? 'wait' : 'pointer',
+                                                                            opacity: savingPermissions ? 0.7 : 1,
+                                                                        }}
+                                                                    >
+                                                                        {savingPermissions ? '...' : 'Yes'}
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => setConfirmRemoveHotkey(null)}
+                                                                        style={{ ...secondaryButtonStyle, padding: '3px 8px', fontSize: '11px' }}
+                                                                    >
+                                                                        No
+                                                                    </button>
+                                                                </div>
+                                                            ) : (
+                                                                <button
+                                                                    onClick={() => { setConfirmRemoveHotkey(principalStr); setPermissionError(''); setPermissionSuccess(''); }}
+                                                                    style={{
+                                                                        backgroundColor: 'transparent',
+                                                                        color: theme.colors.error || '#ef4444',
+                                                                        border: `1px solid ${theme.colors.error || '#ef4444'}`,
+                                                                        borderRadius: '4px',
+                                                                        padding: '4px 10px',
+                                                                        fontSize: '11px',
+                                                                        cursor: 'pointer',
+                                                                    }}
+                                                                >
+                                                                    Remove
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    {isEditing ? (
+                                                        /* Edit mode: show checkboxes */
+                                                        <div>
+                                                            <div style={{ 
+                                                                display: 'grid', 
+                                                                gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                                                                gap: '6px',
+                                                                marginBottom: '12px',
+                                                            }}>
+                                                                {permissionTypes.map(([id, perm]) => {
+                                                                    const key = getPermissionKey(perm);
+                                                                    return (
+                                                                        <label key={Number(id)} style={{
+                                                                            display: 'flex',
+                                                                            alignItems: 'flex-start',
+                                                                            gap: '6px',
+                                                                            cursor: 'pointer',
+                                                                            padding: '4px 6px',
+                                                                            borderRadius: '4px',
+                                                                            fontSize: '12px',
+                                                                            color: theme.colors.primaryText,
+                                                                            background: editPermissions[key] ? `${neuronPrimary}10` : 'transparent',
+                                                                        }}>
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={!!editPermissions[key]}
+                                                                                onChange={(e) => setEditPermissions(prev => ({ ...prev, [key]: e.target.checked }))}
+                                                                                style={{ margin: '2px 0 0 0', flexShrink: 0 }}
+                                                                            />
+                                                                            <span>
+                                                                                <span style={{ fontWeight: '500' }}>{getPermissionLabel(key)}</span>
+                                                                            </span>
+                                                                        </label>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                                <button
+                                                                    onClick={() => handleUpdateHotkeyPermissions(principalStr)}
+                                                                    disabled={savingPermissions}
+                                                                    style={{
+                                                                        ...buttonStyle,
+                                                                        padding: '6px 16px',
+                                                                        fontSize: '12px',
+                                                                        opacity: savingPermissions ? 0.7 : 1,
+                                                                    }}
+                                                                >
+                                                                    {savingPermissions ? 'Saving...' : 'Save'}
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => setEditingPrincipal(null)}
+                                                                    style={{ ...secondaryButtonStyle, padding: '6px 16px', fontSize: '12px' }}
+                                                                >
+                                                                    Cancel
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        /* View mode: show permission badges */
+                                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                                            {permKeys.map(key => (
+                                                                <span key={key} title={getPermissionDescription(key)} style={{
+                                                                    padding: '2px 8px',
+                                                                    borderRadius: '4px',
+                                                                    fontSize: '11px',
+                                                                    fontWeight: '500',
+                                                                    backgroundColor: `${neuronPrimary}15`,
+                                                                    color: neuronPrimary,
+                                                                    border: `1px solid ${neuronPrimary}25`,
+                                                                }}>
+                                                                    {getPermissionLabel(key)}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Add New Hotkey Principal */}
+                            <div style={cardStyle}>
+                                <h3 style={{ color: theme.colors.primaryText, margin: '0 0 12px 0', fontSize: '0.95rem', fontWeight: '600' }}>
+                                    Add Hotkey Principal
+                                </h3>
+                                <div style={{ marginBottom: '12px' }}>
+                                    <label style={{ color: theme.colors.mutedText, fontSize: '11px', display: 'block', marginBottom: '4px' }}>
+                                        Principal ID
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={newHotkeyPrincipal}
+                                        onChange={(e) => setNewHotkeyPrincipal(e.target.value)}
+                                        placeholder="Enter principal ID"
+                                        disabled={savingPermissions}
+                                        style={inputStyle}
+                                    />
+                                </div>
+                                <div style={{ marginBottom: '12px' }}>
+                                    <label style={{ color: theme.colors.mutedText, fontSize: '11px', display: 'block', marginBottom: '8px' }}>
+                                        Permissions
+                                    </label>
+                                    <div style={{ 
+                                        display: 'grid', 
+                                        gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                                        gap: '6px',
+                                    }}>
+                                        {permissionTypes.map(([id, perm]) => {
+                                            const key = getPermissionKey(perm);
+                                            return (
+                                                <label key={Number(id)} style={{
+                                                    display: 'flex',
+                                                    alignItems: 'flex-start',
+                                                    gap: '6px',
+                                                    cursor: 'pointer',
+                                                    padding: '6px 8px',
+                                                    borderRadius: '6px',
+                                                    fontSize: '12px',
+                                                    color: theme.colors.primaryText,
+                                                    background: newHotkeyPermissions[key] ? `${neuronPrimary}10` : theme.colors.tertiaryBg || theme.colors.secondaryBg,
+                                                    border: `1px solid ${newHotkeyPermissions[key] ? neuronPrimary + '30' : theme.colors.border}`,
+                                                    transition: 'all 0.15s',
+                                                }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={!!newHotkeyPermissions[key]}
+                                                        onChange={(e) => setNewHotkeyPermissions(prev => ({ ...prev, [key]: e.target.checked }))}
+                                                        style={{ margin: '2px 0 0 0', flexShrink: 0 }}
+                                                    />
+                                                    <span>
+                                                        <span style={{ fontWeight: '500', display: 'block' }}>{getPermissionLabel(key)}</span>
+                                                        <span style={{ color: theme.colors.mutedText, fontSize: '11px' }}>{getPermissionDescription(key)}</span>
+                                                    </span>
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                    <button
+                                        onClick={handleAddHotkeyPrincipal}
+                                        disabled={savingPermissions || !newHotkeyPrincipal.trim()}
+                                        style={{
+                                            ...buttonStyle,
+                                            opacity: (savingPermissions || !newHotkeyPrincipal.trim()) ? 0.6 : 1,
+                                        }}
+                                    >
+                                        {savingPermissions ? '⏳ Adding...' : 'Add Hotkey Principal'}
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            const allPerms = {};
+                                            permissionTypes.forEach(([_, perm]) => { allPerms[getPermissionKey(perm)] = true; });
+                                            setNewHotkeyPermissions(allPerms);
+                                        }}
+                                        style={{ ...secondaryButtonStyle, padding: '0.5rem 1rem', fontSize: '0.85rem' }}
+                                    >
+                                        Select All
+                                    </button>
+                                    <button
+                                        onClick={() => setNewHotkeyPermissions({})}
+                                        style={{ ...secondaryButtonStyle, padding: '0.5rem 1rem', fontSize: '0.85rem' }}
+                                    >
+                                        Clear All
+                                    </button>
+                                </div>
+                                <p style={{ 
+                                    color: theme.colors.mutedText, 
+                                    fontSize: '11px',
+                                    marginTop: '10px',
+                                    marginBottom: 0,
+                                    lineHeight: '1.5',
+                                }}>
+                                    Hotkey principals can perform the selected operations without being a canister controller. 
+                                    The "Manage Permissions" permission allows a principal to manage other principals' permissions.
+                                </p>
+                            </div>
+                            </>
+                            )}
+                        </div>
+                        )}
+
                                 </div>
                             )}
                         </div>
