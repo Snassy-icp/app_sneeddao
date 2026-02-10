@@ -93,6 +93,16 @@ const LAMP_LABELS = {
     error:  'Error',
 };
 
+// --- Chore-specific hard deadlines ---
+// Maps chore IDs to their hard deadline in seconds from last completed run.
+// If the next scheduled run would happen after this deadline, we warn.
+const CHORE_DEADLINES = {
+    'confirm-following': {
+        deadlineSeconds: 182 * 24 * 60 * 60, // ~6 months (NNS requires re-confirmation)
+        deadlineLabel: 'NNS 6-month followee confirmation deadline',
+    },
+};
+
 // --- Derive lamp state for each timer level ---
 
 function getSchedulerLampState(chore) {
@@ -100,23 +110,45 @@ function getSchedulerLampState(chore) {
     if (chore.stopRequested) return { state: LAMP_ERROR, label: 'Stop requested' };
 
     const isScheduled = 'Scheduled' in chore.schedulerStatus;
+    const nowMs = Date.now();
 
     if (isScheduled) {
-        // Check if significantly overdue: last completed run was > 3x interval ago
-        if (chore.lastCompletedRunAt && chore.lastCompletedRunAt.length > 0) {
-            const lastRunMs = Number(chore.lastCompletedRunAt[0]) / 1_000_000;
-            const intervalMs = Number(chore.intervalSeconds) * 1000;
-            if (lastRunMs > 0 && intervalMs > 0 && (Date.now() - lastRunMs) > intervalMs * 3) {
-                return { state: LAMP_WARN, label: 'Overdue — last run was over 3 intervals ago' };
+        const lastRunMs = (chore.lastCompletedRunAt?.length > 0)
+            ? Number(chore.lastCompletedRunAt[0]) / 1_000_000
+            : 0;
+        const nextRunMs = (chore.nextScheduledRunAt?.length > 0)
+            ? Number(chore.nextScheduledRunAt[0]) / 1_000_000
+            : 0;
+        const intervalMs = Number(chore.intervalSeconds) * 1000;
+
+        // Chore-specific deadline check: will the next run happen before the hard deadline?
+        const deadline = CHORE_DEADLINES[chore.choreId];
+        if (deadline && lastRunMs > 0 && nextRunMs > 0) {
+            const deadlineMs = lastRunMs + deadline.deadlineSeconds * 1000;
+            if (nextRunMs > deadlineMs) {
+                const daysLeft = Math.round((deadlineMs - nowMs) / (24 * 60 * 60 * 1000));
+                const label = daysLeft > 0
+                    ? `Next run is after ${deadline.deadlineLabel} (${daysLeft} days left)`
+                    : `${deadline.deadlineLabel} has passed!`;
+                return { state: LAMP_WARN, label };
             }
         }
-        // Check if scheduled time has already passed (timer may have been lost)
-        if (chore.nextScheduledRunAt && chore.nextScheduledRunAt.length > 0) {
-            const nextRunMs = Number(chore.nextScheduledRunAt[0]) / 1_000_000;
-            const graceMs = 5 * 60 * 1000; // 5 min grace
-            if (nextRunMs > 0 && Date.now() > nextRunMs + graceMs) {
-                return { state: LAMP_WARN, label: 'Overdue — scheduled time has passed' };
+        // Also warn if deadline is approaching and chore has never completed
+        if (deadline && lastRunMs === 0 && nextRunMs > 0) {
+            // No completed run yet — can't compute expiry from chore data,
+            // but if interval is longer than the deadline, that's a config problem
+            if (intervalMs > deadline.deadlineSeconds * 1000) {
+                return { state: LAMP_WARN, label: `Interval exceeds ${deadline.deadlineLabel}` };
             }
+        }
+
+        // Check if significantly overdue: last completed run was > 3x interval ago
+        if (lastRunMs > 0 && intervalMs > 0 && (nowMs - lastRunMs) > intervalMs * 3) {
+            return { state: LAMP_WARN, label: 'Overdue — last run was over 3 intervals ago' };
+        }
+        // Check if scheduled time has already passed (timer may have been lost)
+        if (nextRunMs > 0 && nowMs > nextRunMs + 5 * 60 * 1000) {
+            return { state: LAMP_WARN, label: 'Overdue — scheduled time has passed' };
         }
         return { state: LAMP_OK, label: 'Scheduled' };
     }
