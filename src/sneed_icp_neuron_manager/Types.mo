@@ -812,11 +812,12 @@ module {
     // HOTKEY PERMISSION TYPES
     // ============================================
 
-    // Permission types for ICP neuron management hotkeys
+    // Permission types for ICP neuron management botkeys
     // Inspired by SNS NeuronPermissionType but tailored for ICP neurons
     public type NeuronPermissionType = {
+        #FullPermissions;         // Grants all permissions, including future unknown ones
+        #ManagePermissions;       // Add/remove botkey principals and their permissions
         #ConfigureDissolveState;  // Start/stop dissolving, set dissolve delay
-        #ManagePermissions;       // Add/remove hotkey principals and their permissions
         #Vote;                    // Vote on proposals, refresh voting power
         #Disburse;                // Disburse neuron stake
         #Split;                   // Split neuron
@@ -837,23 +838,25 @@ module {
     // These IDs are the canonical representation stored in stable memory.
     // The variant type above is only used in the public API.
     // New permissions can be added with new IDs without migration.
+    // ID 0 = FullPermissions is special: it grants all permissions including future ones.
     public module NeuronPermission {
-        public let ConfigureDissolveState: Nat = 0;
+        public let FullPermissions: Nat = 0;
         public let ManagePermissions: Nat = 1;
-        public let Vote: Nat = 2;
-        public let Disburse: Nat = 3;
-        public let Split: Nat = 4;
-        public let MergeMaturity: Nat = 5;
-        public let DisburseMaturity: Nat = 6;
-        public let StakeMaturity: Nat = 7;
-        public let ManageFollowees: Nat = 8;
-        public let Spawn: Nat = 9;
-        public let ManageNeuronHotkeys: Nat = 10;
-        public let StakeNeuron: Nat = 11;
-        public let MergeNeurons: Nat = 12;
-        public let AutoStakeMaturity: Nat = 13;
-        public let ManageVisibility: Nat = 14;
-        public let WithdrawFunds: Nat = 15;
+        public let ConfigureDissolveState: Nat = 2;
+        public let Vote: Nat = 3;
+        public let Disburse: Nat = 4;
+        public let Split: Nat = 5;
+        public let MergeMaturity: Nat = 6;
+        public let DisburseMaturity: Nat = 7;
+        public let StakeMaturity: Nat = 8;
+        public let ManageFollowees: Nat = 9;
+        public let Spawn: Nat = 10;
+        public let ManageNeuronHotkeys: Nat = 11;
+        public let StakeNeuron: Nat = 12;
+        public let MergeNeurons: Nat = 13;
+        public let AutoStakeMaturity: Nat = 14;
+        public let ManageVisibility: Nat = 15;
+        public let WithdrawFunds: Nat = 16;
     };
 
     // Info about a hotkey principal and their permissions (for API responses)

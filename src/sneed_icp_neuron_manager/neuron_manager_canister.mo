@@ -49,66 +49,70 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // Transient permission mapping - rebuilt from code on every canister upgrade.
     // This is the canonical definition of all permission types and their numeric IDs.
     // New permissions can be added here in future versions without migration.
+    // ID 0 = FullPermissions is special: it grants all permissions including future ones.
     transient let PERMISSION_MAP: [(Nat, T.NeuronPermissionType)] = [
-        (0,  #ConfigureDissolveState),
+        (0,  #FullPermissions),
         (1,  #ManagePermissions),
-        (2,  #Vote),
-        (3,  #Disburse),
-        (4,  #Split),
-        (5,  #MergeMaturity),
-        (6,  #DisburseMaturity),
-        (7,  #StakeMaturity),
-        (8,  #ManageFollowees),
-        (9,  #Spawn),
-        (10, #ManageNeuronHotkeys),
-        (11, #StakeNeuron),
-        (12, #MergeNeurons),
-        (13, #AutoStakeMaturity),
-        (14, #ManageVisibility),
-        (15, #WithdrawFunds),
+        (2,  #ConfigureDissolveState),
+        (3,  #Vote),
+        (4,  #Disburse),
+        (5,  #Split),
+        (6,  #MergeMaturity),
+        (7,  #DisburseMaturity),
+        (8,  #StakeMaturity),
+        (9,  #ManageFollowees),
+        (10, #Spawn),
+        (11, #ManageNeuronHotkeys),
+        (12, #StakeNeuron),
+        (13, #MergeNeurons),
+        (14, #AutoStakeMaturity),
+        (15, #ManageVisibility),
+        (16, #WithdrawFunds),
     ];
 
     // Convert a permission variant to its numeric ID
     func permissionVariantToId(perm: T.NeuronPermissionType): Nat {
         switch (perm) {
-            case (#ConfigureDissolveState) { 0 };
+            case (#FullPermissions) { 0 };
             case (#ManagePermissions) { 1 };
-            case (#Vote) { 2 };
-            case (#Disburse) { 3 };
-            case (#Split) { 4 };
-            case (#MergeMaturity) { 5 };
-            case (#DisburseMaturity) { 6 };
-            case (#StakeMaturity) { 7 };
-            case (#ManageFollowees) { 8 };
-            case (#Spawn) { 9 };
-            case (#ManageNeuronHotkeys) { 10 };
-            case (#StakeNeuron) { 11 };
-            case (#MergeNeurons) { 12 };
-            case (#AutoStakeMaturity) { 13 };
-            case (#ManageVisibility) { 14 };
-            case (#WithdrawFunds) { 15 };
+            case (#ConfigureDissolveState) { 2 };
+            case (#Vote) { 3 };
+            case (#Disburse) { 4 };
+            case (#Split) { 5 };
+            case (#MergeMaturity) { 6 };
+            case (#DisburseMaturity) { 7 };
+            case (#StakeMaturity) { 8 };
+            case (#ManageFollowees) { 9 };
+            case (#Spawn) { 10 };
+            case (#ManageNeuronHotkeys) { 11 };
+            case (#StakeNeuron) { 12 };
+            case (#MergeNeurons) { 13 };
+            case (#AutoStakeMaturity) { 14 };
+            case (#ManageVisibility) { 15 };
+            case (#WithdrawFunds) { 16 };
         }
     };
 
     // Convert a numeric ID to its permission variant
     func permissionIdToVariant(id: Nat): ?T.NeuronPermissionType {
         switch (id) {
-            case (0)  { ?#ConfigureDissolveState };
+            case (0)  { ?#FullPermissions };
             case (1)  { ?#ManagePermissions };
-            case (2)  { ?#Vote };
-            case (3)  { ?#Disburse };
-            case (4)  { ?#Split };
-            case (5)  { ?#MergeMaturity };
-            case (6)  { ?#DisburseMaturity };
-            case (7)  { ?#StakeMaturity };
-            case (8)  { ?#ManageFollowees };
-            case (9)  { ?#Spawn };
-            case (10) { ?#ManageNeuronHotkeys };
-            case (11) { ?#StakeNeuron };
-            case (12) { ?#MergeNeurons };
-            case (13) { ?#AutoStakeMaturity };
-            case (14) { ?#ManageVisibility };
-            case (15) { ?#WithdrawFunds };
+            case (2)  { ?#ConfigureDissolveState };
+            case (3)  { ?#Vote };
+            case (4)  { ?#Disburse };
+            case (5)  { ?#Split };
+            case (6)  { ?#MergeMaturity };
+            case (7)  { ?#DisburseMaturity };
+            case (8)  { ?#StakeMaturity };
+            case (9)  { ?#ManageFollowees };
+            case (10) { ?#Spawn };
+            case (11) { ?#ManageNeuronHotkeys };
+            case (12) { ?#StakeNeuron };
+            case (13) { ?#MergeNeurons };
+            case (14) { ?#AutoStakeMaturity };
+            case (15) { ?#ManageVisibility };
+            case (16) { ?#WithdrawFunds };
             case (_)  { null };
         }
     };
@@ -139,11 +143,14 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     };
 
     // Check if a caller has a specific permission
-    // Controllers always have all permissions
+    // Controllers always have all permissions.
+    // FullPermissions (ID 0) grants all permissions, including future unknown ones.
     func callerHasPermission(caller: Principal, permissionId: Nat): Bool {
         if (isController(caller)) return true;
         for ((p, ids) in hotkeyPermissions.vals()) {
             if (Principal.equal(p, caller)) {
+                // FullPermissions (ID 0) implies every permission
+                if (arrayContainsNat(ids, T.NeuronPermission.FullPermissions)) return true;
                 return arrayContainsNat(ids, permissionId);
             };
         };
@@ -1168,7 +1175,8 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     };
 
     // Get the caller's current permissions
-    // Controllers get all permissions; hotkey principals get their assigned permissions
+    // Controllers and principals with FullPermissions get all permissions;
+    // other botkey principals get their assigned permissions.
     public shared query ({ caller }) func callerPermissions(): async [T.NeuronPermissionType] {
         if (isController(caller)) {
             let all = Buffer.Buffer<T.NeuronPermissionType>(PERMISSION_MAP.size());
@@ -1179,6 +1187,14 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         };
         for ((p, ids) in hotkeyPermissions.vals()) {
             if (Principal.equal(p, caller)) {
+                // FullPermissions grants all
+                if (arrayContainsNat(ids, T.NeuronPermission.FullPermissions)) {
+                    let all = Buffer.Buffer<T.NeuronPermissionType>(PERMISSION_MAP.size());
+                    for ((_, v) in PERMISSION_MAP.vals()) {
+                        all.add(v);
+                    };
+                    return Buffer.toArray(all);
+                };
                 return idsToVariants(ids);
             };
         };

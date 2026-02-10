@@ -291,7 +291,8 @@ function IcpNeuronManager() {
     // Canister section tabs
     const [canisterActiveTab, setCanisterActiveTab] = useState('info');
 
-    // Hotkey permissions state
+    // Botkey permissions state
+    const [botkeysSupported, setBotkeysSupported] = useState(null); // null=unknown, true/false
     const [hotkeyPrincipals, setHotkeyPrincipals] = useState([]);
     const [permissionTypes, setPermissionTypes] = useState([]);
     const [loadingPermissions, setLoadingPermissions] = useState(false);
@@ -1066,7 +1067,7 @@ function IcpNeuronManager() {
         }
     }, [isInvalidManager]);
 
-    // Load hotkey permissions data
+    // Load botkey permissions data (robust: detects older bots without botkey APIs)
     const loadHotkeyPermissions = useCallback(async () => {
         if (!canisterId) return;
         setLoadingPermissions(true);
@@ -1083,9 +1084,17 @@ function IcpNeuronManager() {
             ]);
             setHotkeyPrincipals(principals);
             setPermissionTypes(types);
+            setBotkeysSupported(true);
         } catch (err) {
-            console.error('Error loading hotkey permissions:', err);
-            setPermissionError('Failed to load permissions: ' + (err.message || 'Unknown error'));
+            console.error('Error loading botkey permissions:', err);
+            // Detect older bots that don't have the botkey API
+            const msg = err.message || '';
+            if (msg.includes('has no query method') || msg.includes('is not exported') || msg.includes('Canister has no query')) {
+                setBotkeysSupported(false);
+            } else {
+                setBotkeysSupported(true); // APIs exist but some other error occurred
+                setPermissionError('Failed to load permissions: ' + (msg || 'Unknown error'));
+            }
         } finally {
             setLoadingPermissions(false);
         }
@@ -1103,50 +1112,58 @@ function IcpNeuronManager() {
         return Object.keys(perm)[0];
     };
 
-    // Get human-readable label for a permission key
-    const getPermissionLabel = (key) => {
-        const labels = {
-            'ConfigureDissolveState': 'Configure Dissolve State',
-            'ManagePermissions': 'Manage Permissions',
-            'Vote': 'Vote',
-            'Disburse': 'Disburse',
-            'Split': 'Split',
-            'MergeMaturity': 'Merge Maturity',
-            'DisburseMaturity': 'Disburse Maturity',
-            'StakeMaturity': 'Stake Maturity',
-            'ManageFollowees': 'Manage Followees',
-            'Spawn': 'Spawn',
-            'ManageNeuronHotkeys': 'Manage NNS Hotkeys',
-            'StakeNeuron': 'Stake Neuron',
-            'MergeNeurons': 'Merge Neurons',
-            'AutoStakeMaturity': 'Auto-Stake Maturity',
-            'ManageVisibility': 'Manage Visibility',
-            'WithdrawFunds': 'Withdraw Funds',
-        };
-        return labels[key] || key;
+    // Known display labels for permission keys (falls back to readable version of enum key for unknown permissions)
+    const KNOWN_PERMISSION_LABELS = {
+        'FullPermissions': 'Full Permissions',
+        'ManagePermissions': 'Manage Permissions',
+        'ConfigureDissolveState': 'Configure Dissolve State',
+        'Vote': 'Vote',
+        'Disburse': 'Disburse',
+        'Split': 'Split',
+        'MergeMaturity': 'Merge Maturity',
+        'DisburseMaturity': 'Disburse Maturity',
+        'StakeMaturity': 'Stake Maturity',
+        'ManageFollowees': 'Manage Followees',
+        'Spawn': 'Spawn',
+        'ManageNeuronHotkeys': 'Manage NNS Hotkeys',
+        'StakeNeuron': 'Stake Neuron',
+        'MergeNeurons': 'Merge Neurons',
+        'AutoStakeMaturity': 'Auto-Stake Maturity',
+        'ManageVisibility': 'Manage Visibility',
+        'WithdrawFunds': 'Withdraw Funds',
     };
 
-    // Get description for a permission key
+    // Known descriptions for permission keys (empty string for unknown permissions)
+    const KNOWN_PERMISSION_DESCRIPTIONS = {
+        'FullPermissions': 'Grants all permissions, including any future permissions added in later versions',
+        'ManagePermissions': 'Add/remove botkey principals and manage their permissions',
+        'ConfigureDissolveState': 'Start/stop dissolving, set dissolve delay',
+        'Vote': 'Vote on proposals, refresh voting power',
+        'Disburse': 'Disburse neuron stake',
+        'Split': 'Split neuron into multiple neurons',
+        'MergeMaturity': 'Merge maturity into stake',
+        'DisburseMaturity': 'Disburse maturity rewards',
+        'StakeMaturity': 'Stake maturity rewards',
+        'ManageFollowees': 'Set followees and confirm following',
+        'Spawn': 'Spawn maturity to create new neuron',
+        'ManageNeuronHotkeys': 'Add/remove NNS hotkeys on the neuron',
+        'StakeNeuron': 'Create neurons, increase/refresh stake',
+        'MergeNeurons': 'Merge neurons together',
+        'AutoStakeMaturity': 'Set auto-stake maturity setting',
+        'ManageVisibility': 'Set neuron visibility',
+        'WithdrawFunds': 'Withdraw ICP or tokens from the canister',
+    };
+
+    // Get human-readable label for a permission key (dynamic: falls back to splitting CamelCase)
+    const getPermissionLabel = (key) => {
+        if (KNOWN_PERMISSION_LABELS[key]) return KNOWN_PERMISSION_LABELS[key];
+        // Fall back: split CamelCase into spaced words (e.g. "SomeNewPerm" -> "Some New Perm")
+        return key.replace(/([a-z])([A-Z])/g, '$1 $2');
+    };
+
+    // Get description for a permission key (dynamic: empty for unknown permissions)
     const getPermissionDescription = (key) => {
-        const descriptions = {
-            'ConfigureDissolveState': 'Start/stop dissolving, set dissolve delay',
-            'ManagePermissions': 'Add/remove hotkey principals and manage their permissions',
-            'Vote': 'Vote on proposals, refresh voting power',
-            'Disburse': 'Disburse neuron stake',
-            'Split': 'Split neuron into multiple neurons',
-            'MergeMaturity': 'Merge maturity into stake',
-            'DisburseMaturity': 'Disburse maturity rewards',
-            'StakeMaturity': 'Stake maturity rewards',
-            'ManageFollowees': 'Set followees and confirm following',
-            'Spawn': 'Spawn maturity to create new neuron',
-            'ManageNeuronHotkeys': 'Add/remove NNS hotkeys on the neuron',
-            'StakeNeuron': 'Create neurons, increase/refresh stake',
-            'MergeNeurons': 'Merge neurons together',
-            'AutoStakeMaturity': 'Set auto-stake maturity setting',
-            'ManageVisibility': 'Set neuron visibility',
-            'WithdrawFunds': 'Withdraw ICP or tokens from the canister',
-        };
-        return descriptions[key] || '';
+        return KNOWN_PERMISSION_DESCRIPTIONS[key] || '';
     };
 
     const handleAddHotkeyPrincipal = async () => {
@@ -1173,7 +1190,7 @@ function IcpNeuronManager() {
             const principal = Principal.fromText(newHotkeyPrincipal.trim());
             const result = await manager.addHotkeyPermissions(principal, selectedPerms);
             if ('Ok' in result) {
-                setPermissionSuccess('Hotkey principal added successfully');
+                setPermissionSuccess('Botkey principal added successfully');
                 setNewHotkeyPrincipal('');
                 setNewHotkeyPermissions({});
                 await loadHotkeyPermissions();
@@ -1258,7 +1275,7 @@ function IcpNeuronManager() {
             const principal = Principal.fromText(principalText);
             const result = await manager.removeHotkeyPrincipal(principal);
             if ('Ok' in result) {
-                setPermissionSuccess('Hotkey principal removed');
+                setPermissionSuccess('Botkey principal removed');
                 setConfirmRemoveHotkey(null);
                 await loadHotkeyPermissions();
             } else {
@@ -2999,7 +3016,7 @@ function IcpNeuronManager() {
                                     </button>
                                     {isController && (
                                         <button style={tabStyle(canisterActiveTab === 'permissions')} onClick={() => setCanisterActiveTab('permissions')}>
-                                            Permissions
+                                            Botkeys
                                         </button>
                                     )}
                                 </div>
@@ -3981,10 +3998,94 @@ function IcpNeuronManager() {
                         </>
                         )}
 
-                        {/* Permissions Tab */}
+                        {/* Botkeys Tab */}
                         {canisterActiveTab === 'permissions' && isController && (
                         <div>
-                            {/* Permissions Error/Success */}
+                            {/* Botkeys explanation */}
+                            <div style={{
+                                padding: '12px 14px',
+                                backgroundColor: `${neuronPrimary}08`,
+                                border: `1px solid ${neuronPrimary}20`,
+                                borderRadius: '8px',
+                                marginBottom: '16px',
+                            }}>
+                                <p style={{ color: theme.colors.secondaryText, fontSize: '13px', margin: '0 0 8px 0', lineHeight: '1.5' }}>
+                                    <strong style={{ color: theme.colors.primaryText }}>Botkeys</strong> grant specific principals granular permissions to operate this Staking Bot canister without being a controller.
+                                    Controllers always have full permissions implicitly.
+                                </p>
+                                <p style={{ color: theme.colors.mutedText, fontSize: '12px', margin: 0, lineHeight: '1.5' }}>
+                                    <strong>Botkeys vs Neuron Hotkeys:</strong> Botkeys control who can <em>tell the bot what to do</em> — they are permissions on the bot canister itself. 
+                                    Neuron hotkeys (managed per-neuron in the Neuron section below) are NNS-level keys added directly to the neuron on-chain. 
+                                    Botkeys are more flexible because the bot defines its own fine-grained permission system.
+                                </p>
+                            </div>
+
+                            {/* Loading state */}
+                            {loadingPermissions && botkeysSupported === null && (
+                                <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
+                                    Loading botkeys...
+                                </div>
+                            )}
+
+                            {/* Unsupported bot version */}
+                            {botkeysSupported === false && (
+                                <div style={{
+                                    ...cardStyle,
+                                    background: `linear-gradient(135deg, ${theme.colors.warning}10, ${theme.colors.warning}05)`,
+                                    border: `1px solid ${theme.colors.warning || '#f59e0b'}30`,
+                                    textAlign: 'center',
+                                    padding: '2rem 1.5rem',
+                                }}>
+                                    <div style={{ fontSize: '2rem', marginBottom: '12px' }}>🔑</div>
+                                    <h3 style={{ color: theme.colors.primaryText, margin: '0 0 8px 0', fontSize: '1rem', fontWeight: '600' }}>
+                                        Botkeys Not Available
+                                    </h3>
+                                    <p style={{ color: theme.colors.secondaryText, fontSize: '13px', margin: '0 0 16px 0', lineHeight: '1.5' }}>
+                                        This Staking Bot does not support botkeys. Botkeys require <strong>v0.9.1</strong> or newer.
+                                        {managerInfo?.version && (
+                                            <span> Your bot is currently running <strong>v{managerInfo.version}</strong>.</span>
+                                        )}
+                                    </p>
+                                    {latestOfficialVersion && isController && (
+                                        <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                                            <button
+                                                onClick={() => handleUpgrade(latestOfficialVersion, 'upgrade')}
+                                                disabled={upgrading}
+                                                style={{
+                                                    background: theme.colors.accent,
+                                                    color: '#fff',
+                                                    border: 'none',
+                                                    borderRadius: '8px',
+                                                    padding: '10px 20px',
+                                                    fontSize: '14px',
+                                                    fontWeight: '600',
+                                                    cursor: upgrading ? 'wait' : 'pointer',
+                                                    opacity: upgrading ? 0.7 : 1,
+                                                }}
+                                            >
+                                                {upgrading && upgradeMode === 'upgrade' 
+                                                    ? '⏳ Upgrading...' 
+                                                    : `⬆️ Upgrade to v${Number(latestOfficialVersion.major)}.${Number(latestOfficialVersion.minor)}.${Number(latestOfficialVersion.patch)}`}
+                                            </button>
+                                        </div>
+                                    )}
+                                    {upgradeError && (
+                                        <div style={{ color: theme.colors.error, fontSize: '12px', marginTop: '10px' }}>
+                                            {upgradeError}
+                                        </div>
+                                    )}
+                                    {upgradeSuccess && (
+                                        <div style={{ color: theme.colors.success, fontSize: '12px', marginTop: '10px' }}>
+                                            {upgradeSuccess}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Botkeys supported — show management UI */}
+                            {botkeysSupported === true && (
+                            <>
+                            {/* Error/Success */}
                             {permissionError && (
                                 <div style={{
                                     padding: '10px 14px',
@@ -4012,21 +4113,10 @@ function IcpNeuronManager() {
                                 </div>
                             )}
 
-                            <p style={{ color: theme.colors.secondaryText, fontSize: '13px', margin: '0 0 16px 0', lineHeight: '1.5' }}>
-                                Manage hotkey principals and their permissions on this canister. 
-                                Controllers always have full permissions. Hotkey principals can be granted granular access to specific operations.
-                            </p>
-
-                            {loadingPermissions ? (
-                                <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.mutedText }}>
-                                    Loading permissions...
-                                </div>
-                            ) : (
-                            <>
-                            {/* Current Hotkey Principals */}
+                            {/* Current Botkey Principals */}
                             <div style={cardStyle}>
                                 <h3 style={{ color: theme.colors.primaryText, margin: '0 0 12px 0', fontSize: '0.95rem', fontWeight: '600' }}>
-                                    Hotkey Principals ({hotkeyPrincipals.length})
+                                    Botkey Principals ({hotkeyPrincipals.length})
                                 </h3>
                                 
                                 {hotkeyPrincipals.length === 0 ? (
@@ -4038,7 +4128,7 @@ function IcpNeuronManager() {
                                         background: theme.colors.tertiaryBg || theme.colors.secondaryBg,
                                         borderRadius: '8px',
                                     }}>
-                                        No hotkey principals configured. Add one below.
+                                        No botkey principals configured. Add one below.
                                     </div>
                                 ) : (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -4216,10 +4306,10 @@ function IcpNeuronManager() {
                                 )}
                             </div>
 
-                            {/* Add New Hotkey Principal */}
+                            {/* Add New Botkey Principal */}
                             <div style={cardStyle}>
                                 <h3 style={{ color: theme.colors.primaryText, margin: '0 0 12px 0', fontSize: '0.95rem', fontWeight: '600' }}>
-                                    Add Hotkey Principal
+                                    Add Botkey Principal
                                 </h3>
                                 <div style={{ marginBottom: '12px' }}>
                                     <label style={{ color: theme.colors.mutedText, fontSize: '11px', display: 'block', marginBottom: '4px' }}>
@@ -4283,7 +4373,7 @@ function IcpNeuronManager() {
                                             opacity: (savingPermissions || !newHotkeyPrincipal.trim()) ? 0.6 : 1,
                                         }}
                                     >
-                                        {savingPermissions ? '⏳ Adding...' : 'Add Hotkey Principal'}
+                                        {savingPermissions ? '⏳ Adding...' : 'Add Botkey Principal'}
                                     </button>
                                     <button
                                         onClick={() => {
@@ -4309,7 +4399,7 @@ function IcpNeuronManager() {
                                     marginBottom: 0,
                                     lineHeight: '1.5',
                                 }}>
-                                    Hotkey principals can perform the selected operations without being a canister controller. 
+                                    Botkey principals can perform the selected operations without being a canister controller. 
                                     The "Manage Permissions" permission allows a principal to manage other principals' permissions.
                                 </p>
                             </div>

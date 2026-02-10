@@ -631,8 +631,18 @@ export default function IcpNeuronManagerFactoryAdmin() {
         sourceUrl: newVersion.sourceUrl
       };
 
-      await actor.addOfficialVersion(version);
-      setSuccess(`Version ${newVersion.major}.${newVersion.minor}.${newVersion.patch} added successfully`);
+      if (editingVersionHash) {
+        // Use updateOfficialVersion to handle hash changes correctly
+        const updated = await actor.updateOfficialVersion(editingVersionHash, version);
+        if (!updated) {
+          setError('Version not found for update');
+          return;
+        }
+        setSuccess(`Version ${newVersion.major}.${newVersion.minor}.${newVersion.patch} updated successfully`);
+      } else {
+        await actor.addOfficialVersion(version);
+        setSuccess(`Version ${newVersion.major}.${newVersion.minor}.${newVersion.patch} added successfully`);
+      }
       setNewVersion({ major: '', minor: '', patch: '', wasmHash: '', wasmUrl: '', sourceUrl: '' });
       setEditingVersionHash(null);
       
@@ -1878,13 +1888,12 @@ export default function IcpNeuronManagerFactoryAdmin() {
               placeholder="e.g., a1b2c3d4e5f6..."
               value={newVersion.wasmHash}
               onChange={(e) => setNewVersion({...newVersion, wasmHash: e.target.value})}
-              disabled={!!editingVersionHash}
               style={{
                 width: '100%',
                 padding: '10px',
                 borderRadius: '4px',
                 border: '1px solid #3a3a3a',
-                backgroundColor: editingVersionHash ? '#333' : '#1a1a1a',
+                backgroundColor: '#1a1a1a',
                 color: '#ffffff',
                 fontFamily: 'monospace',
                 fontSize: '13px'
