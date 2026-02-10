@@ -2514,15 +2514,12 @@ export default function Me() {
                                                 >{p}%</button>
                                             ))}
                                             <input
-                                                type="number"
-                                                min="0.01"
-                                                max="99"
-                                                step="0.1"
-                                                placeholder="Custom %"
+                                                type="text"
+                                                placeholder="Custom"
                                                 value={
                                                     [0.5, 1, 2, 5].some(p => Math.abs(swapSlippageTolerance * 100 - p) < 0.001)
                                                         ? ''
-                                                        : (swapSlippageTolerance * 100)
+                                                        : String(parseFloat((swapSlippageTolerance * 100).toFixed(4)))
                                                 }
                                                 onChange={(e) => {
                                                     const n = parseFloat(e.target.value);
@@ -2540,14 +2537,14 @@ export default function Me() {
                                                     }
                                                 }}
                                                 style={{
-                                                    width: '72px',
+                                                    width: '54px',
                                                     padding: '4px 8px',
                                                     borderRadius: '8px',
                                                     border: `1px solid ${theme.colors.border}`,
-                                                    backgroundColor: theme.colors.tertiaryBg,
+                                                    background: 'transparent',
                                                     color: theme.colors.primaryText,
                                                     fontSize: '13px',
-                                                    textAlign: 'right',
+                                                    outline: 'none',
                                                 }}
                                             />
                                             <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>%</span>
