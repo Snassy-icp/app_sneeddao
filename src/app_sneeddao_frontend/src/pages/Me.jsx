@@ -2669,6 +2669,56 @@ export default function Me() {
                                             </p>
                                         </div>
 
+                                        {/* Manual Browser Cache Clear Instructions */}
+                                        <div style={{
+                                            marginTop: '1.25rem',
+                                            paddingTop: '1rem',
+                                            borderTop: `1px solid ${theme.colors.border}`
+                                        }}>
+                                            <p style={{ 
+                                                color: theme.colors.secondaryText, 
+                                                fontSize: '0.85rem', 
+                                                marginBottom: '0.5rem',
+                                                fontWeight: '600'
+                                            }}>
+                                                Manual: Clear site data via browser tools
+                                            </p>
+                                            <p style={{ 
+                                                color: theme.colors.secondaryText, 
+                                                fontSize: '0.8rem', 
+                                                marginBottom: '0.5rem',
+                                                lineHeight: '1.6',
+                                                opacity: 0.85
+                                            }}>
+                                                If the buttons above don't resolve your issue, you can clear all site data
+                                                directly through your browser. This is the most thorough option and is
+                                                guaranteed to wipe everything.
+                                            </p>
+                                            <ol style={{ 
+                                                color: theme.colors.secondaryText, 
+                                                fontSize: '0.8rem', 
+                                                lineHeight: '1.8',
+                                                margin: '0.25rem 0 0 1.25rem',
+                                                padding: 0,
+                                                opacity: 0.85
+                                            }}>
+                                                <li>Press <strong style={{ color: theme.colors.primaryText }}>F12</strong> (or <strong style={{ color: theme.colors.primaryText }}>Ctrl+Shift+I</strong> / <strong style={{ color: theme.colors.primaryText }}>Cmd+Option+I</strong> on Mac) to open Developer Tools</li>
+                                                <li>Click the <strong style={{ color: theme.colors.primaryText }}>Application</strong> tab (Chrome/Edge) or <strong style={{ color: theme.colors.primaryText }}>Storage</strong> tab (Firefox)</li>
+                                                <li>In the left sidebar, click <strong style={{ color: theme.colors.primaryText }}>Storage</strong></li>
+                                                <li>Check all boxes and click <strong style={{ color: theme.colors.primaryText }}>"Clear site data"</strong></li>
+                                                <li>Close Developer Tools and refresh the page</li>
+                                            </ol>
+                                            <p style={{ 
+                                                color: theme.colors.secondaryText, 
+                                                fontSize: '0.75rem', 
+                                                marginTop: '0.5rem',
+                                                opacity: 0.6,
+                                                fontStyle: 'italic'
+                                            }}>
+                                                Note: this will log you out. You will need to sign in again with Internet Identity.
+                                            </p>
+                                        </div>
+
                                         {/* Gray List (Ledger Skip List) */}
                                         <div style={{
                                             marginTop: '1.25rem',
