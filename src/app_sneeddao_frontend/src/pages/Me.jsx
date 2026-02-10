@@ -202,6 +202,7 @@ export default function Me() {
     const [notificationSettingsSaved, setNotificationSettingsSaved] = useState(false);
     const collectiblesSaveTimerRef = useRef(null);
     const frontendUpdateSaveTimerRef = useRef(null);
+    const slippageSaveTimerRef = useRef(null);
 
     const defaultUserSettings = {
         principal_color_coding: true,
@@ -218,6 +219,7 @@ export default function Me() {
         frontend_auto_update_enabled: false,
         frontend_update_check_interval_sec: 600,
         frontend_update_countdown_sec: 300,
+        swap_slippage_tolerance: 0.01,
     };
 
     const getLocalSettingsForBackend = () => {
@@ -266,6 +268,7 @@ export default function Me() {
             frontend_auto_update_enabled: readBool('frontendAutoUpdateEnabled', defaultUserSettings.frontend_auto_update_enabled),
             frontend_update_check_interval_sec: readNat('frontendUpdateCheckIntervalSec', defaultUserSettings.frontend_update_check_interval_sec),
             frontend_update_countdown_sec: readNat('frontendUpdateCountdownSec', defaultUserSettings.frontend_update_countdown_sec),
+            swap_slippage_tolerance: readFloat('swapSlippageTolerance', defaultUserSettings.swap_slippage_tolerance),
         };
     };
 
@@ -289,6 +292,7 @@ export default function Me() {
             && (settings.frontend_auto_update_enabled ?? defaultUserSettings.frontend_auto_update_enabled) === defaultUserSettings.frontend_auto_update_enabled
             && toNumber(settings.frontend_update_check_interval_sec ?? defaultUserSettings.frontend_update_check_interval_sec) === defaultUserSettings.frontend_update_check_interval_sec
             && toNumber(settings.frontend_update_countdown_sec ?? defaultUserSettings.frontend_update_countdown_sec) === defaultUserSettings.frontend_update_countdown_sec
+            && toNumber(settings.swap_slippage_tolerance ?? defaultUserSettings.swap_slippage_tolerance) === defaultUserSettings.swap_slippage_tolerance
         );
     };
 
@@ -383,6 +387,11 @@ export default function Me() {
         const countdownValue = Number(settings.frontend_update_countdown_sec ?? 300);
         setFrontendUpdateCountdown(countdownValue);
         localStorage.setItem('frontendUpdateCountdownSec', countdownValue.toString());
+
+        const slippageValue = Number(settings.swap_slippage_tolerance ?? 0.01);
+        setSwapSlippageTolerance(slippageValue);
+        localStorage.setItem('swapSlippageTolerance', slippageValue.toString());
+        window.dispatchEvent(new CustomEvent('swapSlippageToleranceChanged', { detail: slippageValue }));
     };
 
     // Color coding settings
@@ -471,6 +480,18 @@ export default function Me() {
         }
     });
 
+    // Swap slippage tolerance (decimal, e.g. 0.01 = 1%)
+    const [swapSlippageTolerance, setSwapSlippageTolerance] = useState(() => {
+        try {
+            const saved = localStorage.getItem('swapSlippageTolerance');
+            if (saved !== null) {
+                const parsed = parseFloat(saved);
+                if (!isNaN(parsed) && parsed > 0 && parsed < 1) return parsed;
+            }
+        } catch (error) {}
+        return 0.01;
+    });
+
     const [canisterManagerSettingsExpanded, setCanisterManagerSettingsExpanded] = useState(false);
     const [canisterCycleThresholdRed, setCanisterCycleThresholdRed] = useState('');
     const [canisterCycleThresholdOrange, setCanisterCycleThresholdOrange] = useState('');
@@ -523,6 +544,9 @@ export default function Me() {
         return () => {
             if (collectiblesSaveTimerRef.current) {
                 clearTimeout(collectiblesSaveTimerRef.current);
+            }
+            if (slippageSaveTimerRef.current) {
+                clearTimeout(slippageSaveTimerRef.current);
             }
         };
     }, []);
@@ -2227,6 +2251,78 @@ export default function Me() {
                                                 updateBackendSettings({ particle_effects_enabled: newValue });
                                             }}
                                         />
+                                    </SettingItem>
+
+                                    <SettingItem
+                                        title="Swap Slippage Tolerance"
+                                        description="Default slippage tolerance for token swaps. You can also change this directly from the swap page."
+                                        theme={theme}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                            {[0.5, 1, 2, 5].map(p => (
+                                                <button
+                                                    key={p}
+                                                    onClick={() => {
+                                                        const newValue = p / 100;
+                                                        setSwapSlippageTolerance(newValue);
+                                                        localStorage.setItem('swapSlippageTolerance', newValue.toString());
+                                                        window.dispatchEvent(new CustomEvent('swapSlippageToleranceChanged', { detail: newValue }));
+                                                        updateBackendSettings({ swap_slippage_tolerance: newValue });
+                                                    }}
+                                                    style={{
+                                                        padding: '4px 12px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
+                                                        cursor: 'pointer', transition: 'all 0.15s ease',
+                                                        border: Math.abs(swapSlippageTolerance * 100 - p) < 0.001
+                                                            ? `1px solid ${theme.colors.accent}`
+                                                            : `1px solid ${theme.colors.border}`,
+                                                        background: Math.abs(swapSlippageTolerance * 100 - p) < 0.001
+                                                            ? theme.colors.accent
+                                                            : 'transparent',
+                                                        color: Math.abs(swapSlippageTolerance * 100 - p) < 0.001
+                                                            ? '#fff'
+                                                            : theme.colors.secondaryText,
+                                                    }}
+                                                >{p}%</button>
+                                            ))}
+                                            <input
+                                                type="number"
+                                                min="0.01"
+                                                max="99"
+                                                step="0.1"
+                                                placeholder="Custom %"
+                                                value={
+                                                    [0.5, 1, 2, 5].some(p => Math.abs(swapSlippageTolerance * 100 - p) < 0.001)
+                                                        ? ''
+                                                        : (swapSlippageTolerance * 100)
+                                                }
+                                                onChange={(e) => {
+                                                    const n = parseFloat(e.target.value);
+                                                    if (!isNaN(n) && n > 0 && n < 100) {
+                                                        const newValue = n / 100;
+                                                        setSwapSlippageTolerance(newValue);
+                                                        localStorage.setItem('swapSlippageTolerance', newValue.toString());
+                                                        window.dispatchEvent(new CustomEvent('swapSlippageToleranceChanged', { detail: newValue }));
+                                                        if (slippageSaveTimerRef.current) {
+                                                            clearTimeout(slippageSaveTimerRef.current);
+                                                        }
+                                                        slippageSaveTimerRef.current = setTimeout(() => {
+                                                            updateBackendSettings({ swap_slippage_tolerance: newValue });
+                                                        }, 500);
+                                                    }
+                                                }}
+                                                style={{
+                                                    width: '72px',
+                                                    padding: '4px 8px',
+                                                    borderRadius: '8px',
+                                                    border: `1px solid ${theme.colors.border}`,
+                                                    backgroundColor: theme.colors.tertiaryBg,
+                                                    color: theme.colors.primaryText,
+                                                    fontSize: '13px',
+                                                    textAlign: 'right',
+                                                }}
+                                            />
+                                            <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>%</span>
+                                        </div>
                                     </SettingItem>
 
                                     <SettingItem

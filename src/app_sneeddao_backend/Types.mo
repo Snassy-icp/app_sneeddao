@@ -51,6 +51,7 @@ module {
         frontend_auto_update_enabled: Bool;
         frontend_update_check_interval_sec: Nat;
         frontend_update_countdown_sec: Nat;
+        swap_slippage_tolerance: Float;
     };
 
     public type UserSettingsUpdate = {
@@ -68,6 +69,7 @@ module {
         frontend_auto_update_enabled: ?Bool;
         frontend_update_check_interval_sec: ?Nat;
         frontend_update_countdown_sec: ?Nat;
+        swap_slippage_tolerance: ?Float;
     };
 
     // token metadata types

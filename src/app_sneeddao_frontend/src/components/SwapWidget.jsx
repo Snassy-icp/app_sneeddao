@@ -22,6 +22,7 @@ import {
   SNEEDEX_CANISTER_ID,
 } from '../utils/SneedexUtils';
 import { Principal } from '@dfinity/principal';
+import { setMySettings } from '../utils/BackendUtils';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -720,7 +721,16 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
   const [inputToken, setInputToken] = useState(initialInput || '');
   const [outputToken, setOutputToken] = useState(initialOutput || '');
   const [inputAmountStr, setInputAmountStr] = useState('');
-  const [slippage, setSlippage] = useState(DEFAULT_SLIPPAGE);
+  const [slippage, setSlippage] = useState(() => {
+    try {
+      const saved = localStorage.getItem('swapSlippageTolerance');
+      if (saved !== null) {
+        const parsed = parseFloat(saved);
+        if (!isNaN(parsed) && parsed > 0 && parsed < 1) return parsed;
+      }
+    } catch (e) {}
+    return DEFAULT_SLIPPAGE;
+  });
   const [showSettings, setShowSettings] = useState(false);
 
   const [inputTokenInfo, setInputTokenInfo] = useState(null);
@@ -754,6 +764,30 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
   // Spot prices per DEX (fetched as soon as pair is selected)
   const [spotPrices, setSpotPrices] = useState(null);
   const [loadingSpot, setLoadingSpot] = useState(false);
+
+  // Persist slippage changes to localStorage and backend
+  const handleSlippageChange = useCallback((newSlippage) => {
+    setSlippage(newSlippage);
+    localStorage.setItem('swapSlippageTolerance', newSlippage.toString());
+    window.dispatchEvent(new CustomEvent('swapSlippageToleranceChanged', { detail: newSlippage }));
+    if (identity) {
+      setMySettings(identity, { swap_slippage_tolerance: newSlippage }).catch(err => {
+        console.error('Failed to save slippage to backend:', err);
+      });
+    }
+  }, [identity]);
+
+  // Listen for external slippage changes (e.g. from /me settings page)
+  useEffect(() => {
+    const handler = (e) => {
+      const val = typeof e.detail === 'number' ? e.detail : parseFloat(e.detail);
+      if (!isNaN(val) && val > 0 && val < 1) {
+        setSlippage(val);
+      }
+    };
+    window.addEventListener('swapSlippageToleranceChanged', handler);
+    return () => window.removeEventListener('swapSlippageToleranceChanged', handler);
+  }, []);
 
   // USD prices
   const [inputUsdPrice, setInputUsdPrice] = useState(null);
@@ -1912,7 +1946,7 @@ export default function SwapWidget({ initialInput, initialOutput, initialOutputA
         </div>
 
         {/* ─── Slippage settings (collapsible) ─── */}
-        {showSettings && <SlippageSettings value={slippage} onChange={setSlippage} />}
+        {showSettings && <SlippageSettings value={slippage} onChange={handleSlippageChange} />}
 
         {/* ─── Token pair stack ─── */}
         <div style={{ position: 'relative' }}>

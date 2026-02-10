@@ -47,6 +47,7 @@ export const setMySettings = async (identity, updates) => {
             frontend_auto_update_enabled: toOptional(updates.frontend_auto_update_enabled),
             frontend_update_check_interval_sec: toOptional(updates.frontend_update_check_interval_sec),
             frontend_update_countdown_sec: toOptional(updates.frontend_update_countdown_sec),
+            swap_slippage_tolerance: toOptional(updates.swap_slippage_tolerance),
         };
         return await actor.set_my_settings(payload);
     } catch (error) {

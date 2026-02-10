@@ -23,6 +23,7 @@ type UserSettingsUpdate =
    principal_color_coding: opt bool;
    show_header_notifications: opt bool;
    show_vp_bar: opt bool;
+   swap_slippage_tolerance: opt float64;
  };
 type UserSettings = 
  record {
@@ -40,6 +41,7 @@ type UserSettings =
    principal_color_coding: bool;
    show_header_notifications: bool;
    show_vp_bar: bool;
+   swap_slippage_tolerance: float64;
  };
 type TxIndex = nat;
 type TransferResult = 

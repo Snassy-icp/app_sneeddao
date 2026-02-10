@@ -129,6 +129,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   stable var stable_user_setting_frontend_auto_update_enabled : [(Principal, Bool)] = [];
   stable var stable_user_setting_frontend_update_check_interval_sec : [(Principal, Nat)] = [];
   stable var stable_user_setting_frontend_update_countdown_sec : [(Principal, Nat)] = [];
+  stable var stable_user_setting_swap_slippage_tolerance : [(Principal, Float)] = [];
 
   // Stable storage for neuron names and nicknames
   stable var stable_neuron_names : [(NeuronNameKey, (Text, Bool))] = [];
@@ -240,6 +241,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   transient let default_frontend_auto_update_enabled : Bool = false;
   transient let default_frontend_update_check_interval_sec : Nat = 600;
   transient let default_frontend_update_countdown_sec : Nat = 300;
+  transient let default_swap_slippage_tolerance : Float = 0.01;
 
   // Runtime storage for user settings
   transient var user_setting_principal_color_coding : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
@@ -256,6 +258,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   transient var user_setting_frontend_auto_update_enabled : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
   transient var user_setting_frontend_update_check_interval_sec : HashMap.HashMap<Principal, Nat> = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
   transient var user_setting_frontend_update_countdown_sec : HashMap.HashMap<Principal, Nat> = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
+  transient var user_setting_swap_slippage_tolerance : HashMap.HashMap<Principal, Float> = HashMap.HashMap<Principal, Float>(100, Principal.equal, Principal.hash);
 
   // Add after other runtime variables
   private transient var blacklisted_words = HashMap.fromIter<Text, Bool>(
@@ -429,6 +432,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         case (?value) value;
         case null default_frontend_update_countdown_sec;
       };
+      swap_slippage_tolerance = switch (user_setting_swap_slippage_tolerance.get(user)) {
+        case (?value) value;
+        case null default_swap_slippage_tolerance;
+      };
     }
   };
 
@@ -489,6 +496,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       case (?value) { user_setting_frontend_update_countdown_sec.put(user, value) };
       case null {};
     };
+    switch (update.swap_slippage_tolerance) {
+      case (?value) { user_setting_swap_slippage_tolerance.put(user, value) };
+      case null {};
+    };
   };
 
   // User settings endpoints
@@ -509,6 +520,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         frontend_auto_update_enabled = default_frontend_auto_update_enabled;
         frontend_update_check_interval_sec = default_frontend_update_check_interval_sec;
         frontend_update_countdown_sec = default_frontend_update_countdown_sec;
+        swap_slippage_tolerance = default_swap_slippage_tolerance;
       };
     };
     get_user_settings(caller)
@@ -3220,6 +3232,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     stable_user_setting_frontend_auto_update_enabled := Iter.toArray(user_setting_frontend_auto_update_enabled.entries());
     stable_user_setting_frontend_update_check_interval_sec := Iter.toArray(user_setting_frontend_update_check_interval_sec.entries());
     stable_user_setting_frontend_update_countdown_sec := Iter.toArray(user_setting_frontend_update_countdown_sec.entries());
+    stable_user_setting_swap_slippage_tolerance := Iter.toArray(user_setting_swap_slippage_tolerance.entries());
   };
 
   // initialize ephemeral state and empty stable arrays to save memory
@@ -3409,6 +3422,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         user_setting_frontend_update_countdown_sec.put(user, value);
       };
       stable_user_setting_frontend_update_countdown_sec := [];
+      for ((user, value) in stable_user_setting_swap_slippage_tolerance.vals()) {
+        user_setting_swap_slippage_tolerance.put(user, value);
+      };
+      stable_user_setting_swap_slippage_tolerance := [];
 
       // Update next_project_id to be one more than the highest existing ID
       var max_project_id : Nat = 0;
