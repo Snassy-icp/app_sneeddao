@@ -17,6 +17,7 @@ import { setPrincipalNickname, setPrincipalNameFor } from '../utils/BackendUtils
 import { FaGasPump, FaRobot, FaBrain, FaArrowRight, FaSync, FaChevronDown, FaChevronUp, FaShieldAlt, FaWallet } from 'react-icons/fa';
 import PrincipalInput from '../components/PrincipalInput';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
+import { encodeIcrcAccount } from '@dfinity/ledger-icrc';
 import { getCyclesColor, getNeuronManagerSettings } from '../utils/NeuronManagerSettings';
 
 // Custom CSS for animations
@@ -5614,6 +5615,85 @@ function IcpNeuronManager() {
                                                         {formatIcp(Number(neuronInfo.stake_e8s))} ICP
                                                     </div>
                                                 </div>
+                                            </div>
+                                        )}
+
+                                        {/* Neuron Deposit Account - for direct ICP transfers */}
+                                        {fullNeuron && fullNeuron.account && (
+                                            <div style={{ 
+                                                background: `${theme.colors.accent}08`, 
+                                                border: `1px solid ${theme.colors.border}`,
+                                                padding: '14px', 
+                                                borderRadius: '8px', 
+                                                marginBottom: '20px',
+                                            }}>
+                                                <div style={{ color: theme.colors.primaryText, fontSize: '13px', fontWeight: '600', marginBottom: '8px' }}>
+                                                    Neuron Deposit Account
+                                                </div>
+                                                <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '10px', marginTop: 0 }}>
+                                                    Send ICP directly to this account to increase the neuron's stake. If the "Refresh Stake" chore is enabled, deposited ICP will be automatically picked up and staked. Otherwise, use the "Refresh Stake from NNS" button below after depositing.
+                                                </p>
+                                                {(() => {
+                                                    try {
+                                                        const governancePrincipal = Principal.fromText(NNS_GOVERNANCE_CANISTER_ID);
+                                                        const subaccount = fullNeuron.account instanceof Uint8Array 
+                                                            ? fullNeuron.account 
+                                                            : new Uint8Array(fullNeuron.account);
+                                                        const accountStr = encodeIcrcAccount({ 
+                                                            owner: governancePrincipal, 
+                                                            subaccount: subaccount 
+                                                        });
+                                                        return (
+                                                            <div style={{ 
+                                                                display: 'flex', 
+                                                                alignItems: 'center', 
+                                                                gap: '8px',
+                                                                background: theme.colors.cardBg || theme.colors.background,
+                                                                padding: '10px 12px',
+                                                                borderRadius: '6px',
+                                                                border: `1px solid ${theme.colors.border}`,
+                                                            }}>
+                                                                <code style={{ 
+                                                                    color: theme.colors.primaryText, 
+                                                                    fontSize: '11px', 
+                                                                    fontFamily: 'monospace',
+                                                                    wordBreak: 'break-all',
+                                                                    flex: 1,
+                                                                    lineHeight: '1.4',
+                                                                }}>
+                                                                    {accountStr}
+                                                                </code>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        copyToClipboard(accountStr);
+                                                                        setSuccess('Neuron deposit account copied to clipboard!');
+                                                                        setTimeout(() => setSuccess(''), 3000);
+                                                                    }}
+                                                                    title="Copy account to clipboard"
+                                                                    style={{
+                                                                        background: theme.colors.accent,
+                                                                        color: '#fff',
+                                                                        border: 'none',
+                                                                        borderRadius: '4px',
+                                                                        padding: '6px 10px',
+                                                                        fontSize: '11px',
+                                                                        cursor: 'pointer',
+                                                                        whiteSpace: 'nowrap',
+                                                                        flexShrink: 0,
+                                                                    }}
+                                                                >
+                                                                    Copy
+                                                                </button>
+                                                            </div>
+                                                        );
+                                                    } catch (e) {
+                                                        return (
+                                                            <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
+                                                                Unable to compute account: {e.message}
+                                                            </div>
+                                                        );
+                                                    }
+                                                })()}
                                             </div>
                                         )}
                                         
