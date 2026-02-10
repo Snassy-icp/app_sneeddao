@@ -140,7 +140,8 @@ Each bot:
 
 ```motoko
 type ChoreConfig = {
-    enabled: Bool;              // Whether the scheduler should fire
+    enabled: Bool;              // true = started (Running or Paused), false = Stopped
+    paused: Bool;               // true = Paused (schedule preserved), false = Running or Stopped
     intervalSeconds: Nat;       // How often the scheduler fires
     taskTimeoutSeconds: Nat;    // Max seconds a task can run before considered dead
 };
@@ -221,6 +222,7 @@ type ChoreStatus = {
     choreName: Text;
     choreDescription: Text;
     enabled: Bool;
+    paused: Bool;
     intervalSeconds: Nat;
     taskTimeoutSeconds: Nat;
 
@@ -298,15 +300,44 @@ engine.resumeTimers<system>()    // Start/resume schedulers and any interrupted 
 engine.cancelAllTimers()         // Cancel every active timer (emergency use)
 ```
 
-### 5.4 Admin Control
+### 5.4 Chore Lifecycle
+
+Chores have three states: **Stopped**, **Running**, and **Paused**.
+
+```
+  ┌─────────┐   start()    ┌─────────┐   pause()   ┌────────┐
+  │ Stopped │ ──────────▶ │ Running │ ──────────▶ │ Paused │
+  └─────────┘              └─────────┘              └────────┘
+       ▲                        │                       │
+       │         stop()         │        stop()         │
+       └────────────────────────┘                       │
+       └────────────────────────────────────────────────┘
+                                ▲       resume()        │
+                                └───────────────────────┘
+```
+
+| Action | From | To | Behavior |
+|--------|------|----|----------|
+| **Start** | Stopped | Running | Run the chore immediately AND schedule the next run at now + interval. |
+| **Pause** | Running | Paused | Suspend schedule (cancel scheduler timer) but preserve `nextScheduledRunAt`. Stops conductor/task if active. |
+| **Resume** | Paused | Running | Re-activate preserved schedule. If `nextScheduledRunAt` has already passed, run immediately. |
+| **Stop** | Running/Paused | Stopped | Cancel everything, clear schedule (`nextScheduledRunAt = null`). Full reset. |
+| **Run Now** | Running/Paused | (same) | Manual one-off trigger. Does not affect the schedule. Only available when conductor is not already active. |
+
+The `paused` flag is stored in `ChoreConfig` alongside `enabled`:
+- `enabled=false, paused=false` → **Stopped**
+- `enabled=true, paused=false` → **Running**
+- `enabled=true, paused=true` → **Paused**
 
 ```motoko
-engine.setEnabled<system>(choreId, true)     // Enable/disable (starts/stops scheduler)
+engine.start<system>(choreId)               // Start: run now + schedule next (Stopped → Running)
+engine.pause(choreId)                        // Pause: suspend schedule, preserve nextScheduledRunAt
+engine.resume<system>(choreId)               // Resume: re-activate schedule (Paused → Running)
+engine.stop(choreId)                         // Stop: cancel all, clear schedule (→ Stopped)
+engine.trigger<system>(choreId)              // Manual one-off trigger (does not change state)
 engine.setInterval(choreId, 604800)          // Change schedule interval (seconds)
 engine.setTaskTimeout(choreId, 300)          // Change task timeout (seconds)
-engine.trigger<system>(choreId)              // Force-run now (starts conductor immediately)
-engine.stopChore(choreId)                    // Stop a running chore gracefully
-engine.stopAllChores()                       // Stop all running chores
+engine.stopAllChores()                       // Stop all chores
 ```
 
 ### 5.5 Status Queries

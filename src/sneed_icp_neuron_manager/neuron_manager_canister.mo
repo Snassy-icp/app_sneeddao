@@ -1266,10 +1266,22 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         choreEngine.getAllConfigs()
     };
 
-    // Enable or disable a chore
-    public shared ({ caller }) func setChoreEnabled(choreId: Text, enabled: Bool): async () {
+    // Start a chore: run immediately + schedule next run (Stopped → Running)
+    public shared ({ caller }) func startChore(choreId: Text): async () {
         assertPermission(caller, T.NeuronPermission.ManageChores);
-        choreEngine.setEnabled<system>(choreId, enabled);
+        choreEngine.start<system>(choreId);
+    };
+
+    // Pause a running chore: suspend schedule but preserve next-run time (Running → Paused)
+    public shared ({ caller }) func pauseChore(choreId: Text): async () {
+        assertPermission(caller, T.NeuronPermission.ManageChores);
+        choreEngine.pause(choreId);
+    };
+
+    // Resume a paused chore: re-activate preserved schedule (Paused → Running)
+    public shared ({ caller }) func resumeChore(choreId: Text): async () {
+        assertPermission(caller, T.NeuronPermission.ManageChores);
+        choreEngine.resume<system>(choreId);
     };
 
     // Change the schedule interval for a chore (in seconds)
@@ -1290,10 +1302,10 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         choreEngine.trigger<system>(choreId);
     };
 
-    // Stop a running chore (sets stop flag + cancels timers)
+    // Stop a chore completely: cancel everything, clear schedule (Running/Paused → Stopped)
     public shared ({ caller }) func stopChore(choreId: Text): async () {
         assertPermission(caller, T.NeuronPermission.ManageChores);
-        choreEngine.stopChore(choreId);
+        choreEngine.stop(choreId);
     };
 
     // Stop all running chores

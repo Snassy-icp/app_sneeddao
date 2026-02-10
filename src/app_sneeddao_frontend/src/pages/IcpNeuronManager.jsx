@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
@@ -106,7 +106,8 @@ const CHORE_DEADLINES = {
 // --- Derive lamp state for each timer level ---
 
 function getSchedulerLampState(chore) {
-    if (!chore.enabled) return { state: LAMP_OFF, label: 'Disabled' };
+    if (!chore.enabled) return { state: LAMP_OFF, label: 'Stopped' };
+    if (chore.paused) return { state: LAMP_OFF, label: 'Paused' };
     if (chore.stopRequested) return { state: LAMP_ERROR, label: 'Stop requested' };
 
     const isScheduled = 'Scheduled' in chore.schedulerStatus;
@@ -1351,6 +1352,37 @@ function IcpNeuronManager() {
         }
     };
 
+    // Load bot chore statuses and configs
+    // silent=true skips the loading indicator (for background auto-refresh)
+    const loadChoreData = useCallback(async (silent = false) => {
+        if (!canisterId) return;
+        if (!silent) {
+            setLoadingChores(true);
+            setChoreError('');
+        }
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const manager = createManagerActor(canisterId, { agent });
+            const [statuses, configs] = await Promise.all([
+                manager.getChoreStatuses(),
+                manager.getChoreConfigs(),
+            ]);
+            setChoreStatuses(statuses);
+            setChoreConfigs(configs);
+        } catch (err) {
+            console.error('Error loading chore data:', err);
+            if (!silent) {
+                setChoreStatuses([]);
+                setChoreConfigs([]);
+            }
+        } finally {
+            if (!silent) setLoadingChores(false);
+        }
+    }, [canisterId, getAgent]);
+
     useEffect(() => {
         if (isAuthenticated && identity && canisterId) {
             fetchManagerData();
@@ -1362,6 +1394,73 @@ function IcpNeuronManager() {
         // Fetch official versions regardless of auth (public data)
         fetchOfficialVersions();
     }, [isAuthenticated, identity, canisterId, fetchManagerData, fetchKnownNeurons, fetchCanisterStatus, fetchConversionRate, fetchOfficialVersions, loadChoreData]);
+
+    // Fetch chore data when switching to the chores tab
+    useEffect(() => {
+        if (canisterActiveTab === 'chores' && canisterSectionExpanded) {
+            loadChoreData();
+        }
+    }, [canisterActiveTab, canisterSectionExpanded, loadChoreData]);
+
+    // --- Smart auto-refresh for chore statuses ---
+    // Each time choreStatuses changes, this effect decides when to fetch next.
+    // loadChoreData(true) updates choreStatuses, which re-triggers this effect,
+    // creating a self-sustaining refresh loop with adaptive intervals.
+    const choreRefreshTimerRef = useRef(null);
+
+    useEffect(() => {
+        const clearTimer = () => {
+            if (choreRefreshTimerRef.current) {
+                clearTimeout(choreRefreshTimerRef.current);
+                choreRefreshTimerRef.current = null;
+            }
+        };
+
+        if (!canisterId || !isAuthenticated || choreStatuses.length === 0) {
+            clearTimer();
+            return clearTimer;
+        }
+
+        // Determine if any conductor is currently active
+        const anyActive = choreStatuses.some(
+            chore => !('Idle' in chore.conductorStatus)
+        );
+
+        let delayMs;
+
+        if (anyActive) {
+            // A chore is actively running — poll every 5 seconds
+            delayMs = 5_000;
+        } else {
+            // No conductor active — find the soonest nextScheduledRunAt
+            let soonestMs = Infinity;
+            for (const chore of choreStatuses) {
+                if (chore.nextScheduledRunAt && chore.nextScheduledRunAt.length > 0) {
+                    const nextMs = Number(chore.nextScheduledRunAt[0]) / 1_000_000;
+                    if (nextMs > 0 && nextMs < soonestMs) {
+                        soonestMs = nextMs;
+                    }
+                }
+            }
+
+            const nowMs = Date.now();
+            if (soonestMs !== Infinity && soonestMs > nowMs) {
+                // Wake up shortly after the next chore is due to fire
+                // Cap at 60 seconds so we don't sleep for days
+                delayMs = Math.min(soonestMs - nowMs + 3_000, 60_000);
+            } else {
+                // Fallback: lazy background check every 60 seconds
+                delayMs = 60_000;
+            }
+        }
+
+        clearTimer();
+        choreRefreshTimerRef.current = setTimeout(() => {
+            loadChoreData(true); // silent refresh — updates choreStatuses, re-triggers this effect
+        }, delayMs);
+
+        return clearTimer;
+    }, [canisterId, isAuthenticated, choreStatuses, loadChoreData]);
 
     // Auto-expand canister section when manager is invalid (for easy access to upgrade/reinstall)
     useEffect(() => {
@@ -1409,40 +1508,6 @@ function IcpNeuronManager() {
             loadHotkeyPermissions();
         }
     }, [canisterActiveTab, canisterSectionExpanded, loadHotkeyPermissions]);
-
-    // Load bot chore statuses and configs
-    const loadChoreData = useCallback(async () => {
-        if (!canisterId) return;
-        setLoadingChores(true);
-        setChoreError('');
-        try {
-            const agent = getAgent();
-            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                await agent.fetchRootKey();
-            }
-            const manager = createManagerActor(canisterId, { agent });
-            const [statuses, configs] = await Promise.all([
-                manager.getChoreStatuses(),
-                manager.getChoreConfigs(),
-            ]);
-            setChoreStatuses(statuses);
-            setChoreConfigs(configs);
-        } catch (err) {
-            console.error('Error loading chore data:', err);
-            // Silently fail for older bots that don't support chores
-            setChoreStatuses([]);
-            setChoreConfigs([]);
-        } finally {
-            setLoadingChores(false);
-        }
-    }, [canisterId, getAgent]);
-
-    // Fetch chore data when switching to the chores tab
-    useEffect(() => {
-        if (canisterActiveTab === 'chores' && canisterSectionExpanded) {
-            loadChoreData();
-        }
-    }, [canisterActiveTab, canisterSectionExpanded, loadChoreData]);
 
     // Fetch the current user's botkey permissions from the canister
     const fetchUserPermissions = useCallback(async () => {
@@ -4932,6 +4997,8 @@ function IcpNeuronManager() {
 
                                 const isRunning = !('Idle' in chore.conductorStatus);
                                 const isEnabled = chore.enabled;
+                                const isPaused = chore.paused;
+                                const isStopped = !isEnabled;
 
                                 return (
                                     <div key={chore.choreId}>
@@ -4953,9 +5020,9 @@ function IcpNeuronManager() {
                                             </h3>
                                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
                                                 <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
-                                                    <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Enabled</div>
-                                                    <div style={{ fontSize: '0.9rem', color: isEnabled ? (theme.colors.success || '#22c55e') : theme.colors.secondaryText, fontWeight: '600' }}>
-                                                        {isEnabled ? 'Yes' : 'No'}
+                                                    <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>State</div>
+                                                    <div style={{ fontSize: '0.9rem', fontWeight: '600', color: isStopped ? theme.colors.secondaryText : isPaused ? '#f59e0b' : (theme.colors.success || '#22c55e') }}>
+                                                        {isStopped ? 'Stopped' : isPaused ? 'Paused' : 'Running'}
                                                     </div>
                                                 </div>
                                                 <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
@@ -5043,15 +5110,14 @@ function IcpNeuronManager() {
                                                 Controls
                                             </h3>
                                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
-                                                {/* Enable / Disable */}
+                                                {/* Start — shown when Stopped */}
+                                                {isStopped && (
                                                 <button
                                                     style={{
                                                         ...buttonStyle,
-                                                        background: isEnabled
-                                                            ? `${theme.colors.error}20`
-                                                            : `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
-                                                        color: isEnabled ? theme.colors.error : '#fff',
-                                                        border: isEnabled ? `1px solid ${theme.colors.error}40` : 'none',
+                                                        background: `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
+                                                        color: '#fff',
+                                                        border: 'none',
                                                         opacity: savingChore ? 0.6 : 1,
                                                     }}
                                                     disabled={savingChore}
@@ -5065,29 +5131,31 @@ function IcpNeuronManager() {
                                                                 await agent.fetchRootKey();
                                                             }
                                                             const manager = createManagerActor(canisterId, { agent });
-                                                            await manager.setChoreEnabled(chore.choreId, !isEnabled);
-                                                            setChoreSuccess(`Chore ${!isEnabled ? 'enabled' : 'disabled'} successfully.`);
-                                                            await loadChoreData();
+                                                            await manager.startChore(chore.choreId);
+                                                            setChoreSuccess('Chore started! Running now and scheduled for next interval.');
+                                                            setTimeout(() => loadChoreData(), 2000);
                                                         } catch (err) {
-                                                            setChoreError('Failed to update: ' + err.message);
+                                                            setChoreError('Failed to start: ' + err.message);
                                                         } finally {
                                                             setSavingChore(false);
                                                         }
                                                     }}
                                                 >
-                                                    {isEnabled ? 'Disable' : 'Enable'}
+                                                    Start
                                                 </button>
+                                                )}
 
-                                                {/* Trigger Now */}
+                                                {/* Pause — shown when Running (enabled, not paused) */}
+                                                {isEnabled && !isPaused && (
                                                 <button
                                                     style={{
                                                         ...buttonStyle,
-                                                        background: `${neuronPrimary}15`,
-                                                        color: neuronPrimary,
-                                                        border: `1px solid ${neuronPrimary}30`,
-                                                        opacity: (savingChore || isRunning) ? 0.6 : 1,
+                                                        background: '#f59e0b15',
+                                                        color: '#f59e0b',
+                                                        border: '1px solid #f59e0b40',
+                                                        opacity: savingChore ? 0.6 : 1,
                                                     }}
-                                                    disabled={savingChore || isRunning}
+                                                    disabled={savingChore}
                                                     onClick={async () => {
                                                         setSavingChore(true);
                                                         setChoreError('');
@@ -5098,21 +5166,57 @@ function IcpNeuronManager() {
                                                                 await agent.fetchRootKey();
                                                             }
                                                             const manager = createManagerActor(canisterId, { agent });
-                                                            await manager.triggerChore(chore.choreId);
-                                                            setChoreSuccess('Chore triggered. It will start running shortly.');
-                                                            setTimeout(() => loadChoreData(), 2000);
+                                                            await manager.pauseChore(chore.choreId);
+                                                            setChoreSuccess('Chore paused. Schedule preserved — resume to continue.');
+                                                            await loadChoreData();
                                                         } catch (err) {
-                                                            setChoreError('Failed to trigger: ' + err.message);
+                                                            setChoreError('Failed to pause: ' + err.message);
                                                         } finally {
                                                             setSavingChore(false);
                                                         }
                                                     }}
                                                 >
-                                                    Run Now
+                                                    Pause
                                                 </button>
+                                                )}
 
-                                                {/* Stop */}
-                                                {isRunning && (
+                                                {/* Resume — shown when Paused */}
+                                                {isPaused && (
+                                                <button
+                                                    style={{
+                                                        ...buttonStyle,
+                                                        background: `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
+                                                        color: '#fff',
+                                                        border: 'none',
+                                                        opacity: savingChore ? 0.6 : 1,
+                                                    }}
+                                                    disabled={savingChore}
+                                                    onClick={async () => {
+                                                        setSavingChore(true);
+                                                        setChoreError('');
+                                                        setChoreSuccess('');
+                                                        try {
+                                                            const agent = getAgent();
+                                                            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                                                                await agent.fetchRootKey();
+                                                            }
+                                                            const manager = createManagerActor(canisterId, { agent });
+                                                            await manager.resumeChore(chore.choreId);
+                                                            setChoreSuccess('Chore resumed! Schedule re-activated.');
+                                                            setTimeout(() => loadChoreData(), 2000);
+                                                        } catch (err) {
+                                                            setChoreError('Failed to resume: ' + err.message);
+                                                        } finally {
+                                                            setSavingChore(false);
+                                                        }
+                                                    }}
+                                                >
+                                                    Resume
+                                                </button>
+                                                )}
+
+                                                {/* Stop — shown when Running or Paused */}
+                                                {isEnabled && (
                                                 <button
                                                     style={{
                                                         ...buttonStyle,
@@ -5133,8 +5237,8 @@ function IcpNeuronManager() {
                                                             }
                                                             const manager = createManagerActor(canisterId, { agent });
                                                             await manager.stopChore(chore.choreId);
-                                                            setChoreSuccess('Stop requested. The chore will halt shortly.');
-                                                            setTimeout(() => loadChoreData(), 2000);
+                                                            setChoreSuccess('Chore stopped. Schedule cleared.');
+                                                            await loadChoreData();
                                                         } catch (err) {
                                                             setChoreError('Failed to stop: ' + err.message);
                                                         } finally {
@@ -5143,6 +5247,41 @@ function IcpNeuronManager() {
                                                     }}
                                                 >
                                                     Stop
+                                                </button>
+                                                )}
+
+                                                {/* Run Now — available when enabled and conductor not active */}
+                                                {isEnabled && !isRunning && (
+                                                <button
+                                                    style={{
+                                                        ...buttonStyle,
+                                                        background: `${neuronPrimary}15`,
+                                                        color: neuronPrimary,
+                                                        border: `1px solid ${neuronPrimary}30`,
+                                                        opacity: savingChore ? 0.6 : 1,
+                                                    }}
+                                                    disabled={savingChore}
+                                                    onClick={async () => {
+                                                        setSavingChore(true);
+                                                        setChoreError('');
+                                                        setChoreSuccess('');
+                                                        try {
+                                                            const agent = getAgent();
+                                                            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                                                                await agent.fetchRootKey();
+                                                            }
+                                                            const manager = createManagerActor(canisterId, { agent });
+                                                            await manager.triggerChore(chore.choreId);
+                                                            setChoreSuccess('Chore triggered manually. It will start running shortly.');
+                                                            setTimeout(() => loadChoreData(), 2000);
+                                                        } catch (err) {
+                                                            setChoreError('Failed to trigger: ' + err.message);
+                                                        } finally {
+                                                            setSavingChore(false);
+                                                        }
+                                                    }}
+                                                >
+                                                    Run Now
                                                 </button>
                                                 )}
 

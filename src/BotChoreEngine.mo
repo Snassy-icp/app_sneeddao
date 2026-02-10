@@ -67,7 +67,8 @@ module {
             );
             if (configExists == null) {
                 let newConfig: BotChoreTypes.ChoreConfig = {
-                    enabled = false; // Disabled by default — admin must enable
+                    enabled = false; // Stopped by default — admin must start
+                    paused = false;
                     intervalSeconds = def.defaultIntervalSeconds;
                     taskTimeoutSeconds = def.defaultTaskTimeoutSeconds;
                 };
@@ -143,7 +144,7 @@ module {
 
                 let config = getConfigOrDefault(choreId);
 
-                if (config.enabled) {
+                if (config.enabled and not config.paused) {
                     let state = getStateOrDefault(choreId);
 
                     // Resume conductor if it was active
@@ -180,18 +181,193 @@ module {
         // ADMIN CONTROL
         // ============================================
 
-        /// Enable or disable a chore. When enabled, starts the scheduler.
-        /// When disabled, stops any running activity.
-        public func setEnabled<system>(choreId: Text, enabled: Bool) {
+        /// Start a chore: run it immediately AND schedule the next run.
+        /// Transitions from Stopped → Running.
+        /// If already running (not paused), this is a no-op.
+        /// If paused, this unpauses and triggers immediately.
+        public func start<system>(choreId: Text) {
+            let config = getConfigOrDefault(choreId);
+            
+            // Set enabled=true, paused=false
             updateConfig(choreId, func(c: BotChoreTypes.ChoreConfig): BotChoreTypes.ChoreConfig {
-                { c with enabled = enabled }
+                { c with enabled = true; paused = false }
             });
 
-            if (enabled) {
-                startScheduler<system>(choreId);
-            } else {
-                stopChore(choreId);
+            // Clear any stop request
+            updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
+                { s with stopRequested = false }
+            });
+
+            // Trigger conductor immediately (if not already running)
+            let state = getStateOrDefault(choreId);
+            if (not state.conductorActive) {
+                updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
+                    {
+                        s with
+                        conductorActive = true;
+                        conductorStartedAt = ?Time.now();
+                        conductorInvocationCount = 0;
+                        lastCompletedTaskId = null;
+                        lastTaskSucceeded = null;
+                        lastTaskError = null;
+                    }
+                });
+                scheduleConductorTick<system>(choreId, 0);
             };
+
+            // Schedule the next run
+            let now = Time.now();
+            let intervalNanos = config.intervalSeconds * 1_000_000_000;
+            let nextRunAt = now + intervalNanos;
+
+            let intervalSecs = config.intervalSeconds;
+            let tid = Timer.setTimer<system>(#seconds intervalSecs, func(): async () {
+                await schedulerFired<system>(choreId);
+            });
+
+            updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
+                { s with schedulerTimerId = ?tid; nextScheduledRunAt = ?nextRunAt }
+            });
+        };
+
+        /// Pause a running chore: suspend the schedule but preserve nextScheduledRunAt.
+        /// Stops conductor/task if currently active. Transitions Running → Paused.
+        public func pause(choreId: Text) {
+            let config = getConfigOrDefault(choreId);
+            if (not config.enabled or config.paused) return; // Already paused or stopped
+
+            updateConfig(choreId, func(c: BotChoreTypes.ChoreConfig): BotChoreTypes.ChoreConfig {
+                { c with paused = true }
+            });
+
+            // Cancel scheduler timer but keep nextScheduledRunAt
+            let state = getStateOrDefault(choreId);
+            switch (state.schedulerTimerId) {
+                case (?tid) { Timer.cancelTimer(tid) };
+                case null {};
+            };
+            updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
+                { s with schedulerTimerId = null }
+            });
+
+            // Stop conductor/task if running
+            if (state.conductorActive) {
+                stopRunningActivity(choreId);
+            };
+        };
+
+        /// Resume a paused chore: re-activate the preserved schedule.
+        /// If nextScheduledRunAt has already passed, triggers immediately.
+        /// Transitions Paused → Running.
+        public func resume<system>(choreId: Text) {
+            let config = getConfigOrDefault(choreId);
+            if (not config.enabled or not config.paused) return; // Not paused
+
+            updateConfig(choreId, func(c: BotChoreTypes.ChoreConfig): BotChoreTypes.ChoreConfig {
+                { c with paused = false }
+            });
+
+            // Clear any stop request
+            updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
+                { s with stopRequested = false }
+            });
+
+            // Check if the preserved schedule time has passed
+            let state = getStateOrDefault(choreId);
+            switch (state.nextScheduledRunAt) {
+                case (?nextRun) {
+                    let now = Time.now();
+                    if (nextRun <= now) {
+                        // Past due — run immediately and schedule next
+                        if (not state.conductorActive) {
+                            updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
+                                {
+                                    s with
+                                    conductorActive = true;
+                                    conductorStartedAt = ?Time.now();
+                                    conductorInvocationCount = 0;
+                                    lastCompletedTaskId = null;
+                                    lastTaskSucceeded = null;
+                                    lastTaskError = null;
+                                }
+                            });
+                            scheduleConductorTick<system>(choreId, 0);
+                        };
+                        // Schedule the next regular run
+                        let intervalSecs = config.intervalSeconds;
+                        let intervalNanos = intervalSecs * 1_000_000_000;
+                        let nextRunAt = now + intervalNanos;
+                        let tid = Timer.setTimer<system>(#seconds intervalSecs, func(): async () {
+                            await schedulerFired<system>(choreId);
+                        });
+                        updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
+                            { s with schedulerTimerId = ?tid; nextScheduledRunAt = ?nextRunAt }
+                        });
+                    } else {
+                        // Future time — just re-schedule the timer for that time
+                        startScheduler<system>(choreId);
+                    };
+                };
+                case null {
+                    // No preserved schedule — start fresh scheduler
+                    startScheduler<system>(choreId);
+                };
+            };
+        };
+
+        /// Stop a chore completely: cancel everything and clear the schedule.
+        /// Transitions Running or Paused → Stopped.
+        public func stop(choreId: Text) {
+            updateConfig(choreId, func(c: BotChoreTypes.ChoreConfig): BotChoreTypes.ChoreConfig {
+                { c with enabled = false; paused = false }
+            });
+
+            // Cancel scheduler timer and clear schedule
+            let state = getStateOrDefault(choreId);
+            switch (state.schedulerTimerId) {
+                case (?tid) { Timer.cancelTimer(tid) };
+                case null {};
+            };
+            updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
+                { s with schedulerTimerId = null; nextScheduledRunAt = null }
+            });
+
+            // Stop conductor/task if running
+            if (state.conductorActive) {
+                stopRunningActivity(choreId);
+            };
+        };
+
+        /// Internal: stop running conductor and task activity for a chore.
+        func stopRunningActivity(choreId: Text) {
+            let state = getStateOrDefault(choreId);
+
+            // Cancel conductor timer
+            switch (state.conductorTimerId) {
+                case (?tid) { Timer.cancelTimer(tid) };
+                case null {};
+            };
+            // Cancel task timer
+            switch (state.taskTimerId) {
+                case (?tid) { Timer.cancelTimer(tid) };
+                case null {};
+            };
+
+            // Mark inactive
+            updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
+                {
+                    s with
+                    stopRequested = true;
+                    conductorActive = false;
+                    conductorTimerId = null;
+                    taskActive = false;
+                    taskTimerId = null;
+                    currentTaskId = null;
+                }
+            });
+
+            // Clear pending tasks
+            ignore consumePendingTask(choreId);
         };
 
         /// Change the schedule interval for a chore (in seconds).
@@ -234,43 +410,11 @@ module {
             scheduleConductorTick<system>(choreId, 0);
         };
 
-        /// Stop a running chore gracefully. Sets the stop flag and cancels timers.
-        /// The stop flag prevents any running timer from rescheduling itself.
-        public func stopChore(choreId: Text) {
-            let state = getStateOrDefault(choreId);
-
-            // Cancel active timers
-            switch (state.conductorTimerId) {
-                case (?tid) { Timer.cancelTimer(tid) };
-                case null {};
-            };
-            switch (state.taskTimerId) {
-                case (?tid) { Timer.cancelTimer(tid) };
-                case null {};
-            };
-
-            // Set stop flag and mark inactive
-            updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
-                {
-                    s with
-                    stopRequested = true;
-                    conductorActive = false;
-                    conductorTimerId = null;
-                    taskActive = false;
-                    taskTimerId = null;
-                    currentTaskId = null;
-                }
-            });
-
-            // Clear any pending task
-            ignore consumePendingTask(choreId);
-        };
-
-        /// Stop all running chores.
+        /// Stop all chores (full stop — disable + clear schedules).
         public func stopAllChores() {
             let states = stateAccessor.getStates();
             for ((choreId, _state) in states.vals()) {
-                stopChore(choreId);
+                stop(choreId);
             };
         };
 
@@ -392,8 +536,8 @@ module {
                 scheduleConductorTick<system>(choreId, 0);
             };
 
-            // Reschedule for next interval
-            if (config.enabled) {
+            // Reschedule for next interval (only if enabled and not paused)
+            if (config.enabled and not config.paused) {
                 let now = Time.now();
                 let interval = config.intervalSeconds;
                 let intervalNanos = interval * 1_000_000_000;
@@ -740,7 +884,7 @@ module {
             for ((id, config) in configs.vals()) {
                 if (id == choreId) return config;
             };
-            { enabled = false; intervalSeconds = 3600; taskTimeoutSeconds = 300 }
+            { enabled = false; paused = false; intervalSeconds = 3600; taskTimeoutSeconds = 300 }
         };
 
         /// Get runtime state for a chore, or empty state if not found.
@@ -839,6 +983,7 @@ module {
                 choreName = def.name;
                 choreDescription = def.description;
                 enabled = config.enabled;
+                paused = config.paused;
                 intervalSeconds = config.intervalSeconds;
                 taskTimeoutSeconds = config.taskTimeoutSeconds;
 

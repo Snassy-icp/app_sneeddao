@@ -22,8 +22,14 @@ module {
     // ============================================
 
     /// Per-chore configuration. Stored in stable memory, settable by admins.
+    ///
+    /// Lifecycle states:
+    ///   - Stopped:  enabled=false, paused=false — no schedule, no timers.
+    ///   - Running:  enabled=true,  paused=false — scheduler active, chore runs on schedule.
+    ///   - Paused:   enabled=true,  paused=true  — scheduler suspended, nextScheduledRunAt preserved.
     public type ChoreConfig = {
-        enabled: Bool;              // Whether the scheduler should fire
+        enabled: Bool;              // Whether the chore is started (true) or stopped (false)
+        paused: Bool;               // Whether the chore is paused (schedule preserved but suspended)
         intervalSeconds: Nat;       // How often the scheduler fires (in seconds)
         taskTimeoutSeconds: Nat;    // Max seconds a task can run before considered dead
     };
@@ -197,6 +203,7 @@ module {
         choreName: Text;
         choreDescription: Text;
         enabled: Bool;
+        paused: Bool;
         intervalSeconds: Nat;
         taskTimeoutSeconds: Nat;
 
