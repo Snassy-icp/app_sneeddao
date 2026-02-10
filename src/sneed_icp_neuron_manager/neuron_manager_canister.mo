@@ -9,8 +9,12 @@ import Nat8 "mo:base/Nat8";
 import Buffer "mo:base/Buffer";
 import Text "mo:base/Text";
 
+import Nat "mo:base/Nat";
+
 import T "Types";
 import BotkeyPermissions "../BotkeyPermissions";
+import BotChoreTypes "../BotChoreTypes";
+import BotChoreEngine "../BotChoreEngine";
 
 // This is the actual canister that gets deployed for each user
 // No constructor arguments needed - access control uses IC canister controllers
@@ -33,6 +37,10 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // We store numeric IDs (not variants) so we can add new permission types
     // in future upgrades without needing stable variable migration
     var hotkeyPermissions: [(Principal, [Nat])] = [];
+
+    // Bot Chores: stable state for the chore system
+    var choreConfigs: [(Text, BotChoreTypes.ChoreConfig)] = [];
+    var choreStates: [(Text, BotChoreTypes.ChoreRuntimeState)] = [];
 
     // ============================================
     // PERMISSION SYSTEM (using reusable BotkeyPermissions engine)
@@ -59,6 +67,8 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         (15, #ManageVisibility),
         (16, #WithdrawFunds),
         (17, #ViewNeuron),
+        (18, #ManageChores),
+        (19, #ViewChores),
     ];
 
     // Bot-specific variant-to-ID conversion
@@ -82,6 +92,8 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             case (#ManageVisibility) { 15 };
             case (#WithdrawFunds) { 16 };
             case (#ViewNeuron) { 17 };
+            case (#ManageChores) { 18 };
+            case (#ViewChores) { 19 };
         }
     };
 
@@ -106,6 +118,8 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             case (15) { ?#ManageVisibility };
             case (16) { ?#WithdrawFunds };
             case (17) { ?#ViewNeuron };
+            case (18) { ?#ManageChores };
+            case (19) { ?#ViewChores };
             case (_)  { null };
         }
     };
@@ -116,6 +130,22 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         variantToId = permissionVariantToId;
         idToVariant = permissionIdToVariant;
     });
+
+    // ============================================
+    // BOT CHORES SYSTEM (state declarations)
+    // ============================================
+
+    // Instantiate the chore engine (transient — re-created on each canister start)
+    transient let choreEngine = BotChoreEngine.Engine({
+        getConfigs = func(): [(Text, BotChoreTypes.ChoreConfig)] { choreConfigs };
+        setConfigs = func(c: [(Text, BotChoreTypes.ChoreConfig)]): () { choreConfigs := c };
+        getStates = func(): [(Text, BotChoreTypes.ChoreRuntimeState)] { choreStates };
+        setStates = func(s: [(Text, BotChoreTypes.ChoreRuntimeState)]): () { choreStates := s };
+    });
+
+    // Mutable state for chore closures (transient, reset on upgrade)
+    transient var _rvp_neurons: [T.NeuronId] = [];
+    transient var _rvp_index: Nat = 0;
 
     // Convenience wrappers that close over hotkeyPermissions state
     func callerHasPermission(caller: Principal, permissionId: Nat): Bool {
@@ -1210,6 +1240,58 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     };
 
     // ============================================
+    // BOT CHORE ADMIN API
+    // ============================================
+
+    // Query: Get status of all registered chores
+    public shared query ({ caller }) func getChoreStatuses(): async [BotChoreTypes.ChoreStatus] {
+        assertPermission(caller, T.NeuronPermission.ViewChores);
+        choreEngine.getAllStatuses()
+    };
+
+    // Query: Get status of a specific chore
+    public shared query ({ caller }) func getChoreStatus(choreId: Text): async ?BotChoreTypes.ChoreStatus {
+        assertPermission(caller, T.NeuronPermission.ViewChores);
+        choreEngine.getStatus(choreId)
+    };
+
+    // Query: Get configs of all chores
+    public shared query ({ caller }) func getChoreConfigs(): async [(Text, BotChoreTypes.ChoreConfig)] {
+        assertPermission(caller, T.NeuronPermission.ViewChores);
+        choreEngine.getAllConfigs()
+    };
+
+    // Enable or disable a chore
+    public shared ({ caller }) func setChoreEnabled(choreId: Text, enabled: Bool): async () {
+        assertPermission(caller, T.NeuronPermission.ManageChores);
+        choreEngine.setEnabled<system>(choreId, enabled);
+    };
+
+    // Change the schedule interval for a chore (in seconds)
+    public shared ({ caller }) func setChoreInterval(choreId: Text, seconds: Nat): async () {
+        assertPermission(caller, T.NeuronPermission.ManageChores);
+        choreEngine.setInterval(choreId, seconds);
+    };
+
+    // Force-run a chore immediately (regardless of schedule)
+    public shared ({ caller }) func triggerChore(choreId: Text): async () {
+        assertPermission(caller, T.NeuronPermission.ManageChores);
+        choreEngine.trigger<system>(choreId);
+    };
+
+    // Stop a running chore (sets stop flag + cancels timers)
+    public shared ({ caller }) func stopChore(choreId: Text): async () {
+        assertPermission(caller, T.NeuronPermission.ManageChores);
+        choreEngine.stopChore(choreId);
+    };
+
+    // Stop all running chores
+    public shared ({ caller }) func stopAllChores(): async () {
+        assertPermission(caller, T.NeuronPermission.ManageChores);
+        choreEngine.stopAllChores();
+    };
+
+    // ============================================
     // INTERNAL HELPERS
     // ============================================
 
@@ -1497,5 +1579,88 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         0xbdbdf21c, 0xcabac28a, 0x53b39330, 0x24b4a3a6, 0xbad03605, 0xcdd706b3, 0x54de5729, 0x23d967bf,
         0xb3667a2e, 0xc4614ab8, 0x5d681b02, 0x2a6f2b94, 0xb40bbe37, 0xc30c8ea1, 0x5a05df1b, 0x2d02ef8d
     ];
+
+    // ============================================
+    // BOT CHORES INITIALIZATION
+    // ============================================
+    // This section is at the bottom so all referenced functions
+    // (e.g. listNeuronsInternal, governance) are already defined.
+
+    // Helper: create a task function that refreshes voting power for the neuron at _rvp_index
+    func _rvp_createTaskForCurrentNeuron(): ?(() -> async BotChoreTypes.TaskAction) {
+        if (_rvp_index >= _rvp_neurons.size()) return null;
+        let nid = _rvp_neurons[_rvp_index];
+        ?(func(): async BotChoreTypes.TaskAction {
+            let request: T.ManageNeuronRequest = {
+                id = ?nid;
+                command = ?#RefreshVotingPower({});
+                neuron_id_or_subaccount = null;
+            };
+            let result = await governance.manage_neuron(request);
+            switch (result.command) {
+                case (?#Error(e)) { #Error(e.error_message) };
+                case _ { #Done };
+            };
+        })
+    };
+
+    // Register chores and start timers.
+    // This runs on every canister start (first deploy + upgrades) because
+    // it's inside a transient let expression.
+    transient let _choreInit: () = do {
+        // --- Chore: Refresh Voting Power ---
+        choreEngine.registerChore({
+            id = "refresh-voting-power";
+            name = "Refresh Voting Power";
+            description = "Periodically refreshes voting power for all managed neurons to keep them active.";
+            defaultIntervalSeconds = 7 * 24 * 60 * 60; // 1 week
+            conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
+                switch (ctx.lastCompletedTask) {
+                    case null {
+                        // First invocation: fetch all neurons
+                        let neurons = await listNeuronsInternal();
+                        let neuronIds = Buffer.Buffer<T.NeuronId>(neurons.size());
+                        for (n in neurons.vals()) {
+                            switch (n.id) {
+                                case (?nid) { neuronIds.add(nid) };
+                                case null {};
+                            };
+                        };
+                        _rvp_neurons := Buffer.toArray(neuronIds);
+                        _rvp_index := 0;
+
+                        if (_rvp_neurons.size() == 0) {
+                            return #Done; // No neurons to process
+                        };
+
+                        // Start first task (createTask will be called by the engine)
+                        return #StartTask({ taskId = "refresh-0" });
+                    };
+                    case (?_lastResult) {
+                        // Previous task completed — advance to next neuron
+                        _rvp_index += 1;
+                        if (_rvp_index >= _rvp_neurons.size()) {
+                            return #Done; // All neurons processed
+                        };
+
+                        return #StartTask({ taskId = "refresh-" # Nat.toText(_rvp_index) });
+                    };
+                };
+            };
+            createTask = func(_taskId: Text): ?(() -> async BotChoreTypes.TaskAction) {
+                // Called by the engine immediately after conduct returns #StartTask.
+                // At this point, _rvp_neurons and _rvp_index are set by the conductor.
+                _rvp_createTaskForCurrentNeuron()
+            };
+        });
+
+        // Start/resume all chore timers
+        choreEngine.resumeTimers<system>();
+    };
+
+    // Resume timers after upgrade (transient engine is fresh, stable state is loaded)
+    system func postupgrade() {
+        choreEngine.resumeTimers<system>();
+    };
 };
 

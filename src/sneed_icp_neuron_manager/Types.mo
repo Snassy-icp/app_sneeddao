@@ -835,6 +835,8 @@ module {
         #ManageVisibility;        // Set neuron visibility
         #WithdrawFunds;           // Withdraw ICP or tokens from the canister
         #ViewNeuron;              // View neuron info, list neurons, check balances
+        #ManageChores;            // Enable/disable, configure, trigger, and stop bot chores
+        #ViewChores;              // View bot chore statuses and configurations
     };
 
     // Numeric IDs for permission types (for stable storage)
@@ -863,6 +865,8 @@ module {
         public let ManageVisibility: Nat = 15;
         public let WithdrawFunds: Nat = 16;
         public let ViewNeuron: Nat = 17;
+        public let ManageChores: Nat = 18;
+        public let ViewChores: Nat = 19;
     };
 
     // Info about a botkey principal and their permissions (for API responses)
