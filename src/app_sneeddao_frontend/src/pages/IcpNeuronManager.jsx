@@ -532,6 +532,9 @@ function IcpNeuronManager() {
     const [choreSuccess, setChoreSuccess] = useState('');
     const [savingChore, setSavingChore] = useState(false);
     const [choreActiveTab, setChoreActiveTab] = useState('confirm-following');
+    // Collect-Maturity chore-specific settings
+    const [cmThresholdE8s, setCmThresholdE8s] = useState(null); // null = no threshold
+    const [cmDestination, setCmDestination] = useState(null);   // null = bot's own account
 
     // Check if current user is a controller
     const isController = identity && controllers.length > 0 && 
@@ -1372,6 +1375,15 @@ function IcpNeuronManager() {
             ]);
             setChoreStatuses(statuses);
             setChoreConfigs(configs);
+
+            // Load chore-specific settings (best-effort, don't block on failure)
+            try {
+                const cmSettings = await manager.getCollectMaturitySettings();
+                setCmThresholdE8s(cmSettings.thresholdE8s.length > 0 ? cmSettings.thresholdE8s[0] : null);
+                setCmDestination(cmSettings.destination.length > 0 ? cmSettings.destination[0] : null);
+            } catch (e) {
+                console.warn('Could not load collect-maturity settings:', e);
+            }
         } catch (err) {
             console.error('Error loading chore data:', err);
             if (!silent) {
@@ -5353,10 +5365,170 @@ function IcpNeuronManager() {
                                                         Save
                                                     </button>
                                                 </div>
+                                                {chore.choreId === 'confirm-following' && (
                                                 <p style={{ margin: '6px 0 0', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
                                                     NNS requires following confirmation at least every 6 months. We recommend 30 days or less.
                                                 </p>
+                                                )}
+                                                {chore.choreId === 'collect-maturity' && (
+                                                <p style={{ margin: '6px 0 0', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
+                                                    How often to check and collect maturity from all managed neurons.
+                                                </p>
+                                                )}
+                                                {chore.choreId === 'refresh-stake' && (
+                                                <p style={{ margin: '6px 0 0', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
+                                                    How often to refresh stake on all managed neurons to pick up any deposited ICP.
+                                                </p>
+                                                )}
                                             </div>
+
+                                            {/* Collect-Maturity specific settings */}
+                                            {chore.choreId === 'collect-maturity' && (
+                                            <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: `1px solid ${theme.colors.border}` }}>
+                                                <h4 style={{ color: theme.colors.primaryText, margin: '0 0 12px 0', fontSize: '0.9rem', fontWeight: '600' }}>
+                                                    Collection Settings
+                                                </h4>
+
+                                                {/* Threshold */}
+                                                <div style={{ marginBottom: '14px' }}>
+                                                    <label style={{ fontSize: '0.8rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '6px' }}>
+                                                        Minimum maturity to collect (ICP):
+                                                    </label>
+                                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            step="0.01"
+                                                            placeholder="No minimum"
+                                                            defaultValue={cmThresholdE8s !== null ? Number(cmThresholdE8s) / 1e8 : ''}
+                                                            style={{ ...inputStyle, width: '140px' }}
+                                                            id="cm-threshold-input"
+                                                        />
+                                                        <button
+                                                            style={{
+                                                                ...buttonStyle,
+                                                                background: `${neuronPrimary}10`,
+                                                                color: neuronPrimary,
+                                                                border: `1px solid ${neuronPrimary}25`,
+                                                                opacity: savingChore ? 0.6 : 1,
+                                                            }}
+                                                            disabled={savingChore}
+                                                            onClick={async () => {
+                                                                const input = document.getElementById('cm-threshold-input');
+                                                                const val = input?.value?.trim();
+                                                                const thresholdOpt = (!val || val === '' || parseFloat(val) <= 0)
+                                                                    ? []
+                                                                    : [BigInt(Math.round(parseFloat(val) * 1e8))];
+                                                                setSavingChore(true);
+                                                                setChoreError('');
+                                                                setChoreSuccess('');
+                                                                try {
+                                                                    const agent = getAgent();
+                                                                    if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                                                                        await agent.fetchRootKey();
+                                                                    }
+                                                                    const manager = createManagerActor(canisterId, { agent });
+                                                                    await manager.setCollectMaturityThreshold(thresholdOpt);
+                                                                    setChoreSuccess(thresholdOpt.length > 0
+                                                                        ? `Threshold set to ${parseFloat(val)} ICP.`
+                                                                        : 'Threshold removed — will collect any amount.');
+                                                                    await loadChoreData();
+                                                                } catch (err) {
+                                                                    setChoreError('Failed to update threshold: ' + err.message);
+                                                                } finally {
+                                                                    setSavingChore(false);
+                                                                }
+                                                            }}
+                                                        >
+                                                            Save
+                                                        </button>
+                                                    </div>
+                                                    <p style={{ margin: '4px 0 0', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
+                                                        {cmThresholdE8s !== null
+                                                            ? `Current: ${(Number(cmThresholdE8s) / 1e8).toFixed(4)} ICP`
+                                                            : 'No minimum set — will collect any available maturity.'
+                                                        }
+                                                        {' '}Leave empty or 0 to collect whenever maturity is available.
+                                                    </p>
+                                                </div>
+
+                                                {/* Destination */}
+                                                <div>
+                                                    <label style={{ fontSize: '0.8rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '6px' }}>
+                                                        Send collected maturity to:
+                                                    </label>
+                                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Bot's own account (default)"
+                                                            defaultValue={cmDestination ? `${cmDestination.owner.toString()}${cmDestination.subaccount && cmDestination.subaccount.length > 0 ? '.' + Array.from(new Uint8Array(cmDestination.subaccount[0])).map(b => b.toString(16).padStart(2, '0')).join('') : ''}` : ''}
+                                                            style={{ ...inputStyle, width: '320px', fontFamily: 'monospace', fontSize: '0.75rem' }}
+                                                            id="cm-destination-input"
+                                                        />
+                                                        <button
+                                                            style={{
+                                                                ...buttonStyle,
+                                                                background: `${neuronPrimary}10`,
+                                                                color: neuronPrimary,
+                                                                border: `1px solid ${neuronPrimary}25`,
+                                                                opacity: savingChore ? 0.6 : 1,
+                                                            }}
+                                                            disabled={savingChore}
+                                                            onClick={async () => {
+                                                                const input = document.getElementById('cm-destination-input');
+                                                                const val = input?.value?.trim();
+                                                                setSavingChore(true);
+                                                                setChoreError('');
+                                                                setChoreSuccess('');
+                                                                try {
+                                                                    let destOpt = [];
+                                                                    if (val && val !== '') {
+                                                                        // Parse principal (optionally with .subaccount hex suffix)
+                                                                        const parts = val.split('.');
+                                                                        const { Principal } = await import('@dfinity/principal');
+                                                                        const owner = Principal.fromText(parts[0]);
+                                                                        let subaccount = [];
+                                                                        if (parts.length > 1 && parts[1]) {
+                                                                            const hexStr = parts[1].replace(/^0x/, '');
+                                                                            const bytes = new Uint8Array(32);
+                                                                            const hexBytes = hexStr.match(/.{1,2}/g) || [];
+                                                                            for (let i = 0; i < Math.min(hexBytes.length, 32); i++) {
+                                                                                bytes[32 - hexBytes.length + i] = parseInt(hexBytes[i], 16);
+                                                                            }
+                                                                            subaccount = [bytes];
+                                                                        }
+                                                                        destOpt = [{ owner, subaccount }];
+                                                                    }
+                                                                    const agent = getAgent();
+                                                                    if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                                                                        await agent.fetchRootKey();
+                                                                    }
+                                                                    const manager = createManagerActor(canisterId, { agent });
+                                                                    await manager.setCollectMaturityDestination(destOpt);
+                                                                    setChoreSuccess(destOpt.length > 0
+                                                                        ? `Destination set to ${val.split('.')[0]}.`
+                                                                        : "Destination reset — maturity will be sent to the bot's own account.");
+                                                                    await loadChoreData();
+                                                                } catch (err) {
+                                                                    setChoreError('Failed to update destination: ' + err.message);
+                                                                } finally {
+                                                                    setSavingChore(false);
+                                                                }
+                                                            }}
+                                                        >
+                                                            Save
+                                                        </button>
+                                                    </div>
+                                                    <p style={{ margin: '4px 0 0', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
+                                                        {cmDestination
+                                                            ? `Current: ${cmDestination.owner.toString()}`
+                                                            : "Default: Bot's own account (canister principal, no subaccount)."
+                                                        }
+                                                        {' '}Enter a principal ID, optionally followed by .subaccount-hex. Leave empty for default.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            )}
                                         </div>
                                         )}
                                     </div>

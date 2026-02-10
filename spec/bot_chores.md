@@ -631,6 +631,46 @@ For new bot products, these functions and the `StatusLamp` component can be extr
 
 ---
 
+## ICP Staking Bot — Implemented Chores
+
+The ICP Staking Bot (`sneed_icp_neuron_manager`) uses the Bot Chores framework to automate the following recurring tasks:
+
+### 1. Confirm Following (`confirm-following`)
+
+- **Purpose**: Re-confirms neuron followees to keep neurons eligible for voting rewards. NNS requires followees to be re-confirmed at least every 6 months.
+- **Default interval**: 30 days (monthly, well within the 6-month deadline).
+- **Task timeout**: 10 minutes per neuron.
+- **Behavior**: For each managed neuron, reads current followees via `get_full_neuron`, then re-applies each topic's followees via `manage_neuron(#Follow)`.
+- **Chore-specific settings**: None (uses standard interval configuration).
+
+### 2. Refresh Stake (`refresh-stake`)
+
+- **Purpose**: Picks up any ICP that was deposited directly to a neuron's governance account. After depositing ICP to a neuron account, `ClaimOrRefresh` must be called for the ICP to count as staked.
+- **Default interval**: 1 day.
+- **Task timeout**: 5 minutes per neuron.
+- **Behavior**: For each managed neuron, calls `claim_or_refresh_neuron_from_account` to refresh the stake.
+- **Chore-specific settings**: None.
+
+### 3. Collect Maturity (`collect-maturity`)
+
+- **Purpose**: Periodically collects (disburses) accumulated maturity from all managed neurons and sends it to a configurable account. Maturity accumulates from voting rewards.
+- **Default interval**: 7 days (weekly).
+- **Task timeout**: 5 minutes per neuron.
+- **Behavior**: For each managed neuron:
+  1. Reads `maturity_e8s_equivalent` from the full neuron.
+  2. If a threshold is configured and the maturity is below it, skips the neuron.
+  3. If maturity is 0, skips the neuron.
+  4. Calls `DisburseMaturity` with 100% percentage, sending to the configured destination.
+- **Chore-specific settings** (stable variables in the canister):
+  - `collectMaturityThresholdE8s: ?Nat64` — Minimum maturity (in e8s) before collection is attempted. `null` = collect any amount.
+  - `collectMaturityDestination: ?Account` — ICRC-1 account to receive disbursed maturity. `null` = bot's own account (canister principal, no subaccount).
+- **API methods**:
+  - `getCollectMaturitySettings() -> { thresholdE8s: ?Nat64; destination: ?Account }` (query)
+  - `setCollectMaturityThreshold(thresholdE8s: ?Nat64)` (ManageChores permission)
+  - `setCollectMaturityDestination(destination: ?Account)` (ManageChores permission)
+
+---
+
 ## Appendix: Naming Rationale
 
 | Level | Name | Why |

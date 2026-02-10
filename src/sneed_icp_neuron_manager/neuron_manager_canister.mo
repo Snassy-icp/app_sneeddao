@@ -44,6 +44,10 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     var choreConfigs: [(Text, BotChoreTypes.ChoreConfig)] = [];
     var choreStates: [(Text, BotChoreTypes.ChoreRuntimeState)] = [];
 
+    // Collect-Maturity chore settings (chore-specific, stable)
+    var collectMaturityThresholdE8s: ?Nat64 = null;  // null = collect any amount; otherwise min maturity e8s
+    var collectMaturityDestination: ?T.Account = null; // null = bot's own account (no subaccount)
+
     // ============================================
     // PERMISSION SYSTEM (using reusable BotkeyPermissions engine)
     // ============================================
@@ -1315,6 +1319,32 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         choreEngine.stopAllChores();
     };
 
+    // --- Collect-Maturity chore settings ---
+
+    // Get collect-maturity settings
+    public shared query ({ caller }) func getCollectMaturitySettings(): async {
+        thresholdE8s: ?Nat64;
+        destination: ?T.Account;
+    } {
+        assertPermission(caller, T.NeuronPermission.ViewChores);
+        {
+            thresholdE8s = collectMaturityThresholdE8s;
+            destination = collectMaturityDestination;
+        }
+    };
+
+    // Set collect-maturity threshold (null = collect any amount)
+    public shared ({ caller }) func setCollectMaturityThreshold(thresholdE8s: ?Nat64): async () {
+        assertPermission(caller, T.NeuronPermission.ManageChores);
+        collectMaturityThresholdE8s := thresholdE8s;
+    };
+
+    // Set collect-maturity destination (null = bot's own account)
+    public shared ({ caller }) func setCollectMaturityDestination(destination: ?T.Account): async () {
+        assertPermission(caller, T.NeuronPermission.ManageChores);
+        collectMaturityDestination := destination;
+    };
+
     // ============================================
     // INTERNAL HELPERS
     // ============================================
@@ -1690,6 +1720,81 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         };
     };
 
+    // --- Collect Maturity chore transient state ---
+    transient var _cm_neurons: [T.NeuronId] = [];
+    transient var _cm_index: Nat = 0;
+
+    // Helper: create a task function that collects maturity for a specific neuron
+    func _cm_makeTaskFn(nid: T.NeuronId): () -> async BotChoreTypes.TaskAction {
+        func(): async BotChoreTypes.TaskAction {
+            // Get full neuron to check maturity
+            let neuronResult = await governance.get_full_neuron(nid.id);
+            let neuron = switch (neuronResult) {
+                case (#Err(e)) { return #Error("Failed to get neuron: " # e.error_message) };
+                case (#Ok(n)) { n };
+            };
+
+            let maturityE8s = neuron.maturity_e8s_equivalent;
+
+            // Check threshold
+            switch (collectMaturityThresholdE8s) {
+                case (?threshold) {
+                    if (maturityE8s < threshold) {
+                        return #Done; // Below threshold, skip
+                    };
+                };
+                case null {}; // No threshold, always collect
+            };
+
+            // Nothing to collect
+            if (maturityE8s == 0) {
+                return #Done;
+            };
+
+            // Determine destination
+            let destAccount: ?T.Account = switch (collectMaturityDestination) {
+                case (?acct) { ?acct };
+                case null {
+                    // Bot's own account (canister principal, no subaccount)
+                    ?{ owner = Principal.fromActor(this); subaccount = null }
+                };
+            };
+
+            // Disburse 100% of maturity
+            let request: T.ManageNeuronRequest = {
+                id = ?nid;
+                command = ?#DisburseMaturity({
+                    percentage_to_disburse = 100 : Nat32;
+                    to_account = destAccount;
+                });
+                neuron_id_or_subaccount = null;
+            };
+
+            let result = await governance.manage_neuron(request);
+            switch (result.command) {
+                case (?#Error(e)) {
+                    return #Error("Failed to disburse maturity: " # e.error_message);
+                };
+                case (?#DisburseMaturity(_)) { #Done };
+                case null { #Error("No response from governance") };
+                case (_) { #Done }; // Unexpected but not fatal
+            };
+        }
+    };
+
+    // Helper: start a collect-maturity task for the neuron at _cm_index
+    func _cm_startCurrentTask() {
+        if (_cm_index < _cm_neurons.size()) {
+            let nid = _cm_neurons[_cm_index];
+            let taskFn = _cm_makeTaskFn(nid);
+            choreEngine.setPendingTask(
+                "collect-maturity",
+                "collect-" # Nat.toText(_cm_index),
+                taskFn
+            );
+        };
+    };
+
     // Register chores and start timers.
     // This runs on every canister start (first deploy + upgrades) because
     // it's inside a transient let expression.
@@ -1789,6 +1894,56 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
                         // Start next task and poll
                         _cf_startCurrentTask();
+                        return #ContinueIn(10);
+                    };
+                };
+            };
+        });
+
+        // --- Chore: Collect Maturity ---
+        choreEngine.registerChore({
+            id = "collect-maturity";
+            name = "Collect Maturity";
+            description = "Periodically collects (disburses) maturity from all managed neurons and sends it to a configured account. Maturity accumulates from voting rewards. A threshold can be set to only collect when a minimum amount is available.";
+            defaultIntervalSeconds = 7 * 24 * 60 * 60; // 7 days (weekly)
+            defaultTaskTimeoutSeconds = 300; // 5 minutes per neuron
+            conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
+                // If a task is still running, just poll again
+                if (ctx.isTaskRunning) {
+                    return #ContinueIn(10);
+                };
+
+                switch (ctx.lastCompletedTask) {
+                    case null {
+                        // First invocation: fetch all neurons
+                        let neurons = await listNeuronsInternal();
+                        let neuronIds = Buffer.Buffer<T.NeuronId>(neurons.size());
+                        for (n in neurons.vals()) {
+                            switch (n.id) {
+                                case (?nid) { neuronIds.add(nid) };
+                                case null {};
+                            };
+                        };
+                        _cm_neurons := Buffer.toArray(neuronIds);
+                        _cm_index := 0;
+
+                        if (_cm_neurons.size() == 0) {
+                            return #Done; // No neurons to process
+                        };
+
+                        // Start first task and poll
+                        _cm_startCurrentTask();
+                        return #ContinueIn(10);
+                    };
+                    case (?_lastResult) {
+                        // Previous task completed — advance to next neuron
+                        _cm_index += 1;
+                        if (_cm_index >= _cm_neurons.size()) {
+                            return #Done; // All neurons processed
+                        };
+
+                        // Start next task and poll
+                        _cm_startCurrentTask();
                         return #ContinueIn(10);
                     };
                 };
