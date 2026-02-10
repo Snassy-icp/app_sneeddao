@@ -3,6 +3,7 @@ import Blob "mo:base/Blob";
 import Nat64 "mo:base/Nat64";
 import Nat32 "mo:base/Nat32";
 import Int "mo:base/Int";
+import Int32 "mo:base/Int32";
 import Time "mo:base/Time";
 import Array "mo:base/Array";
 import Nat8 "mo:base/Nat8";
@@ -144,8 +145,12 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     });
 
     // Mutable state for chore closures (transient, reset on upgrade)
+    // -- Refresh Voting Power chore state --
     transient var _rvp_neurons: [T.NeuronId] = [];
     transient var _rvp_index: Nat = 0;
+    // -- Confirm Following chore state --
+    transient var _cf_neurons: [T.NeuronId] = [];
+    transient var _cf_index: Nat = 0;
 
     // Convenience wrappers that close over hotkeyPermissions state
     func callerHasPermission(caller: Principal, permissionId: Nat): Bool {
@@ -1621,6 +1626,57 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         };
     };
 
+    // Helper: create a task function that confirms following for a specific neuron
+    func _cf_makeTaskFn(nid: T.NeuronId): () -> async BotChoreTypes.TaskAction {
+        func(): async BotChoreTypes.TaskAction {
+            // Get full neuron to read current followees
+            let neuronResult = await governance.get_full_neuron(nid.id);
+            let neuron = switch (neuronResult) {
+                case (#Err(e)) { return #Error("Failed to get neuron: " # e.error_message) };
+                case (#Ok(n)) { n };
+            };
+
+            // Re-apply each topic's followees
+            for ((topic, followeesRecord) in neuron.followees.vals()) {
+                let request: T.ManageNeuronRequest = {
+                    id = ?nid;
+                    command = ?#Follow({
+                        topic = topic;
+                        followees = followeesRecord.followees;
+                    });
+                    neuron_id_or_subaccount = null;
+                };
+
+                let result = await governance.manage_neuron(request);
+                switch (result.command) {
+                    case (?#Error(e)) {
+                        return #Error("Failed to confirm topic " # Int.toText(Int32.toInt(topic)) # ": " # e.error_message);
+                    };
+                    case (?#Follow(_)) { /* success, continue */ };
+                    case null {
+                        return #Error("No response for topic " # Int.toText(Int32.toInt(topic)));
+                    };
+                    case (_) { /* unexpected but not fatal, continue */ };
+                };
+            };
+
+            #Done
+        }
+    };
+
+    // Helper: start a confirm-following task for the neuron at _cf_index
+    func _cf_startCurrentTask() {
+        if (_cf_index < _cf_neurons.size()) {
+            let nid = _cf_neurons[_cf_index];
+            let taskFn = _cf_makeTaskFn(nid);
+            choreEngine.setPendingTask(
+                "confirm-following",
+                "confirm-" # Nat.toText(_cf_index),
+                taskFn
+            );
+        };
+    };
+
     // Register chores and start timers.
     // This runs on every canister start (first deploy + upgrades) because
     // it's inside a transient let expression.
@@ -1669,6 +1725,57 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
                         // Start next task and poll
                         _rvp_startCurrentTask();
+                        return #ContinueIn(10);
+                    };
+                };
+            };
+        });
+
+        // --- Chore: Confirm Following ---
+        choreEngine.registerChore({
+            id = "confirm-following";
+            name = "Confirm Following";
+            description = "Periodically re-confirms neuron followees to keep neurons eligible for voting rewards. NNS requires followees to be re-confirmed at least every 6 months.";
+            defaultIntervalSeconds = 30 * 24 * 60 * 60; // 30 days (monthly, well within 6-month deadline)
+            defaultTaskTimeoutSeconds = 600; // 10 minutes (confirming many topics can take time)
+            conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
+                // If a task is still running, just poll again
+                if (ctx.isTaskRunning) {
+                    return #ContinueIn(10);
+                };
+
+                switch (ctx.lastCompletedTask) {
+                    case null {
+                        // First invocation: fetch all neurons
+                        let neurons = await listNeuronsInternal();
+                        let neuronIds = Buffer.Buffer<T.NeuronId>(neurons.size());
+                        for (n in neurons.vals()) {
+                            switch (n.id) {
+                                case (?nid) { neuronIds.add(nid) };
+                                case null {};
+                            };
+                        };
+                        _cf_neurons := Buffer.toArray(neuronIds);
+                        _cf_index := 0;
+
+                        if (_cf_neurons.size() == 0) {
+                            return #Done; // No neurons to process
+                        };
+
+                        // Start first task and poll
+                        _cf_startCurrentTask();
+                        return #ContinueIn(10);
+                    };
+                    case (?_lastResult) {
+                        // Previous task completed — advance to next neuron
+                        // (continue even if the last task failed — best effort for remaining neurons)
+                        _cf_index += 1;
+                        if (_cf_index >= _cf_neurons.size()) {
+                            return #Done; // All neurons processed
+                        };
+
+                        // Start next task and poll
+                        _cf_startCurrentTask();
                         return #ContinueIn(10);
                     };
                 };

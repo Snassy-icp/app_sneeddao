@@ -305,6 +305,15 @@ function IcpNeuronManager() {
     const [editPermissions, setEditPermissions] = useState({});
     const [confirmRemoveHotkey, setConfirmRemoveHotkey] = useState(null);
 
+    // Bot Chores state
+    const [choreStatuses, setChoreStatuses] = useState([]);
+    const [choreConfigs, setChoreConfigs] = useState([]);
+    const [loadingChores, setLoadingChores] = useState(false);
+    const [choreError, setChoreError] = useState('');
+    const [choreSuccess, setChoreSuccess] = useState('');
+    const [savingChore, setSavingChore] = useState(false);
+    const [choreActiveTab, setChoreActiveTab] = useState('confirm-following');
+
     // Check if current user is a controller
     const isController = identity && controllers.length > 0 && 
         controllers.some(c => c.toString() === identity.getPrincipal().toString());
@@ -1181,6 +1190,40 @@ function IcpNeuronManager() {
             loadHotkeyPermissions();
         }
     }, [canisterActiveTab, canisterSectionExpanded, loadHotkeyPermissions]);
+
+    // Load bot chore statuses and configs
+    const loadChoreData = useCallback(async () => {
+        if (!canisterId) return;
+        setLoadingChores(true);
+        setChoreError('');
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const manager = createManagerActor(canisterId, { agent });
+            const [statuses, configs] = await Promise.all([
+                manager.getChoreStatuses(),
+                manager.getChoreConfigs(),
+            ]);
+            setChoreStatuses(statuses);
+            setChoreConfigs(configs);
+        } catch (err) {
+            console.error('Error loading chore data:', err);
+            // Silently fail for older bots that don't support chores
+            setChoreStatuses([]);
+            setChoreConfigs([]);
+        } finally {
+            setLoadingChores(false);
+        }
+    }, [canisterId, getAgent]);
+
+    // Fetch chore data when switching to the chores tab
+    useEffect(() => {
+        if (canisterActiveTab === 'chores' && canisterSectionExpanded) {
+            loadChoreData();
+        }
+    }, [canisterActiveTab, canisterSectionExpanded, loadChoreData]);
 
     // Fetch the current user's botkey permissions from the canister
     const fetchUserPermissions = useCallback(async () => {
@@ -3124,6 +3167,11 @@ function IcpNeuronManager() {
                                     <button style={tabStyle(canisterActiveTab === 'permissions')} onClick={() => setCanisterActiveTab('permissions')}>
                                         Botkeys
                                     </button>
+                                    {(hasPermission('ViewChores') || hasPermission('ManageChores')) && (
+                                    <button style={tabStyle(canisterActiveTab === 'chores')} onClick={() => setCanisterActiveTab('chores')}>
+                                        Chores
+                                    </button>
+                                    )}
                                 </div>
 
                         {canisterActiveTab === 'info' && (
@@ -4511,6 +4559,388 @@ function IcpNeuronManager() {
                                     The "Manage Permissions" permission allows a principal to manage other principals' permissions.
                                 </p>
                             </div>
+                            )}
+                            </>
+                            )}
+                        </div>
+                        )}
+
+                        {/* Chores Tab */}
+                        {canisterActiveTab === 'chores' && (
+                        <div>
+                            {loadingChores ? (
+                                <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.secondaryText }}>
+                                    Loading chore data...
+                                </div>
+                            ) : (
+                            <>
+                            {/* Chore explanation */}
+                            <div style={{
+                                ...cardStyle,
+                                background: `linear-gradient(135deg, ${neuronPrimary}08, ${neuronSecondary}05)`,
+                                border: `1px solid ${neuronPrimary}20`,
+                            }}>
+                                <p style={{ margin: 0, fontSize: '0.85rem', color: theme.colors.secondaryText, lineHeight: '1.5' }}>
+                                    Bot Chores are automated tasks that run on a schedule. Enable a chore and set its interval — the bot handles the rest.
+                                </p>
+                            </div>
+
+                            {choreError && (
+                                <div style={{ ...cardStyle, background: `${theme.colors.error}15`, border: `1px solid ${theme.colors.error}30`, color: theme.colors.error, fontSize: '0.85rem' }}>
+                                    {choreError}
+                                </div>
+                            )}
+                            {choreSuccess && (
+                                <div style={{ ...cardStyle, background: `${theme.colors.success || '#22c55e'}15`, border: `1px solid ${theme.colors.success || '#22c55e'}30`, color: theme.colors.success || '#22c55e', fontSize: '0.85rem' }}>
+                                    {choreSuccess}
+                                </div>
+                            )}
+
+                            {/* Sub-tabs for each chore */}
+                            {choreStatuses.length > 0 && (
+                            <>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', marginBottom: '12px', gap: '0' }}>
+                                {choreStatuses.map(chore => (
+                                    <button
+                                        key={chore.choreId}
+                                        style={{
+                                            ...tabStyle(choreActiveTab === chore.choreId),
+                                            fontSize: '0.8rem',
+                                            padding: '0.45rem 0.8rem',
+                                        }}
+                                        onClick={() => setChoreActiveTab(chore.choreId)}
+                                    >
+                                        {chore.choreName}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Render the active chore's panel */}
+                            {choreStatuses.map(chore => {
+                                if (chore.choreId !== choreActiveTab) return null;
+                                const configEntry = choreConfigs.find(([id]) => id === chore.choreId);
+                                const config = configEntry ? configEntry[1] : null;
+
+                                // Format interval for display
+                                const intervalDays = config ? Math.round(Number(config.intervalSeconds) / 86400) : 0;
+
+                                // Conductor status label
+                                const conductorLabel = 'Idle' in chore.conductorStatus ? 'Idle'
+                                    : 'Running' in chore.conductorStatus ? 'Running'
+                                    : 'Polling' in chore.conductorStatus ? 'Polling (waiting for task)'
+                                    : 'Unknown';
+
+                                // Task status label
+                                const taskLabel = 'Idle' in chore.taskStatus ? 'Idle' : 'Running';
+
+                                // Scheduler status
+                                const schedulerLabel = 'Scheduled' in chore.schedulerStatus ? 'Scheduled' : 'Idle';
+
+                                // Format timestamp
+                                const formatTime = (nsOpt) => {
+                                    if (!nsOpt || nsOpt.length === 0) return '—';
+                                    const ns = nsOpt[0];
+                                    const ms = Number(ns) / 1_000_000;
+                                    if (ms <= 0) return '—';
+                                    return new Date(ms).toLocaleString();
+                                };
+
+                                const isRunning = !('Idle' in chore.conductorStatus);
+                                const isEnabled = chore.enabled;
+
+                                return (
+                                    <div key={chore.choreId}>
+                                        {/* Description */}
+                                        <div style={{
+                                            ...cardStyle,
+                                            background: `linear-gradient(135deg, ${neuronPrimary}06, ${neuronSecondary}04)`,
+                                            border: `1px solid ${neuronPrimary}15`,
+                                        }}>
+                                            <p style={{ margin: 0, fontSize: '0.85rem', color: theme.colors.secondaryText, lineHeight: '1.5' }}>
+                                                {chore.choreDescription}
+                                            </p>
+                                        </div>
+
+                                        {/* Status Card */}
+                                        <div style={cardStyle}>
+                                            <h3 style={{ color: theme.colors.primaryText, margin: '0 0 12px 0', fontSize: '0.95rem', fontWeight: '600' }}>
+                                                Status
+                                            </h3>
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
+                                                <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+                                                    <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Enabled</div>
+                                                    <div style={{ fontSize: '0.9rem', color: isEnabled ? (theme.colors.success || '#22c55e') : theme.colors.secondaryText, fontWeight: '600' }}>
+                                                        {isEnabled ? 'Yes' : 'No'}
+                                                    </div>
+                                                </div>
+                                                <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+                                                    <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Scheduler</div>
+                                                    <div style={{ fontSize: '0.9rem', color: theme.colors.primaryText, fontWeight: '500' }}>{schedulerLabel}</div>
+                                                </div>
+                                                <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+                                                    <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Conductor</div>
+                                                    <div style={{ fontSize: '0.9rem', color: isRunning ? neuronPrimary : theme.colors.primaryText, fontWeight: '500' }}>{conductorLabel}</div>
+                                                </div>
+                                                <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+                                                    <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Task</div>
+                                                    <div style={{ fontSize: '0.9rem', color: theme.colors.primaryText, fontWeight: '500' }}>{taskLabel}</div>
+                                                </div>
+                                                <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+                                                    <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Interval</div>
+                                                    <div style={{ fontSize: '0.9rem', color: theme.colors.primaryText, fontWeight: '500' }}>{intervalDays} days</div>
+                                                </div>
+                                                <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+                                                    <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Next Scheduled Run</div>
+                                                    <div style={{ fontSize: '0.85rem', color: theme.colors.primaryText, fontWeight: '500' }}>{formatTime(chore.nextScheduledRunAt)}</div>
+                                                </div>
+                                                <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+                                                    <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Last Completed</div>
+                                                    <div style={{ fontSize: '0.85rem', color: theme.colors.primaryText, fontWeight: '500' }}>{formatTime(chore.lastCompletedRunAt)}</div>
+                                                </div>
+                                                <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+                                                    <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Runs (Success / Fail)</div>
+                                                    <div style={{ fontSize: '0.9rem', color: theme.colors.primaryText, fontWeight: '500' }}>
+                                                        {Number(chore.totalSuccessCount)} / {Number(chore.totalFailureCount)}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Last error display */}
+                                            {chore.lastError && chore.lastError.length > 0 && (
+                                                <div style={{
+                                                    marginTop: '10px',
+                                                    padding: '10px',
+                                                    background: `${theme.colors.error}10`,
+                                                    border: `1px solid ${theme.colors.error}25`,
+                                                    borderRadius: '8px',
+                                                    fontSize: '0.8rem',
+                                                    color: theme.colors.error,
+                                                }}>
+                                                    <strong>Last error:</strong> {chore.lastError[0]}
+                                                    {chore.lastErrorAt && chore.lastErrorAt.length > 0 && (
+                                                        <span style={{ opacity: 0.7 }}> ({formatTime(chore.lastErrorAt)})</span>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* Current task info (when running) */}
+                                            {chore.currentTaskId && chore.currentTaskId.length > 0 && (
+                                                <div style={{
+                                                    marginTop: '10px',
+                                                    padding: '10px',
+                                                    background: `${neuronPrimary}10`,
+                                                    border: `1px solid ${neuronPrimary}25`,
+                                                    borderRadius: '8px',
+                                                    fontSize: '0.8rem',
+                                                    color: theme.colors.primaryText,
+                                                }}>
+                                                    <strong>Current task:</strong> {chore.currentTaskId[0]}
+                                                    {chore.taskStartedAt && chore.taskStartedAt.length > 0 && (
+                                                        <span style={{ opacity: 0.7 }}> (started {formatTime(chore.taskStartedAt)})</span>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Controls Card */}
+                                        {hasPermission('ManageChores') && (
+                                        <div style={cardStyle}>
+                                            <h3 style={{ color: theme.colors.primaryText, margin: '0 0 12px 0', fontSize: '0.95rem', fontWeight: '600' }}>
+                                                Controls
+                                            </h3>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
+                                                {/* Enable / Disable */}
+                                                <button
+                                                    style={{
+                                                        ...buttonStyle,
+                                                        background: isEnabled
+                                                            ? `${theme.colors.error}20`
+                                                            : `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
+                                                        color: isEnabled ? theme.colors.error : '#fff',
+                                                        border: isEnabled ? `1px solid ${theme.colors.error}40` : 'none',
+                                                        opacity: savingChore ? 0.6 : 1,
+                                                    }}
+                                                    disabled={savingChore}
+                                                    onClick={async () => {
+                                                        setSavingChore(true);
+                                                        setChoreError('');
+                                                        setChoreSuccess('');
+                                                        try {
+                                                            const agent = getAgent();
+                                                            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                                                                await agent.fetchRootKey();
+                                                            }
+                                                            const manager = createManagerActor(canisterId, { agent });
+                                                            await manager.setChoreEnabled(chore.choreId, !isEnabled);
+                                                            setChoreSuccess(`Chore ${!isEnabled ? 'enabled' : 'disabled'} successfully.`);
+                                                            await loadChoreData();
+                                                        } catch (err) {
+                                                            setChoreError('Failed to update: ' + err.message);
+                                                        } finally {
+                                                            setSavingChore(false);
+                                                        }
+                                                    }}
+                                                >
+                                                    {isEnabled ? 'Disable' : 'Enable'}
+                                                </button>
+
+                                                {/* Trigger Now */}
+                                                <button
+                                                    style={{
+                                                        ...buttonStyle,
+                                                        background: `${neuronPrimary}15`,
+                                                        color: neuronPrimary,
+                                                        border: `1px solid ${neuronPrimary}30`,
+                                                        opacity: (savingChore || isRunning) ? 0.6 : 1,
+                                                    }}
+                                                    disabled={savingChore || isRunning}
+                                                    onClick={async () => {
+                                                        setSavingChore(true);
+                                                        setChoreError('');
+                                                        setChoreSuccess('');
+                                                        try {
+                                                            const agent = getAgent();
+                                                            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                                                                await agent.fetchRootKey();
+                                                            }
+                                                            const manager = createManagerActor(canisterId, { agent });
+                                                            await manager.triggerChore(chore.choreId);
+                                                            setChoreSuccess('Chore triggered. It will start running shortly.');
+                                                            setTimeout(() => loadChoreData(), 2000);
+                                                        } catch (err) {
+                                                            setChoreError('Failed to trigger: ' + err.message);
+                                                        } finally {
+                                                            setSavingChore(false);
+                                                        }
+                                                    }}
+                                                >
+                                                    Run Now
+                                                </button>
+
+                                                {/* Stop */}
+                                                {isRunning && (
+                                                <button
+                                                    style={{
+                                                        ...buttonStyle,
+                                                        background: `${theme.colors.error}15`,
+                                                        color: theme.colors.error,
+                                                        border: `1px solid ${theme.colors.error}30`,
+                                                        opacity: savingChore ? 0.6 : 1,
+                                                    }}
+                                                    disabled={savingChore}
+                                                    onClick={async () => {
+                                                        setSavingChore(true);
+                                                        setChoreError('');
+                                                        setChoreSuccess('');
+                                                        try {
+                                                            const agent = getAgent();
+                                                            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                                                                await agent.fetchRootKey();
+                                                            }
+                                                            const manager = createManagerActor(canisterId, { agent });
+                                                            await manager.stopChore(chore.choreId);
+                                                            setChoreSuccess('Stop requested. The chore will halt shortly.');
+                                                            setTimeout(() => loadChoreData(), 2000);
+                                                        } catch (err) {
+                                                            setChoreError('Failed to stop: ' + err.message);
+                                                        } finally {
+                                                            setSavingChore(false);
+                                                        }
+                                                    }}
+                                                >
+                                                    Stop
+                                                </button>
+                                                )}
+
+                                                {/* Refresh Status */}
+                                                <button
+                                                    style={{
+                                                        ...buttonStyle,
+                                                        background: 'transparent',
+                                                        color: theme.colors.secondaryText,
+                                                        border: `1px solid ${theme.colors.border}`,
+                                                        opacity: savingChore ? 0.6 : 1,
+                                                    }}
+                                                    disabled={savingChore}
+                                                    onClick={() => loadChoreData()}
+                                                >
+                                                    Refresh
+                                                </button>
+                                            </div>
+
+                                            {/* Interval Setting */}
+                                            <div style={{ marginTop: '8px' }}>
+                                                <label style={{ fontSize: '0.8rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '6px' }}>
+                                                    Run every (days):
+                                                </label>
+                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                    <input
+                                                        type="number"
+                                                        min="1"
+                                                        max="180"
+                                                        defaultValue={intervalDays}
+                                                        style={{ ...inputStyle, width: '100px' }}
+                                                        id={`chore-interval-${chore.choreId}`}
+                                                    />
+                                                    <button
+                                                        style={{
+                                                            ...buttonStyle,
+                                                            background: `${neuronPrimary}10`,
+                                                            color: neuronPrimary,
+                                                            border: `1px solid ${neuronPrimary}25`,
+                                                            opacity: savingChore ? 0.6 : 1,
+                                                        }}
+                                                        disabled={savingChore}
+                                                        onClick={async () => {
+                                                            const input = document.getElementById(`chore-interval-${chore.choreId}`);
+                                                            const days = parseInt(input?.value);
+                                                            if (!days || days < 1 || days > 180) {
+                                                                setChoreError('Interval must be between 1 and 180 days.');
+                                                                return;
+                                                            }
+                                                            setSavingChore(true);
+                                                            setChoreError('');
+                                                            setChoreSuccess('');
+                                                            try {
+                                                                const agent = getAgent();
+                                                                if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                                                                    await agent.fetchRootKey();
+                                                                }
+                                                                const manager = createManagerActor(canisterId, { agent });
+                                                                await manager.setChoreInterval(chore.choreId, BigInt(days * 86400));
+                                                                setChoreSuccess(`Interval updated to ${days} days.`);
+                                                                await loadChoreData();
+                                                            } catch (err) {
+                                                                setChoreError('Failed to update interval: ' + err.message);
+                                                            } finally {
+                                                                setSavingChore(false);
+                                                            }
+                                                        }}
+                                                    >
+                                                        Save
+                                                    </button>
+                                                </div>
+                                                <p style={{ margin: '6px 0 0', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
+                                                    NNS requires following confirmation at least every 6 months. We recommend 30 days or less.
+                                                </p>
+                                            </div>
+                                        </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                            </>
+                            )}
+
+                            {choreStatuses.length === 0 && !loadingChores && (
+                                <div style={{
+                                    ...cardStyle,
+                                    textAlign: 'center',
+                                    color: theme.colors.secondaryText,
+                                    fontSize: '0.85rem',
+                                }}>
+                                    No chores available. This bot version may not support automated chores yet.
+                                </div>
                             )}
                             </>
                             )}

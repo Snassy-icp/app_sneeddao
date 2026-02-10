@@ -16,6 +16,10 @@
       "main": "src/sneed_sms/main.mo",
       "type": "motoko"
     },
+    "sneed_icp_neuron_manager": {
+      "main": "src/sneed_icp_neuron_manager/neuron_manager_canister.mo",
+      "type": "motoko"
+    },
     "sneed_icp_neuron_manager_factory": {
       "main": "src/sneed_icp_neuron_manager/main.mo",
       "type": "motoko"
