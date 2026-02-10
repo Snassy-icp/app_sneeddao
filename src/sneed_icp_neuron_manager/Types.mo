@@ -834,6 +834,7 @@ module {
         #AutoStakeMaturity;       // Set auto-stake maturity
         #ManageVisibility;        // Set neuron visibility
         #WithdrawFunds;           // Withdraw ICP or tokens from the canister
+        #ViewNeuron;              // View neuron info, list neurons, check balances
     };
 
     // Numeric IDs for permission types (for stable storage)
@@ -861,6 +862,7 @@ module {
         public let AutoStakeMaturity: Nat = 14;
         public let ManageVisibility: Nat = 15;
         public let WithdrawFunds: Nat = 16;
+        public let ViewNeuron: Nat = 17;
     };
 
     // Info about a botkey principal and their permissions (for API responses)

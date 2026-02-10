@@ -325,14 +325,15 @@ function IcpNeuronManager() {
     const hasAnyPermission = isController || (userPermissions && userPermissions.size > 0);
 
     // Permission keys for each neuron tab
+    // ViewNeuron grants read-only access to all tabs (can see data but actions are gated individually)
     const TAB_PERMISSIONS = {
-        'stake': ['StakeNeuron', 'AutoStakeMaturity'],
-        'maturity': ['StakeMaturity', 'MergeMaturity', 'DisburseMaturity', 'Spawn'],
-        'following': ['ManageFollowees'],
-        'dissolve': ['ConfigureDissolveState'],
-        'disburse': ['Disburse'],
-        'hotkeys': ['ManageNeuronHotkeys'],
-        'advanced': ['Split', 'MergeNeurons', 'ManageVisibility'],
+        'stake': ['StakeNeuron', 'AutoStakeMaturity', 'ViewNeuron'],
+        'maturity': ['StakeMaturity', 'MergeMaturity', 'DisburseMaturity', 'Spawn', 'ViewNeuron'],
+        'following': ['ManageFollowees', 'ViewNeuron'],
+        'dissolve': ['ConfigureDissolveState', 'ViewNeuron'],
+        'disburse': ['Disburse', 'ViewNeuron'],
+        'hotkeys': ['ManageNeuronHotkeys', 'ViewNeuron'],
+        'advanced': ['Split', 'MergeNeurons', 'ManageVisibility', 'ViewNeuron'],
     };
 
     // Check if user has access to a given tab (has at least one of the tab's permissions)
@@ -490,11 +491,17 @@ function IcpNeuronManager() {
                 }
             }
             
+            let neuronPermissionDenied = false;
             try {
                 neuronIdsResult = await manager.getNeuronIds();
             } catch (neuronsErr) {
                 console.warn('getNeuronIds failed:', neuronsErr.message);
-                if (!managerMethodsFailed) {
+                // Check if this is a permission denial (assertion failure from ViewNeuron gate)
+                if (neuronsErr.message?.includes('assertion') || neuronsErr.message?.includes('Canister trapped')) {
+                    // Permission denied - user doesn't have ViewNeuron permission
+                    // This is fine - they can still use Bot section and permissionless features
+                    neuronPermissionDenied = true;
+                } else if (!managerMethodsFailed) {
                     managerMethodsFailed = true;
                     if (neuronsErr.message?.includes('has no query method')) {
                         failureReason = 'This app canister does not appear to be an ICP Staking Bot (missing getNeuronIds method).';
@@ -522,20 +529,28 @@ function IcpNeuronManager() {
                     version: `${Number(version.major)}.${Number(version.minor)}.${Number(version.patch)}`,
                 });
                 
-                // Set neuron IDs
-                const neurons = neuronIdsResult || [];
-                setNeuronIds(neurons);
-                
-                // Select first neuron if exists and none selected
-                if (neurons.length > 0) {
-                    const firstNeuron = neurons[0];
-                    setSelectedNeuronId(prev => prev || firstNeuron);
-                    // Fetch info for selected neuron
-                    fetchNeuronInfo(manager, firstNeuron);
-                } else {
+                if (neuronPermissionDenied) {
+                    // User doesn't have ViewNeuron permission - show page but no neuron data
+                    setNeuronIds([]);
                     setSelectedNeuronId(null);
                     setNeuronInfo(null);
                     setFullNeuron(null);
+                } else {
+                    // Set neuron IDs
+                    const neurons = neuronIdsResult || [];
+                    setNeuronIds(neurons);
+                    
+                    // Select first neuron if exists and none selected
+                    if (neurons.length > 0) {
+                        const firstNeuron = neurons[0];
+                        setSelectedNeuronId(prev => prev || firstNeuron);
+                        // Fetch info for selected neuron
+                        fetchNeuronInfo(manager, firstNeuron);
+                    } else {
+                        setSelectedNeuronId(null);
+                        setNeuronInfo(null);
+                        setFullNeuron(null);
+                    }
                 }
             }
             
@@ -1221,6 +1236,7 @@ function IcpNeuronManager() {
         'AutoStakeMaturity': 'Auto-Stake Maturity',
         'ManageVisibility': 'Manage Visibility',
         'WithdrawFunds': 'Withdraw Funds',
+        'ViewNeuron': 'View Neuron',
     };
 
     // Known descriptions for permission keys (empty string for unknown permissions)
@@ -1242,6 +1258,7 @@ function IcpNeuronManager() {
         'AutoStakeMaturity': 'Set auto-stake maturity setting',
         'ManageVisibility': 'Set neuron visibility',
         'WithdrawFunds': 'Withdraw ICP or tokens from the canister',
+        'ViewNeuron': 'View neuron info, list neurons, and check balances',
     };
 
     // Get human-readable label for a permission key (dynamic: falls back to splitting CamelCase)
@@ -5074,6 +5091,7 @@ function IcpNeuronManager() {
                                         )}
                                         
                                         {/* Increase Dissolve Delay */}
+                                        <PermissionGate permKey="ConfigureDissolveState">
                                         <div style={{ marginBottom: '25px' }}>
                                             <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '10px' }}>Increase Dissolve Delay</h4>
                                             <p style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '10px' }}>
@@ -5144,6 +5162,7 @@ function IcpNeuronManager() {
                                                 ✅ Neuron is fully dissolved and ready to disburse.
                                             </p>
                                         )}
+                                        </PermissionGate>
                                     </div>
                                 )}
 
@@ -5168,8 +5187,7 @@ function IcpNeuronManager() {
                                             </div>
                                         )}
                                         
-                                        {/* Increase Stake */}
-                                        <PermissionGate permKey="StakeNeuron">
+                                        {/* Increase Stake - permissionless (sends ICP from user's wallet, not canister funds) */}
                                         <div style={{ marginBottom: '30px' }}>
                                             <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '10px' }}>Increase Stake</h4>
                                             <p style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '15px' }}>
@@ -5228,7 +5246,6 @@ function IcpNeuronManager() {
                                                 </p>
                                             </div>
                                         </div>
-                                        </PermissionGate>
 
                                         {/* Auto-stake Maturity */}
                                         <PermissionGate permKey="AutoStakeMaturity">
@@ -5464,6 +5481,7 @@ function IcpNeuronManager() {
                                             Set neurons to follow for automatic voting. Your neuron will vote the same way as your followees.
                                             Following the DFINITY Foundation neuron (27) is common for governance topics.
                                         </p>
+                                        <PermissionGate permKey="ManageFollowees">
                                         
                                         {/* Current followees */}
                                         {fullNeuron && fullNeuron.followees && fullNeuron.followees.length > 0 && (
@@ -5793,6 +5811,7 @@ function IcpNeuronManager() {
                                                 }
                                             </button>
                                         </div>
+                                        </PermissionGate>
                                     </div>
                                 )}
 
@@ -5800,6 +5819,7 @@ function IcpNeuronManager() {
                                     <div style={cardStyle}>
                                         <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>Disburse Neuron</h3>
                                         
+                                        <PermissionGate permKey="Disburse">
                                         {neuronInfo && neuronInfo.state !== 3 ? (
                                             <div style={{
                                                 background: `${theme.colors.warning || '#f59e0b'}20`,
@@ -5871,6 +5891,7 @@ function IcpNeuronManager() {
                                                 </div>
                                             </>
                                         )}
+                                        </PermissionGate>
                                     </div>
                                 )}
 
@@ -6057,6 +6078,7 @@ function IcpNeuronManager() {
                                             Hot keys can vote and manage following on behalf of this neuron, but cannot disburse or change dissolve settings.
                                         </p>
                                         
+                                        <PermissionGate permKey="ManageNeuronHotkeys">
                                         {/* Current Hot Keys */}
                                         {fullNeuron && fullNeuron.hot_keys && fullNeuron.hot_keys.length > 0 && (
                                             <div style={{ marginBottom: '20px' }}>
@@ -6115,6 +6137,7 @@ function IcpNeuronManager() {
                                                 {actionLoading === 'addHotKey' ? '⏳...' : '➕ Add Hot Key'}
                                             </button>
                                         </div>
+                                        </PermissionGate>
                                     </div>
                                 )}
                             </>

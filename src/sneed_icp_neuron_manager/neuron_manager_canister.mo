@@ -58,6 +58,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         (14, #AutoStakeMaturity),
         (15, #ManageVisibility),
         (16, #WithdrawFunds),
+        (17, #ViewNeuron),
     ];
 
     // Bot-specific variant-to-ID conversion
@@ -80,6 +81,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             case (#AutoStakeMaturity) { 14 };
             case (#ManageVisibility) { 15 };
             case (#WithdrawFunds) { 16 };
+            case (#ViewNeuron) { 17 };
         }
     };
 
@@ -103,6 +105,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             case (14) { ?#AutoStakeMaturity };
             case (15) { ?#ManageVisibility };
             case (16) { ?#WithdrawFunds };
+            case (17) { ?#ViewNeuron };
             case (_)  { null };
         }
     };
@@ -136,8 +139,8 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     };
 
 
-    // Get all neurons controlled by this canister from NNS governance
-    public shared func listNeurons(): async [T.Neuron] {
+    // Internal: Get all neurons controlled by this canister from NNS governance
+    func listNeuronsInternal(): async [T.Neuron] {
         let selfPrincipal = Principal.fromActor(this);
         let response = await governance.list_neurons({
             neuron_ids = [];
@@ -154,9 +157,16 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         })
     };
 
+    // Get all neurons controlled by this canister from NNS governance
+    public shared ({ caller }) func listNeurons(): async [T.Neuron] {
+        assertPermission(caller, T.NeuronPermission.ViewNeuron);
+        await listNeuronsInternal()
+    };
+
     // Get all neuron IDs controlled by this canister
-    public shared func getNeuronIds(): async [T.NeuronId] {
-        let managedNeurons = await listNeurons();
+    public shared ({ caller }) func getNeuronIds(): async [T.NeuronId] {
+        assertPermission(caller, T.NeuronPermission.ViewNeuron);
+        let managedNeurons = await listNeuronsInternal();
         let result = Buffer.Buffer<T.NeuronId>(managedNeurons.size());
         for (n in managedNeurons.vals()) {
             switch (n.id) {
@@ -168,13 +178,14 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     };
 
     // Get count of neurons controlled by this canister
-    public shared func getNeuronCount(): async Nat {
-        let neurons = await listNeurons();
+    public shared ({ caller }) func getNeuronCount(): async Nat {
+        assertPermission(caller, T.NeuronPermission.ViewNeuron);
+        let neurons = await listNeuronsInternal();
         neurons.size()
     };
 
-    // Check if this canister controls a specific neuron
-    public shared func hasNeuron(neuronId: T.NeuronId): async Bool {
+    // Internal: Check if this canister controls a specific neuron
+    func hasNeuronInternal(neuronId: T.NeuronId): async Bool {
         let result = await governance.get_full_neuron(neuronId.id);
         switch (result) {
             case (#Err(_)) { false };
@@ -186,6 +197,12 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                 }
             }
         }
+    };
+
+    // Check if this canister controls a specific neuron
+    public shared ({ caller }) func hasNeuron(neuronId: T.NeuronId): async Bool {
+        assertPermission(caller, T.NeuronPermission.ViewNeuron);
+        await hasNeuronInternal(neuronId)
     };
 
     // Get this canister's ICP account
@@ -201,8 +218,8 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         computeAccountId(Principal.fromActor(this), null);
     };
 
-    // Get ICP balance
-    public shared func getBalance(): async Nat {
+    // Internal: Get ICP balance
+    func getBalanceInternal(): async Nat {
         let account: T.Account = {
             owner = Principal.fromActor(this);
             subaccount = null;
@@ -210,9 +227,16 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         await ledger.icrc1_balance_of(account);
     };
 
+    // Get ICP balance
+    public shared ({ caller }) func getBalance(): async Nat {
+        assertPermission(caller, T.NeuronPermission.ViewNeuron);
+        await getBalanceInternal()
+    };
+
     // Get a neuron's account by fetching its info from NNS
     // Returns the governance canister as owner with the neuron's subaccount
-    public shared func getNeuronAccount(neuronId: T.NeuronId): async ?T.Account {
+    public shared ({ caller }) func getNeuronAccount(neuronId: T.NeuronId): async ?T.Account {
+        assertPermission(caller, T.NeuronPermission.ViewNeuron);
         let result = await governance.get_full_neuron(neuronId.id);
         switch (result) {
             case (#Err(_)) { null };
@@ -307,7 +331,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         assertPermission(caller, T.NeuronPermission.StakeNeuron);
         
         // Verify this canister controls the neuron
-        let hasControl = await hasNeuron(neuronId);
+        let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
             return #Err(#NoNeuron);
         };
@@ -327,7 +351,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         // This way if they change min/max, we don't need to upgrade all canisters
 
         // Check balance
-        let balance = await getBalance();
+        let balance = await getBalanceInternal();
         let required = Nat64.toNat(amount_e8s + T.ICP_FEE);
         if (balance < required) {
             return #Err(#InsufficientFunds({
@@ -422,9 +446,10 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // NEURON INFORMATION
     // ============================================
 
-    public shared func getNeuronInfo(neuronId: T.NeuronId): async ?T.NeuronInfo {
+    public shared ({ caller }) func getNeuronInfo(neuronId: T.NeuronId): async ?T.NeuronInfo {
+        assertPermission(caller, T.NeuronPermission.ViewNeuron);
         // First verify this canister controls the neuron
-        let hasControl = await hasNeuron(neuronId);
+        let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
             return null;
         };
@@ -436,9 +461,10 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         };
     };
 
-    public shared func getFullNeuron(neuronId: T.NeuronId): async ?T.Neuron {
+    public shared ({ caller }) func getFullNeuron(neuronId: T.NeuronId): async ?T.Neuron {
+        assertPermission(caller, T.NeuronPermission.ViewNeuron);
         // Verify this canister controls the neuron
-        let hasControl = await hasNeuron(neuronId);
+        let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
             return null;
         };
@@ -451,8 +477,9 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     };
 
     // Get full info for all neurons controlled by this canister
-    public shared func getAllNeuronsInfo(): async [(T.NeuronId, ?T.NeuronInfo)] {
-        let managedNeurons = await listNeurons();
+    public shared ({ caller }) func getAllNeuronsInfo(): async [(T.NeuronId, ?T.NeuronInfo)] {
+        assertPermission(caller, T.NeuronPermission.ViewNeuron);
+        let managedNeurons = await listNeuronsInternal();
         let results = Buffer.Buffer<(T.NeuronId, ?T.NeuronInfo)>(managedNeurons.size());
         
         for (neuron in managedNeurons.vals()) {
@@ -498,7 +525,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                 };
                 
                 // Check balance
-                let balance = await getBalance();
+                let balance = await getBalanceInternal();
                 let required = Nat64.toNat(amount_e8s + T.ICP_FEE);
                 if (balance < required) {
                     return #Err(#TransferFailed("Insufficient balance"));
@@ -539,7 +566,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         assertPermission(caller, T.NeuronPermission.StakeNeuron);
         
         // Verify this canister controls the neuron
-        let hasControl = await hasNeuron(neuronId);
+        let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
             return #Err(#NoNeuron);
         };
@@ -582,7 +609,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     public shared ({ caller }) func setDissolveDelay(neuronId: T.NeuronId, additionalSeconds: Nat32): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.ConfigureDissolveState);
         
-        let hasControl = await hasNeuron(neuronId);
+        let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
             return #Err(#NoNeuron);
         };
@@ -594,7 +621,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     public shared ({ caller }) func startDissolving(neuronId: T.NeuronId): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.ConfigureDissolveState);
         
-        let hasControl = await hasNeuron(neuronId);
+        let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
             return #Err(#NoNeuron);
         };
@@ -604,7 +631,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     public shared ({ caller }) func stopDissolving(neuronId: T.NeuronId): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.ConfigureDissolveState);
         
-        let hasControl = await hasNeuron(neuronId);
+        let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
             return #Err(#NoNeuron);
         };
@@ -622,7 +649,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     ): async T.DisburseResult {
         assertPermission(caller, T.NeuronPermission.Disburse);
         
-        let hasControl = await hasNeuron(neuronId);
+        let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
             return #Err(#NoNeuron);
         };
@@ -655,7 +682,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     ): async T.DisburseResult {
         assertPermission(caller, T.NeuronPermission.WithdrawFunds);
         
-        let balance = await getBalance();
+        let balance = await getBalanceInternal();
         let required = Nat64.toNat(amount_e8s + T.ICP_FEE);
         if (balance < required) {
             return #Err(#TransferFailed("Insufficient balance"));
@@ -739,7 +766,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     ): async T.SpawnResult {
         assertPermission(caller, T.NeuronPermission.Spawn);
         
-        let hasControl = await hasNeuron(neuronId);
+        let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
             return #Err(#NoNeuron);
         };
@@ -775,7 +802,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     public shared ({ caller }) func stakeMaturity(neuronId: T.NeuronId, percentage: Nat32): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.StakeMaturity);
         
-        let hasControl = await hasNeuron(neuronId);
+        let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
             return #Err(#NoNeuron);
         };
@@ -799,7 +826,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     public shared ({ caller }) func mergeMaturity(neuronId: T.NeuronId, percentage: Nat32): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.MergeMaturity);
         
-        let hasControl = await hasNeuron(neuronId);
+        let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
             return #Err(#NoNeuron);
         };
@@ -827,7 +854,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     ): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.DisburseMaturity);
         
-        let hasControl = await hasNeuron(neuronId);
+        let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
             return #Err(#NoNeuron);
         };
@@ -854,7 +881,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     public shared ({ caller }) func setAutoStakeMaturity(neuronId: T.NeuronId, enabled: Bool): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.AutoStakeMaturity);
         
-        let hasControl = await hasNeuron(neuronId);
+        let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
             return #Err(#NoNeuron);
         };
@@ -870,7 +897,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     public shared ({ caller }) func vote(neuronId: T.NeuronId, proposal_id: Nat64, voteValue: Int32): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.Vote);
         
-        let hasControl = await hasNeuron(neuronId);
+        let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
             return #Err(#NoNeuron);
         };
@@ -901,7 +928,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     ): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.ManageFollowees);
         
-        let hasControl = await hasNeuron(neuronId);
+        let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
             return #Err(#NoNeuron);
         };
@@ -928,7 +955,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     public shared ({ caller }) func refreshVotingPower(neuronId: T.NeuronId): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.Vote);
         
-        let hasControl = await hasNeuron(neuronId);
+        let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
             return #Err(#NoNeuron);
         };
@@ -953,7 +980,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     public shared ({ caller }) func confirmFollowing(neuronId: T.NeuronId): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.ManageFollowees);
         
-        let hasControl = await hasNeuron(neuronId);
+        let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
             return #Err(#NoNeuron);
         };
@@ -996,7 +1023,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     public shared ({ caller }) func addHotKey(neuronId: T.NeuronId, hotkey: Principal): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.ManageNeuronHotkeys);
         
-        let hasControl = await hasNeuron(neuronId);
+        let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
             return #Err(#NoNeuron);
         };
@@ -1006,7 +1033,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     public shared ({ caller }) func removeHotKey(neuronId: T.NeuronId, hotkey: Principal): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.ManageNeuronHotkeys);
         
-        let hasControl = await hasNeuron(neuronId);
+        let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
             return #Err(#NoNeuron);
         };
@@ -1017,7 +1044,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     public shared ({ caller }) func setVisibility(neuronId: T.NeuronId, visibility: Int32): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.ManageVisibility);
         
-        let hasControl = await hasNeuron(neuronId);
+        let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
             return #Err(#NoNeuron);
         };
@@ -1099,7 +1126,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     public shared ({ caller }) func splitNeuron(neuronId: T.NeuronId, amount_e8s: Nat64): async T.SplitResult {
         assertPermission(caller, T.NeuronPermission.Split);
         
-        let hasControl = await hasNeuron(neuronId);
+        let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
             return #Err(#NoNeuron);
         };
@@ -1132,11 +1159,11 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         assertPermission(caller, T.NeuronPermission.MergeNeurons);
         
         // Verify both neurons are controlled by this canister
-        let hasTargetControl = await hasNeuron(targetNeuronId);
+        let hasTargetControl = await hasNeuronInternal(targetNeuronId);
         if (not hasTargetControl) {
             return #Err(#NoNeuron);
         };
-        let hasSourceControl = await hasNeuron(sourceNeuronId);
+        let hasSourceControl = await hasNeuronInternal(sourceNeuronId);
         if (not hasSourceControl) {
             return #Err(#InvalidOperation("Source neuron is not controlled by this canister"));
         };
