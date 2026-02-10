@@ -38,6 +38,7 @@ import {
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
 import priceService from '../services/PriceService';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
+import { createActor as createNeuronManagerActor } from 'declarations/sneed_icp_neuron_manager';
 import { createActor as createGovernanceActor } from 'external/sns_governance';
 import { createActor as createICRC1Actor } from 'external/icrc1_ledger';
 import { fetchAndCacheSnsData, fetchSnsLogo, getAllSnses } from '../utils/SnsUtils';
@@ -546,34 +547,20 @@ function SneedexOffer() {
             }
             console.log('ICP staking bot info result:', result);
             
-            // Also fetch botkeys via the separate cache (in parallel with any ongoing info fetch)
+            // Fetch botkeys directly from the bot via its public query method
             try {
-                const canisterPrincipal = Principal.fromText(canisterId);
-                let botkeysResult = null;
-                // Try query cache first
-                try {
-                    const cachedBotkeys = await actor.getCachedBotkeysQuery(canisterPrincipal);
-                    if (cachedBotkeys && cachedBotkeys.length > 0) {
-                        botkeysResult = cachedBotkeys[0]; // unwrap the opt
-                    }
-                } catch (e) {
-                    console.warn('Botkey cache query failed:', e.message);
+                const host = getHost();
+                const botAgent = HttpAgent.createSync({ host });
+                if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                    await botAgent.fetchRootKey();
                 }
-                // Fall back to update method
-                if (botkeysResult === null || botkeysResult === undefined) {
-                    try {
-                        const freshBotkeys = await actor.getNeuronManagerBotkeys(canisterPrincipal);
-                        if ('Ok' in freshBotkeys) {
-                            botkeysResult = freshBotkeys.Ok;
-                        }
-                    } catch (e) {
-                        console.warn('Botkey update fetch failed:', e.message);
-                    }
-                }
-                // botkeysResult is an array of [Principal, [Nat]] or null
-                setNeuronManagerBotkeys(prev => ({ ...prev, [assetIndex]: botkeysResult || [] }));
+                const botActor = createNeuronManagerActor(canisterId, { agent: botAgent });
+                const hotkeyList = await botActor.listHotkeyPrincipals();
+                // hotkeyList is [{principal, permissions: [NeuronPermissionType]}]
+                setNeuronManagerBotkeys(prev => ({ ...prev, [assetIndex]: hotkeyList }));
             } catch (e) {
-                console.warn('Failed to fetch botkeys:', e.message);
+                console.warn('Failed to fetch botkeys from bot (may be v0.9.0):', e.message);
+                // null means not available (older bot version)
                 setNeuronManagerBotkeys(prev => ({ ...prev, [assetIndex]: null }));
             }
             
@@ -3912,28 +3899,33 @@ function SneedexOffer() {
                                                                 const botkeys = botkeysData !== undefined ? botkeysData : null;
                                                                 const hasBotkeys = botkeys && botkeys.length > 0;
                                                                 
-                                                                // Known permission ID -> display name mapping
-                                                                const PERM_ID_LABELS = {
-                                                                    0: 'Full Permissions',
-                                                                    1: 'Manage Permissions',
-                                                                    2: 'Configure Dissolve State',
-                                                                    3: 'Vote',
-                                                                    4: 'Disburse',
-                                                                    5: 'Split',
-                                                                    6: 'Merge Maturity',
-                                                                    7: 'Disburse Maturity',
-                                                                    8: 'Stake Maturity',
-                                                                    9: 'Manage Followees',
-                                                                    10: 'Spawn',
-                                                                    11: 'Manage NNS Hotkeys',
-                                                                    12: 'Stake Neuron',
-                                                                    13: 'Merge Neurons',
-                                                                    14: 'Auto-Stake Maturity',
-                                                                    15: 'Manage Visibility',
-                                                                    16: 'Withdraw Funds',
-                                                                    17: 'View Neuron',
+                                                                // Known permission key -> display label mapping
+                                                                const PERM_LABELS = {
+                                                                    'FullPermissions': 'Full Permissions',
+                                                                    'ManagePermissions': 'Manage Permissions',
+                                                                    'ConfigureDissolveState': 'Configure Dissolve State',
+                                                                    'Vote': 'Vote',
+                                                                    'Disburse': 'Disburse',
+                                                                    'Split': 'Split',
+                                                                    'MergeMaturity': 'Merge Maturity',
+                                                                    'DisburseMaturity': 'Disburse Maturity',
+                                                                    'StakeMaturity': 'Stake Maturity',
+                                                                    'ManageFollowees': 'Manage Followees',
+                                                                    'Spawn': 'Spawn',
+                                                                    'ManageNeuronHotkeys': 'Manage NNS Hotkeys',
+                                                                    'StakeNeuron': 'Stake Neuron',
+                                                                    'MergeNeurons': 'Merge Neurons',
+                                                                    'AutoStakeMaturity': 'Auto-Stake Maturity',
+                                                                    'ManageVisibility': 'Manage Visibility',
+                                                                    'WithdrawFunds': 'Withdraw Funds',
+                                                                    'ViewNeuron': 'View Neuron',
                                                                 };
-                                                                const getPermLabel = (id) => PERM_ID_LABELS[Number(id)] || `Permission #${id}`;
+                                                                // Get human-readable label from a permission variant like {Vote: null}
+                                                                const getPermLabel = (perm) => {
+                                                                    const key = Object.keys(perm)[0];
+                                                                    return PERM_LABELS[key] || key.replace(/([A-Z])/g, ' $1').trim();
+                                                                };
+                                                                const isFullPerm = (perm) => Object.keys(perm)[0] === 'FullPermissions';
                                                                 
                                                                 return (
                                                                     <div style={{
@@ -3975,7 +3967,7 @@ function SneedexOffer() {
                                                                                 gap: '6px',
                                                                                 fontSize: '0.8rem',
                                                                             }}>
-                                                                                {botkeys.map(([principal, permIds], bkIdx) => (
+                                                                                {botkeys.map((entry, bkIdx) => (
                                                                                     <div key={bkIdx} style={{
                                                                                         display: 'flex',
                                                                                         alignItems: 'flex-start',
@@ -3987,7 +3979,7 @@ function SneedexOffer() {
                                                                                     }}>
                                                                                         <div style={{ flexShrink: 0 }}>
                                                                                             <PrincipalDisplay 
-                                                                                                principal={principal}
+                                                                                                principal={entry.principal}
                                                                                                 short={true}
                                                                                                 showCopyButton={false}
                                                                                                 enableContextMenu={true}
@@ -4001,21 +3993,21 @@ function SneedexOffer() {
                                                                                             gap: '4px',
                                                                                             alignItems: 'center',
                                                                                         }}>
-                                                                                            {permIds.map((pid, pidIdx) => (
+                                                                                            {entry.permissions.map((perm, pidIdx) => (
                                                                                                 <span key={pidIdx} style={{
-                                                                                                    background: Number(pid) === 0 
+                                                                                                    background: isFullPerm(perm) 
                                                                                                         ? `${theme.colors.warning}25` 
                                                                                                         : `${theme.colors.accent}15`,
-                                                                                                    color: Number(pid) === 0 
+                                                                                                    color: isFullPerm(perm) 
                                                                                                         ? theme.colors.warning 
                                                                                                         : theme.colors.accent,
                                                                                                     padding: '2px 6px',
                                                                                                     borderRadius: '4px',
                                                                                                     fontSize: '0.7rem',
                                                                                                     fontWeight: '500',
-                                                                                                    border: `1px solid ${Number(pid) === 0 ? theme.colors.warning : theme.colors.accent}20`,
+                                                                                                    border: `1px solid ${isFullPerm(perm) ? theme.colors.warning : theme.colors.accent}20`,
                                                                                                 }}>
-                                                                                                    {getPermLabel(pid)}
+                                                                                                    {getPermLabel(perm)}
                                                                                                 </span>
                                                                                             ))}
                                                                                         </div>
