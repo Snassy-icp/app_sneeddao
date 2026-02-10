@@ -10,6 +10,7 @@ import Buffer "mo:base/Buffer";
 import Text "mo:base/Text";
 
 import T "Types";
+import BotkeyPermissions "../BotkeyPermissions";
 
 // This is the actual canister that gets deployed for each user
 // No constructor arguments needed - access control uses IC canister controllers
@@ -34,22 +35,11 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     var hotkeyPermissions: [(Principal, [Nat])] = [];
 
     // ============================================
-    // ACCESS CONTROL
+    // PERMISSION SYSTEM (using reusable BotkeyPermissions engine)
     // ============================================
 
-    // Check if a principal is a controller of this canister using built-in method
-    func isController(caller: Principal): Bool {
-        Principal.isController(caller)
-    };
-
-    // ============================================
-    // PERMISSION SYSTEM
-    // ============================================
-
-    // Transient permission mapping - rebuilt from code on every canister upgrade.
-    // This is the canonical definition of all permission types and their numeric IDs.
-    // New permissions can be added here in future versions without migration.
-    // ID 0 = FullPermissions is special: it grants all permissions including future ones.
+    // Bot-specific permission map: all permission types and their numeric IDs.
+    // IDs 0 and 1 are reserved base permissions; bot-specific start at 2.
     transient let PERMISSION_MAP: [(Nat, T.NeuronPermissionType)] = [
         (0,  #FullPermissions),
         (1,  #ManagePermissions),
@@ -70,7 +60,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         (16, #WithdrawFunds),
     ];
 
-    // Convert a permission variant to its numeric ID
+    // Bot-specific variant-to-ID conversion
     func permissionVariantToId(perm: T.NeuronPermissionType): Nat {
         switch (perm) {
             case (#FullPermissions) { 0 };
@@ -93,7 +83,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         }
     };
 
-    // Convert a numeric ID to its permission variant
+    // Bot-specific ID-to-variant conversion
     func permissionIdToVariant(id: Nat): ?T.NeuronPermissionType {
         switch (id) {
             case (0)  { ?#FullPermissions };
@@ -117,49 +107,20 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         }
     };
 
-    // Convert an array of permission variants to numeric IDs
-    func variantsToIds(perms: [T.NeuronPermissionType]): [Nat] {
-        Array.map<T.NeuronPermissionType, Nat>(perms, permissionVariantToId)
-    };
+    // Instantiate the reusable permission engine with this bot's types
+    transient let permEngine = BotkeyPermissions.Engine<T.NeuronPermissionType>({
+        permissionMap = PERMISSION_MAP;
+        variantToId = permissionVariantToId;
+        idToVariant = permissionIdToVariant;
+    });
 
-    // Convert an array of numeric IDs to permission variants (skipping unknown IDs)
-    func idsToVariants(ids: [Nat]): [T.NeuronPermissionType] {
-        let result = Buffer.Buffer<T.NeuronPermissionType>(ids.size());
-        for (id in ids.vals()) {
-            switch (permissionIdToVariant(id)) {
-                case (?v) { result.add(v) };
-                case null {}; // Skip unknown IDs from future versions
-            };
-        };
-        Buffer.toArray(result)
-    };
-
-    // Check if an array contains a specific Nat value
-    func arrayContainsNat(arr: [Nat], val: Nat): Bool {
-        for (item in arr.vals()) {
-            if (item == val) return true;
-        };
-        false
-    };
-
-    // Check if a caller has a specific permission
-    // Controllers always have all permissions.
-    // FullPermissions (ID 0) grants all permissions, including future unknown ones.
+    // Convenience wrappers that close over hotkeyPermissions state
     func callerHasPermission(caller: Principal, permissionId: Nat): Bool {
-        if (isController(caller)) return true;
-        for ((p, ids) in hotkeyPermissions.vals()) {
-            if (Principal.equal(p, caller)) {
-                // FullPermissions (ID 0) implies every permission
-                if (arrayContainsNat(ids, T.NeuronPermission.FullPermissions)) return true;
-                return arrayContainsNat(ids, permissionId);
-            };
-        };
-        false
+        permEngine.callerHasPermission(caller, permissionId, hotkeyPermissions)
     };
 
-    // Assert that the caller has a specific permission (traps if not)
     func assertPermission(caller: Principal, permissionId: Nat) {
-        assert(callerHasPermission(caller, permissionId));
+        permEngine.assertPermission(caller, permissionId, hotkeyPermissions)
     };
 
     // ============================================
@@ -1067,7 +1028,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // HOTKEY PERMISSION MANAGEMENT
     // ============================================
 
-    // Add permissions to a hotkey principal (merges with existing permissions)
+    // Add permissions to a botkey principal (merges with existing permissions)
     public shared ({ caller }) func addHotkeyPermissions(
         hotkeyPrincipal: Principal,
         permissions: [T.NeuronPermissionType]
@@ -1078,38 +1039,11 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             return #Err(#InvalidOperation("Cannot add anonymous principal as hotkey"));
         };
 
-        let newIds = variantsToIds(permissions);
-
-        let updated = Buffer.Buffer<(Principal, [Nat])>(hotkeyPermissions.size() + 1);
-        var found = false;
-        for ((p, ids) in hotkeyPermissions.vals()) {
-            if (Principal.equal(p, hotkeyPrincipal)) {
-                found := true;
-                // Merge: add new IDs that don't already exist
-                let merged = Buffer.Buffer<Nat>(ids.size() + newIds.size());
-                for (id in ids.vals()) { merged.add(id) };
-                for (id in newIds.vals()) {
-                    var exists = false;
-                    for (existing in merged.vals()) {
-                        if (existing == id) { exists := true };
-                    };
-                    if (not exists) {
-                        merged.add(id);
-                    };
-                };
-                updated.add((p, Buffer.toArray(merged)));
-            } else {
-                updated.add((p, ids));
-            };
-        };
-        if (not found) {
-            updated.add((hotkeyPrincipal, newIds));
-        };
-        hotkeyPermissions := Buffer.toArray(updated);
+        hotkeyPermissions := permEngine.addPermissions(hotkeyPrincipal, permissions, hotkeyPermissions);
         #Ok
     };
 
-    // Remove specific permissions from a hotkey principal
+    // Remove specific permissions from a botkey principal
     // If all permissions are removed, the principal is removed entirely
     public shared ({ caller }) func removeHotkeyPermissions(
         hotkeyPrincipal: Principal,
@@ -1117,88 +1051,40 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     ): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.ManagePermissions);
 
-        let removeIds = variantsToIds(permissions);
-
-        let updated = Buffer.Buffer<(Principal, [Nat])>(hotkeyPermissions.size());
-        for ((p, ids) in hotkeyPermissions.vals()) {
-            if (Principal.equal(p, hotkeyPrincipal)) {
-                let remaining = Array.filter<Nat>(ids, func(id) {
-                    not arrayContainsNat(removeIds, id)
-                });
-                if (remaining.size() > 0) {
-                    updated.add((p, remaining));
-                };
-                // If no remaining permissions, the principal is dropped
-            } else {
-                updated.add((p, ids));
-            };
-        };
-        hotkeyPermissions := Buffer.toArray(updated);
+        hotkeyPermissions := permEngine.removePermissions(hotkeyPrincipal, permissions, hotkeyPermissions);
         #Ok
     };
 
-    // Remove a hotkey principal entirely (removes all their permissions)
+    // Remove a botkey principal entirely (removes all their permissions)
     public shared ({ caller }) func removeHotkeyPrincipal(
         hotkeyPrincipal: Principal
     ): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.ManagePermissions);
 
-        hotkeyPermissions := Array.filter<(Principal, [Nat])>(
-            hotkeyPermissions,
-            func((p, _)) { not Principal.equal(p, hotkeyPrincipal) }
-        );
+        hotkeyPermissions := permEngine.removePrincipal(hotkeyPrincipal, hotkeyPermissions);
         #Ok
     };
 
-    // Get permissions for a specific hotkey principal
+    // Get permissions for a specific botkey principal
     public query func getHotkeyPermissions(hotkeyPrincipal: Principal): async [T.NeuronPermissionType] {
-        for ((p, ids) in hotkeyPermissions.vals()) {
-            if (Principal.equal(p, hotkeyPrincipal)) {
-                return idsToVariants(ids);
-            };
-        };
-        []
+        permEngine.getPermissions(hotkeyPrincipal, hotkeyPermissions)
     };
 
-    // List all hotkey principals and their permissions
+    // List all botkey principals and their permissions
     public query func listHotkeyPrincipals(): async [T.HotkeyPermissionInfo] {
-        let result = Buffer.Buffer<T.HotkeyPermissionInfo>(hotkeyPermissions.size());
-        for ((p, ids) in hotkeyPermissions.vals()) {
-            result.add({ principal = p; permissions = idsToVariants(ids) });
-        };
-        Buffer.toArray(result)
+        permEngine.listPrincipals(hotkeyPermissions)
     };
 
     // List all available permission types and their numeric IDs
     public query func listPermissionTypes(): async [(Nat, T.NeuronPermissionType)] {
-        PERMISSION_MAP
+        permEngine.listPermissionTypes()
     };
 
     // Get the caller's current permissions
     // Controllers and principals with FullPermissions get all permissions;
     // other botkey principals get their assigned permissions.
     public shared query ({ caller }) func callerPermissions(): async [T.NeuronPermissionType] {
-        if (isController(caller)) {
-            let all = Buffer.Buffer<T.NeuronPermissionType>(PERMISSION_MAP.size());
-            for ((_, v) in PERMISSION_MAP.vals()) {
-                all.add(v);
-            };
-            return Buffer.toArray(all);
-        };
-        for ((p, ids) in hotkeyPermissions.vals()) {
-            if (Principal.equal(p, caller)) {
-                // FullPermissions grants all
-                if (arrayContainsNat(ids, T.NeuronPermission.FullPermissions)) {
-                    let all = Buffer.Buffer<T.NeuronPermissionType>(PERMISSION_MAP.size());
-                    for ((_, v) in PERMISSION_MAP.vals()) {
-                        all.add(v);
-                    };
-                    return Buffer.toArray(all);
-                };
-                return idsToVariants(ids);
-            };
-        };
-        []
+        permEngine.getCallerPermissions(caller, hotkeyPermissions)
     };
 
     // Check if the caller has a specific permission

@@ -3,6 +3,8 @@ import Blob "mo:base/Blob";
 import Nat64 "mo:base/Nat64";
 import Text "mo:base/Text";
 
+import BotkeyTypes "../BotkeyTypes";
+
 module {
 
     // ============================================
@@ -838,10 +840,12 @@ module {
     // These IDs are the canonical representation stored in stable memory.
     // The variant type above is only used in the public API.
     // New permissions can be added with new IDs without migration.
-    // ID 0 = FullPermissions is special: it grants all permissions including future ones.
+    // IDs 0 and 1 are reserved base permissions (see BotkeyTypes.BasePermission).
+    // Bot-specific permissions start at ID 2.
     public module NeuronPermission {
-        public let FullPermissions: Nat = 0;
-        public let ManagePermissions: Nat = 1;
+        // Base permissions (re-exported for convenience, IDs match BotkeyTypes.BasePermission)
+        public let FullPermissions: Nat = BotkeyTypes.BasePermission.FullPermissions;     // 0
+        public let ManagePermissions: Nat = BotkeyTypes.BasePermission.ManagePermissions;  // 1
         public let ConfigureDissolveState: Nat = 2;
         public let Vote: Nat = 3;
         public let Disburse: Nat = 4;
@@ -859,11 +863,9 @@ module {
         public let WithdrawFunds: Nat = 16;
     };
 
-    // Info about a hotkey principal and their permissions (for API responses)
-    public type HotkeyPermissionInfo = {
-        principal: Principal;
-        permissions: [NeuronPermissionType];
-    };
+    // Info about a botkey principal and their permissions (for API responses)
+    // Uses the generic base type from BotkeyTypes, specialized to our NeuronPermissionType.
+    public type HotkeyPermissionInfo = BotkeyTypes.BotkeyPermissionInfo<NeuronPermissionType>;
 
     public let CURRENT_VERSION: Version = {
         major = 0;
