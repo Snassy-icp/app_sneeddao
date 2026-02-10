@@ -5,12 +5,16 @@
 ///
 /// The system uses a three-level timer hierarchy:
 ///   - Scheduler (Level 1): Fires on a recurring schedule, starts the Conductor.
-///   - Conductor (Level 2): Orchestrates the chore by running Tasks in sequence.
+///   - Conductor (Level 2): Orchestrates the chore by polling for Task completion.
 ///   - Task (Level 3): Performs actual work in instruction-limit-safe chunks.
 ///
-/// Each bot provides its own chore definitions (conductor callbacks, task logic)
-/// while the BotChoreEngine handles all timer management, state tracking,
-/// upgrade resilience, and admin controls.
+/// The Conductor uses a polling pattern: it periodically checks if a Task has
+/// finished rather than being notified by the Task. This makes the system
+/// trap-resilient — a trapped Task simply stops, and the Conductor detects
+/// the stale task on its next poll.
+///
+/// To start a Task, the Conductor calls engine.setPendingTask() before returning.
+/// The engine picks up the pending task and runs it independently.
 module {
 
     // ============================================
@@ -19,8 +23,9 @@ module {
 
     /// Per-chore configuration. Stored in stable memory, settable by admins.
     public type ChoreConfig = {
-        enabled: Bool;          // Whether the scheduler should fire
-        intervalSeconds: Nat;   // How often the scheduler fires (in seconds)
+        enabled: Bool;              // Whether the scheduler should fire
+        intervalSeconds: Nat;       // How often the scheduler fires (in seconds)
+        taskTimeoutSeconds: Nat;    // Max seconds a task can run before considered dead
     };
 
     // ============================================
@@ -36,7 +41,7 @@ module {
         lastCompletedRunAt: ?Int;       // Timestamp of last successful chore completion
 
         // Conductor
-        conductorActive: Bool;          // true if conductor is running or waiting for task
+        conductorActive: Bool;          // true if conductor is running or polling for task
         conductorTimerId: ?Nat;         // Timer ID (stale after upgrade)
         conductorStartedAt: ?Int;       // Timestamp when conductor started this run
         conductorInvocationCount: Nat;  // How many times conductor was called this run
@@ -92,46 +97,43 @@ module {
     // ============================================
 
     /// Result returned by a Task to tell the engine what to do next.
+    /// The engine wraps each task tick for stop-flag checking and state tracking.
     public type TaskAction = {
         #Continue;      // More work to do — re-invoke via 0-second timer
         #Done;          // Task completed successfully
         #Error: Text;   // Task failed with error message
     };
 
-    /// Result of a completed task, as reported to the Conductor.
-    public type TaskCompletionResult = {
-        #Completed;
-        #Failed: Text;
-    };
-
     /// Context passed to the Conductor on each invocation.
+    /// Pure data — no functions. The conductor uses this to decide what to do.
     public type ConductorContext = {
+        /// The chore ID (for calling engine.setPendingTask).
+        choreId: Text;
+
         /// How many times the conductor has been invoked in this run.
         /// 0 on first invocation, increments each time.
         invocationCount: Nat;
 
-        /// Result of the last completed task, if any.
-        /// null on first invocation or after upgrade resume.
+        /// Whether a task is currently running.
+        /// The conductor should return #ContinueIn(N) to poll when true.
+        isTaskRunning: Bool;
+
+        /// Info about the most recently completed task, if any.
+        /// null on first invocation, after upgrade resume, or if no task has completed yet.
         lastCompletedTask: ?{
             taskId: Text;
-            result: TaskCompletionResult;
+            succeeded: Bool;
+            error: ?Text;
         };
     };
 
     /// Action returned by the Conductor to tell the engine what to do next.
-    /// This type must be shared (usable with `async`) so it cannot contain functions.
-    /// Task functions are provided separately via `ChoreDefinition.createTask`.
+    /// Intentionally simple — all shared types, safe for async return.
+    /// Tasks are started via engine.setPendingTask(), not via this return value.
     public type ConductorAction = {
-        /// Start a new Task. The engine will call `createTask(taskId)` from the
-        /// ChoreDefinition to get the task function, then run it via 0-second timers.
-        /// Re-invokes the conductor when the task completes.
-        #StartTask: { taskId: Text };
-        /// Re-invoke the conductor immediately (0-second timer).
-        /// Use when the conductor needs to do more work without starting a task.
-        #Continue;
-        /// Re-invoke the conductor after a delay (in seconds).
-        /// Use to avoid overwhelming external canisters.
-        #ContinueIn: { seconds: Nat };
+        /// Schedule next conductor tick in N seconds.
+        /// Use 0 for immediate (doing work), 10+ for polling (waiting for task).
+        #ContinueIn: Nat;
         /// Chore completed successfully.
         #Done;
         /// Chore failed with error message.
@@ -143,7 +145,10 @@ module {
     // ============================================
 
     /// Definition of a chore, provided by the bot at registration time.
-    /// Both `conduct` and `createTask` are closures — transient, re-registered on every canister start.
+    /// The `conduct` callback is a closure — transient, re-registered on every canister start.
+    ///
+    /// To start tasks, the conductor calls engine.setPendingTask(choreId, taskId, taskFn)
+    /// before returning. No createTask callback is needed.
     public type ChoreDefinition = {
         /// Unique identifier for this chore (e.g., "refresh-voting-power").
         id: Text;
@@ -153,16 +158,14 @@ module {
         description: Text;
         /// Default schedule interval in seconds (used when first registered).
         defaultIntervalSeconds: Nat;
+        /// Default task timeout in seconds (used when first registered).
+        /// Timed-out tasks are marked as failed and the conductor can recover.
+        defaultTaskTimeoutSeconds: Nat;
         /// The conductor function. Called repeatedly by the engine to orchestrate the chore.
-        /// Receives context about the current run and returns an action telling the engine
-        /// what to do next (start a task, continue, done, or error).
+        /// Receives context about the current run (including task state) and returns an action
+        /// telling the engine when to call it again (or that it's done/failed).
+        /// To start a task, call engine.setPendingTask() before returning.
         conduct: (ConductorContext) -> async ConductorAction;
-        /// Task factory function. Called by the engine immediately after the conductor
-        /// returns `#StartTask({ taskId })` to obtain the actual task function to execute.
-        /// The conductor should set up any captured mutable state before returning #StartTask,
-        /// and createTask reads that state to build the appropriate task closure.
-        /// Returns null if the task ID is unknown.
-        createTask: (Text) -> ?(() -> async TaskAction);
     };
 
     // ============================================
@@ -177,9 +180,9 @@ module {
 
     /// Status of the Conductor.
     public type ConductorStatus = {
-        #Idle;              // Not running
-        #Running;           // Actively executing conductor logic
-        #WaitingForTask;    // Waiting for a task to complete
+        #Idle;      // Not running
+        #Running;   // Actively executing conductor logic (no task running)
+        #Polling;   // Waiting for a task to complete, checking periodically
     };
 
     /// Status of the current Task.
@@ -195,6 +198,7 @@ module {
         choreDescription: Text;
         enabled: Bool;
         intervalSeconds: Nat;
+        taskTimeoutSeconds: Nat;
 
         // Scheduler
         schedulerStatus: SchedulerStatus;

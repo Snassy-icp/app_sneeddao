@@ -13,6 +13,7 @@ The system is designed as a **reusable framework** that any bot canister can ado
 - **Upgrade-resilient**: All timer state is persisted in stable storage so timers resume correctly after canister upgrades.
 - **Admin-controllable**: Full visibility into what is running, what is scheduled, and precise controls to start, stop, trigger, and configure chores.
 - **Stoppable**: Every self-rescheduling timer checks a stop flag before rescheduling, preventing runaway infinite loops that could drain cycles.
+- **Trap-resilient**: Tasks and conductors are decoupled via polling, so a trapped task doesn't leave the conductor permanently stuck.
 
 ---
 
@@ -32,14 +33,15 @@ The Scheduler is a simple periodic trigger. It does no actual work.
 
 ### 2.2 Conductor (Level 2)
 
-The **Conductor** orchestrates the chore's execution. When started by the Scheduler, it:
+The **Conductor** orchestrates the chore's execution. It uses a **polling pattern**:
 
-1. Determines what Tasks need to run (e.g., queries the list of neurons to process).
-2. Starts the first Task.
-3. When a Task completes, evaluates what to do next — start another Task, or mark the chore as done.
-4. Calls itself via 0-second timers to keep progressing through the Task sequence.
+1. First invocation: Determines what work needs to be done (e.g., queries the list of neurons), starts the first Task, then returns `#ContinueIn(N)` to poll in N seconds.
+2. Subsequent polling invocations: Checks if the current Task is still running (`ctx.isTaskRunning`). If yes, returns `#ContinueIn(N)` to poll again. If no, inspects the result (`ctx.lastCompletedTask`), optionally starts the next Task, and polls again.
+3. When all Tasks are done: Returns `#Done`.
 
-The Conductor is event-driven: it runs when there is a decision to make (start of chore, task completion) and idles while a Task is running. This avoids wasteful polling.
+The Conductor is **decoupled from Tasks**: it does not get notified when a Task completes. Instead, it periodically checks Task state via the `ConductorContext`. This polling model is **trap-resilient** — if a Task traps, it simply stops rescheduling itself, and the Conductor's next poll detects the stale task and can recover.
+
+To start a Task, the Conductor calls `engine.setPendingTask(choreId, taskId, taskFn)` before returning. The engine picks up the pending task after the conductor callback returns and starts it.
 
 ### 2.3 Task (Level 3)
 
@@ -49,7 +51,7 @@ A **Task** performs a discrete unit of work within the chore. It:
 2. Returns `#Continue` to be called again (via 0-second timer) if more work remains.
 3. Returns `#Done` when the work is complete, or `#Error` if it failed.
 
-Tasks split their work into instruction-limit-safe chunks by self-rescheduling with 0-second timers.
+Tasks split their work into instruction-limit-safe chunks by self-rescheduling with 0-second timers. The engine wraps each Task tick for stop-flag checking, error handling, and state tracking — but the Task itself is unaware of the Conductor.
 
 ### 2.4 Execution Flow Example: "Refresh Voting Power" (Weekly)
 
@@ -57,26 +59,33 @@ Tasks split their work into instruction-limit-safe chunks by self-rescheduling w
 Week 1, Monday 00:00:
   [Scheduler] fires → starts Conductor → reschedules for next Monday
 
-  [Conductor] invocation 0:
+  [Conductor] tick 0 (isTaskRunning=false, lastCompletedTask=null):
     - Queries governance for all managed neurons → finds 3 neurons
-    - Returns #StartTask("refresh-0", refreshNeuron0)
+    - Calls engine.setPendingTask("refresh-voting-power", "refresh-0", taskFn)
+    - Returns #ContinueIn(10) — poll in 10 seconds
 
-  [Task "refresh-0"] invocation 0:
+  [Engine] picks up pending task → starts Task "refresh-0"
+
+  [Task "refresh-0"] tick 0:
     - Calls refreshVotingPower for neuron 0
-    - Returns #Done
+    - Returns #Done → engine marks task complete
 
-  [Conductor] invocation 1 (triggered by task completion):
-    - Last task succeeded
-    - Returns #StartTask("refresh-1", refreshNeuron1)
+  10 seconds later...
+
+  [Conductor] tick 1 (isTaskRunning=false, lastCompletedTask=("refresh-0", true)):
+    - Last task succeeded, advance to next neuron
+    - Calls engine.setPendingTask("refresh-voting-power", "refresh-1", taskFn)
+    - Returns #ContinueIn(10)
 
   [Task "refresh-1"] ... → #Done
 
-  [Conductor] invocation 2:
-    - Returns #StartTask("refresh-2", refreshNeuron2)
+  [Conductor] tick 2:
+    - Starts "refresh-2"
+    - Returns #ContinueIn(10)
 
   [Task "refresh-2"] ... → #Done
 
-  [Conductor] invocation 3:
+  [Conductor] tick 3:
     - All neurons processed
     - Returns #Done → chore marked complete
 
@@ -108,7 +117,7 @@ src/
 | Component | Shared (Framework) | Bot-Specific |
 |-----------|-------------------|--------------|
 | Types | `ChoreConfig`, `ChoreRuntimeState`, `ConductorContext`, `ConductorAction`, `TaskAction`, `ChoreStatus` | Chore definitions (IDs, names, conduct functions) |
-| Engine | Timer management, state tracking, stop logic, upgrade resume, admin queries | — |
+| Engine | Timer management, state tracking, stop logic, upgrade resume, admin queries, task loop, task timeout | — |
 | State vars | — | `var choreConfigs`, `var choreStates` (in bot actor) |
 | Chore logic | — | Conductor callbacks, Task execute functions |
 | API methods | — | Canister endpoints (with permission checks) |
@@ -131,8 +140,9 @@ Each bot:
 
 ```motoko
 type ChoreConfig = {
-    enabled: Bool;          // Whether the scheduler should fire
-    intervalSeconds: Nat;   // How often the scheduler fires
+    enabled: Bool;              // Whether the scheduler should fire
+    intervalSeconds: Nat;       // How often the scheduler fires
+    taskTimeoutSeconds: Nat;    // Max seconds a task can run before considered dead
 };
 ```
 
@@ -146,7 +156,7 @@ type ChoreRuntimeState = {
     lastCompletedRunAt: ?Int;       // Timestamp of last successful chore completion
 
     // Conductor
-    conductorActive: Bool;          // true if conductor is running or waiting
+    conductorActive: Bool;          // true if conductor is running or polling
     conductorTimerId: ?Nat;
     conductorStartedAt: ?Int;
     conductorInvocationCount: Nat;
@@ -175,13 +185,24 @@ type ChoreRuntimeState = {
 ### 4.3 Callback Types
 
 ```motoko
-// Returned by the conductor to tell the engine what to do next
+// Action returned by the Conductor to tell the engine what to do next.
+// Intentionally simple — tasks are started via engine.setPendingTask(), not via return value.
 type ConductorAction = {
-    #StartTask: { taskId: Text; execute: () -> async TaskAction };
-    #Continue;                  // Re-invoke conductor immediately (0-sec timer)
-    #ContinueIn: { seconds: Nat };  // Re-invoke after delay
-    #Done;                      // Chore completed successfully
-    #Error: Text;               // Chore failed
+    #ContinueIn: Nat;   // Schedule next conductor tick in N seconds (0 = immediately)
+    #Done;               // Chore completed successfully
+    #Error: Text;        // Chore failed
+};
+
+// Context passed to the conductor on each invocation — pure data, no functions.
+type ConductorContext = {
+    choreId: Text;                  // ID of this chore (for calling engine.setPendingTask)
+    invocationCount: Nat;           // How many ticks so far in this run
+    isTaskRunning: Bool;            // Is a task currently active?
+    lastCompletedTask: ?{           // Result of the most recently completed task
+        taskId: Text;
+        succeeded: Bool;
+        error: ?Text;
+    };
 };
 
 // Returned by a task to tell the engine what to do next
@@ -190,14 +211,6 @@ type TaskAction = {
     #Done;          // Task completed
     #Error: Text;   // Task failed
 };
-
-// Context passed to the conductor on each invocation
-type ConductorContext = {
-    invocationCount: Nat;
-    lastCompletedTask: ?{ taskId: Text; result: TaskCompletionResult };
-};
-
-type TaskCompletionResult = { #Completed; #Failed: Text };
 ```
 
 ### 4.4 ChoreStatus (Query Result)
@@ -209,12 +222,13 @@ type ChoreStatus = {
     choreDescription: Text;
     enabled: Bool;
     intervalSeconds: Nat;
+    taskTimeoutSeconds: Nat;
 
     schedulerStatus: { #Idle; #Scheduled };
     nextScheduledRunAt: ?Int;
     lastCompletedRunAt: ?Int;
 
-    conductorStatus: { #Idle; #Running; #WaitingForTask };
+    conductorStatus: { #Idle; #Running; #Polling };
     conductorStartedAt: ?Int;
     conductorInvocationCount: Nat;
 
@@ -243,9 +257,12 @@ type ChoreDefinition = {
     name: Text;
     description: Text;
     defaultIntervalSeconds: Nat;
+    defaultTaskTimeoutSeconds: Nat;     // Default: 300 (5 minutes)
     conduct: (ConductorContext) -> async ConductorAction;
 };
 ```
+
+Note: No `createTask` field. Tasks are started by the conductor calling `engine.setPendingTask(choreId, taskId, taskFn)` before returning.
 
 ---
 
@@ -266,24 +283,33 @@ let engine = BotChoreEngine.Engine(stateAccessor);
 engine.registerChore(myChoreDefinition);
 ```
 
-### 5.2 Timer Lifecycle
+### 5.2 Task Management (called by conductor callbacks)
+
+```motoko
+// Called by the conductor to request starting a task.
+// The engine picks up the pending task after the conductor callback returns.
+engine.setPendingTask(choreId, taskId, taskFn)
+```
+
+### 5.3 Timer Lifecycle
 
 ```motoko
 engine.resumeTimers<system>()    // Start/resume schedulers and any interrupted conductors
 engine.cancelAllTimers()         // Cancel every active timer (emergency use)
 ```
 
-### 5.3 Admin Control
+### 5.4 Admin Control
 
 ```motoko
 engine.setEnabled<system>(choreId, true)     // Enable/disable (starts/stops scheduler)
 engine.setInterval(choreId, 604800)          // Change schedule interval (seconds)
+engine.setTaskTimeout(choreId, 300)          // Change task timeout (seconds)
 engine.trigger<system>(choreId)              // Force-run now (starts conductor immediately)
 engine.stopChore(choreId)                    // Stop a running chore gracefully
 engine.stopAllChores()                       // Stop all running chores
 ```
 
-### 5.4 Status Queries
+### 5.5 Status Queries
 
 ```motoko
 engine.getStatus(choreId) : ?ChoreStatus
@@ -362,19 +388,44 @@ Next time any timer callback runs (if cancellation missed it):
 
 ---
 
-## 8. Admin Interface
+## 8. Task Timeout
 
-### 8.1 Running vs Scheduled Distinction
+### 8.1 The Problem
+
+If a Task traps (as opposed to throwing), the timer is consumed and the Task stops rescheduling itself. However, the `taskActive` flag in runtime state remains `true` because the state update to clear it was rolled back by the trap.
+
+Without intervention, the Conductor would poll forever, seeing a task that appears to be running but is actually dead.
+
+### 8.2 Solution
+
+The engine checks for timed-out tasks at the start of each Conductor tick. If `taskActive = true` and `taskStartedAt` is older than `taskTimeoutSeconds`, the engine:
+
+1. Cancels the task timer (if it still exists).
+2. Marks the task as failed with a "Task timed out" error.
+3. Proceeds to call the Conductor with the updated context.
+
+The Conductor then sees the failure in `ctx.lastCompletedTask` and can decide how to proceed (retry, skip, or abort).
+
+### 8.3 Default Timeout
+
+The default task timeout is 300 seconds (5 minutes). This can be configured per-chore via `defaultTaskTimeoutSeconds` in the ChoreDefinition, and changed at runtime via the admin API.
+
+---
+
+## 9. Admin Interface
+
+### 9.1 Running vs Scheduled vs Polling
 
 The admin interface clearly distinguishes between:
 
-- **Running**: A timer callback is actively executing (conductor processing, task doing work).
+- **Running**: A timer callback is actively executing (conductor doing work, task doing work).
+- **Polling**: The conductor is periodically checking if a task has finished.
 - **Scheduled**: A timer is set and will fire at a specific future time (scheduler waiting for next interval).
 - **Idle**: No timer is set and nothing is happening.
 
 These are reflected in `schedulerStatus`, `conductorStatus`, and `taskStatus` fields of `ChoreStatus`.
 
-### 8.2 Bot API Methods
+### 9.2 Bot API Methods
 
 Each bot exposes these canister methods (with permission checks):
 
@@ -386,12 +437,13 @@ getChoreStatus(choreId: Text) : async ?ChoreStatus
 // Admin controls
 setChoreEnabled(choreId: Text, enabled: Bool) : async ()
 setChoreInterval(choreId: Text, seconds: Nat) : async ()
+setChoreTaskTimeout(choreId: Text, seconds: Nat) : async ()
 triggerChore(choreId: Text) : async ()
 stopChore(choreId: Text) : async ()
 stopAllChores() : async ()
 ```
 
-### 8.3 Permissions
+### 9.3 Permissions
 
 Two new bot-specific permissions are added (following the Botkey pattern):
 
@@ -402,7 +454,7 @@ Controllers always have full access.
 
 ---
 
-## 9. Implementation Plan
+## 10. Implementation Plan
 
 ### Phase 1: Core Types (`BotChoreTypes.mo`)
 - Define all shared types: `ChoreConfig`, `ChoreRuntimeState`, `ConductorContext`, `ConductorAction`, `TaskAction`, `ChoreStatus`, `ChoreDefinition`, `StateAccessor`.
@@ -411,9 +463,11 @@ Controllers always have full access.
 ### Phase 2: Engine (`BotChoreEngine.mo`)
 - Implement the `Engine` class with:
   - Chore registration
+  - `setPendingTask` method for conductor → engine task handoff
   - Scheduler timer management
-  - Conductor timer loop with stop-flag checks
-  - Task timer loop with stop-flag checks
+  - Conductor timer loop with polling pattern and stop-flag checks
+  - Task timer loop with stop-flag checks (engine wraps task for infrastructure)
+  - Task timeout detection
   - State persistence through accessor
   - `resumeTimers` for upgrade resilience
   - All admin control and query methods
@@ -428,38 +482,43 @@ Controllers always have full access.
 
 ### Phase 4: First Chore — Refresh Voting Power
 - **Scheduler**: Weekly (604,800 seconds).
-- **Conductor**: Lists all neurons, then for each neuron starts a Task.
+- **Conductor**: Lists all neurons, then for each neuron starts a Task and polls for completion.
 - **Task**: Calls `refreshVotingPower` for one neuron. Single-step task (returns `#Done` immediately).
 
 ---
 
-## 10. First Chore: Refresh Voting Power
+## 11. First Chore: Refresh Voting Power
 
-### 10.1 Why This Chore
+### 11.1 Why This Chore
 
 ICP neurons need periodic voting power refresh to maintain maximum voting power. This chore automates it by calling `RefreshVotingPower` for every neuron managed by the bot canister, once per week.
 
-### 10.2 Conductor Logic
+### 11.2 Conductor Logic (Polling Pattern)
 
 ```
-Invocation 0 (lastCompletedTask = null):
+Tick 0 (isTaskRunning=false, lastCompletedTask=null):
   → Fetch all neurons from governance
   → If 0 neurons: return #Done
   → Store neuron list in captured mutable var
-  → Return #StartTask("refresh-0", refreshNeuron(neurons[0]))
+  → Call engine.setPendingTask(choreId, "refresh-0", taskFn)
+  → Return #ContinueIn(10)  // Poll in 10 seconds
 
-Invocation N (lastCompletedTask = some result):
+Tick N (isTaskRunning=true):
+  → Task still running, return #ContinueIn(10)
+
+Tick N (isTaskRunning=false, lastCompletedTask=some result):
   → Increment index
   → If index >= neurons.size(): return #Done
-  → Return #StartTask("refresh-N", refreshNeuron(neurons[N]))
+  → Call engine.setPendingTask(choreId, "refresh-N", taskFn)
+  → Return #ContinueIn(10)
 ```
 
-### 10.3 Task Logic
+### 11.3 Task Logic
 
 Each task is a single-step operation:
 
 ```
-Invocation 0:
+Tick 0:
   → Call governance.manage_neuron({ id = ?neuronId, command = ?#RefreshVotingPower({}) })
   → Return #Done (or #Error if it fails)
 ```

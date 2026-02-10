@@ -1273,6 +1273,12 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         choreEngine.setInterval(choreId, seconds);
     };
 
+    // Change the task timeout for a chore (in seconds)
+    public shared ({ caller }) func setChoreTaskTimeout(choreId: Text, seconds: Nat): async () {
+        assertPermission(caller, T.NeuronPermission.ManageChores);
+        choreEngine.setTaskTimeout(choreId, seconds);
+    };
+
     // Force-run a chore immediately (regardless of schedule)
     public shared ({ caller }) func triggerChore(choreId: Text): async () {
         assertPermission(caller, T.NeuronPermission.ManageChores);
@@ -1586,11 +1592,9 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // This section is at the bottom so all referenced functions
     // (e.g. listNeuronsInternal, governance) are already defined.
 
-    // Helper: create a task function that refreshes voting power for the neuron at _rvp_index
-    func _rvp_createTaskForCurrentNeuron(): ?(() -> async BotChoreTypes.TaskAction) {
-        if (_rvp_index >= _rvp_neurons.size()) return null;
-        let nid = _rvp_neurons[_rvp_index];
-        ?(func(): async BotChoreTypes.TaskAction {
+    // Helper: create a task function that refreshes voting power for a specific neuron
+    func _rvp_makeTaskFn(nid: T.NeuronId): () -> async BotChoreTypes.TaskAction {
+        func(): async BotChoreTypes.TaskAction {
             let request: T.ManageNeuronRequest = {
                 id = ?nid;
                 command = ?#RefreshVotingPower({});
@@ -1601,7 +1605,20 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                 case (?#Error(e)) { #Error(e.error_message) };
                 case _ { #Done };
             };
-        })
+        }
+    };
+
+    // Helper: start a task for the neuron at _rvp_index
+    func _rvp_startCurrentTask() {
+        if (_rvp_index < _rvp_neurons.size()) {
+            let nid = _rvp_neurons[_rvp_index];
+            let taskFn = _rvp_makeTaskFn(nid);
+            choreEngine.setPendingTask(
+                "refresh-voting-power",
+                "refresh-" # Nat.toText(_rvp_index),
+                taskFn
+            );
+        };
     };
 
     // Register chores and start timers.
@@ -1614,7 +1631,13 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             name = "Refresh Voting Power";
             description = "Periodically refreshes voting power for all managed neurons to keep them active.";
             defaultIntervalSeconds = 7 * 24 * 60 * 60; // 1 week
+            defaultTaskTimeoutSeconds = 300; // 5 minutes per neuron refresh
             conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
+                // If a task is still running, just poll again
+                if (ctx.isTaskRunning) {
+                    return #ContinueIn(10);
+                };
+
                 switch (ctx.lastCompletedTask) {
                     case null {
                         // First invocation: fetch all neurons
@@ -1633,8 +1656,9 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                             return #Done; // No neurons to process
                         };
 
-                        // Start first task (createTask will be called by the engine)
-                        return #StartTask({ taskId = "refresh-0" });
+                        // Start first task and poll
+                        _rvp_startCurrentTask();
+                        return #ContinueIn(10);
                     };
                     case (?_lastResult) {
                         // Previous task completed — advance to next neuron
@@ -1643,14 +1667,11 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                             return #Done; // All neurons processed
                         };
 
-                        return #StartTask({ taskId = "refresh-" # Nat.toText(_rvp_index) });
+                        // Start next task and poll
+                        _rvp_startCurrentTask();
+                        return #ContinueIn(10);
                     };
                 };
-            };
-            createTask = func(_taskId: Text): ?(() -> async BotChoreTypes.TaskAction) {
-                // Called by the engine immediately after conduct returns #StartTask.
-                // At this point, _rvp_neurons and _rvp_index are set by the conductor.
-                _rvp_createTaskForCurrentNeuron()
             };
         });
 

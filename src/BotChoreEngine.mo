@@ -2,17 +2,25 @@ import Timer "mo:base/Timer";
 import Time "mo:base/Time";
 import Array "mo:base/Array";
 import Buffer "mo:base/Buffer";
-import Nat "mo:base/Nat";
 import Int "mo:base/Int";
 import Error "mo:base/Error";
 
 import BotChoreTypes "BotChoreTypes";
 
-/// Reusable Bot Chore engine.
+/// Reusable Bot Chore engine using a polling pattern.
 ///
 /// Manages the three-level timer hierarchy (Scheduler → Conductor → Task),
 /// persists state through a StateAccessor for upgrade resilience, and provides
-/// admin controls including emergency stop.
+/// admin controls including emergency stop and task timeout.
+///
+/// Key design: The Conductor polls for Task completion rather than being
+/// event-notified. This makes the system trap-resilient — if a Task traps,
+/// it simply stops rescheduling, and the Conductor detects the stale task
+/// on its next poll (or via task timeout).
+///
+/// Tasks are started by the Conductor calling engine.setPendingTask()
+/// before returning. The engine picks up the pending task after the
+/// conductor callback returns and starts it independently.
 ///
 /// Usage in a bot canister:
 /// ```
@@ -36,9 +44,11 @@ module {
         /// Registered chore definitions (re-registered on each canister start).
         var definitions = Buffer.Buffer<BotChoreTypes.ChoreDefinition>(4);
 
-        /// Currently active task execute functions, keyed by chore ID.
-        /// These are closures that can't be persisted — only valid during execution.
-        var activeTaskFns: [(Text, () -> async BotChoreTypes.TaskAction)] = [];
+        /// Pending tasks set by conductor callbacks, keyed by choreId.
+        /// The conductor calls setPendingTask() before returning, and the engine
+        /// picks up the pending task after the await and starts it.
+        /// Array of (choreId, taskId, taskFn) tuples.
+        var pendingTasks: [(Text, Text, () -> async BotChoreTypes.TaskAction)] = [];
 
         // ============================================
         // REGISTRATION
@@ -59,6 +69,7 @@ module {
                 let newConfig: BotChoreTypes.ChoreConfig = {
                     enabled = false; // Disabled by default — admin must enable
                     intervalSeconds = def.defaultIntervalSeconds;
+                    taskTimeoutSeconds = def.defaultTaskTimeoutSeconds;
                 };
                 stateAccessor.setConfigs(Array.append(configs, [(def.id, newConfig)]));
             };
@@ -71,6 +82,38 @@ module {
             if (stateExists == null) {
                 stateAccessor.setStates(Array.append(states, [(def.id, BotChoreTypes.emptyRuntimeState())]));
             };
+        };
+
+        // ============================================
+        // TASK HANDOFF (called by conductor callbacks)
+        // ============================================
+
+        /// Called by the conductor to request starting a task.
+        /// The conductor calls this before returning #ContinueIn(N).
+        /// The engine picks up the pending task after the conductor callback
+        /// returns and starts the task loop independently.
+        ///
+        /// Safe for concurrent chores: keyed by choreId.
+        public func setPendingTask(choreId: Text, taskId: Text, taskFn: () -> async BotChoreTypes.TaskAction) {
+            // Remove any existing pending task for this chore
+            pendingTasks := Array.filter<(Text, Text, () -> async BotChoreTypes.TaskAction)>(
+                pendingTasks,
+                func((cid, _tid, _fn)) { cid != choreId }
+            );
+            pendingTasks := Array.append(pendingTasks, [(choreId, taskId, taskFn)]);
+        };
+
+        /// Consume a pending task for a chore (internal use).
+        func consumePendingTask(choreId: Text): ?(Text, () -> async BotChoreTypes.TaskAction) {
+            var result: ?(Text, () -> async BotChoreTypes.TaskAction) = null;
+            for ((cid, tid, fn) in pendingTasks.vals()) {
+                if (cid == choreId) { result := ?(tid, fn) };
+            };
+            pendingTasks := Array.filter<(Text, Text, () -> async BotChoreTypes.TaskAction)>(
+                pendingTasks,
+                func((cid, _tid, _fn)) { cid != choreId }
+            );
+            result
         };
 
         // ============================================
@@ -116,7 +159,7 @@ module {
                                 lastTaskError = null;
                             }
                         });
-                        startConductorTimer<system>(choreId);
+                        scheduleConductorTick<system>(choreId, 0);
                     };
 
                     // Start scheduler
@@ -159,6 +202,13 @@ module {
             });
         };
 
+        /// Change the task timeout for a chore (in seconds).
+        public func setTaskTimeout(choreId: Text, seconds: Nat) {
+            updateConfig(choreId, func(c: BotChoreTypes.ChoreConfig): BotChoreTypes.ChoreConfig {
+                { c with taskTimeoutSeconds = seconds }
+            });
+        };
+
         /// Force-run a chore immediately, regardless of schedule.
         /// If the conductor is already running, this is a no-op.
         public func trigger<system>(choreId: Text) {
@@ -167,7 +217,7 @@ module {
                 return; // Already running
             };
 
-            // Clear any previous stop request
+            // Clear any previous stop request and start conductor
             updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
                 {
                     s with
@@ -181,7 +231,7 @@ module {
                 }
             });
 
-            startConductorTimer<system>(choreId);
+            scheduleConductorTick<system>(choreId, 0);
         };
 
         /// Stop a running chore gracefully. Sets the stop flag and cancels timers.
@@ -212,8 +262,8 @@ module {
                 }
             });
 
-            // Also remove any cached task function
-            removeTaskFn(choreId);
+            // Clear any pending task
+            ignore consumePendingTask(choreId);
         };
 
         /// Stop all running chores.
@@ -339,7 +389,7 @@ module {
                         lastTaskError = null;
                     }
                 });
-                startConductorTimer<system>(choreId);
+                scheduleConductorTick<system>(choreId, 0);
             };
 
             // Reschedule for next interval
@@ -364,12 +414,12 @@ module {
         };
 
         // ============================================
-        // CONDUCTOR (Level 2)
+        // CONDUCTOR (Level 2) — Polling Pattern
         // ============================================
 
-        /// Start a conductor timer (0-second, to run ASAP).
-        func startConductorTimer<system>(choreId: Text) {
-            let tid = Timer.setTimer<system>(#seconds 0, func(): async () {
+        /// Schedule a conductor tick after a delay (in seconds).
+        func scheduleConductorTick<system>(choreId: Text, delaySecs: Nat) {
+            let tid = Timer.setTimer<system>(#seconds delaySecs, func(): async () {
                 await conductorTick<system>(choreId);
             });
             updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
@@ -377,11 +427,19 @@ module {
             });
         };
 
-        /// One tick of the conductor loop.
+        /// One tick of the conductor loop (polling pattern).
+        ///
+        /// Flow:
+        /// 1. Check stop flag
+        /// 2. Check for timed-out task (mark as failed if so)
+        /// 3. Build context with current task state
+        /// 4. Call conductor callback
+        /// 5. Start pending task if conductor set one via setPendingTask
+        /// 6. Schedule next tick based on conductor's return value
         func conductorTick<system>(choreId: Text): async () {
             let state = getStateOrDefault(choreId);
 
-            // Check stop flag BEFORE doing work
+            // 1. Check stop flag BEFORE doing work
             if (state.stopRequested) {
                 markConductorStopped(choreId);
                 return;
@@ -390,30 +448,28 @@ module {
             let def = findDefinition(choreId);
             switch (def) {
                 case null {
-                    // Definition not found (shouldn't happen unless chore was unregistered)
                     markConductorError(choreId, "Chore definition not found: " # choreId);
                     return;
                 };
                 case (?d) {
-                    // Build conductor context
+                    // 2. Check for timed-out task
+                    let freshState = checkTaskTimeout(choreId);
+
+                    // 3. Build conductor context with pure data
                     let context: BotChoreTypes.ConductorContext = {
-                        invocationCount = state.conductorInvocationCount;
-                        lastCompletedTask = switch (state.lastCompletedTaskId) {
+                        choreId = choreId;
+                        invocationCount = freshState.conductorInvocationCount;
+                        isTaskRunning = freshState.taskActive;
+                        lastCompletedTask = switch (freshState.lastCompletedTaskId) {
                             case null { null };
                             case (?taskId) {
                                 ?{
                                     taskId = taskId;
-                                    result = switch (state.lastTaskSucceeded) {
-                                        case (?true) { #Completed };
-                                        case (?false) {
-                                            let errMsg = switch (state.lastTaskError) {
-                                                case (?e) { e };
-                                                case null { "Unknown error" };
-                                            };
-                                            #Failed(errMsg)
-                                        };
-                                        case null { #Completed };
+                                    succeeded = switch (freshState.lastTaskSucceeded) {
+                                        case (?s) { s };
+                                        case null { true }; // Assume success if unknown
                                     };
+                                    error = freshState.lastTaskError;
                                 }
                             };
                         };
@@ -424,7 +480,7 @@ module {
                         { s with conductorInvocationCount = s.conductorInvocationCount + 1 }
                     });
 
-                    // Call the conductor function
+                    // 4. Call the conductor function
                     try {
                         let action = await d.conduct(context);
 
@@ -435,45 +491,56 @@ module {
                             return;
                         };
 
-                        // Interpret the action
-                        switch (action) {
-                            case (#StartTask({ taskId })) {
-                                // Get the task function from the chore definition
-                                let taskFnOpt = d.createTask(taskId);
-                                switch (taskFnOpt) {
-                                    case null {
-                                        markConductorError(choreId, "createTask returned null for task: " # taskId);
-                                    };
-                                    case (?taskFn) {
-                                        // Save the task function and start the task timer
-                                        setTaskFn(choreId, taskFn);
-                                        updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
-                                            {
-                                                s with
-                                                currentTaskId = ?taskId;
-                                                taskActive = true;
-                                                taskStartedAt = ?Time.now();
-                                            }
-                                        });
-                                        startTaskTimer<system>(choreId);
-                                    };
-                                };
-                            };
-                            case (#Continue) {
-                                startConductorTimer<system>(choreId);
-                            };
-                            case (#ContinueIn({ seconds })) {
-                                let tid = Timer.setTimer<system>(#seconds seconds, func(): async () {
-                                    await conductorTick<system>(choreId);
-                                });
+                        // 5. Start pending task if conductor set one
+                        let pending = consumePendingTask(choreId);
+                        switch (pending) {
+                            case (?(taskId, taskFn)) {
+                                // Mark task as started in state
                                 updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
-                                    { s with conductorTimerId = ?tid }
+                                    {
+                                        s with
+                                        currentTaskId = ?taskId;
+                                        taskActive = true;
+                                        taskStartedAt = ?Time.now();
+                                    }
                                 });
+                                // Start the task loop
+                                startTaskLoop<system>(choreId, taskFn);
+                            };
+                            case null {};
+                        };
+
+                        // 6. Handle conductor action
+                        switch (action) {
+                            case (#ContinueIn(seconds)) {
+                                scheduleConductorTick<system>(choreId, seconds);
                             };
                             case (#Done) {
+                                // If a task is still running, cancel it
+                                let stFinal = getStateOrDefault(choreId);
+                                if (stFinal.taskActive) {
+                                    switch (stFinal.taskTimerId) {
+                                        case (?tid) { Timer.cancelTimer(tid) };
+                                        case null {};
+                                    };
+                                    updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
+                                        { s with taskActive = false; taskTimerId = null; currentTaskId = null }
+                                    });
+                                };
                                 markConductorDone(choreId);
                             };
                             case (#Error(msg)) {
+                                // If a task is still running, cancel it
+                                let stFinal = getStateOrDefault(choreId);
+                                if (stFinal.taskActive) {
+                                    switch (stFinal.taskTimerId) {
+                                        case (?tid) { Timer.cancelTimer(tid) };
+                                        case null {};
+                                    };
+                                    updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
+                                        { s with taskActive = false; taskTimerId = null; currentTaskId = null }
+                                    });
+                                };
                                 markConductorError(choreId, msg);
                             };
                         };
@@ -484,17 +551,54 @@ module {
             };
         };
 
+        /// Check if the current task has timed out. If so, mark it as failed.
+        /// Returns the (possibly updated) runtime state.
+        func checkTaskTimeout(choreId: Text): BotChoreTypes.ChoreRuntimeState {
+            let state = getStateOrDefault(choreId);
+            if (not state.taskActive) return state;
+
+            let config = getConfigOrDefault(choreId);
+            switch (state.taskStartedAt) {
+                case (?startedAt) {
+                    let now = Time.now();
+                    let elapsedNanos = Int.abs(now - startedAt);
+                    let elapsedSeconds = elapsedNanos / 1_000_000_000;
+                    if (elapsedSeconds >= config.taskTimeoutSeconds) {
+                        // Task timed out — cancel its timer and mark as failed
+                        switch (state.taskTimerId) {
+                            case (?tid) { Timer.cancelTimer(tid) };
+                            case null {};
+                        };
+                        let taskId = switch (state.currentTaskId) {
+                            case (?id) { id };
+                            case null { "unknown" };
+                        };
+                        updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
+                            {
+                                s with
+                                taskActive = false;
+                                taskTimerId = null;
+                                currentTaskId = null;
+                                lastCompletedTaskId = ?taskId;
+                                lastTaskSucceeded = ?false;
+                                lastTaskError = ?"Task timed out";
+                            }
+                        });
+                        return getStateOrDefault(choreId);
+                    };
+                };
+                case null {};
+            };
+            state
+        };
+
         /// Mark conductor as successfully completed.
         func markConductorDone(choreId: Text) {
-            removeTaskFn(choreId);
             updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
                 {
                     s with
                     conductorActive = false;
                     conductorTimerId = null;
-                    taskActive = false;
-                    taskTimerId = null;
-                    currentTaskId = null;
                     lastCompletedRunAt = ?Time.now();
                     totalRunCount = s.totalRunCount + 1;
                     totalSuccessCount = s.totalSuccessCount + 1;
@@ -504,15 +608,11 @@ module {
 
         /// Mark conductor as failed.
         func markConductorError(choreId: Text, msg: Text) {
-            removeTaskFn(choreId);
             updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
                 {
                     s with
                     conductorActive = false;
                     conductorTimerId = null;
-                    taskActive = false;
-                    taskTimerId = null;
-                    currentTaskId = null;
                     totalRunCount = s.totalRunCount + 1;
                     totalFailureCount = s.totalFailureCount + 1;
                     lastError = ?msg;
@@ -523,7 +623,6 @@ module {
 
         /// Mark conductor as stopped (by stop flag).
         func markConductorStopped(choreId: Text) {
-            removeTaskFn(choreId);
             updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
                 {
                     s with
@@ -538,13 +637,22 @@ module {
         };
 
         // ============================================
-        // TASK (Level 3)
+        // TASK (Level 3) — Engine-Wrapped Loop
         // ============================================
+        // The engine wraps each task tick to provide:
+        //   - Stop-flag checking
+        //   - Timer ID tracking (for admin & cancellation)
+        //   - State updates (taskActive, etc.)
+        //   - Error handling (try/catch)
+        //
+        // The task itself is unaware of the conductor. It just returns
+        // #Continue, #Done, or #Error. The conductor detects task
+        // completion by polling ctx.isTaskRunning on its next tick.
 
-        /// Start a task timer (0-second, to run ASAP).
-        func startTaskTimer<system>(choreId: Text) {
+        /// Start the task loop with a 0-second timer.
+        func startTaskLoop<system>(choreId: Text, taskFn: () -> async BotChoreTypes.TaskAction) {
             let tid = Timer.setTimer<system>(#seconds 0, func(): async () {
-                await taskTick<system>(choreId);
+                await taskLoopTick<system>(choreId, taskFn);
             });
             updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
                 { s with taskTimerId = ?tid }
@@ -552,72 +660,55 @@ module {
         };
 
         /// One tick of the task loop.
-        func taskTick<system>(choreId: Text): async () {
+        func taskLoopTick<system>(choreId: Text, taskFn: () -> async BotChoreTypes.TaskAction): async () {
             let state = getStateOrDefault(choreId);
 
             // Check stop flag BEFORE doing work
-            if (state.stopRequested) {
-                onTaskComplete<system>(choreId, #Failed("Stopped by admin"));
-                return;
+            if (state.stopRequested or not state.taskActive) {
+                return; // Stopped or task already marked done (e.g., timeout)
             };
 
-            // Get the task function
-            let taskFn = getTaskFn(choreId);
-            switch (taskFn) {
-                case null {
-                    // No task function — this shouldn't happen
-                    onTaskComplete<system>(choreId, #Failed("Task function not found"));
-                    return;
+            try {
+                let action = await taskFn();
+
+                // Check stop flag AFTER await
+                let stateAfter = getStateOrDefault(choreId);
+                if (stateAfter.stopRequested or not stateAfter.taskActive) {
+                    return; // Stopped or timed out while we were working
                 };
-                case (?execute) {
-                    try {
-                        let action = await execute();
 
-                        // Check stop flag AFTER await
-                        let stateAfter = getStateOrDefault(choreId);
-                        if (stateAfter.stopRequested) {
-                            onTaskComplete<system>(choreId, #Failed("Stopped by admin"));
-                            return;
-                        };
-
-                        switch (action) {
-                            case (#Continue) {
-                                // More work — reschedule immediately
-                                startTaskTimer<system>(choreId);
-                            };
-                            case (#Done) {
-                                onTaskComplete<system>(choreId, #Completed);
-                            };
-                            case (#Error(msg)) {
-                                onTaskComplete<system>(choreId, #Failed(msg));
-                            };
-                        };
-                    } catch (e) {
-                        onTaskComplete<system>(choreId, #Failed("Task threw: " # Error.message(e)));
+                switch (action) {
+                    case (#Continue) {
+                        // More work — reschedule immediately
+                        let tid = Timer.setTimer<system>(#seconds 0, func(): async () {
+                            await taskLoopTick<system>(choreId, taskFn);
+                        });
+                        updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
+                            { s with taskTimerId = ?tid }
+                        });
+                    };
+                    case (#Done) {
+                        markTaskCompleted(choreId, true, null);
+                    };
+                    case (#Error(msg)) {
+                        markTaskCompleted(choreId, false, ?msg);
                     };
                 };
+            } catch (e) {
+                markTaskCompleted(choreId, false, ?("Task threw: " # Error.message(e)));
             };
         };
 
-        /// Called when a task completes (success or failure).
-        /// Records the result and triggers the next conductor tick.
-        func onTaskComplete<system>(choreId: Text, result: BotChoreTypes.TaskCompletionResult) {
+        /// Mark a task as completed (success or failure).
+        /// Updates state only — does NOT trigger the conductor.
+        /// The conductor discovers this on its next polling tick.
+        func markTaskCompleted(choreId: Text, succeeded: Bool, error: ?Text) {
             let state = getStateOrDefault(choreId);
             let taskId = switch (state.currentTaskId) {
                 case (?id) { id };
                 case null { "unknown" };
             };
 
-            let succeeded = switch (result) {
-                case (#Completed) { true };
-                case (#Failed(_)) { false };
-            };
-            let errorMsg: ?Text = switch (result) {
-                case (#Completed) { null };
-                case (#Failed(msg)) { ?msg };
-            };
-
-            removeTaskFn(choreId);
             updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
                 {
                     s with
@@ -626,21 +717,9 @@ module {
                     currentTaskId = null;
                     lastCompletedTaskId = ?taskId;
                     lastTaskSucceeded = ?succeeded;
-                    lastTaskError = errorMsg;
+                    lastTaskError = error;
                 }
             });
-
-            // Check stop flag before re-invoking conductor
-            let stateAfter = getStateOrDefault(choreId);
-            if (stateAfter.stopRequested) {
-                markConductorStopped(choreId);
-                return;
-            };
-
-            // Trigger the next conductor tick to decide what to do next
-            if (stateAfter.conductorActive) {
-                startConductorTimer<system>(choreId);
-            };
         };
 
         // ============================================
@@ -661,7 +740,7 @@ module {
             for ((id, config) in configs.vals()) {
                 if (id == choreId) return config;
             };
-            { enabled = false; intervalSeconds = 3600 }
+            { enabled = false; intervalSeconds = 3600; taskTimeoutSeconds = 300 }
         };
 
         /// Get runtime state for a chore, or empty state if not found.
@@ -712,7 +791,7 @@ module {
                 case (?tid) { Timer.cancelTimer(tid) };
                 case null {};
             };
-            removeTaskFn(choreId);
+            ignore consumePendingTask(choreId);
             updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
                 {
                     s with
@@ -724,32 +803,6 @@ module {
                     currentTaskId = null;
                 }
             });
-        };
-
-        // ============================================
-        // INTERNAL: Task function cache
-        // ============================================
-
-        /// Store the execute function for a chore's current task.
-        func setTaskFn(choreId: Text, fn: () -> async BotChoreTypes.TaskAction) {
-            removeTaskFn(choreId);
-            activeTaskFns := Array.append(activeTaskFns, [(choreId, fn)]);
-        };
-
-        /// Get the execute function for a chore's current task.
-        func getTaskFn(choreId: Text): ?(()-> async BotChoreTypes.TaskAction) {
-            for ((id, fn) in activeTaskFns.vals()) {
-                if (id == choreId) return ?fn;
-            };
-            null
-        };
-
-        /// Remove the cached task function for a chore.
-        func removeTaskFn(choreId: Text) {
-            activeTaskFns := Array.filter<(Text, () -> async BotChoreTypes.TaskAction)>(
-                activeTaskFns,
-                func((id, _fn)) { id != choreId }
-            );
         };
 
         // ============================================
@@ -770,9 +823,9 @@ module {
             let conductorStatus: BotChoreTypes.ConductorStatus = if (not state.conductorActive) {
                 #Idle
             } else if (state.taskActive) {
-                #WaitingForTask
+                #Polling  // Conductor is active while a task is running → polling
             } else {
-                #Running
+                #Running  // Conductor is active, no task → doing its own work
             };
 
             let taskStatus: BotChoreTypes.TaskStatus = if (state.taskActive) {
@@ -787,6 +840,7 @@ module {
                 choreDescription = def.description;
                 enabled = config.enabled;
                 intervalSeconds = config.intervalSeconds;
+                taskTimeoutSeconds = config.taskTimeoutSeconds;
 
                 schedulerStatus = schedulerStatus;
                 nextScheduledRunAt = state.nextScheduledRunAt;
