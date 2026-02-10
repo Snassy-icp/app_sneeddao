@@ -260,6 +260,19 @@ module {
         #Err : Text;
     };
     
+    // Snapshot of a single neuron's hotkeys (for escrow backup)
+    public type NeuronHotkeySnapshotEntry = {
+        neuron_id : ICPNeuronId;
+        hotkeys : [Principal];
+    };
+    
+    // Combined escrow snapshot for an ICP Neuron Manager
+    // Stores both the neuron-level hotkeys and the bot-level botkeys
+    public type NeuronManagerEscrowSnapshot = {
+        neuron_hotkeys : [NeuronHotkeySnapshotEntry];
+        botkeys : [(Principal, [Nat])]; // principal -> raw permission IDs
+    };
+    
     // Actor interface for ICP Neuron Manager verification and data access
     public type ICPNeuronManagerActor = actor {
         getVersion : shared query () -> async NeuronManagerVersion;
@@ -275,7 +288,11 @@ module {
         getFullNeuron : shared (ICPNeuronId) -> async ?ICPFullNeuron;
         listNeurons : shared () -> async [ICPFullNeuron];
         getBalance : shared () -> async Nat;
+        addHotKey : shared (ICPNeuronId, Principal) -> async NeuronManagerOperationResult;
         removeHotKey : shared (ICPNeuronId, Principal) -> async NeuronManagerOperationResult;
+        getBotkeySnapshot : shared () -> async [(Principal, [Nat])];
+        restoreBotkeySnapshot : shared ([(Principal, [Nat])]) -> async ();
+        clearBotkeys : shared () -> async ();
     };
     
     // Canister info response for frontend display

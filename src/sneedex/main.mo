@@ -114,6 +114,12 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     // Cache: maps staking bot canister ID -> cached neuron manager info
     var neuronInfoCache : [(Principal, T.NeuronManagerCacheEntry)] = [];
     
+    // Escrow snapshots for ICP Neuron Managers
+    // Stores neuron hotkeys and botkeys that were present before escrow,
+    // so they can be restored on seller reclaim (but NOT on delivery to buyer).
+    // Keyed by canister principal ID.
+    var neuronManagerEscrowSnapshots : [(Principal, T.NeuronManagerEscrowSnapshot)] = [];
+    
     // ============================================
     // PRIVATE HELPERS
     // ============================================
@@ -437,31 +443,128 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     };
     
     // Helper to remove all hotkeys from all neurons in a neuron manager (best effort)
-    func removeNeuronManagerHotkeys(canisterId : Principal) : async () {
+    // ============================================
+    // NEURON MANAGER ESCROW SNAPSHOT HELPERS
+    // ============================================
+    
+    func getEscrowSnapshot(canisterId : Principal) : ?T.NeuronManagerEscrowSnapshot {
+        for ((id, snapshot) in neuronManagerEscrowSnapshots.vals()) {
+            if (Principal.equal(id, canisterId)) return ?snapshot;
+        };
+        null
+    };
+    
+    func putEscrowSnapshot(canisterId : Principal, snapshot : T.NeuronManagerEscrowSnapshot) {
+        let buf = Buffer.Buffer<(Principal, T.NeuronManagerEscrowSnapshot)>(neuronManagerEscrowSnapshots.size() + 1);
+        var found = false;
+        for ((id, existing) in neuronManagerEscrowSnapshots.vals()) {
+            if (Principal.equal(id, canisterId)) {
+                buf.add((id, snapshot));
+                found := true;
+            } else {
+                buf.add((id, existing));
+            };
+        };
+        if (not found) {
+            buf.add((canisterId, snapshot));
+        };
+        neuronManagerEscrowSnapshots := Buffer.toArray(buf);
+    };
+    
+    func removeEscrowSnapshot(canisterId : Principal) {
+        neuronManagerEscrowSnapshots := Array.filter<(Principal, T.NeuronManagerEscrowSnapshot)>(
+            neuronManagerEscrowSnapshots,
+            func((id, _)) { not Principal.equal(id, canisterId) }
+        );
+    };
+    
+    /// Snapshot neuron hotkeys and botkeys, then clear them during escrow.
+    /// This is called asynchronously via Timer after the canister is escrowed.
+    func snapshotAndCleanNeuronManager(canisterId : Principal) : async () {
         try {
             let manager : T.ICPNeuronManagerActor = actor(Principal.toText(canisterId));
             
-            // Get all neurons and their info
-            let neuronsInfo = await manager.getAllNeuronsInfo();
-            
-            // For each neuron, get full info (which includes hotkeys) and remove them
-            for ((neuronId, _) in neuronsInfo.vals()) {
-                try {
-                    let fullNeuron = await manager.getFullNeuron(neuronId);
-                    switch (fullNeuron) {
-                        case (?neuron) {
-                            // Remove each hotkey
-                            for (hotkey in neuron.hot_keys.vals()) {
-                                try {
-                                    ignore await manager.removeHotKey(neuronId, hotkey);
-                                } catch (_) {};
+            // Step 1: Snapshot neuron hotkeys
+            let neuronHotkeys = Buffer.Buffer<T.NeuronHotkeySnapshotEntry>(0);
+            try {
+                let neuronsInfo = await manager.getAllNeuronsInfo();
+                for ((neuronId, _) in neuronsInfo.vals()) {
+                    try {
+                        let fullNeuron = await manager.getFullNeuron(neuronId);
+                        switch (fullNeuron) {
+                            case (?neuron) {
+                                if (neuron.hot_keys.size() > 0) {
+                                    neuronHotkeys.add({
+                                        neuron_id = neuronId;
+                                        hotkeys = neuron.hot_keys;
+                                    });
+                                };
                             };
+                            case null {};
                         };
-                        case null {};
+                    } catch (_) {};
+                };
+            } catch (_) {};
+            
+            // Step 2: Snapshot botkeys (raw numeric IDs)
+            var botkeys : [(Principal, [Nat])] = [];
+            try {
+                botkeys := await manager.getBotkeySnapshot();
+            } catch (_) {}; // Older bots (< v0.9.1) may not have this method
+            
+            // Step 3: Store the combined snapshot
+            putEscrowSnapshot(canisterId, {
+                neuron_hotkeys = Buffer.toArray(neuronHotkeys);
+                botkeys = botkeys;
+            });
+            
+            // Step 4: Remove neuron hotkeys
+            for (entry in Buffer.toArray(neuronHotkeys).vals()) {
+                for (hotkey in entry.hotkeys.vals()) {
+                    try {
+                        ignore await manager.removeHotKey(entry.neuron_id, hotkey);
+                    } catch (_) {};
+                };
+            };
+            
+            // Step 5: Clear botkeys
+            try {
+                await manager.clearBotkeys();
+            } catch (_) {}; // Older bots may not have this method
+        } catch (_) {};
+    };
+    
+    /// Restore neuron hotkeys and botkeys from escrow snapshot.
+    /// Called during reclaim BEFORE the canister controllers are released,
+    /// since Sneedex needs to still be a controller to call these methods.
+    func restoreNeuronManagerState(canisterId : Principal) : async () {
+        switch (getEscrowSnapshot(canisterId)) {
+            case null {}; // No snapshot, nothing to restore
+            case (?snapshot) {
+                try {
+                    let manager : T.ICPNeuronManagerActor = actor(Principal.toText(canisterId));
+                    
+                    // Restore neuron hotkeys
+                    for (entry in snapshot.neuron_hotkeys.vals()) {
+                        for (hotkey in entry.hotkeys.vals()) {
+                            try {
+                                ignore await manager.addHotKey(entry.neuron_id, hotkey);
+                            } catch (_) {};
+                        };
+                    };
+                    
+                    // Restore botkeys
+                    if (snapshot.botkeys.size() > 0) {
+                        try {
+                            await manager.restoreBotkeySnapshot(snapshot.botkeys);
+                        } catch (_) {}; // Older bots may not have this method
                     };
                 } catch (_) {};
+                
+                // Remove the snapshot after restoration
+                removeEscrowSnapshot(canisterId);
             };
-        } catch (_) {};
+        };
     };
     
     // Get the fee recipient for a specific ledger (checks overrides first, then falls back to default)
@@ -580,6 +683,15 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 for (entry in offer.assets.vals()) {
                                     switch (entry.asset) {
                                         case (#Canister(asset)) {
+                                            // Clean up escrow snapshot for neuron managers (don't restore - buyer gets clean canister)
+                                            let isNeuronManager = switch (asset.canister_kind) {
+                                                case (?kind) { kind == T.CANISTER_KIND_ICP_NEURON_MANAGER };
+                                                case null { false };
+                                            };
+                                            if (isNeuronManager) {
+                                                removeEscrowSnapshot(asset.canister_id);
+                                            };
+                                            
                                             let _ = await* AssetHandlers.transferCanister(
                                                 asset.canister_id,
                                                 [bid.bidder]
@@ -769,6 +881,16 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     if (entry.escrowed) {
                         switch (entry.asset) {
                             case (#Canister(asset)) {
+                                // For neuron managers: restore hotkeys + botkeys BEFORE releasing controllers
+                                // (Sneedex must still be a controller to call the restore methods)
+                                let isNeuronManager = switch (asset.canister_kind) {
+                                    case (?kind) { kind == T.CANISTER_KIND_ICP_NEURON_MANAGER };
+                                    case null { false };
+                                };
+                                if (isNeuronManager) {
+                                    await restoreNeuronManagerState(asset.canister_id);
+                                };
+                                
                                 switch (asset.controllers_snapshot) {
                                     case (?snapshot) {
                                         let _ = await* AssetHandlers.releaseCanister(
@@ -1760,10 +1882,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             await deregisterCanisterFromWallet(caller, canisterAsset.canister_id, isNeuronManager);
                                         });
                                         
-                                        // If it's a neuron manager, remove all hotkeys from its neurons (best effort, non-blocking)
+                                        // If it's a neuron manager, snapshot and clear neuron hotkeys + botkeys (best effort, non-blocking)
                                         if (isNeuronManager) {
                                             ignore Timer.setTimer<system>(#seconds 1, func () : async () {
-                                                await removeNeuronManagerHotkeys(canisterAsset.canister_id);
+                                                await snapshotAndCleanNeuronManager(canisterAsset.canister_id);
                                             });
                                         };
                                         
@@ -2509,6 +2631,15 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 for (entry in offer.assets.vals()) {
                                     switch (entry.asset) {
                                         case (#Canister(asset)) {
+                                            // Clean up escrow snapshot for neuron managers (don't restore - buyer gets clean canister)
+                                            let isNeuronManager = switch (asset.canister_kind) {
+                                                case (?kind) { kind == T.CANISTER_KIND_ICP_NEURON_MANAGER };
+                                                case null { false };
+                                            };
+                                            if (isNeuronManager) {
+                                                removeEscrowSnapshot(asset.canister_id);
+                                            };
+                                            
                                             let _ = await* AssetHandlers.transferCanister(
                                                 asset.canister_id,
                                                 [caller]
@@ -2812,6 +2943,15 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     if (entry.escrowed) {
                         switch (entry.asset) {
                             case (#Canister(asset)) {
+                                // For neuron managers: restore hotkeys + botkeys BEFORE releasing controllers
+                                let isNeuronManager = switch (asset.canister_kind) {
+                                    case (?kind) { kind == T.CANISTER_KIND_ICP_NEURON_MANAGER };
+                                    case null { false };
+                                };
+                                if (isNeuronManager) {
+                                    await restoreNeuronManagerState(asset.canister_id);
+                                };
+                                
                                 switch (asset.controllers_snapshot) {
                                     case (?snapshot) {
                                         let _ = await* AssetHandlers.releaseCanister(
@@ -4017,6 +4157,16 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 };
                             };
                             case (#Canister(asset)) {
+                                // For neuron managers: restore hotkeys + botkeys BEFORE releasing controllers
+                                let isNeuronManager = switch (asset.canister_kind) {
+                                    case (?kind) { kind == T.CANISTER_KIND_ICP_NEURON_MANAGER };
+                                    case null { false };
+                                };
+                                if (isNeuronManager) {
+                                    await restoreNeuronManagerState(asset.canister_id);
+                                    message := message # "Neuron manager state restored (hotkeys + botkeys)\n";
+                                };
+                                
                                 switch (asset.controllers_snapshot) {
                                     case (?snapshot) {
                                         let result = await* AssetHandlers.releaseCanister(

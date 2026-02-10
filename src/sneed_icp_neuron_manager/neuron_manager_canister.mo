@@ -1119,6 +1119,28 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         callerHasPermission(caller, permissionVariantToId(permission))
     };
 
+    // Get raw botkey snapshot for escrow backup (controller-only)
+    // Returns the raw (Principal, [Nat]) pairs that represent botkey permissions.
+    // This is used by Sneedex to backup botkeys before clearing them during escrow.
+    public shared ({ caller }) func getBotkeySnapshot() : async [(Principal, [Nat])] {
+        assert(Principal.isController(caller));
+        hotkeyPermissions
+    };
+
+    // Restore botkeys from a raw snapshot (controller-only)
+    // Used by Sneedex to restore botkeys when an escrowed canister is reclaimed by the seller.
+    public shared ({ caller }) func restoreBotkeySnapshot(data : [(Principal, [Nat])]) : async () {
+        assert(Principal.isController(caller));
+        hotkeyPermissions := data;
+    };
+
+    // Clear all botkeys (controller-only)
+    // Used by Sneedex to clear botkeys when escrowing a canister.
+    public shared ({ caller }) func clearBotkeys() : async () {
+        assert(Principal.isController(caller));
+        hotkeyPermissions := [];
+    };
+
     // ============================================
     // NEURON SPLITTING / MERGING
     // ============================================
