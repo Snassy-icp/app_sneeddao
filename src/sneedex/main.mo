@@ -1437,10 +1437,19 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             };
             
             let neurons = Buffer.toArray(neuronsBuffer);
+            
+            // Fetch botkeys (raw numeric permission IDs)
+            // Older bots (< v0.9.1) don't have this method, so we catch and default to null
+            var botkeys : ?[(Principal, [Nat])] = null;
+            try {
+                botkeys := ?(await manager.getBotkeySnapshot());
+            } catch (_) {};
+            
             let info : T.NeuronManagerInfo = {
                 version = version;
                 neuron_count = neurons.size();
                 neurons = neurons;
+                botkeys = botkeys;
             };
             
             // Cache the result

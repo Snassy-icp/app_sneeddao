@@ -240,6 +240,7 @@ module {
         version : NeuronManagerVersion;
         neuron_count : Nat;
         neurons : [ICPNeuronInfo];
+        botkeys : ?[(Principal, [Nat])]; // Botkey principals -> raw permission IDs (null if v0.9.0 bot or not yet fetched)
     };
     
     // Full neuron type for ICP Neuron Manager (simplified for our needs)

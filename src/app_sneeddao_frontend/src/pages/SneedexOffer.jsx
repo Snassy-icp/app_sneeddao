@@ -3873,6 +3873,137 @@ function SneedexOffer() {
                                                                 </div>
                                                             )}
                                                             
+                                                            {/* Botkeys Section */}
+                                                            {(() => {
+                                                                const botkeysData = neuronManagerInfo[idx].botkeys;
+                                                                // botkeys is optional (null for old cache entries or v0.9.0 bots)
+                                                                const botkeys = botkeysData && botkeysData.length > 0 ? botkeysData[0] : null;
+                                                                const hasBotkeys = botkeys && botkeys.length > 0;
+                                                                
+                                                                // Known permission ID -> display name mapping
+                                                                const PERM_ID_LABELS = {
+                                                                    0: 'Full Permissions',
+                                                                    1: 'Manage Permissions',
+                                                                    2: 'Configure Dissolve State',
+                                                                    3: 'Vote',
+                                                                    4: 'Disburse',
+                                                                    5: 'Split',
+                                                                    6: 'Merge Maturity',
+                                                                    7: 'Disburse Maturity',
+                                                                    8: 'Stake Maturity',
+                                                                    9: 'Manage Followees',
+                                                                    10: 'Spawn',
+                                                                    11: 'Manage NNS Hotkeys',
+                                                                    12: 'Stake Neuron',
+                                                                    13: 'Merge Neurons',
+                                                                    14: 'Auto-Stake Maturity',
+                                                                    15: 'Manage Visibility',
+                                                                    16: 'Withdraw Funds',
+                                                                    17: 'View Neuron',
+                                                                };
+                                                                const getPermLabel = (id) => PERM_ID_LABELS[Number(id)] || `Permission #${id}`;
+                                                                
+                                                                return (
+                                                                    <div style={{
+                                                                        marginTop: '1rem',
+                                                                        padding: '12px',
+                                                                        background: hasBotkeys 
+                                                                            ? `${theme.colors.warning}10` 
+                                                                            : `${theme.colors.success}10`,
+                                                                        border: `1px solid ${hasBotkeys ? theme.colors.warning : theme.colors.success}30`,
+                                                                        borderRadius: '8px',
+                                                                    }}>
+                                                                        <div style={{
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '8px',
+                                                                            marginBottom: hasBotkeys ? '8px' : 0,
+                                                                            fontSize: '0.85rem',
+                                                                            fontWeight: '600',
+                                                                            color: hasBotkeys ? theme.colors.warning : theme.colors.success,
+                                                                        }}>
+                                                                            {hasBotkeys ? (
+                                                                                <>
+                                                                                    <FaUserCheck /> Botkeys ({botkeys.length} principal{botkeys.length !== 1 ? 's' : ''})
+                                                                                </>
+                                                                            ) : botkeys !== null ? (
+                                                                                <>
+                                                                                    <FaCheck /> No Botkeys
+                                                                                </>
+                                                                            ) : (
+                                                                                <span style={{ color: theme.colors.mutedText, fontWeight: '400', fontSize: '0.8rem' }}>
+                                                                                    Botkey info not available (older bot version)
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                        {hasBotkeys && (
+                                                                            <div style={{ 
+                                                                                display: 'flex', 
+                                                                                flexDirection: 'column', 
+                                                                                gap: '6px',
+                                                                                fontSize: '0.8rem',
+                                                                            }}>
+                                                                                {botkeys.map(([principal, permIds], bkIdx) => (
+                                                                                    <div key={bkIdx} style={{
+                                                                                        display: 'flex',
+                                                                                        alignItems: 'flex-start',
+                                                                                        gap: '8px',
+                                                                                        padding: '6px 8px',
+                                                                                        background: theme.colors.tertiaryBg || theme.colors.secondaryBg,
+                                                                                        borderRadius: '6px',
+                                                                                        flexWrap: 'wrap',
+                                                                                    }}>
+                                                                                        <div style={{ flexShrink: 0 }}>
+                                                                                            <PrincipalDisplay 
+                                                                                                principal={principal}
+                                                                                                short={true}
+                                                                                                showCopyButton={false}
+                                                                                                enableContextMenu={true}
+                                                                                                isAuthenticated={isAuthenticated}
+                                                                                                style={{ fontSize: '0.8rem' }}
+                                                                                            />
+                                                                                        </div>
+                                                                                        <div style={{ 
+                                                                                            display: 'flex', 
+                                                                                            flexWrap: 'wrap', 
+                                                                                            gap: '4px',
+                                                                                            alignItems: 'center',
+                                                                                        }}>
+                                                                                            {permIds.map((pid, pidIdx) => (
+                                                                                                <span key={pidIdx} style={{
+                                                                                                    background: Number(pid) === 0 
+                                                                                                        ? `${theme.colors.warning}25` 
+                                                                                                        : `${theme.colors.accent}15`,
+                                                                                                    color: Number(pid) === 0 
+                                                                                                        ? theme.colors.warning 
+                                                                                                        : theme.colors.accent,
+                                                                                                    padding: '2px 6px',
+                                                                                                    borderRadius: '4px',
+                                                                                                    fontSize: '0.7rem',
+                                                                                                    fontWeight: '500',
+                                                                                                    border: `1px solid ${Number(pid) === 0 ? theme.colors.warning : theme.colors.accent}20`,
+                                                                                                }}>
+                                                                                                    {getPermLabel(pid)}
+                                                                                                </span>
+                                                                                            ))}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        )}
+                                                                        {!hasBotkeys && botkeys !== null && (
+                                                                            <div style={{ 
+                                                                                fontSize: '0.75rem', 
+                                                                                color: theme.colors.mutedText, 
+                                                                                marginTop: '4px' 
+                                                                            }}>
+                                                                                No third-party principals have access to this bot's neuron operations.
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                );
+                                                            })()}
+                                                            
                                                             {/* Refresh button */}
                                                             <button
                                                                 onClick={(e) => {
