@@ -2254,78 +2254,6 @@ export default function Me() {
                                     </SettingItem>
 
                                     <SettingItem
-                                        title="Swap Slippage Tolerance"
-                                        description="Default slippage tolerance for token swaps. You can also change this directly from the swap page."
-                                        theme={theme}
-                                    >
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                            {[0.5, 1, 2, 5].map(p => (
-                                                <button
-                                                    key={p}
-                                                    onClick={() => {
-                                                        const newValue = p / 100;
-                                                        setSwapSlippageTolerance(newValue);
-                                                        localStorage.setItem('swapSlippageTolerance', newValue.toString());
-                                                        window.dispatchEvent(new CustomEvent('swapSlippageToleranceChanged', { detail: newValue }));
-                                                        updateBackendSettings({ swap_slippage_tolerance: newValue });
-                                                    }}
-                                                    style={{
-                                                        padding: '4px 12px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
-                                                        cursor: 'pointer', transition: 'all 0.15s ease',
-                                                        border: Math.abs(swapSlippageTolerance * 100 - p) < 0.001
-                                                            ? `1px solid ${theme.colors.accent}`
-                                                            : `1px solid ${theme.colors.border}`,
-                                                        background: Math.abs(swapSlippageTolerance * 100 - p) < 0.001
-                                                            ? theme.colors.accent
-                                                            : 'transparent',
-                                                        color: Math.abs(swapSlippageTolerance * 100 - p) < 0.001
-                                                            ? '#fff'
-                                                            : theme.colors.secondaryText,
-                                                    }}
-                                                >{p}%</button>
-                                            ))}
-                                            <input
-                                                type="number"
-                                                min="0.01"
-                                                max="99"
-                                                step="0.1"
-                                                placeholder="Custom %"
-                                                value={
-                                                    [0.5, 1, 2, 5].some(p => Math.abs(swapSlippageTolerance * 100 - p) < 0.001)
-                                                        ? ''
-                                                        : (swapSlippageTolerance * 100)
-                                                }
-                                                onChange={(e) => {
-                                                    const n = parseFloat(e.target.value);
-                                                    if (!isNaN(n) && n > 0 && n < 100) {
-                                                        const newValue = n / 100;
-                                                        setSwapSlippageTolerance(newValue);
-                                                        localStorage.setItem('swapSlippageTolerance', newValue.toString());
-                                                        window.dispatchEvent(new CustomEvent('swapSlippageToleranceChanged', { detail: newValue }));
-                                                        if (slippageSaveTimerRef.current) {
-                                                            clearTimeout(slippageSaveTimerRef.current);
-                                                        }
-                                                        slippageSaveTimerRef.current = setTimeout(() => {
-                                                            updateBackendSettings({ swap_slippage_tolerance: newValue });
-                                                        }, 500);
-                                                    }
-                                                }}
-                                                style={{
-                                                    width: '72px',
-                                                    padding: '4px 8px',
-                                                    borderRadius: '8px',
-                                                    border: `1px solid ${theme.colors.border}`,
-                                                    backgroundColor: theme.colors.tertiaryBg,
-                                                    color: theme.colors.primaryText,
-                                                    fontSize: '13px',
-                                                    textAlign: 'right',
-                                                }}
-                                            />
-                                            <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>%</span>
-                                        </div>
-                                    </SettingItem>
-
-                                    <SettingItem
                                         title="Auto-update on new version"
                                         description="When a new version is detected, auto-refresh after countdown. When off, you still get the notification and can click to refresh."
                                         theme={theme}
@@ -2546,15 +2474,96 @@ export default function Me() {
                                     />
                                 </SettingsSection>
 
-                                {/* Sneedex Notifications */}
+                                {/* Sneedex */}
                                 <SettingsSection
-                                    title="Sneedex Notifications"
-                                    icon={<FaBell size={16} />}
+                                    title="Sneedex"
+                                    icon={<FaGavel size={16} />}
                                     expanded={sneedexNotificationsExpanded}
                                     onToggle={() => setSneedexNotificationsExpanded(!sneedexNotificationsExpanded)}
                                     theme={theme}
                                 >
-                                    <p style={{ color: theme.colors.mutedText, fontSize: '0.9rem', marginBottom: '1rem' }}>
+                                    <SettingItem
+                                        title="Swap Slippage Tolerance"
+                                        description="Default slippage tolerance for token swaps. You can also change this directly from the swap page."
+                                        theme={theme}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                            {[0.5, 1, 2, 5].map(p => (
+                                                <button
+                                                    key={p}
+                                                    onClick={() => {
+                                                        const newValue = p / 100;
+                                                        setSwapSlippageTolerance(newValue);
+                                                        localStorage.setItem('swapSlippageTolerance', newValue.toString());
+                                                        window.dispatchEvent(new CustomEvent('swapSlippageToleranceChanged', { detail: newValue }));
+                                                        updateBackendSettings({ swap_slippage_tolerance: newValue });
+                                                    }}
+                                                    style={{
+                                                        padding: '4px 12px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
+                                                        cursor: 'pointer', transition: 'all 0.15s ease',
+                                                        border: Math.abs(swapSlippageTolerance * 100 - p) < 0.001
+                                                            ? `1px solid ${theme.colors.accent}`
+                                                            : `1px solid ${theme.colors.border}`,
+                                                        background: Math.abs(swapSlippageTolerance * 100 - p) < 0.001
+                                                            ? theme.colors.accent
+                                                            : 'transparent',
+                                                        color: Math.abs(swapSlippageTolerance * 100 - p) < 0.001
+                                                            ? '#fff'
+                                                            : theme.colors.secondaryText,
+                                                    }}
+                                                >{p}%</button>
+                                            ))}
+                                            <input
+                                                type="number"
+                                                min="0.01"
+                                                max="99"
+                                                step="0.1"
+                                                placeholder="Custom %"
+                                                value={
+                                                    [0.5, 1, 2, 5].some(p => Math.abs(swapSlippageTolerance * 100 - p) < 0.001)
+                                                        ? ''
+                                                        : (swapSlippageTolerance * 100)
+                                                }
+                                                onChange={(e) => {
+                                                    const n = parseFloat(e.target.value);
+                                                    if (!isNaN(n) && n > 0 && n < 100) {
+                                                        const newValue = n / 100;
+                                                        setSwapSlippageTolerance(newValue);
+                                                        localStorage.setItem('swapSlippageTolerance', newValue.toString());
+                                                        window.dispatchEvent(new CustomEvent('swapSlippageToleranceChanged', { detail: newValue }));
+                                                        if (slippageSaveTimerRef.current) {
+                                                            clearTimeout(slippageSaveTimerRef.current);
+                                                        }
+                                                        slippageSaveTimerRef.current = setTimeout(() => {
+                                                            updateBackendSettings({ swap_slippage_tolerance: newValue });
+                                                        }, 500);
+                                                    }
+                                                }}
+                                                style={{
+                                                    width: '72px',
+                                                    padding: '4px 8px',
+                                                    borderRadius: '8px',
+                                                    border: `1px solid ${theme.colors.border}`,
+                                                    backgroundColor: theme.colors.tertiaryBg,
+                                                    color: theme.colors.primaryText,
+                                                    fontSize: '13px',
+                                                    textAlign: 'right',
+                                                }}
+                                            />
+                                            <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>%</span>
+                                        </div>
+                                    </SettingItem>
+
+                                    <div style={{
+                                        display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                        padding: '0.75rem 0 0.25rem',
+                                        marginTop: '0.25rem',
+                                        borderTop: `1px solid ${theme.colors.border}`,
+                                    }}>
+                                        <FaBell size={13} color={theme.colors.mutedText} />
+                                        <span style={{ color: theme.colors.secondaryText, fontWeight: 600, fontSize: '0.85rem' }}>Notifications</span>
+                                    </div>
+                                    <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '0.75rem', marginTop: '0.25rem' }}>
                                         Choose which Sneedex events you want to receive notifications for via <Link to="/sms" style={{ color: mePrimary }}>direct message</Link>.
                                     </p>
                                     
