@@ -326,8 +326,8 @@ function IcpNeuronManager() {
 
     // Permission keys for each neuron tab
     const TAB_PERMISSIONS = {
-        'stake': ['StakeNeuron'],
-        'maturity': ['StakeMaturity', 'MergeMaturity', 'DisburseMaturity', 'Spawn', 'AutoStakeMaturity'],
+        'stake': ['StakeNeuron', 'AutoStakeMaturity'],
+        'maturity': ['StakeMaturity', 'MergeMaturity', 'DisburseMaturity', 'Spawn'],
         'following': ['ManageFollowees'],
         'dissolve': ['ConfigureDissolveState'],
         'disburse': ['Disburse'],
@@ -343,17 +343,41 @@ function IcpNeuronManager() {
         return perms.some(p => hasPermission(p));
     }, [isController, hasPermission]);
 
-    // Reset to overview tab if user doesn't have access to current tab
+    // Wrapper for action sections that require a specific permission.
+    // Shows content but disabled/dimmed with a label when the user lacks access.
+    const PermissionGate = useCallback(({ permKey, children }) => {
+        const allowed = hasPermission(permKey);
+        if (allowed) return children;
+        return (
+            <div style={{ position: 'relative', opacity: 0.45, pointerEvents: 'none', userSelect: 'none' }}>
+                <div style={{
+                    position: 'absolute',
+                    top: '6px',
+                    right: '6px',
+                    background: `${theme.colors.warning}20`,
+                    color: theme.colors.warning,
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                    fontSize: '10px',
+                    fontWeight: '600',
+                    zIndex: 1,
+                    pointerEvents: 'auto',
+                }}>
+                    🔒 No permission
+                </div>
+                {children}
+            </div>
+        );
+    }, [hasPermission, theme]);
+
+    // Reset to overview tab if user doesn't have access to current neuron tab
     useEffect(() => {
         if (!hasAnyPermission && activeTab !== 'overview') {
             setActiveTab('overview');
         } else if (hasAnyPermission && !isController && activeTab !== 'overview' && !hasTabAccess(activeTab)) {
             setActiveTab('overview');
         }
-        if (!isController && canisterActiveTab !== 'info') {
-            setCanisterActiveTab('info');
-        }
-    }, [isController, hasAnyPermission, hasTabAccess, activeTab, canisterActiveTab]);
+    }, [isController, hasAnyPermission, hasTabAccess, activeTab]);
 
     const getAgent = useCallback(() => {
         const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
@@ -3080,11 +3104,9 @@ function IcpNeuronManager() {
                                     <button style={tabStyle(canisterActiveTab === 'info')} onClick={() => setCanisterActiveTab('info')}>
                                         Info
                                     </button>
-                                    {isController && (
-                                        <button style={tabStyle(canisterActiveTab === 'permissions')} onClick={() => setCanisterActiveTab('permissions')}>
-                                            Botkeys
-                                        </button>
-                                    )}
+                                    <button style={tabStyle(canisterActiveTab === 'permissions')} onClick={() => setCanisterActiveTab('permissions')}>
+                                        Botkeys
+                                    </button>
                                 </div>
 
                         {canisterActiveTab === 'info' && (
@@ -4064,8 +4086,8 @@ function IcpNeuronManager() {
                         </>
                         )}
 
-                        {/* Botkeys Tab */}
-                        {canisterActiveTab === 'permissions' && isController && (
+                        {/* Botkeys Tab - viewable by everyone, editable by ManagePermissions holders */}
+                        {canisterActiveTab === 'permissions' && (
                         <div>
                             {/* Botkeys explanation */}
                             <div style={{
@@ -4194,7 +4216,7 @@ function IcpNeuronManager() {
                                         background: theme.colors.tertiaryBg || theme.colors.secondaryBg,
                                         borderRadius: '8px',
                                     }}>
-                                        No botkey principals configured. Add one below.
+                                        No botkey principals configured.{hasPermission('ManagePermissions') ? ' Add one below.' : ''}
                                     </div>
                                 ) : (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -4229,6 +4251,7 @@ function IcpNeuronManager() {
                                                                 noLink={false}
                                                             />
                                                         </div>
+                                                        {hasPermission('ManagePermissions') && (
                                                         <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
                                                             {!isEditing && (
                                                                 <button
@@ -4288,6 +4311,7 @@ function IcpNeuronManager() {
                                                                 </button>
                                                             )}
                                                         </div>
+                                                        )}
                                                     </div>
                                                     
                                                     {isEditing ? (
@@ -4372,7 +4396,8 @@ function IcpNeuronManager() {
                                 )}
                             </div>
 
-                            {/* Add New Botkey Principal */}
+                            {/* Add New Botkey Principal - only for ManagePermissions holders */}
+                            {hasPermission('ManagePermissions') && (
                             <div style={cardStyle}>
                                 <h3 style={{ color: theme.colors.primaryText, margin: '0 0 12px 0', fontSize: '0.95rem', fontWeight: '600' }}>
                                     Add Botkey Principal
@@ -4469,6 +4494,7 @@ function IcpNeuronManager() {
                                     The "Manage Permissions" permission allows a principal to manage other principals' permissions.
                                 </p>
                             </div>
+                            )}
                             </>
                             )}
                         </div>
@@ -5143,6 +5169,7 @@ function IcpNeuronManager() {
                                         )}
                                         
                                         {/* Increase Stake */}
+                                        <PermissionGate permKey="StakeNeuron">
                                         <div style={{ marginBottom: '30px' }}>
                                             <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '10px' }}>Increase Stake</h4>
                                             <p style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '15px' }}>
@@ -5201,8 +5228,10 @@ function IcpNeuronManager() {
                                                 </p>
                                             </div>
                                         </div>
+                                        </PermissionGate>
 
                                         {/* Auto-stake Maturity */}
+                                        <PermissionGate permKey="AutoStakeMaturity">
                                         <div style={{ borderTop: `1px solid ${theme.colors.border}`, paddingTop: '20px' }}>
                                             <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '10px' }}>Auto-Stake Maturity</h4>
                                             <p style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '15px' }}>
@@ -5252,6 +5281,7 @@ function IcpNeuronManager() {
                                                 )}
                                             </div>
                                         </div>
+                                        </PermissionGate>
                                     </div>
                                 )}
 
@@ -5315,6 +5345,7 @@ function IcpNeuronManager() {
                                         {/* Maturity Actions */}
                                         <div style={{ display: 'grid', gap: '20px' }}>
                                             {/* Stake Maturity */}
+                                            <PermissionGate permKey="StakeMaturity">
                                             <div style={{ padding: '15px', border: `1px solid ${theme.colors.border}`, borderRadius: '8px' }}>
                                                 <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '8px' }}>Stake Maturity</h4>
                                                 <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '12px' }}>
@@ -5331,8 +5362,10 @@ function IcpNeuronManager() {
                                                     {actionLoading === 'stakeMaturity' ? '⏳...' : '📈 Stake Maturity'}
                                                 </button>
                                             </div>
+                                            </PermissionGate>
 
                                             {/* Merge Maturity */}
+                                            <PermissionGate permKey="MergeMaturity">
                                             <div style={{ padding: '15px', border: `1px solid ${theme.colors.border}`, borderRadius: '8px' }}>
                                                 <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '8px' }}>Merge Maturity</h4>
                                                 <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '12px' }}>
@@ -5349,8 +5382,10 @@ function IcpNeuronManager() {
                                                     {actionLoading === 'mergeMaturity' ? '⏳...' : '🔄 Merge into Stake'}
                                                 </button>
                                             </div>
+                                            </PermissionGate>
 
                                             {/* Spawn Maturity */}
+                                            <PermissionGate permKey="Spawn">
                                             <div style={{ padding: '15px', border: `1px solid ${theme.colors.border}`, borderRadius: '8px' }}>
                                                 <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '8px' }}>Spawn New Neuron</h4>
                                                 <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '12px' }}>
@@ -5384,8 +5419,10 @@ function IcpNeuronManager() {
                                                     </p>
                                                 )}
                                             </div>
+                                            </PermissionGate>
 
                                             {/* Disburse Maturity */}
+                                            <PermissionGate permKey="DisburseMaturity">
                                             <div style={{ padding: '15px', border: `1px solid ${theme.colors.border}`, borderRadius: '8px' }}>
                                                 <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '8px' }}>Disburse Maturity</h4>
                                                 <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '12px' }}>
@@ -5415,6 +5452,7 @@ function IcpNeuronManager() {
                                                     {actionLoading === 'disburseMaturity' ? '⏳...' : '💸 Disburse Maturity'}
                                                 </button>
                                             </div>
+                                            </PermissionGate>
                                         </div>
                                     </div>
                                 )}
@@ -5841,6 +5879,7 @@ function IcpNeuronManager() {
                                         <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>Advanced Operations</h3>
                                         
                                         {/* Split Neuron */}
+                                        <PermissionGate permKey="Split">
                                         <div style={{ padding: '15px', border: `1px solid ${theme.colors.border}`, borderRadius: '8px', marginBottom: '20px' }}>
                                             <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '8px' }}>✂️ Split Neuron</h4>
                                             <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '15px' }}>
@@ -5891,8 +5930,10 @@ function IcpNeuronManager() {
                                                 </p>
                                             )}
                                         </div>
+                                        </PermissionGate>
 
                                         {/* Merge Neurons */}
+                                        <PermissionGate permKey="MergeNeurons">
                                         <div style={{ padding: '15px', border: `1px solid ${theme.colors.border}`, borderRadius: '8px', marginBottom: '20px' }}>
                                             <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '8px' }}>🔗 Merge Neurons</h4>
                                             <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '15px' }}>
@@ -5930,8 +5971,10 @@ function IcpNeuronManager() {
                                                 </button>
                                             </div>
                                         </div>
+                                        </PermissionGate>
 
                                         {/* Neuron Visibility */}
+                                        <PermissionGate permKey="ManageVisibility">
                                         <div style={{ padding: '15px', border: `1px solid ${theme.colors.border}`, borderRadius: '8px' }}>
                                             <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '8px' }}>
                                                 {fullNeuron?.visibility?.[0] === 2 ? '🌐' : '🔒'} Neuron Visibility
@@ -6003,6 +6046,7 @@ function IcpNeuronManager() {
                                                 ⚠️ Note: Making your neuron public means anyone can see its voting history and other details on the NNS.
                                             </p>
                                         </div>
+                                        </PermissionGate>
                                     </div>
                                 )}
 
