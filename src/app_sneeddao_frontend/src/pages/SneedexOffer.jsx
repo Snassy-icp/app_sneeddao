@@ -951,19 +951,25 @@ function SneedexOffer() {
         }
     }, [offer, identity, snsData, snsSymbols, fetchSnsSymbol]);
     
-    // Proactively fetch neuronManagerInfo for ICP Neuron Manager canisters (for USD estimates)
+    // Proactively fetch canisterInfo and neuronManagerInfo for escrowed ICP Neuron Manager canisters
+    // (needed for USD estimates and escrow verification summary)
     useEffect(() => {
         if (offer && identity) {
             offer.assets?.forEach((assetEntry, idx) => {
                 if ('Canister' in assetEntry.asset && assetEntry.escrowed) {
                     const details = getAssetDetails(assetEntry);
+                    // Fetch canister info (controllers etc.) for escrow verification
+                    if (!canisterInfo[idx]) {
+                        fetchCanisterInfo(idx);
+                    }
+                    // Fetch neuron manager info for ICP Staking Bots
                     if (details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER && !neuronManagerInfo[idx]) {
                         fetchNeuronManagerInfo(idx, details.canister_id);
                     }
                 }
             });
         }
-    }, [offer, identity, neuronManagerInfo, fetchNeuronManagerInfo]);
+    }, [offer, identity, canisterInfo, neuronManagerInfo, fetchCanisterInfo, fetchNeuronManagerInfo]);
     
     // Toggle asset expansion and fetch info if needed
     const toggleAssetExpanded = useCallback((assetIndex, assetEntry, details) => {
@@ -2666,6 +2672,167 @@ function SneedexOffer() {
                                     </div>
                                 </div>
                             )}
+                            {/* Aggregate escrow verification summary */}
+                            {offer.assets.length > 0 && (() => {
+                                const isTerminal = 'Completed' in offer.state || 'Claimed' in offer.state || 'Expired' in offer.state || 'Cancelled' in offer.state;
+                                const isDelivered = 'Completed' in offer.state || 'Claimed' in offer.state;
+                                const allMarkedEscrowed = offer.assets.every(a => a.escrowed);
+                                
+                                // For terminal states
+                                if (isTerminal && allMarkedEscrowed) {
+                                    if (isDelivered) {
+                                        return (
+                                            <div style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px',
+                                                padding: '10px 14px',
+                                                marginBottom: '12px',
+                                                borderRadius: '8px',
+                                                background: `${theme.colors.accent}10`,
+                                                border: `1px solid ${theme.colors.accent}25`,
+                                                fontSize: '0.85rem',
+                                                fontWeight: '600',
+                                                color: theme.colors.accent,
+                                            }}>
+                                                <FaCheck /> All assets delivered to buyer
+                                            </div>
+                                        );
+                                    }
+                                    return (
+                                        <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            padding: '10px 14px',
+                                            marginBottom: '12px',
+                                            borderRadius: '8px',
+                                            background: `${theme.colors.mutedText}10`,
+                                            border: `1px solid ${theme.colors.mutedText}25`,
+                                            fontSize: '0.85rem',
+                                            fontWeight: '600',
+                                            color: theme.colors.mutedText,
+                                        }}>
+                                            <FaCheck /> All assets returned to seller
+                                        </div>
+                                    );
+                                }
+                                
+                                // For active/pending states: compute aggregate verification
+                                if (!allMarkedEscrowed) {
+                                    // Some assets not yet escrowed — show pending
+                                    const escrowedCount = offer.assets.filter(a => a.escrowed).length;
+                                    return (
+                                        <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            padding: '10px 14px',
+                                            marginBottom: '12px',
+                                            borderRadius: '8px',
+                                            background: `${theme.colors.warning}10`,
+                                            border: `1px solid ${theme.colors.warning}25`,
+                                            fontSize: '0.85rem',
+                                            fontWeight: '600',
+                                            color: theme.colors.warning,
+                                        }}>
+                                            <FaClock /> {escrowedCount} of {offer.assets.length} asset{offer.assets.length !== 1 ? 's' : ''} escrowed
+                                        </div>
+                                    );
+                                }
+                                
+                                // All marked escrowed — verify each one
+                                let verifiedCount = 0;
+                                let failedCount = 0;
+                                let pendingCount = 0;
+                                
+                                offer.assets.forEach((assetEntry, idx) => {
+                                    const assetDetails = getAssetDetails(assetEntry);
+                                    if (assetDetails.type === 'Canister' && assetDetails.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER) {
+                                        const mInfo = neuronManagerInfo[idx];
+                                        const bkData = neuronManagerBotkeys[idx];
+                                        const info = canisterInfo[idx];
+                                        if (info && mInfo && bkData !== undefined) {
+                                            const sneedexOnly = info.controllers.length === 1 && 
+                                                info.controllers[0].toString() === SNEEDEX_CANISTER_ID;
+                                            const noBk = bkData === null || (Array.isArray(bkData) && bkData.length === 0);
+                                            const noHk = mInfo.neurons.every(n => !n.hot_keys || n.hot_keys.length === 0);
+                                            if (sneedexOnly && noBk && noHk) {
+                                                verifiedCount++;
+                                            } else {
+                                                failedCount++;
+                                            }
+                                        } else {
+                                            pendingCount++;
+                                        }
+                                    } else {
+                                        // Non-neuron-manager assets: trust the backend flag
+                                        verifiedCount++;
+                                    }
+                                });
+                                
+                                const total = offer.assets.length;
+                                
+                                if (failedCount > 0) {
+                                    return (
+                                        <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            padding: '10px 14px',
+                                            marginBottom: '12px',
+                                            borderRadius: '8px',
+                                            background: `${theme.colors.warning}10`,
+                                            border: `1px solid ${theme.colors.warning}25`,
+                                            fontSize: '0.85rem',
+                                            fontWeight: '600',
+                                            color: theme.colors.warning,
+                                        }}>
+                                            <FaExclamationTriangle /> {failedCount} of {total} asset{total !== 1 ? 's' : ''} {failedCount === 1 ? 'has' : 'have'} escrow issues
+                                        </div>
+                                    );
+                                }
+                                
+                                if (pendingCount > 0) {
+                                    return (
+                                        <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            padding: '10px 14px',
+                                            marginBottom: '12px',
+                                            borderRadius: '8px',
+                                            background: `${theme.colors.accent}10`,
+                                            border: `1px solid ${theme.colors.accent}25`,
+                                            fontSize: '0.85rem',
+                                            fontWeight: '600',
+                                            color: theme.colors.accent,
+                                        }}>
+                                            <FaSync style={{ animation: 'spin 2s linear infinite', fontSize: '0.75rem' }} /> Verifying escrow... ({verifiedCount} of {total} verified)
+                                        </div>
+                                    );
+                                }
+                                
+                                // All verified!
+                                return (
+                                    <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        padding: '10px 14px',
+                                        marginBottom: '12px',
+                                        borderRadius: '8px',
+                                        background: `${theme.colors.success}10`,
+                                        border: `1px solid ${theme.colors.success}25`,
+                                        fontSize: '0.85rem',
+                                        fontWeight: '600',
+                                        color: theme.colors.success,
+                                    }}>
+                                        <FaCheck /> All {total} asset{total !== 1 ? 's' : ''} fully escrowed
+                                    </div>
+                                );
+                            })()}
+                            
                             <div style={styles.assetsList}>
                                 {offer.assets.map((assetEntry, idx) => {
                                     const details = getAssetDetails(assetEntry);
