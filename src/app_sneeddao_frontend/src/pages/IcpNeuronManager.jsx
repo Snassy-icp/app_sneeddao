@@ -1325,10 +1325,11 @@ function IcpNeuronManager() {
             fetchKnownNeurons(); // Fetch known neurons for displaying names
             fetchCanisterStatus(); // Fetch cycles and controllers
             fetchConversionRate(); // Fetch ICP to cycles conversion rate
+            loadChoreData(); // Fetch chore statuses eagerly (for header/banner lamps)
         }
         // Fetch official versions regardless of auth (public data)
         fetchOfficialVersions();
-    }, [isAuthenticated, identity, canisterId, fetchManagerData, fetchKnownNeurons, fetchCanisterStatus, fetchConversionRate, fetchOfficialVersions]);
+    }, [isAuthenticated, identity, canisterId, fetchManagerData, fetchKnownNeurons, fetchCanisterStatus, fetchConversionRate, fetchOfficialVersions, loadChoreData]);
 
     // Auto-expand canister section when manager is invalid (for easy access to upgrade/reinstall)
     useEffect(() => {
