@@ -808,10 +808,64 @@ module {
     public let ICP_FEE: Nat64 = 10_000; // 0.0001 ICP
     public let MIN_STAKE_E8S: Nat64 = 100_000_000; // 1 ICP minimum to create neuron
 
+    // ============================================
+    // HOTKEY PERMISSION TYPES
+    // ============================================
+
+    // Permission types for ICP neuron management hotkeys
+    // Inspired by SNS NeuronPermissionType but tailored for ICP neurons
+    public type NeuronPermissionType = {
+        #ConfigureDissolveState;  // Start/stop dissolving, set dissolve delay
+        #ManagePermissions;       // Add/remove hotkey principals and their permissions
+        #Vote;                    // Vote on proposals, refresh voting power
+        #Disburse;                // Disburse neuron stake
+        #Split;                   // Split neuron
+        #MergeMaturity;           // Merge maturity into stake
+        #DisburseMaturity;        // Disburse maturity
+        #StakeMaturity;           // Stake maturity
+        #ManageFollowees;         // Set followees, confirm following
+        #Spawn;                   // Spawn maturity to new neuron
+        #ManageNeuronHotkeys;     // Add/remove NNS hotkeys on the neuron
+        #StakeNeuron;             // Create neurons, increase/refresh stake
+        #MergeNeurons;            // Merge neurons
+        #AutoStakeMaturity;       // Set auto-stake maturity
+        #ManageVisibility;        // Set neuron visibility
+        #WithdrawFunds;           // Withdraw ICP or tokens from the canister
+    };
+
+    // Numeric IDs for permission types (for stable storage)
+    // These IDs are the canonical representation stored in stable memory.
+    // The variant type above is only used in the public API.
+    // New permissions can be added with new IDs without migration.
+    public module NeuronPermission {
+        public let ConfigureDissolveState: Nat = 0;
+        public let ManagePermissions: Nat = 1;
+        public let Vote: Nat = 2;
+        public let Disburse: Nat = 3;
+        public let Split: Nat = 4;
+        public let MergeMaturity: Nat = 5;
+        public let DisburseMaturity: Nat = 6;
+        public let StakeMaturity: Nat = 7;
+        public let ManageFollowees: Nat = 8;
+        public let Spawn: Nat = 9;
+        public let ManageNeuronHotkeys: Nat = 10;
+        public let StakeNeuron: Nat = 11;
+        public let MergeNeurons: Nat = 12;
+        public let AutoStakeMaturity: Nat = 13;
+        public let ManageVisibility: Nat = 14;
+        public let WithdrawFunds: Nat = 15;
+    };
+
+    // Info about a hotkey principal and their permissions (for API responses)
+    public type HotkeyPermissionInfo = {
+        principal: Principal;
+        permissions: [NeuronPermissionType];
+    };
+
     public let CURRENT_VERSION: Version = {
         major = 0;
         minor = 9;
-        patch = 0;
+        patch = 1;
     };
 
 };

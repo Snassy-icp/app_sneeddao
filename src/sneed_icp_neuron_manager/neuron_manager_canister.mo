@@ -28,6 +28,11 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     transient let governance: T.GovernanceActor = actor(T.GOVERNANCE_CANISTER_ID);
     transient let ledger: T.LedgerActor = actor(T.LEDGER_CANISTER_ID);
 
+    // Hotkey permissions: maps Principal -> list of numeric permission IDs
+    // We store numeric IDs (not variants) so we can add new permission types
+    // in future upgrades without needing stable variable migration
+    var hotkeyPermissions: [(Principal, [Nat])] = [];
+
     // ============================================
     // ACCESS CONTROL
     // ============================================
@@ -37,8 +42,117 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         Principal.isController(caller)
     };
 
-    func assertController(caller: Principal) {
-        assert(isController(caller));
+    // ============================================
+    // PERMISSION SYSTEM
+    // ============================================
+
+    // Transient permission mapping - rebuilt from code on every canister upgrade.
+    // This is the canonical definition of all permission types and their numeric IDs.
+    // New permissions can be added here in future versions without migration.
+    transient let PERMISSION_MAP: [(Nat, T.NeuronPermissionType)] = [
+        (0,  #ConfigureDissolveState),
+        (1,  #ManagePermissions),
+        (2,  #Vote),
+        (3,  #Disburse),
+        (4,  #Split),
+        (5,  #MergeMaturity),
+        (6,  #DisburseMaturity),
+        (7,  #StakeMaturity),
+        (8,  #ManageFollowees),
+        (9,  #Spawn),
+        (10, #ManageNeuronHotkeys),
+        (11, #StakeNeuron),
+        (12, #MergeNeurons),
+        (13, #AutoStakeMaturity),
+        (14, #ManageVisibility),
+        (15, #WithdrawFunds),
+    ];
+
+    // Convert a permission variant to its numeric ID
+    func permissionVariantToId(perm: T.NeuronPermissionType): Nat {
+        switch (perm) {
+            case (#ConfigureDissolveState) { 0 };
+            case (#ManagePermissions) { 1 };
+            case (#Vote) { 2 };
+            case (#Disburse) { 3 };
+            case (#Split) { 4 };
+            case (#MergeMaturity) { 5 };
+            case (#DisburseMaturity) { 6 };
+            case (#StakeMaturity) { 7 };
+            case (#ManageFollowees) { 8 };
+            case (#Spawn) { 9 };
+            case (#ManageNeuronHotkeys) { 10 };
+            case (#StakeNeuron) { 11 };
+            case (#MergeNeurons) { 12 };
+            case (#AutoStakeMaturity) { 13 };
+            case (#ManageVisibility) { 14 };
+            case (#WithdrawFunds) { 15 };
+        }
+    };
+
+    // Convert a numeric ID to its permission variant
+    func permissionIdToVariant(id: Nat): ?T.NeuronPermissionType {
+        switch (id) {
+            case (0)  { ?#ConfigureDissolveState };
+            case (1)  { ?#ManagePermissions };
+            case (2)  { ?#Vote };
+            case (3)  { ?#Disburse };
+            case (4)  { ?#Split };
+            case (5)  { ?#MergeMaturity };
+            case (6)  { ?#DisburseMaturity };
+            case (7)  { ?#StakeMaturity };
+            case (8)  { ?#ManageFollowees };
+            case (9)  { ?#Spawn };
+            case (10) { ?#ManageNeuronHotkeys };
+            case (11) { ?#StakeNeuron };
+            case (12) { ?#MergeNeurons };
+            case (13) { ?#AutoStakeMaturity };
+            case (14) { ?#ManageVisibility };
+            case (15) { ?#WithdrawFunds };
+            case (_)  { null };
+        }
+    };
+
+    // Convert an array of permission variants to numeric IDs
+    func variantsToIds(perms: [T.NeuronPermissionType]): [Nat] {
+        Array.map<T.NeuronPermissionType, Nat>(perms, permissionVariantToId)
+    };
+
+    // Convert an array of numeric IDs to permission variants (skipping unknown IDs)
+    func idsToVariants(ids: [Nat]): [T.NeuronPermissionType] {
+        let result = Buffer.Buffer<T.NeuronPermissionType>(ids.size());
+        for (id in ids.vals()) {
+            switch (permissionIdToVariant(id)) {
+                case (?v) { result.add(v) };
+                case null {}; // Skip unknown IDs from future versions
+            };
+        };
+        Buffer.toArray(result)
+    };
+
+    // Check if an array contains a specific Nat value
+    func arrayContainsNat(arr: [Nat], val: Nat): Bool {
+        for (item in arr.vals()) {
+            if (item == val) return true;
+        };
+        false
+    };
+
+    // Check if a caller has a specific permission
+    // Controllers always have all permissions
+    func callerHasPermission(caller: Principal, permissionId: Nat): Bool {
+        if (isController(caller)) return true;
+        for ((p, ids) in hotkeyPermissions.vals()) {
+            if (Principal.equal(p, caller)) {
+                return arrayContainsNat(ids, permissionId);
+            };
+        };
+        false
+    };
+
+    // Assert that the caller has a specific permission (traps if not)
+    func assertPermission(caller: Principal, permissionId: Nat) {
+        assert(callerHasPermission(caller, permissionId));
     };
 
     // ============================================
@@ -174,7 +288,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         memo: Nat64,
         dissolve_delay_seconds: Nat64
     ): async T.StakeNeuronResult {
-        assertController(caller);
+        assertPermission(caller, T.NeuronPermission.StakeNeuron);
         
         let selfPrincipal = Principal.fromActor(this);
 
@@ -222,7 +336,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // Increase stake on existing neuron by sending ICP directly to the neuron's account
     // User sends ICP to the neuron account (from getNeuronAccount), then calls this
     public shared ({ caller }) func refreshStakeFromDeposit(neuronId: T.NeuronId): async T.OperationResult {
-        assertController(caller);
+        assertPermission(caller, T.NeuronPermission.StakeNeuron);
         
         // Verify this canister controls the neuron
         let hasControl = await hasNeuron(neuronId);
@@ -239,7 +353,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         amount_e8s: Nat64,
         dissolve_delay_seconds: Nat64
     ): async T.StakeNeuronResult {
-        assertController(caller);
+        assertPermission(caller, T.NeuronPermission.StakeNeuron);
         
         // Note: We don't validate dissolve delay here - let NNS governance enforce the limits
         // This way if they change min/max, we don't need to upgrade all canisters
@@ -394,7 +508,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // ============================================
 
     public shared ({ caller }) func increaseStake(neuronId: T.NeuronId, amount_e8s: Nat64): async T.OperationResult {
-        assertController(caller);
+        assertPermission(caller, T.NeuronPermission.StakeNeuron);
         
         // Verify this canister controls the neuron and get its account
         let neuronResult = await governance.get_full_neuron(neuronId.id);
@@ -454,7 +568,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     };
 
     public shared ({ caller }) func refreshStake(neuronId: T.NeuronId): async T.OperationResult {
-        assertController(caller);
+        assertPermission(caller, T.NeuronPermission.StakeNeuron);
         
         // Verify this canister controls the neuron
         let hasControl = await hasNeuron(neuronId);
@@ -498,7 +612,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // ============================================
 
     public shared ({ caller }) func setDissolveDelay(neuronId: T.NeuronId, additionalSeconds: Nat32): async T.OperationResult {
-        assertController(caller);
+        assertPermission(caller, T.NeuronPermission.ConfigureDissolveState);
         
         let hasControl = await hasNeuron(neuronId);
         if (not hasControl) {
@@ -510,7 +624,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     };
 
     public shared ({ caller }) func startDissolving(neuronId: T.NeuronId): async T.OperationResult {
-        assertController(caller);
+        assertPermission(caller, T.NeuronPermission.ConfigureDissolveState);
         
         let hasControl = await hasNeuron(neuronId);
         if (not hasControl) {
@@ -520,7 +634,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     };
 
     public shared ({ caller }) func stopDissolving(neuronId: T.NeuronId): async T.OperationResult {
-        assertController(caller);
+        assertPermission(caller, T.NeuronPermission.ConfigureDissolveState);
         
         let hasControl = await hasNeuron(neuronId);
         if (not hasControl) {
@@ -538,7 +652,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         amount_e8s: ?Nat64,
         to_account: ?T.AccountIdentifier
     ): async T.DisburseResult {
-        assertController(caller);
+        assertPermission(caller, T.NeuronPermission.Disburse);
         
         let hasControl = await hasNeuron(neuronId);
         if (not hasControl) {
@@ -571,7 +685,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         amount_e8s: Nat64,
         to_account: T.Account
     ): async T.DisburseResult {
-        assertController(caller);
+        assertPermission(caller, T.NeuronPermission.WithdrawFunds);
         
         let balance = await getBalance();
         let required = Nat64.toNat(amount_e8s + T.ICP_FEE);
@@ -602,7 +716,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         amount: Nat,
         to_account: T.Account
     ): async T.DisburseResult {
-        assertController(caller);
+        assertPermission(caller, T.NeuronPermission.WithdrawFunds);
         
         // Create actor for the specified ledger
         let tokenLedger: T.LedgerActor = actor(Principal.toText(ledger_canister_id));
@@ -655,7 +769,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         percentage: Nat32,
         newController: ?Principal
     ): async T.SpawnResult {
-        assertController(caller);
+        assertPermission(caller, T.NeuronPermission.Spawn);
         
         let hasControl = await hasNeuron(neuronId);
         if (not hasControl) {
@@ -691,7 +805,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     };
 
     public shared ({ caller }) func stakeMaturity(neuronId: T.NeuronId, percentage: Nat32): async T.OperationResult {
-        assertController(caller);
+        assertPermission(caller, T.NeuronPermission.StakeMaturity);
         
         let hasControl = await hasNeuron(neuronId);
         if (not hasControl) {
@@ -715,7 +829,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     };
 
     public shared ({ caller }) func mergeMaturity(neuronId: T.NeuronId, percentage: Nat32): async T.OperationResult {
-        assertController(caller);
+        assertPermission(caller, T.NeuronPermission.MergeMaturity);
         
         let hasControl = await hasNeuron(neuronId);
         if (not hasControl) {
@@ -743,7 +857,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         percentage: Nat32,
         to_account: ?T.Account
     ): async T.OperationResult {
-        assertController(caller);
+        assertPermission(caller, T.NeuronPermission.DisburseMaturity);
         
         let hasControl = await hasNeuron(neuronId);
         if (not hasControl) {
@@ -770,7 +884,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     };
 
     public shared ({ caller }) func setAutoStakeMaturity(neuronId: T.NeuronId, enabled: Bool): async T.OperationResult {
-        assertController(caller);
+        assertPermission(caller, T.NeuronPermission.AutoStakeMaturity);
         
         let hasControl = await hasNeuron(neuronId);
         if (not hasControl) {
@@ -786,7 +900,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // ============================================
 
     public shared ({ caller }) func vote(neuronId: T.NeuronId, proposal_id: Nat64, voteValue: Int32): async T.OperationResult {
-        assertController(caller);
+        assertPermission(caller, T.NeuronPermission.Vote);
         
         let hasControl = await hasNeuron(neuronId);
         if (not hasControl) {
@@ -817,7 +931,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         topic: Int32,
         followees: [T.NeuronId]
     ): async T.OperationResult {
-        assertController(caller);
+        assertPermission(caller, T.NeuronPermission.ManageFollowees);
         
         let hasControl = await hasNeuron(neuronId);
         if (not hasControl) {
@@ -844,7 +958,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     };
 
     public shared ({ caller }) func refreshVotingPower(neuronId: T.NeuronId): async T.OperationResult {
-        assertController(caller);
+        assertPermission(caller, T.NeuronPermission.Vote);
         
         let hasControl = await hasNeuron(neuronId);
         if (not hasControl) {
@@ -869,7 +983,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     // Confirm all following settings (re-applies current followees to keep neuron active)
     public shared ({ caller }) func confirmFollowing(neuronId: T.NeuronId): async T.OperationResult {
-        assertController(caller);
+        assertPermission(caller, T.NeuronPermission.ManageFollowees);
         
         let hasControl = await hasNeuron(neuronId);
         if (not hasControl) {
@@ -912,7 +1026,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // ============================================
 
     public shared ({ caller }) func addHotKey(neuronId: T.NeuronId, hotkey: Principal): async T.OperationResult {
-        assertController(caller);
+        assertPermission(caller, T.NeuronPermission.ManageNeuronHotkeys);
         
         let hasControl = await hasNeuron(neuronId);
         if (not hasControl) {
@@ -922,7 +1036,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     };
 
     public shared ({ caller }) func removeHotKey(neuronId: T.NeuronId, hotkey: Principal): async T.OperationResult {
-        assertController(caller);
+        assertPermission(caller, T.NeuronPermission.ManageNeuronHotkeys);
         
         let hasControl = await hasNeuron(neuronId);
         if (not hasControl) {
@@ -933,7 +1047,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     // Set neuron visibility (0 = private, 1 = public)
     public shared ({ caller }) func setVisibility(neuronId: T.NeuronId, visibility: Int32): async T.OperationResult {
-        assertController(caller);
+        assertPermission(caller, T.NeuronPermission.ManageVisibility);
         
         let hasControl = await hasNeuron(neuronId);
         if (not hasControl) {
@@ -943,11 +1057,145 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     };
 
     // ============================================
+    // HOTKEY PERMISSION MANAGEMENT
+    // ============================================
+
+    // Add permissions to a hotkey principal (merges with existing permissions)
+    public shared ({ caller }) func addHotkeyPermissions(
+        hotkeyPrincipal: Principal,
+        permissions: [T.NeuronPermissionType]
+    ): async T.OperationResult {
+        assertPermission(caller, T.NeuronPermission.ManagePermissions);
+
+        if (Principal.isAnonymous(hotkeyPrincipal)) {
+            return #Err(#InvalidOperation("Cannot add anonymous principal as hotkey"));
+        };
+
+        let newIds = variantsToIds(permissions);
+
+        let updated = Buffer.Buffer<(Principal, [Nat])>(hotkeyPermissions.size() + 1);
+        var found = false;
+        for ((p, ids) in hotkeyPermissions.vals()) {
+            if (Principal.equal(p, hotkeyPrincipal)) {
+                found := true;
+                // Merge: add new IDs that don't already exist
+                let merged = Buffer.Buffer<Nat>(ids.size() + newIds.size());
+                for (id in ids.vals()) { merged.add(id) };
+                for (id in newIds.vals()) {
+                    var exists = false;
+                    for (existing in merged.vals()) {
+                        if (existing == id) { exists := true };
+                    };
+                    if (not exists) {
+                        merged.add(id);
+                    };
+                };
+                updated.add((p, Buffer.toArray(merged)));
+            } else {
+                updated.add((p, ids));
+            };
+        };
+        if (not found) {
+            updated.add((hotkeyPrincipal, newIds));
+        };
+        hotkeyPermissions := Buffer.toArray(updated);
+        #Ok
+    };
+
+    // Remove specific permissions from a hotkey principal
+    // If all permissions are removed, the principal is removed entirely
+    public shared ({ caller }) func removeHotkeyPermissions(
+        hotkeyPrincipal: Principal,
+        permissions: [T.NeuronPermissionType]
+    ): async T.OperationResult {
+        assertPermission(caller, T.NeuronPermission.ManagePermissions);
+
+        let removeIds = variantsToIds(permissions);
+
+        let updated = Buffer.Buffer<(Principal, [Nat])>(hotkeyPermissions.size());
+        for ((p, ids) in hotkeyPermissions.vals()) {
+            if (Principal.equal(p, hotkeyPrincipal)) {
+                let remaining = Array.filter<Nat>(ids, func(id) {
+                    not arrayContainsNat(removeIds, id)
+                });
+                if (remaining.size() > 0) {
+                    updated.add((p, remaining));
+                };
+                // If no remaining permissions, the principal is dropped
+            } else {
+                updated.add((p, ids));
+            };
+        };
+        hotkeyPermissions := Buffer.toArray(updated);
+        #Ok
+    };
+
+    // Remove a hotkey principal entirely (removes all their permissions)
+    public shared ({ caller }) func removeHotkeyPrincipal(
+        hotkeyPrincipal: Principal
+    ): async T.OperationResult {
+        assertPermission(caller, T.NeuronPermission.ManagePermissions);
+
+        hotkeyPermissions := Array.filter<(Principal, [Nat])>(
+            hotkeyPermissions,
+            func((p, _)) { not Principal.equal(p, hotkeyPrincipal) }
+        );
+        #Ok
+    };
+
+    // Get permissions for a specific hotkey principal
+    public query func getHotkeyPermissions(hotkeyPrincipal: Principal): async [T.NeuronPermissionType] {
+        for ((p, ids) in hotkeyPermissions.vals()) {
+            if (Principal.equal(p, hotkeyPrincipal)) {
+                return idsToVariants(ids);
+            };
+        };
+        []
+    };
+
+    // List all hotkey principals and their permissions
+    public query func listHotkeyPrincipals(): async [T.HotkeyPermissionInfo] {
+        let result = Buffer.Buffer<T.HotkeyPermissionInfo>(hotkeyPermissions.size());
+        for ((p, ids) in hotkeyPermissions.vals()) {
+            result.add({ principal = p; permissions = idsToVariants(ids) });
+        };
+        Buffer.toArray(result)
+    };
+
+    // List all available permission types and their numeric IDs
+    public query func listPermissionTypes(): async [(Nat, T.NeuronPermissionType)] {
+        PERMISSION_MAP
+    };
+
+    // Get the caller's current permissions
+    // Controllers get all permissions; hotkey principals get their assigned permissions
+    public shared query ({ caller }) func callerPermissions(): async [T.NeuronPermissionType] {
+        if (isController(caller)) {
+            let all = Buffer.Buffer<T.NeuronPermissionType>(PERMISSION_MAP.size());
+            for ((_, v) in PERMISSION_MAP.vals()) {
+                all.add(v);
+            };
+            return Buffer.toArray(all);
+        };
+        for ((p, ids) in hotkeyPermissions.vals()) {
+            if (Principal.equal(p, caller)) {
+                return idsToVariants(ids);
+            };
+        };
+        []
+    };
+
+    // Check if the caller has a specific permission
+    public shared query ({ caller }) func checkPermission(permission: T.NeuronPermissionType): async Bool {
+        callerHasPermission(caller, permissionVariantToId(permission))
+    };
+
+    // ============================================
     // NEURON SPLITTING / MERGING
     // ============================================
 
     public shared ({ caller }) func splitNeuron(neuronId: T.NeuronId, amount_e8s: Nat64): async T.SplitResult {
-        assertController(caller);
+        assertPermission(caller, T.NeuronPermission.Split);
         
         let hasControl = await hasNeuron(neuronId);
         if (not hasControl) {
@@ -979,7 +1227,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     };
 
     public shared ({ caller }) func mergeNeurons(targetNeuronId: T.NeuronId, sourceNeuronId: T.NeuronId): async T.OperationResult {
-        assertController(caller);
+        assertPermission(caller, T.NeuronPermission.MergeNeurons);
         
         // Verify both neurons are controlled by this canister
         let hasTargetControl = await hasNeuron(targetNeuronId);
