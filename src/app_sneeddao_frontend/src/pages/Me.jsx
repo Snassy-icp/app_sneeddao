@@ -2609,7 +2609,7 @@ export default function Me() {
                                             marginTop: '0.75rem',
                                             opacity: 0.7
                                         }}>
-                                            This clears: wallet data, token metadata, logos, neurons cache
+                                            This clears: all IndexedDB databases, localStorage, sessionStorage, Cache API (keeps you logged in)
                                         </p>
 
                                         {/* Nuclear Clear - Complete Site Data Wipe */}
