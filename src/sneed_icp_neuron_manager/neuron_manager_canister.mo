@@ -19,6 +19,34 @@ import BotChoreEngine "../BotChoreEngine";
 
 // This is the actual canister that gets deployed for each user
 // No constructor arguments needed - access control uses IC canister controllers
+
+// Migration: add `paused` field to ChoreConfig
+(with migration = func (old : {
+    var choreConfigs : [(Text, {
+        enabled : Bool;
+        intervalSeconds : Nat;
+        taskTimeoutSeconds : Nat;
+    })]
+}) : {
+    var choreConfigs : [(Text, BotChoreTypes.ChoreConfig)]
+} {
+    {
+        var choreConfigs = Array.map<
+            (Text, { enabled : Bool; intervalSeconds : Nat; taskTimeoutSeconds : Nat }),
+            (Text, BotChoreTypes.ChoreConfig)
+        >(
+            old.choreConfigs,
+            func ((id, c) : (Text, { enabled : Bool; intervalSeconds : Nat; taskTimeoutSeconds : Nat })) : (Text, BotChoreTypes.ChoreConfig) {
+                (id, {
+                    enabled = c.enabled;
+                    paused = false;
+                    intervalSeconds = c.intervalSeconds;
+                    taskTimeoutSeconds = c.taskTimeoutSeconds;
+                })
+            }
+        );
+    }
+})
 shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     // ============================================
