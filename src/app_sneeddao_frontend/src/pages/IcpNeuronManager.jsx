@@ -309,15 +309,51 @@ function IcpNeuronManager() {
     const isController = identity && controllers.length > 0 && 
         controllers.some(c => c.toString() === identity.getPrincipal().toString());
 
-    // Reset to overview tab if not a controller and on a management tab
+    // User's botkey permissions (fetched from canister)
+    const [userPermissions, setUserPermissions] = useState(null); // null=not loaded, Set of permission keys
+    const [userPermissionsLoading, setUserPermissionsLoading] = useState(false);
+
+    // Check if the user has a specific permission (controllers always have all permissions)
+    const hasPermission = useCallback((permKey) => {
+        if (isController) return true;
+        if (!userPermissions) return false;
+        if (userPermissions.has('FullPermissions')) return true;
+        return userPermissions.has(permKey);
+    }, [isController, userPermissions]);
+
+    // Check if user has ANY permission at all (controller or any botkey)
+    const hasAnyPermission = isController || (userPermissions && userPermissions.size > 0);
+
+    // Permission keys for each neuron tab
+    const TAB_PERMISSIONS = {
+        'stake': ['StakeNeuron'],
+        'maturity': ['StakeMaturity', 'MergeMaturity', 'DisburseMaturity', 'Spawn', 'AutoStakeMaturity'],
+        'following': ['ManageFollowees'],
+        'dissolve': ['ConfigureDissolveState'],
+        'disburse': ['Disburse'],
+        'hotkeys': ['ManageNeuronHotkeys'],
+        'advanced': ['Split', 'MergeNeurons', 'ManageVisibility'],
+    };
+
+    // Check if user has access to a given tab (has at least one of the tab's permissions)
+    const hasTabAccess = useCallback((tabKey) => {
+        if (isController) return true;
+        const perms = TAB_PERMISSIONS[tabKey];
+        if (!perms) return true; // overview etc.
+        return perms.some(p => hasPermission(p));
+    }, [isController, hasPermission]);
+
+    // Reset to overview tab if user doesn't have access to current tab
     useEffect(() => {
-        if (!isController && activeTab !== 'overview') {
+        if (!hasAnyPermission && activeTab !== 'overview') {
+            setActiveTab('overview');
+        } else if (hasAnyPermission && !isController && activeTab !== 'overview' && !hasTabAccess(activeTab)) {
             setActiveTab('overview');
         }
         if (!isController && canisterActiveTab !== 'info') {
             setCanisterActiveTab('info');
         }
-    }, [isController, activeTab, canisterActiveTab]);
+    }, [isController, hasAnyPermission, hasTabAccess, activeTab, canisterActiveTab]);
 
     const getAgent = useCallback(() => {
         const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
@@ -1106,6 +1142,36 @@ function IcpNeuronManager() {
             loadHotkeyPermissions();
         }
     }, [canisterActiveTab, canisterSectionExpanded, loadHotkeyPermissions]);
+
+    // Fetch the current user's botkey permissions from the canister
+    const fetchUserPermissions = useCallback(async () => {
+        if (!canisterId || !identity) return;
+        // Controllers already have full access, but we still fetch so botkey users get their permissions
+        setUserPermissionsLoading(true);
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const manager = createManagerActor(canisterId, { agent });
+            const perms = await manager.callerPermissions();
+            const permSet = new Set(perms.map(p => Object.keys(p)[0]));
+            setUserPermissions(permSet);
+        } catch (err) {
+            console.warn('callerPermissions not available (older bot?):', err.message);
+            // Older bots don't have this method — botkey users get no permissions
+            setUserPermissions(new Set());
+        } finally {
+            setUserPermissionsLoading(false);
+        }
+    }, [canisterId, identity, getAgent]);
+
+    // Fetch user permissions on load (alongside other data)
+    useEffect(() => {
+        if (isAuthenticated && identity && canisterId) {
+            fetchUserPermissions();
+        }
+    }, [isAuthenticated, identity, canisterId, fetchUserPermissions]);
 
     // Get permission variant key (e.g. { Vote: null } -> "Vote")
     const getPermissionKey = (perm) => {
@@ -3837,8 +3903,8 @@ function IcpNeuronManager() {
                             )}
                         </div>
 
-                        {/* Withdraw Tokens from Canister - Collapsible (only for controllers) */}
-                        {isController && (
+                        {/* Withdraw Tokens from Canister - Collapsible (only for principals with WithdrawFunds permission) */}
+                        {hasPermission('WithdrawFunds') && (
                         <div style={cardStyle}>
                             <button
                                 onClick={() => setWithdrawSectionExpanded(!withdrawSectionExpanded)}
@@ -4412,8 +4478,8 @@ function IcpNeuronManager() {
                             )}
                         </div>
 
-                        {/* Message for non-controllers */}
-                        {!isInvalidManager && !isController && (
+                        {/* Message for users with no access at all (not controller, no botkey permissions) */}
+                        {!isInvalidManager && !hasAnyPermission && !userPermissionsLoading && (
                             <div className="neuron-mgr-fade-in" style={{
                                 ...cardStyle,
                                 background: `linear-gradient(135deg, ${theme.colors.warning}10, ${theme.colors.warning}05)`,
@@ -4435,18 +4501,18 @@ function IcpNeuronManager() {
                                     🔒
                                 </div>
                                 <h3 style={{ color: theme.colors.primaryText, margin: '0 0 0.5rem 0', fontSize: '1.1rem', fontWeight: '600' }}>
-                                    View Only Mode
+                                    No Access
                                 </h3>
                                 <p style={{ color: theme.colors.secondaryText, margin: 0, fontSize: '0.9rem', lineHeight: '1.6' }}>
-                                    You are not a controller of this ICP staking bot canister.
+                                    You are not a controller of this Staking Bot and have no botkey permissions.
                                     <br />
-                                    Only controllers can view ICP neurons, manage stakes, and withdraw tokens.
+                                    Controllers or principals with botkey access can manage neurons and perform operations.
                                 </p>
                             </div>
                         )}
 
-                        {/* Only show neuron management sections if canister is a valid manager AND user is a controller */}
-                        {!isInvalidManager && isController && (
+                        {/* Show neuron management sections if canister is a valid manager AND user has any access (controller or botkey) */}
+                        {!isInvalidManager && hasAnyPermission && (
                         <>
                         {/* ============================================ */}
                         {/* NEURONS SECTION */}
@@ -4601,8 +4667,8 @@ function IcpNeuronManager() {
                             </div>
                         )}
 
-                        {/* Create Neuron Section - Only for controllers */}
-                        {isController && (
+                        {/* Create Neuron Section - Only for principals with StakeNeuron permission */}
+                        {hasPermission('StakeNeuron') && (
                         <div style={{ marginBottom: '1rem' }}>
                             {/* Section Header */}
                             <button
@@ -4798,31 +4864,41 @@ function IcpNeuronManager() {
                                     <button style={tabStyle(activeTab === 'overview')} onClick={() => setActiveTab('overview')}>
                                         Overview
                                     </button>
-                                    {/* Management tabs - only for controllers */}
-                                    {isController && (
-                                        <>
-                                            <button style={tabStyle(activeTab === 'stake')} onClick={() => setActiveTab('stake')}>
-                                                Stake
-                                            </button>
-                                            <button style={tabStyle(activeTab === 'maturity')} onClick={() => setActiveTab('maturity')}>
-                                                Maturity
-                                            </button>
-                                            <button style={tabStyle(activeTab === 'following')} onClick={() => setActiveTab('following')}>
-                                                Following
-                                            </button>
-                                            <button style={tabStyle(activeTab === 'dissolve')} onClick={() => setActiveTab('dissolve')}>
-                                                Dissolve
-                                            </button>
-                                            <button style={tabStyle(activeTab === 'disburse')} onClick={() => setActiveTab('disburse')}>
-                                                Disburse
-                                            </button>
-                                            <button style={tabStyle(activeTab === 'hotkeys')} onClick={() => setActiveTab('hotkeys')}>
-                                                Hot Keys
-                                            </button>
-                                            <button style={tabStyle(activeTab === 'advanced')} onClick={() => setActiveTab('advanced')}>
-                                                Advanced
-                                            </button>
-                                        </>
+                                    {/* Management tabs - shown based on user permissions */}
+                                    {hasTabAccess('stake') && (
+                                        <button style={tabStyle(activeTab === 'stake')} onClick={() => setActiveTab('stake')}>
+                                            Stake
+                                        </button>
+                                    )}
+                                    {hasTabAccess('maturity') && (
+                                        <button style={tabStyle(activeTab === 'maturity')} onClick={() => setActiveTab('maturity')}>
+                                            Maturity
+                                        </button>
+                                    )}
+                                    {hasTabAccess('following') && (
+                                        <button style={tabStyle(activeTab === 'following')} onClick={() => setActiveTab('following')}>
+                                            Following
+                                        </button>
+                                    )}
+                                    {hasTabAccess('dissolve') && (
+                                        <button style={tabStyle(activeTab === 'dissolve')} onClick={() => setActiveTab('dissolve')}>
+                                            Dissolve
+                                        </button>
+                                    )}
+                                    {hasTabAccess('disburse') && (
+                                        <button style={tabStyle(activeTab === 'disburse')} onClick={() => setActiveTab('disburse')}>
+                                            Disburse
+                                        </button>
+                                    )}
+                                    {hasTabAccess('hotkeys') && (
+                                        <button style={tabStyle(activeTab === 'hotkeys')} onClick={() => setActiveTab('hotkeys')}>
+                                            Hot Keys
+                                        </button>
+                                    )}
+                                    {hasTabAccess('advanced') && (
+                                        <button style={tabStyle(activeTab === 'advanced')} onClick={() => setActiveTab('advanced')}>
+                                            Advanced
+                                        </button>
                                     )}
                                 </div>
 
@@ -4949,7 +5025,7 @@ function IcpNeuronManager() {
                                     </div>
                                 )}
 
-                                {activeTab === 'dissolve' && isController && (
+                                {activeTab === 'dissolve' && hasTabAccess('dissolve') && (
                                     <div style={cardStyle}>
                                         <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>Dissolve Management</h3>
                                         
@@ -5045,7 +5121,7 @@ function IcpNeuronManager() {
                                     </div>
                                 )}
 
-                                {activeTab === 'stake' && isController && (
+                                {activeTab === 'stake' && hasTabAccess('stake') && (
                                     <div style={cardStyle}>
                                         <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>Stake Management</h3>
                                         
@@ -5179,7 +5255,7 @@ function IcpNeuronManager() {
                                     </div>
                                 )}
 
-                                {activeTab === 'maturity' && isController && (
+                                {activeTab === 'maturity' && hasTabAccess('maturity') && (
                                     <div style={cardStyle}>
                                         <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>Maturity Management</h3>
                                         
@@ -5343,7 +5419,7 @@ function IcpNeuronManager() {
                                     </div>
                                 )}
 
-                                {activeTab === 'following' && isController && (
+                                {activeTab === 'following' && hasTabAccess('following') && (
                                     <div style={cardStyle}>
                                         <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>Following Management</h3>
                                         <p style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '20px' }}>
@@ -5682,7 +5758,7 @@ function IcpNeuronManager() {
                                     </div>
                                 )}
 
-                                {activeTab === 'disburse' && isController && (
+                                {activeTab === 'disburse' && hasTabAccess('disburse') && (
                                     <div style={cardStyle}>
                                         <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>Disburse Neuron</h3>
                                         
@@ -5760,7 +5836,7 @@ function IcpNeuronManager() {
                                     </div>
                                 )}
 
-                                {activeTab === 'advanced' && isController && (
+                                {activeTab === 'advanced' && hasTabAccess('advanced') && (
                                     <div style={cardStyle}>
                                         <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>Advanced Operations</h3>
                                         
@@ -5930,7 +6006,7 @@ function IcpNeuronManager() {
                                     </div>
                                 )}
 
-                                {activeTab === 'hotkeys' && isController && (
+                                {activeTab === 'hotkeys' && hasTabAccess('hotkeys') && (
                                     <div style={cardStyle}>
                                         <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>Hot Key Management</h3>
                                         <p style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '20px' }}>
