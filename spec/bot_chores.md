@@ -527,6 +527,79 @@ No chunking is needed because each governance call is a single inter-canister me
 
 ---
 
+## Status Indicator (Lamp) System
+
+Bot Chores use a **status lamp** system to give users an at-a-glance understanding of chore health. This is a reusable UI pattern that should be adopted by all bot products.
+
+### Lamp States
+
+Each timer level (Scheduler, Conductor, Task) is represented by a small colored circle ("lamp"):
+
+| State | Color | Animation | Meaning |
+|-------|-------|-----------|---------|
+| **Off** | Gray (#6b7280) | None | Timer not running, not scheduled |
+| **OK** | Green (#22c55e) | Steady | Scheduled, healthy, waiting to fire |
+| **Active** | Green (#22c55e) | Pulsing glow | Currently executing |
+| **Overdue** | Amber (#f59e0b) | None | Should be running/scheduled but hasn't fired in too long |
+| **Error** | Red (#ef4444) | None | Stop requested, or last operation failed |
+
+### Per-Timer State Derivation
+
+**Scheduler:**
+- **Off**: Chore is disabled.
+- **OK**: Enabled and scheduled (timer set, waiting to fire). Also shown when the conductor is actively running (scheduler has done its job).
+- **Overdue**: Enabled but (a) `lastCompletedRunAt` is more than 3× the interval ago, (b) `nextScheduledRunAt` has passed by more than 5 minutes, or (c) enabled and idle with no conductor active (timer missing).
+- **Error**: `stopRequested` is true.
+
+**Conductor:**
+- **Off**: Idle (not running).
+- **Active**: Running or polling for task completion.
+- **Overdue**: Active but running for more than 60 minutes (stale conductor).
+- **Error**: `stopRequested` while conductor is active.
+
+**Task:**
+- **Off**: No task running (idle). If last task succeeded or no task has run yet.
+- **Active**: Task is currently executing within its timeout.
+- **Overdue**: Task is running but has exceeded `taskTimeoutSeconds` (stale/hung task).
+- **Error**: Last task failed (`lastTaskSucceeded` is false).
+
+### Summary Rollup
+
+Summary lamps aggregate multiple timer or chore lamps using **worst-wins** priority:
+
+```
+Error > Overdue > Active > OK > Off
+```
+
+- **Chore summary** = worst of (Scheduler, Conductor, Task) for that chore.
+- **All-chores summary** = worst of all chore summaries.
+
+### Lamp Placement Hierarchy
+
+Lamps appear at multiple levels of the UI, from most detailed to most summarized:
+
+1. **Timer cards** (inside a chore's status panel): One lamp per timer level (Scheduler, Conductor, Task), shown inline with the status label.
+2. **Chore sub-tabs**: A summary lamp per chore, shown in each chore's tab button.
+3. **Chores tab button**: An all-chores summary lamp in the "Chores" tab selector.
+4. **Bot card header** (always visible): Per-chore summary lamps as a compact group, visible even when the Bot section is collapsed.
+5. **Page banner**: An all-chores summary with text label (e.g. "Chores: Active", "Chores: Error"), shown next to the bot version badge.
+
+This hierarchy allows users to:
+- See overall health at a glance (levels 4–5)
+- Drill down to identify which chore has an issue (level 2–3)
+- Pinpoint which timer level is problematic (level 1)
+
+### Reusability Notes
+
+The lamp system is implemented as:
+- **Pure functions** (`getSchedulerLampState`, `getConductorLampState`, `getTaskLampState`, `getChoreSummaryLamp`, `getAllChoresSummaryLamp`) that take `ChoreStatus` data and return `{ state, label }`.
+- A **`StatusLamp` React component** that renders a colored circle with optional pulse animation, tooltip, and text label.
+- **Constants** (`LAMP_OFF`, `LAMP_OK`, `LAMP_ACTIVE`, `LAMP_WARN`, `LAMP_ERROR`) and color map (`LAMP_COLORS`).
+
+For new bot products, these functions and the `StatusLamp` component can be extracted to a shared module. The state derivation functions operate purely on `ChoreStatus` data from the backend — no bot-specific logic is needed.
+
+---
+
 ## Appendix: Naming Rationale
 
 | Level | Name | Why |

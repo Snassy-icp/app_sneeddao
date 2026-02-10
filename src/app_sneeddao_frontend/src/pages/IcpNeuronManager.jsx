@@ -59,7 +59,192 @@ const customStyles = `
 .spin {
     animation: spin 1s linear infinite;
 }
+
+@keyframes lampPulse {
+    0%, 100% { box-shadow: 0 0 4px var(--lamp-color, #22c55e), 0 0 8px var(--lamp-color, #22c55e)40; }
+    50% { box-shadow: 0 0 8px var(--lamp-color, #22c55e), 0 0 16px var(--lamp-color, #22c55e)60; }
+}
 `;
+
+// =============================================
+// CHORE STATUS LAMP SYSTEM
+// =============================================
+
+// Lamp states
+const LAMP_OFF = 'off';       // Gray — not running, not scheduled
+const LAMP_OK = 'ok';         // Green steady — scheduled/healthy, waiting to fire
+const LAMP_ACTIVE = 'active'; // Green pulsing — currently running/executing
+const LAMP_WARN = 'warn';     // Amber — overdue or stale, needs attention
+const LAMP_ERROR = 'error';   // Red — error or stop requested
+
+const LAMP_COLORS = {
+    off:    '#6b7280',
+    ok:     '#22c55e',
+    active: '#22c55e',
+    warn:   '#f59e0b',
+    error:  '#ef4444',
+};
+
+const LAMP_LABELS = {
+    off:    'Off',
+    ok:     'Healthy',
+    active: 'Running',
+    warn:   'Attention needed',
+    error:  'Error',
+};
+
+// --- Derive lamp state for each timer level ---
+
+function getSchedulerLampState(chore) {
+    if (!chore.enabled) return { state: LAMP_OFF, label: 'Disabled' };
+    if (chore.stopRequested) return { state: LAMP_ERROR, label: 'Stop requested' };
+
+    const isScheduled = 'Scheduled' in chore.schedulerStatus;
+
+    if (isScheduled) {
+        // Check if significantly overdue: last completed run was > 3x interval ago
+        if (chore.lastCompletedRunAt && chore.lastCompletedRunAt.length > 0) {
+            const lastRunMs = Number(chore.lastCompletedRunAt[0]) / 1_000_000;
+            const intervalMs = Number(chore.intervalSeconds) * 1000;
+            if (lastRunMs > 0 && intervalMs > 0 && (Date.now() - lastRunMs) > intervalMs * 3) {
+                return { state: LAMP_WARN, label: 'Overdue — last run was over 3 intervals ago' };
+            }
+        }
+        // Check if scheduled time has already passed (timer may have been lost)
+        if (chore.nextScheduledRunAt && chore.nextScheduledRunAt.length > 0) {
+            const nextRunMs = Number(chore.nextScheduledRunAt[0]) / 1_000_000;
+            const graceMs = 5 * 60 * 1000; // 5 min grace
+            if (nextRunMs > 0 && Date.now() > nextRunMs + graceMs) {
+                return { state: LAMP_WARN, label: 'Overdue — scheduled time has passed' };
+            }
+        }
+        return { state: LAMP_OK, label: 'Scheduled' };
+    }
+
+    // Idle but enabled — check if conductor is running (scheduler did its job)
+    const conductorActive = !('Idle' in chore.conductorStatus);
+    if (conductorActive) return { state: LAMP_OK, label: 'Conductor active' };
+
+    // Enabled, idle, no conductor — timer missing?
+    return { state: LAMP_WARN, label: 'Enabled but no timer set' };
+}
+
+function getConductorLampState(chore) {
+    const isIdle = 'Idle' in chore.conductorStatus;
+    if (isIdle) return { state: LAMP_OFF, label: 'Idle' };
+
+    if (chore.stopRequested) return { state: LAMP_ERROR, label: 'Stop requested' };
+
+    const isPolling = 'Polling' in chore.conductorStatus;
+    const statusLabel = isPolling ? 'Polling for task' : 'Running';
+
+    // Check for stale conductor (running > 60 minutes)
+    if (chore.conductorStartedAt && chore.conductorStartedAt.length > 0) {
+        const startedMs = Number(chore.conductorStartedAt[0]) / 1_000_000;
+        const elapsedMin = (Date.now() - startedMs) / (60 * 1000);
+        if (startedMs > 0 && elapsedMin > 60) {
+            return { state: LAMP_WARN, label: `${statusLabel} — running for ${Math.round(elapsedMin)} min` };
+        }
+    }
+
+    return { state: LAMP_ACTIVE, label: statusLabel };
+}
+
+function getTaskLampState(chore) {
+    const isRunning = !('Idle' in chore.taskStatus);
+
+    if (isRunning) {
+        // Check for stale task (past timeout)
+        if (chore.taskStartedAt && chore.taskStartedAt.length > 0) {
+            const startedMs = Number(chore.taskStartedAt[0]) / 1_000_000;
+            const elapsedSec = (Date.now() - startedMs) / 1000;
+            const timeoutSec = Number(chore.taskTimeoutSeconds);
+            if (startedMs > 0 && timeoutSec > 0 && elapsedSec > timeoutSec) {
+                return { state: LAMP_WARN, label: 'Stale — exceeded timeout' };
+            }
+        }
+        const taskId = chore.currentTaskId?.[0] || '';
+        return { state: LAMP_ACTIVE, label: taskId ? `Running: ${taskId}` : 'Running' };
+    }
+
+    // Idle — check if last task failed
+    if (chore.lastTaskSucceeded && chore.lastTaskSucceeded.length > 0 && !chore.lastTaskSucceeded[0]) {
+        const errMsg = chore.lastTaskError?.[0] || 'Unknown error';
+        return { state: LAMP_ERROR, label: `Last task failed: ${errMsg}` };
+    }
+
+    return { state: LAMP_OFF, label: 'Idle' };
+}
+
+// --- Summary rollup ---
+function summarizeLampStates(...states) {
+    let has = { error: false, warn: false, active: false, ok: false };
+    for (const s of states) {
+        if (s === LAMP_ERROR) has.error = true;
+        else if (s === LAMP_WARN) has.warn = true;
+        else if (s === LAMP_ACTIVE) has.active = true;
+        else if (s === LAMP_OK) has.ok = true;
+    }
+    if (has.error) return LAMP_ERROR;
+    if (has.warn) return LAMP_WARN;
+    if (has.active) return LAMP_ACTIVE;
+    if (has.ok) return LAMP_OK;
+    return LAMP_OFF;
+}
+
+function getChoreSummaryLamp(chore) {
+    const s = getSchedulerLampState(chore).state;
+    const c = getConductorLampState(chore).state;
+    const t = getTaskLampState(chore).state;
+    return summarizeLampStates(s, c, t);
+}
+
+function getAllChoresSummaryLamp(choreStatuses) {
+    if (!choreStatuses || choreStatuses.length === 0) return LAMP_OFF;
+    return summarizeLampStates(...choreStatuses.map(getChoreSummaryLamp));
+}
+
+function getSummaryLabel(state, context) {
+    switch (state) {
+        case LAMP_ERROR: return `${context}: Error`;
+        case LAMP_WARN: return `${context}: Attention needed`;
+        case LAMP_ACTIVE: return `${context}: Active`;
+        case LAMP_OK: return `${context}: Healthy`;
+        default: return `${context}: Idle`;
+    }
+}
+
+// --- StatusLamp component ---
+const StatusLamp = ({ state, size = 10, label, style: extraStyle, showLabel = false }) => {
+    const color = LAMP_COLORS[state] || LAMP_COLORS.off;
+    const isActive = state === LAMP_ACTIVE;
+
+    return (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', ...extraStyle }} title={label}>
+            <span
+                style={{
+                    display: 'inline-block',
+                    width: `${size}px`,
+                    height: `${size}px`,
+                    borderRadius: '50%',
+                    backgroundColor: color,
+                    boxShadow: state !== LAMP_OFF
+                        ? `0 0 ${Math.round(size * 0.5)}px ${color}80`
+                        : `inset 0 1px 2px rgba(0,0,0,0.2)`,
+                    animation: isActive ? 'lampPulse 2s ease-in-out infinite' : 'none',
+                    '--lamp-color': color,
+                    flexShrink: 0,
+                    border: state === LAMP_OFF ? '1px solid #9ca3af40' : 'none',
+                }}
+            />
+            {showLabel && (
+                <span style={{ fontSize: `${Math.max(size - 1, 10)}px`, color, fontWeight: '500' }}>
+                    {label || LAMP_LABELS[state]}
+                </span>
+            )}
+        </span>
+    );
+};
 
 // Page accent colors - purple/violet theme for neurons/brain
 const neuronPrimary = '#8b5cf6';
@@ -2803,6 +2988,34 @@ function IcpNeuronManager() {
                                         v{managerInfo.version} {matchedOfficialVersion && '✓'}
                                     </span>
                                 )}
+                                {/* All-chores summary in page banner */}
+                                {choreStatuses.length > 0 && (() => {
+                                    const allSummary = getAllChoresSummaryLamp(choreStatuses);
+                                    const summaryColor = LAMP_COLORS[allSummary];
+                                    const summaryText = allSummary === LAMP_ERROR ? 'Chores: Error'
+                                        : allSummary === LAMP_WARN ? 'Chores: Attention'
+                                        : allSummary === LAMP_ACTIVE ? 'Chores: Active'
+                                        : allSummary === LAMP_OK ? 'Chores: OK'
+                                        : 'Chores: Idle';
+                                    return (
+                                        <span style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '5px',
+                                            padding: '2px 8px',
+                                            borderRadius: '6px',
+                                            fontSize: '0.7rem',
+                                            fontWeight: '600',
+                                            background: `${summaryColor}15`,
+                                            color: summaryColor,
+                                        }}
+                                        title={getSummaryLabel(allSummary, 'All Chores')}
+                                        >
+                                            <StatusLamp state={allSummary} size={7} label={summaryText} />
+                                            {summaryText}
+                                        </span>
+                                    );
+                                })()}
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                                 <PrincipalDisplay
@@ -3134,6 +3347,32 @@ function IcpNeuronManager() {
                                             ⚡ {formatCycles(canisterStatus.cycles)}
                                         </span>
                                     )}
+                                    {/* Per-chore summary lamps in Bot header */}
+                                    {choreStatuses.length > 0 && (
+                                        <span style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            padding: '4px 10px',
+                                            borderRadius: '8px',
+                                            background: `${theme.colors.border}30`,
+                                            fontSize: '0.7rem',
+                                            color: theme.colors.secondaryText,
+                                        }}>
+                                            {choreStatuses.map(chore => {
+                                                const summary = getChoreSummaryLamp(chore);
+                                                return (
+                                                    <StatusLamp
+                                                        key={chore.choreId}
+                                                        state={summary}
+                                                        size={8}
+                                                        label={getSummaryLabel(summary, chore.choreName)}
+                                                    />
+                                                );
+                                            })}
+                                            <span style={{ marginLeft: '2px' }}>Chores</span>
+                                        </span>
+                                    )}
                                 </div>
                                 <span style={{ 
                                     fontSize: '14px',
@@ -3169,7 +3408,14 @@ function IcpNeuronManager() {
                                         Botkeys
                                     </button>
                                     {(hasPermission('ViewChores') || hasPermission('ManageChores')) && (
-                                    <button style={tabStyle(canisterActiveTab === 'chores')} onClick={() => setCanisterActiveTab('chores')}>
+                                    <button style={{...tabStyle(canisterActiveTab === 'chores'), display: 'inline-flex', alignItems: 'center', gap: '6px'}} onClick={() => setCanisterActiveTab('chores')}>
+                                        {choreStatuses.length > 0 && (
+                                            <StatusLamp
+                                                state={getAllChoresSummaryLamp(choreStatuses)}
+                                                size={8}
+                                                label={getSummaryLabel(getAllChoresSummaryLamp(choreStatuses), 'Chores')}
+                                            />
+                                        )}
                                         Chores
                                     </button>
                                     )}
@@ -4601,19 +4847,26 @@ function IcpNeuronManager() {
                             {choreStatuses.length > 0 && (
                             <>
                             <div style={{ display: 'flex', flexWrap: 'wrap', marginBottom: '12px', gap: '0' }}>
-                                {choreStatuses.map(chore => (
-                                    <button
-                                        key={chore.choreId}
-                                        style={{
-                                            ...tabStyle(choreActiveTab === chore.choreId),
-                                            fontSize: '0.8rem',
-                                            padding: '0.45rem 0.8rem',
-                                        }}
-                                        onClick={() => setChoreActiveTab(chore.choreId)}
-                                    >
-                                        {chore.choreName}
-                                    </button>
-                                ))}
+                                {choreStatuses.map(chore => {
+                                    const choreSummary = getChoreSummaryLamp(chore);
+                                    return (
+                                        <button
+                                            key={chore.choreId}
+                                            style={{
+                                                ...tabStyle(choreActiveTab === chore.choreId),
+                                                fontSize: '0.8rem',
+                                                padding: '0.45rem 0.8rem',
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '6px',
+                                            }}
+                                            onClick={() => setChoreActiveTab(chore.choreId)}
+                                        >
+                                            <StatusLamp state={choreSummary} size={8} label={getSummaryLabel(choreSummary, chore.choreName)} />
+                                            {chore.choreName}
+                                        </button>
+                                    );
+                                })}
                             </div>
 
                             {/* Render the active chore's panel */}
@@ -4625,17 +4878,15 @@ function IcpNeuronManager() {
                                 // Format interval for display
                                 const intervalDays = config ? Math.round(Number(config.intervalSeconds) / 86400) : 0;
 
-                                // Conductor status label
-                                const conductorLabel = 'Idle' in chore.conductorStatus ? 'Idle'
-                                    : 'Running' in chore.conductorStatus ? 'Running'
-                                    : 'Polling' in chore.conductorStatus ? 'Polling (waiting for task)'
-                                    : 'Unknown';
+                                // Lamp states for each timer level
+                                const schedulerLamp = getSchedulerLampState(chore);
+                                const conductorLamp = getConductorLampState(chore);
+                                const taskLamp = getTaskLampState(chore);
 
-                                // Task status label
-                                const taskLabel = 'Idle' in chore.taskStatus ? 'Idle' : 'Running';
-
-                                // Scheduler status
-                                const schedulerLabel = 'Scheduled' in chore.schedulerStatus ? 'Scheduled' : 'Idle';
+                                // Text labels (derived from lamp data)
+                                const schedulerLabel = schedulerLamp.label;
+                                const conductorLabel = conductorLamp.label;
+                                const taskLabel = taskLamp.label;
 
                                 // Format timestamp
                                 const formatTime = (nsOpt) => {
@@ -4676,15 +4927,24 @@ function IcpNeuronManager() {
                                                 </div>
                                                 <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
                                                     <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Scheduler</div>
-                                                    <div style={{ fontSize: '0.9rem', color: theme.colors.primaryText, fontWeight: '500' }}>{schedulerLabel}</div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <StatusLamp state={schedulerLamp.state} size={10} label={schedulerLamp.label} />
+                                                        <span style={{ fontSize: '0.9rem', color: LAMP_COLORS[schedulerLamp.state], fontWeight: '500' }}>{schedulerLabel}</span>
+                                                    </div>
                                                 </div>
                                                 <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
                                                     <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Conductor</div>
-                                                    <div style={{ fontSize: '0.9rem', color: isRunning ? neuronPrimary : theme.colors.primaryText, fontWeight: '500' }}>{conductorLabel}</div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <StatusLamp state={conductorLamp.state} size={10} label={conductorLamp.label} />
+                                                        <span style={{ fontSize: '0.9rem', color: LAMP_COLORS[conductorLamp.state], fontWeight: '500' }}>{conductorLabel}</span>
+                                                    </div>
                                                 </div>
                                                 <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
                                                     <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Task</div>
-                                                    <div style={{ fontSize: '0.9rem', color: theme.colors.primaryText, fontWeight: '500' }}>{taskLabel}</div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <StatusLamp state={taskLamp.state} size={10} label={taskLamp.label} />
+                                                        <span style={{ fontSize: '0.9rem', color: LAMP_COLORS[taskLamp.state], fontWeight: '500' }}>{taskLabel}</span>
+                                                    </div>
                                                 </div>
                                                 <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
                                                     <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Interval</div>
