@@ -3483,16 +3483,16 @@ function IcpNeuronManager() {
                                                         borderBottom: index < controllers.length - 1 ? `1px solid ${theme.colors.border}` : 'none',
                                                     }}
                                                 >
-                                                    <span style={{ 
-                                                        color: theme.colors.primaryText, 
-                                                        fontFamily: 'monospace', 
-                                                        fontSize: '12px',
-                                                        flex: 1,
-                                                        overflow: 'hidden',
-                                                        textOverflow: 'ellipsis',
-                                                    }}>
-                                                        {controllerStr}
-                                                    </span>
+                                                    <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
+                                                        <PrincipalDisplay
+                                                            principal={controllerStr}
+                                                            displayInfo={getPrincipalDisplayInfoFromContext(controllerStr, principalNames, principalNicknames)}
+                                                            showCopyButton={true}
+                                                            isAuthenticated={isAuthenticated}
+                                                            short={false}
+                                                            noLink={false}
+                                                        />
+                                                    </div>
                                                     {isCurrentUser && (
                                                         <span style={{
                                                             backgroundColor: `${theme.colors.accent}30`,
@@ -3501,16 +3501,11 @@ function IcpNeuronManager() {
                                                             borderRadius: '4px',
                                                             fontSize: '10px',
                                                             fontWeight: '500',
+                                                            flexShrink: 0,
                                                         }}>
                                                             YOU
                                                         </span>
                                                     )}
-                                                    <button 
-                                                        onClick={() => copyToClipboard(controllerStr)}
-                                                        style={{ ...secondaryButtonStyle, padding: '2px 6px', fontSize: '10px' }}
-                                                    >
-                                                        Copy
-                                                    </button>
                                                     {/* Remove button */}
                                                     {isConfirmingRemove ? (
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -4068,16 +4063,16 @@ function IcpNeuronManager() {
                                                         flexWrap: 'wrap',
                                                         gap: '8px',
                                                     }}>
-                                                        <span style={{ 
-                                                            color: theme.colors.primaryText, 
-                                                            fontFamily: 'monospace', 
-                                                            fontSize: '12px',
-                                                            wordBreak: 'break-all',
-                                                            flex: 1,
-                                                            minWidth: '150px',
-                                                        }}>
-                                                            {principalStr}
-                                                        </span>
+                                                        <div style={{ flex: 1, minWidth: '150px', overflow: 'hidden' }}>
+                                                            <PrincipalDisplay
+                                                                principal={principalStr}
+                                                                displayInfo={getPrincipalDisplayInfoFromContext(principalStr, principalNames, principalNicknames)}
+                                                                showCopyButton={true}
+                                                                isAuthenticated={isAuthenticated}
+                                                                short={false}
+                                                                noLink={false}
+                                                            />
+                                                        </div>
                                                         <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
                                                             {!isEditing && (
                                                                 <button
