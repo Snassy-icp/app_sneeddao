@@ -297,7 +297,22 @@ function SneedexOffers() {
         
         try {
             const actor = createSneedexActor(identity);
-            const result = await actor.getNeuronManagerInfo(Principal.fromText(canisterId));
+            
+            // Try the fast query cache first
+            let result = null;
+            try {
+                const cached = await actor.getCachedNeuronManagerInfoQuery(Principal.fromText(canisterId));
+                if (cached && cached.length > 0 && cached[0]) {
+                    result = { Ok: cached[0] };
+                }
+            } catch (cacheErr) {
+                console.warn('Cache query failed, falling back to update call:', cacheErr.message);
+            }
+            
+            // Fall back to the update method if cache miss
+            if (!result) {
+                result = await actor.getNeuronManagerInfo(Principal.fromText(canisterId));
+            }
             
             if ('Ok' in result) {
                 const info = result.Ok;

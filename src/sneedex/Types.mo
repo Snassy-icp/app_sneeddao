@@ -260,10 +260,11 @@ module {
         #Err : Text;
     };
     
-    // Actor interface for ICP Neuron Manager verification
+    // Actor interface for ICP Neuron Manager verification and data access
     public type ICPNeuronManagerActor = actor {
         getVersion : shared query () -> async NeuronManagerVersion;
         getNeuronCount : shared () -> async Nat;
+        getNeuronIds : shared () -> async [ICPNeuronId];
         getAllNeuronsInfo : shared () -> async [(ICPNeuronId, ?{
             dissolve_delay_seconds : Nat64;
             state : Int32;
@@ -272,6 +273,8 @@ module {
             voting_power : Nat64;
         })];
         getFullNeuron : shared (ICPNeuronId) -> async ?ICPFullNeuron;
+        listNeurons : shared () -> async [ICPFullNeuron];
+        getBalance : shared () -> async Nat;
         removeHotKey : shared (ICPNeuronId, Principal) -> async NeuronManagerOperationResult;
     };
     
@@ -716,6 +719,18 @@ module {
         has_more : Bool;
         // ID to use for next page (pass as start_id)
         next_start_id : ?OfferId;
+    };
+    
+    // ============================================
+    // NEURON INFO CACHE TYPES (for ICP Staking Bot proxy)
+    // ============================================
+    
+    // Cached neuron manager info for a staking bot canister
+    public type NeuronManagerCacheEntry = {
+        // When this cache entry was last fetched
+        fetched_at : Time.Time;
+        // The cached info
+        info : NeuronManagerInfo;
     };
 };
 

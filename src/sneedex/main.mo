@@ -108,6 +108,12 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     var userNotificationSettings : [(Principal, T.NotificationSettings)] = [];
     var sneedSmsCanisterId : ?Principal = null;
     
+    // Neuron info cache settings and storage
+    // Cache staleness threshold in seconds (entries older than this are considered stale)
+    var neuronInfoCacheStalenessSeconds : Nat = 3600; // Default: 1 hour
+    // Cache: maps staking bot canister ID -> cached neuron manager info
+    var neuronInfoCache : [(Principal, T.NeuronManagerCacheEntry)] = [];
+    
     // ============================================
     // PRIVATE HELPERS
     // ============================================
@@ -1247,28 +1253,25 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
     };
     
-    /// Get info about an escrowed ICP Neuron Manager canister
-    public shared func getNeuronManagerInfo(canisterId : Principal) : async { #Ok : T.NeuronManagerInfo; #Err : Text } {
-        // First verify we have this canister in escrow
-        var foundInEscrow = false;
-        label escrowCheck for (offer in offers.vals()) {
+    // Internal: check if a canister is escrowed in any offer
+    func isCanisterInEscrow(canisterId : Principal) : Bool {
+        for (offer in offers.vals()) {
             for (assetEntry in offer.assets.vals()) {
                 switch (assetEntry.asset) {
                     case (#Canister(c)) {
                         if (c.canister_id == canisterId and assetEntry.escrowed) {
-                            foundInEscrow := true;
-                            break escrowCheck;
+                            return true;
                         };
                     };
                     case (_) {};
                 };
             };
         };
-        
-        if (not foundInEscrow) {
-            return #Err("Canister is not in escrow");
-        };
-        
+        false;
+    };
+    
+    // Internal: fetch fresh neuron manager info from a staking bot and cache it
+    func fetchAndCacheNeuronManagerInfo(canisterId : Principal) : async { #Ok : T.NeuronManagerInfo; #Err : Text } {
         try {
             let manager : T.ICPNeuronManagerActor = actor(Principal.toText(canisterId));
             
@@ -1312,14 +1315,59 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             };
             
             let neurons = Buffer.toArray(neuronsBuffer);
-            
-            #Ok({
+            let info : T.NeuronManagerInfo = {
                 version = version;
                 neuron_count = neurons.size();
                 neurons = neurons;
+            };
+            
+            // Cache the result
+            putCacheEntry(canisterId, {
+                fetched_at = Time.now();
+                info = info;
             });
+            
+            #Ok(info);
         } catch (_e) {
             #Err("Failed to get staking bot info");
+        };
+    };
+    
+    /// Get info about an escrowed ICP Neuron Manager canister.
+    /// Uses cache: returns cached data if fresh, otherwise fetches from the bot.
+    public shared func getNeuronManagerInfo(canisterId : Principal) : async { #Ok : T.NeuronManagerInfo; #Err : Text } {
+        // First verify we have this canister in escrow
+        if (not isCanisterInEscrow(canisterId)) {
+            return #Err("Canister is not in escrow");
+        };
+        
+        // Check cache first
+        switch (getCacheEntry(canisterId)) {
+            case (?entry) {
+                if (isCacheFresh(entry)) {
+                    return #Ok(entry.info);
+                };
+            };
+            case null {};
+        };
+        
+        // Cache miss or stale - fetch fresh
+        await fetchAndCacheNeuronManagerInfo(canisterId);
+    };
+    
+    /// Query method: get cached ICP Neuron Manager info (no inter-canister calls).
+    /// Returns cached data if fresh, null if stale or missing.
+    /// Frontend should call this first; if null, fall back to getNeuronManagerInfo.
+    public query func getCachedNeuronManagerInfoQuery(canisterId : Principal) : async ?T.NeuronManagerInfo {
+        switch (getCacheEntry(canisterId)) {
+            case (?entry) {
+                if (isCacheFresh(entry)) {
+                    ?entry.info;
+                } else {
+                    null;
+                };
+            };
+            case null { null };
         };
     };
     
@@ -4158,6 +4206,84 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     public shared query ({ caller }) func getCutPaymentLogCount() : async Nat {
         assert(isAdmin(caller));
         cutPaymentLog.size();
+    };
+    
+    // ============================================
+    // NEURON INFO CACHE (for ICP Staking Bot proxy)
+    // ============================================
+    // Sneedex is a controller of escrowed staking bots, so it can call their
+    // ViewNeuron-gated methods. Users who can't call those methods directly
+    // can use these Sneedex proxy methods instead.
+    
+    /// Get the neuron info cache staleness threshold in seconds
+    public query func getNeuronInfoCacheStaleness() : async Nat {
+        neuronInfoCacheStalenessSeconds;
+    };
+    
+    /// Set the neuron info cache staleness threshold in seconds (admin only)
+    public shared ({ caller }) func setNeuronInfoCacheStaleness(seconds : Nat) : async T.Result<()> {
+        if (not isAdmin(caller)) {
+            return #err(#NotAuthorized);
+        };
+        neuronInfoCacheStalenessSeconds := seconds;
+        #ok();
+    };
+    
+    // Internal: look up cache entry for a bot canister
+    func getCacheEntry(botCanisterId : Principal) : ?T.NeuronManagerCacheEntry {
+        for ((p, entry) in neuronInfoCache.vals()) {
+            if (Principal.equal(p, botCanisterId)) {
+                return ?entry;
+            };
+        };
+        null;
+    };
+    
+    // Internal: check if a cache entry is still fresh
+    func isCacheFresh(entry : T.NeuronManagerCacheEntry) : Bool {
+        let now = Time.now();
+        let ageNs = now - entry.fetched_at;
+        let ageSeconds = Int.abs(ageNs) / 1_000_000_000;
+        ageSeconds < neuronInfoCacheStalenessSeconds;
+    };
+    
+    // Internal: store/update a cache entry
+    func putCacheEntry(botCanisterId : Principal, entry : T.NeuronManagerCacheEntry) {
+        let updated = Buffer.Buffer<(Principal, T.NeuronManagerCacheEntry)>(neuronInfoCache.size() + 1);
+        var found = false;
+        for ((p, e) in neuronInfoCache.vals()) {
+            if (Principal.equal(p, botCanisterId)) {
+                found := true;
+                updated.add((p, entry));
+            } else {
+                updated.add((p, e));
+            };
+        };
+        if (not found) {
+            updated.add((botCanisterId, entry));
+        };
+        neuronInfoCache := Buffer.toArray(updated);
+    };
+    
+    /// Admin: clear all neuron info cache entries
+    public shared ({ caller }) func clearNeuronInfoCache() : async T.Result<()> {
+        if (not isAdmin(caller)) {
+            return #err(#NotAuthorized);
+        };
+        neuronInfoCache := [];
+        #ok();
+    };
+    
+    /// Admin: clear a specific neuron info cache entry
+    public shared ({ caller }) func clearNeuronInfoCacheFor(botCanisterId : Principal) : async T.Result<()> {
+        if (not isAdmin(caller)) {
+            return #err(#NotAuthorized);
+        };
+        neuronInfoCache := Array.filter<(Principal, T.NeuronManagerCacheEntry)>(
+            neuronInfoCache,
+            func((p, _)) { not Principal.equal(p, botCanisterId) }
+        );
+        #ok();
     };
 };
 

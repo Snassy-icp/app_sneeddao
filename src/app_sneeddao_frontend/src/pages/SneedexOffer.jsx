@@ -525,8 +525,24 @@ function SneedexOffer() {
         
         try {
             const actor = createSneedexActor(identity);
-            console.log('Fetching ICP staking bot info for canister:', canisterId);
-            const result = await actor.getNeuronManagerInfo(Principal.fromText(canisterId));
+            
+            // Try the fast query cache first
+            let result = null;
+            try {
+                const cached = await actor.getCachedNeuronManagerInfoQuery(Principal.fromText(canisterId));
+                if (cached && cached.length > 0 && cached[0]) {
+                    console.log('Got cached ICP staking bot info for canister:', canisterId);
+                    result = { Ok: cached[0] };
+                }
+            } catch (cacheErr) {
+                console.warn('Cache query failed, falling back to update call:', cacheErr.message);
+            }
+            
+            // Fall back to the update method if cache miss
+            if (!result) {
+                console.log('Fetching fresh ICP staking bot info for canister:', canisterId);
+                result = await actor.getNeuronManagerInfo(Principal.fromText(canisterId));
+            }
             console.log('ICP staking bot info result:', result);
             
             if ('Ok' in result) {
