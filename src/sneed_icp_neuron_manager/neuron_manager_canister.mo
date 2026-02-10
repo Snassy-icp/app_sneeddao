@@ -1799,56 +1799,6 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // This runs on every canister start (first deploy + upgrades) because
     // it's inside a transient let expression.
     transient let _choreInit: () = do {
-        // --- Chore: Refresh Stake ---
-        choreEngine.registerChore({
-            id = "refresh-stake";
-            name = "Refresh Stake";
-            description = "Periodically refreshes the stake of all managed neurons. This picks up any ICP that was deposited directly to a neuron's account, counting it as staked. Useful when external processes send ICP to neuron accounts.";
-            defaultIntervalSeconds = 24 * 60 * 60; // 1 day
-            defaultTaskTimeoutSeconds = 300; // 5 minutes per neuron refresh
-            conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
-                // If a task is still running, just poll again
-                if (ctx.isTaskRunning) {
-                    return #ContinueIn(10);
-                };
-
-                switch (ctx.lastCompletedTask) {
-                    case null {
-                        // First invocation: fetch all neurons
-                        let neurons = await listNeuronsInternal();
-                        let neuronIds = Buffer.Buffer<T.NeuronId>(neurons.size());
-                        for (n in neurons.vals()) {
-                            switch (n.id) {
-                                case (?nid) { neuronIds.add(nid) };
-                                case null {};
-                            };
-                        };
-                        _rs_neurons := Buffer.toArray(neuronIds);
-                        _rs_index := 0;
-
-                        if (_rs_neurons.size() == 0) {
-                            return #Done; // No neurons to process
-                        };
-
-                        // Start first task and poll
-                        _rs_startCurrentTask();
-                        return #ContinueIn(10);
-                    };
-                    case (?_lastResult) {
-                        // Previous task completed — advance to next neuron
-                        _rs_index += 1;
-                        if (_rs_index >= _rs_neurons.size()) {
-                            return #Done; // All neurons processed
-                        };
-
-                        // Start next task and poll
-                        _rs_startCurrentTask();
-                        return #ContinueIn(10);
-                    };
-                };
-            };
-        });
-
         // --- Chore: Confirm Following ---
         choreEngine.registerChore({
             id = "confirm-following";
@@ -1894,6 +1844,56 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
                         // Start next task and poll
                         _cf_startCurrentTask();
+                        return #ContinueIn(10);
+                    };
+                };
+            };
+        });
+
+        // --- Chore: Refresh Stake ---
+        choreEngine.registerChore({
+            id = "refresh-stake";
+            name = "Refresh Stake";
+            description = "Periodically refreshes the stake of all managed neurons. This picks up any ICP that was deposited directly to a neuron's account, counting it as staked. Useful when external processes send ICP to neuron accounts.";
+            defaultIntervalSeconds = 24 * 60 * 60; // 1 day
+            defaultTaskTimeoutSeconds = 300; // 5 minutes per neuron refresh
+            conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
+                // If a task is still running, just poll again
+                if (ctx.isTaskRunning) {
+                    return #ContinueIn(10);
+                };
+
+                switch (ctx.lastCompletedTask) {
+                    case null {
+                        // First invocation: fetch all neurons
+                        let neurons = await listNeuronsInternal();
+                        let neuronIds = Buffer.Buffer<T.NeuronId>(neurons.size());
+                        for (n in neurons.vals()) {
+                            switch (n.id) {
+                                case (?nid) { neuronIds.add(nid) };
+                                case null {};
+                            };
+                        };
+                        _rs_neurons := Buffer.toArray(neuronIds);
+                        _rs_index := 0;
+
+                        if (_rs_neurons.size() == 0) {
+                            return #Done; // No neurons to process
+                        };
+
+                        // Start first task and poll
+                        _rs_startCurrentTask();
+                        return #ContinueIn(10);
+                    };
+                    case (?_lastResult) {
+                        // Previous task completed — advance to next neuron
+                        _rs_index += 1;
+                        if (_rs_index >= _rs_neurons.size()) {
+                            return #Done; // All neurons processed
+                        };
+
+                        // Start next task and poll
+                        _rs_startCurrentTask();
                         return #ContinueIn(10);
                     };
                 };
