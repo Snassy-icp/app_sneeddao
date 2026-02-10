@@ -183,6 +183,7 @@ function SneedexOffer() {
     const [canisterInfo, setCanisterInfo] = useState({}); // {assetIndex: canisterInfo}
     const [loadingCanisterInfo, setLoadingCanisterInfo] = useState({}); // {assetIndex: boolean}
     const [neuronManagerInfo, setNeuronManagerInfo] = useState({}); // {assetIndex: neuronManagerInfo}
+    const [neuronManagerBotkeys, setNeuronManagerBotkeys] = useState({}); // {assetIndex: botkeys array or null}
     const [loadingNeuronManagerInfo, setLoadingNeuronManagerInfo] = useState({}); // {assetIndex: boolean}
     const [managerWasmVerification, setManagerWasmVerification] = useState({}); // {assetIndex: {verified, officialVersion}}
     const [neuronInfo, setNeuronInfo] = useState({}); // {assetIndex: neuronInfo}
@@ -544,6 +545,37 @@ function SneedexOffer() {
                 result = await actor.getNeuronManagerInfo(Principal.fromText(canisterId));
             }
             console.log('ICP staking bot info result:', result);
+            
+            // Also fetch botkeys via the separate cache (in parallel with any ongoing info fetch)
+            try {
+                const canisterPrincipal = Principal.fromText(canisterId);
+                let botkeysResult = null;
+                // Try query cache first
+                try {
+                    const cachedBotkeys = await actor.getCachedBotkeysQuery(canisterPrincipal);
+                    if (cachedBotkeys && cachedBotkeys.length > 0) {
+                        botkeysResult = cachedBotkeys[0]; // unwrap the opt
+                    }
+                } catch (e) {
+                    console.warn('Botkey cache query failed:', e.message);
+                }
+                // Fall back to update method
+                if (botkeysResult === null || botkeysResult === undefined) {
+                    try {
+                        const freshBotkeys = await actor.getNeuronManagerBotkeys(canisterPrincipal);
+                        if ('Ok' in freshBotkeys) {
+                            botkeysResult = freshBotkeys.Ok;
+                        }
+                    } catch (e) {
+                        console.warn('Botkey update fetch failed:', e.message);
+                    }
+                }
+                // botkeysResult is an array of [Principal, [Nat]] or null
+                setNeuronManagerBotkeys(prev => ({ ...prev, [assetIndex]: botkeysResult || [] }));
+            } catch (e) {
+                console.warn('Failed to fetch botkeys:', e.message);
+                setNeuronManagerBotkeys(prev => ({ ...prev, [assetIndex]: null }));
+            }
             
             if ('Ok' in result) {
                 const info = result.Ok;
@@ -3875,9 +3907,9 @@ function SneedexOffer() {
                                                             
                                                             {/* Botkeys Section */}
                                                             {(() => {
-                                                                const botkeysData = neuronManagerInfo[idx].botkeys;
-                                                                // botkeys is optional (null for old cache entries or v0.9.0 bots)
-                                                                const botkeys = botkeysData && botkeysData.length > 0 ? botkeysData[0] : null;
+                                                                const botkeysData = neuronManagerBotkeys[idx];
+                                                                // undefined = not yet fetched, null = older bot/unavailable, [] = no botkeys, [...] = has botkeys
+                                                                const botkeys = botkeysData !== undefined ? botkeysData : null;
                                                                 const hasBotkeys = botkeys && botkeys.length > 0;
                                                                 
                                                                 // Known permission ID -> display name mapping

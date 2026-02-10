@@ -113,6 +113,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
     var neuronInfoCacheStalenessSeconds : Nat = 3600; // Default: 1 hour
     // Cache: maps staking bot canister ID -> cached neuron manager info
     var neuronInfoCache : [(Principal, T.NeuronManagerCacheEntry)] = [];
+    // Separate cache for botkey info (not stored inside NeuronManagerInfo to avoid stable var migration)
+    // Maps staking bot canister ID -> (fetched_at, botkeys)
+    // Uses the same staleness threshold as neuronInfoCacheStalenessSeconds
+    var neuronManagerBotkeyCache : [(Principal, { fetched_at : Int; botkeys : [(Principal, [Nat])] })] = [];
     
     // Escrow snapshots for ICP Neuron Managers
     // Stores neuron hotkeys and botkeys that were present before escrow,
@@ -1438,25 +1442,29 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             
             let neurons = Buffer.toArray(neuronsBuffer);
             
-            // Fetch botkeys (raw numeric permission IDs)
-            // Older bots (< v0.9.1) don't have this method, so we catch and default to null
-            var botkeys : ?[(Principal, [Nat])] = null;
-            try {
-                botkeys := ?(await manager.getBotkeySnapshot());
-            } catch (_) {};
-            
             let info : T.NeuronManagerInfo = {
                 version = version;
                 neuron_count = neurons.size();
                 neurons = neurons;
-                botkeys = botkeys;
             };
+            
+            let now = Time.now();
             
             // Cache the result
             putCacheEntry(canisterId, {
-                fetched_at = Time.now();
+                fetched_at = now;
                 info = info;
             });
+            
+            // Fetch and cache botkeys separately (raw numeric permission IDs)
+            // Older bots (< v0.9.1) don't have this method, so we catch and default to empty
+            try {
+                let botkeys = await manager.getBotkeySnapshot();
+                putBotkeyCacheEntry(canisterId, { fetched_at = now; botkeys = botkeys });
+            } catch (_) {
+                // Store empty entry so we know we tried (avoids re-fetching for v0.9.0 bots)
+                putBotkeyCacheEntry(canisterId, { fetched_at = now; botkeys = [] });
+            };
             
             #Ok(info);
         } catch (_e) {
@@ -1499,6 +1507,55 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 };
             };
             case null { null };
+        };
+    };
+
+    /// Query method: get cached botkeys for an escrowed ICP Neuron Manager.
+    /// Returns null if not cached or stale. Frontend should call this first;
+    /// if null, fall back to getNeuronManagerBotkeys (update method).
+    public query func getCachedBotkeysQuery(canisterId : Principal) : async ?[(Principal, [Nat])] {
+        switch (getBotkeyCacheEntry(canisterId)) {
+            case (?entry) {
+                if (isBotkeyCacheFresh(entry)) {
+                    ?entry.botkeys;
+                } else {
+                    null;
+                };
+            };
+            case null { null };
+        };
+    };
+
+    /// Update method: get botkeys for an escrowed ICP Neuron Manager.
+    /// Fetches fresh from the bot if cache is stale/missing.
+    public shared func getNeuronManagerBotkeys(canisterId : Principal) : async { #Ok : [(Principal, [Nat])]; #Err : Text } {
+        // First verify we have this canister in escrow
+        if (not isCanisterInEscrow(canisterId)) {
+            return #Err("Canister is not in escrow");
+        };
+
+        // Check cache first
+        switch (getBotkeyCacheEntry(canisterId)) {
+            case (?entry) {
+                if (isBotkeyCacheFresh(entry)) {
+                    return #Ok(entry.botkeys);
+                };
+            };
+            case null {};
+        };
+
+        // Cache miss or stale - fetch fresh
+        try {
+            let manager : T.ICPNeuronManagerActor = actor(Principal.toText(canisterId));
+            let botkeys = await manager.getBotkeySnapshot();
+            let now = Time.now();
+            putBotkeyCacheEntry(canisterId, { fetched_at = now; botkeys = botkeys });
+            #Ok(botkeys);
+        } catch (_) {
+            // Older bot or error - return empty
+            let now = Time.now();
+            putBotkeyCacheEntry(canisterId, { fetched_at = now; botkeys = [] });
+            #Ok([]);
         };
     };
     
@@ -1697,9 +1754,13 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     return #err(#InvalidAsset("Maximum number of assets reached"));
                 };
                 
-                // Validate canister title and description lengths
+                // Validate canister title and description lengths, and check if already escrowed elsewhere
                 switch (request.asset) {
                     case (#Canister(canisterAsset)) {
+                        // Reject if this canister is already escrowed in another offer
+                        if (isCanisterInEscrow(canisterAsset.canister_id)) {
+                            return #err(#InvalidAsset("This canister is already escrowed in another offer"));
+                        };
                         switch (canisterAsset.title) {
                             case (?t) {
                                 if (Text.size(t) > T.MAX_CANISTER_TITLE_LENGTH) {
@@ -1825,6 +1886,11 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                 
                 switch (assetEntry.asset) {
                     case (#Canister(canisterAsset)) {
+                        // Reject if this canister is already escrowed in another offer
+                        if (isCanisterInEscrow(canisterAsset.canister_id)) {
+                            return #err(#InvalidAsset("This canister is already escrowed in another offer"));
+                        };
+                        
                         // Verify controllers
                         let verifyResult = await* AssetHandlers.verifyCanisterControllers(
                             canisterAsset.canister_id,
@@ -4424,12 +4490,49 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         neuronInfoCache := Buffer.toArray(updated);
     };
     
+    // Internal: look up botkey cache entry for a bot canister
+    func getBotkeyCacheEntry(botCanisterId : Principal) : ?{ fetched_at : Int; botkeys : [(Principal, [Nat])] } {
+        for ((p, entry) in neuronManagerBotkeyCache.vals()) {
+            if (Principal.equal(p, botCanisterId)) {
+                return ?entry;
+            };
+        };
+        null;
+    };
+
+    // Internal: check if a botkey cache entry is still fresh (reuses same staleness threshold)
+    func isBotkeyCacheFresh(entry : { fetched_at : Int; botkeys : [(Principal, [Nat])] }) : Bool {
+        let now = Time.now();
+        let ageNs = now - entry.fetched_at;
+        let ageSeconds = Int.abs(ageNs) / 1_000_000_000;
+        ageSeconds < neuronInfoCacheStalenessSeconds;
+    };
+
+    // Internal: store/update a botkey cache entry
+    func putBotkeyCacheEntry(botCanisterId : Principal, entry : { fetched_at : Int; botkeys : [(Principal, [Nat])] }) {
+        let updated = Buffer.Buffer<(Principal, { fetched_at : Int; botkeys : [(Principal, [Nat])] })>(neuronManagerBotkeyCache.size() + 1);
+        var found = false;
+        for ((p, e) in neuronManagerBotkeyCache.vals()) {
+            if (Principal.equal(p, botCanisterId)) {
+                found := true;
+                updated.add((p, entry));
+            } else {
+                updated.add((p, e));
+            };
+        };
+        if (not found) {
+            updated.add((botCanisterId, entry));
+        };
+        neuronManagerBotkeyCache := Buffer.toArray(updated);
+    };
+
     /// Admin: clear all neuron info cache entries
     public shared ({ caller }) func clearNeuronInfoCache() : async T.Result<()> {
         if (not isAdmin(caller)) {
             return #err(#NotAuthorized);
         };
         neuronInfoCache := [];
+        neuronManagerBotkeyCache := [];
         #ok();
     };
     
@@ -4440,6 +4543,10 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         };
         neuronInfoCache := Array.filter<(Principal, T.NeuronManagerCacheEntry)>(
             neuronInfoCache,
+            func((p, _)) { not Principal.equal(p, botCanisterId) }
+        );
+        neuronManagerBotkeyCache := Array.filter<(Principal, { fetched_at : Int; botkeys : [(Principal, [Nat])] })>(
+            neuronManagerBotkeyCache,
             func((p, _)) { not Principal.equal(p, botCanisterId) }
         );
         #ok();
