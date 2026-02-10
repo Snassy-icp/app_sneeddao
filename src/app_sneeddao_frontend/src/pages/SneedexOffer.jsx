@@ -2702,6 +2702,28 @@ function SneedexOffer() {
                                     const tMeta = tokenMetadata[details.ledger_id];
                                     const isLoadingToken = loadingTokenMetadata[idx];
                                     
+                                    // Determine whether the offer is in a terminal (closed) state
+                                    const isTerminal = offer && ('Completed' in offer.state || 'Claimed' in offer.state || 'Expired' in offer.state || 'Cancelled' in offer.state);
+                                    const isDelivered = offer && ('Completed' in offer.state || 'Claimed' in offer.state);
+                                    
+                                    // Compute verified escrow status for ICP Staking Bots
+                                    // Aggregates: Sneedex-only controller + no botkeys + no neuron hotkeys
+                                    let escrowVerified = null; // null = not yet verified (data not loaded), true = all checks pass, false = some check fails
+                                    if (details.escrowed && details.type === 'Canister' && details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER) {
+                                        const mInfo = neuronManagerInfo[idx];
+                                        const bkData = neuronManagerBotkeys[idx];
+                                        if (info && mInfo && bkData !== undefined) {
+                                            const sneedexOnlyController = info.controllers.length === 1 && 
+                                                info.controllers[0].toString() === SNEEDEX_CANISTER_ID;
+                                            const noBotkeys = bkData === null || (Array.isArray(bkData) && bkData.length === 0);
+                                            const noNeuronHotkeys = mInfo.neurons.every(n => !n.hot_keys || n.hot_keys.length === 0);
+                                            escrowVerified = sneedexOnlyController && noBotkeys && noNeuronHotkeys;
+                                        }
+                                    } else if (details.escrowed) {
+                                        // For non-neuron-manager assets, trust the backend flag
+                                        escrowVerified = true;
+                                    }
+                                    
                                     return (
                                         <div key={idx} style={{
                                             ...styles.assetItem,
@@ -3071,13 +3093,77 @@ function SneedexOffer() {
                                             </div>
                                             
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '0.5rem', flexWrap: 'wrap' }}>
-                                                <span style={{
-                                                    ...styles.escrowBadge,
-                                                    background: details.escrowed ? `${theme.colors.success}20` : `${theme.colors.warning}20`,
-                                                    color: details.escrowed ? theme.colors.success : theme.colors.warning,
-                                                }}>
-                                                    {details.escrowed ? <><FaCheck /> Escrowed</> : <><FaClock /> Pending Escrow</>}
-                                                </span>
+                                                {(() => {
+                                                    // Terminal states: asset is no longer in escrow
+                                                    if (isTerminal && details.escrowed) {
+                                                        if (isDelivered) {
+                                                            return (
+                                                                <span style={{
+                                                                    ...styles.escrowBadge,
+                                                                    background: `${theme.colors.accent}20`,
+                                                                    color: theme.colors.accent,
+                                                                }}>
+                                                                    <FaCheck /> Delivered
+                                                                </span>
+                                                            );
+                                                        }
+                                                        // Expired or Cancelled — returned to seller
+                                                        return (
+                                                            <span style={{
+                                                                ...styles.escrowBadge,
+                                                                background: `${theme.colors.mutedText}20`,
+                                                                color: theme.colors.mutedText,
+                                                            }}>
+                                                                <FaCheck /> Returned
+                                                            </span>
+                                                        );
+                                                    }
+                                                    // Active/PendingEscrow: show verified escrow status
+                                                    if (details.escrowed) {
+                                                        if (escrowVerified === true) {
+                                                            return (
+                                                                <span style={{
+                                                                    ...styles.escrowBadge,
+                                                                    background: `${theme.colors.success}20`,
+                                                                    color: theme.colors.success,
+                                                                }}>
+                                                                    <FaCheck /> Escrowed
+                                                                </span>
+                                                            );
+                                                        }
+                                                        if (escrowVerified === false) {
+                                                            return (
+                                                                <span style={{
+                                                                    ...styles.escrowBadge,
+                                                                    background: `${theme.colors.warning}20`,
+                                                                    color: theme.colors.warning,
+                                                                }}>
+                                                                    <FaExclamationTriangle /> Escrow Issue
+                                                                </span>
+                                                            );
+                                                        }
+                                                        // escrowVerified === null: data not loaded yet, show neutral
+                                                        return (
+                                                            <span style={{
+                                                                ...styles.escrowBadge,
+                                                                background: `${theme.colors.accent}20`,
+                                                                color: theme.colors.accent,
+                                                            }}>
+                                                                <FaClock /> Escrowed
+                                                            </span>
+                                                        );
+                                                    }
+                                                    // Not escrowed
+                                                    return (
+                                                        <span style={{
+                                                            ...styles.escrowBadge,
+                                                            background: `${theme.colors.warning}20`,
+                                                            color: theme.colors.warning,
+                                                        }}>
+                                                            <FaClock /> Pending Escrow
+                                                        </span>
+                                                    );
+                                                })()}
                                                 
                                                 {/* Show verification status for all asset types (Draft and PendingEscrow) */}
                                                 {!details.escrowed && isDraftOrPending && isCreator && (
