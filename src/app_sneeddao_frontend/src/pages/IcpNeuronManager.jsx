@@ -14,7 +14,8 @@ import { useAuth } from '../AuthContext';
 import { useNaming } from '../NamingContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { setPrincipalNickname, setPrincipalNameFor } from '../utils/BackendUtils';
-import { FaGasPump, FaRobot, FaBrain, FaArrowRight, FaSync, FaChevronDown, FaChevronUp, FaShieldAlt, FaWallet, FaCog } from 'react-icons/fa';
+import { FaGasPump, FaRobot, FaBrain, FaArrowRight, FaSync, FaChevronDown, FaChevronUp, FaShieldAlt, FaWallet } from 'react-icons/fa';
+import PrincipalInput from '../components/PrincipalInput';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
 import { getCyclesColor, getNeuronManagerSettings } from '../utils/NeuronManagerSettings';
 
@@ -2405,9 +2406,17 @@ function IcpNeuronManager() {
                             justifyContent: 'center',
                             margin: '0 auto 1.5rem',
                             boxShadow: `0 8px 32px ${neuronPrimary}40`,
-                            fontSize: '1.75rem'
+                            position: 'relative',
                         }}>
-                            🧠
+                            <FaRobot style={{ color: '#fff', fontSize: '1.6rem' }} />
+                            <FaBrain style={{ 
+                                color: '#fff', 
+                                fontSize: '0.8rem', 
+                                position: 'absolute', 
+                                top: '10px', 
+                                right: '10px',
+                                opacity: 0.85,
+                            }} />
                         </div>
                         <h2 style={{ color: theme.colors.primaryText, marginBottom: '0.75rem', fontSize: '1.5rem' }}>
                             ICP Staking Bot
@@ -2585,10 +2594,18 @@ function IcpNeuronManager() {
                             alignItems: 'center',
                             justifyContent: 'center',
                             boxShadow: `0 8px 32px ${neuronPrimary}50`,
-                            fontSize: '1.75rem',
-                            flexShrink: 0
+                            flexShrink: 0,
+                            position: 'relative',
                         }}>
-                            🧠
+                            <FaRobot style={{ color: '#fff', fontSize: '1.6rem' }} />
+                            <FaBrain style={{ 
+                                color: '#fff', 
+                                fontSize: '0.8rem', 
+                                position: 'absolute', 
+                                top: '8px', 
+                                right: '8px',
+                                opacity: 0.85,
+                            }} />
                         </div>
                         <div style={{ minWidth: 0, flex: 1 }}>
                             <div style={{ 
@@ -2931,9 +2948,9 @@ function IcpNeuronManager() {
                                         alignItems: 'center',
                                         justifyContent: 'center',
                                     }}>
-                                        <FaCog style={{ color: neuronPrimary, fontSize: '16px' }} />
+                                        <FaRobot style={{ color: neuronPrimary, fontSize: '16px' }} />
                                     </div>
-                                    <span style={{ fontSize: '1.05rem', fontWeight: '600' }}>Canister</span>
+                                    <span style={{ fontSize: '1.05rem', fontWeight: '600' }}>Bot</span>
                                     {canisterStatus && (
                                         <span style={{ 
                                             fontSize: '0.75rem', 
@@ -3572,31 +3589,17 @@ function IcpNeuronManager() {
                                             }}>
                                                 Add Controller
                                             </div>
-                                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                                <input
-                                                    type="text"
-                                                    value={newControllerInput}
-                                                    onChange={(e) => setNewControllerInput(e.target.value)}
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Enter') {
-                                                            e.preventDefault();
-                                                            handleAddController();
-                                                        }
-                                                    }}
-                                                    placeholder="Enter principal ID"
-                                                    disabled={updatingControllers}
-                                                    style={{
-                                                        flex: '1',
-                                                        minWidth: '180px',
-                                                        padding: '6px 10px',
-                                                        border: `1px solid ${theme.colors.border}`,
-                                                        borderRadius: '4px',
-                                                        backgroundColor: theme.colors.secondaryBg,
-                                                        color: theme.colors.primaryText,
-                                                        fontSize: '12px',
-                                                        outline: 'none'
-                                                    }}
-                                                />
+                                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                                                <div style={{ flex: '1', minWidth: '180px' }}>
+                                                    <PrincipalInput
+                                                        value={newControllerInput}
+                                                        onChange={setNewControllerInput}
+                                                        placeholder="Enter principal ID or search by name"
+                                                        defaultTab="private"
+                                                        defaultPrincipalType="both"
+                                                        disabled={updatingControllers}
+                                                    />
+                                                </div>
                                                 <button
                                                     onClick={handleAddController}
                                                     disabled={updatingControllers || !newControllerInput.trim()}
@@ -4227,13 +4230,13 @@ function IcpNeuronManager() {
                                     <label style={{ color: theme.colors.mutedText, fontSize: '11px', display: 'block', marginBottom: '4px' }}>
                                         Principal ID
                                     </label>
-                                    <input
-                                        type="text"
+                                    <PrincipalInput
                                         value={newHotkeyPrincipal}
-                                        onChange={(e) => setNewHotkeyPrincipal(e.target.value)}
-                                        placeholder="Enter principal ID"
+                                        onChange={setNewHotkeyPrincipal}
+                                        placeholder="Enter principal ID or search by name"
+                                        defaultTab="private"
+                                        defaultPrincipalType="both"
                                         disabled={savingPermissions}
-                                        style={inputStyle}
                                     />
                                 </div>
                                 <div style={{ marginBottom: '12px' }}>
