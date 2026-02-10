@@ -535,6 +535,10 @@ function IcpNeuronManager() {
     // Collect-Maturity chore-specific settings
     const [cmThresholdE8s, setCmThresholdE8s] = useState(null); // null = no threshold
     const [cmDestination, setCmDestination] = useState(null);   // null = bot's own account
+    // Distribution chore settings
+    const [distributionLists, setDistributionLists] = useState([]);
+    const [editingDistList, setEditingDistList] = useState(null); // working copy being edited
+    const [editingDistListId, setEditingDistListId] = useState(null); // null = adding new, number = editing existing
 
     // Check if current user is a controller
     const isController = identity && controllers.length > 0 && 
@@ -1383,6 +1387,12 @@ function IcpNeuronManager() {
                 setCmDestination(cmSettings.destination.length > 0 ? cmSettings.destination[0] : null);
             } catch (e) {
                 console.warn('Could not load collect-maturity settings:', e);
+            }
+            try {
+                const lists = await manager.getDistributionLists();
+                setDistributionLists(lists);
+            } catch (e) {
+                console.warn('Could not load distribution lists:', e);
             }
         } catch (err) {
             console.error('Error loading chore data:', err);
@@ -5380,6 +5390,11 @@ function IcpNeuronManager() {
                                                     How often to refresh stake on all managed neurons to pick up any deposited ICP.
                                                 </p>
                                                 )}
+                                                {chore.choreId === 'distribute-funds' && (
+                                                <p style={{ margin: '6px 0 0', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
+                                                    How often to check distribution lists and distribute funds when thresholds are met.
+                                                </p>
+                                                )}
                                             </div>
 
                                             {/* Collect-Maturity specific settings */}
@@ -5527,6 +5542,381 @@ function IcpNeuronManager() {
                                                         {' '}Enter a principal ID, optionally followed by .subaccount-hex. Leave empty for default.
                                                     </p>
                                                 </div>
+                                            </div>
+                                            )}
+
+                                            {/* Distribute-Funds specific settings: Distribution Lists */}
+                                            {chore.choreId === 'distribute-funds' && (
+                                            <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: `1px solid ${theme.colors.border}` }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                                    <h4 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '0.9rem', fontWeight: '600' }}>
+                                                        Distribution Lists ({distributionLists.length})
+                                                    </h4>
+                                                    <button
+                                                        style={{
+                                                            ...buttonStyle,
+                                                            background: `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
+                                                            color: '#fff',
+                                                            border: 'none',
+                                                            fontSize: '0.75rem',
+                                                            padding: '6px 12px',
+                                                        }}
+                                                        onClick={() => {
+                                                            setEditingDistListId(null);
+                                                            setEditingDistList({
+                                                                name: '',
+                                                                sourceSubaccount: '',
+                                                                tokenLedgerCanisterId: 'ryjl3-tyaaa-aaaaa-aaaba-cai', // ICP ledger default
+                                                                thresholdAmount: '',
+                                                                maxDistributionAmount: '',
+                                                                targets: [{ accountOwner: '', accountSubaccount: '', basisPoints: '' }],
+                                                            });
+                                                        }}
+                                                    >
+                                                        + Add List
+                                                    </button>
+                                                </div>
+
+                                                {distributionLists.length === 0 && editingDistList === null && (
+                                                    <p style={{ fontSize: '0.8rem', color: theme.colors.secondaryText, fontStyle: 'italic' }}>
+                                                        No distribution lists configured. Add one to start distributing funds.
+                                                    </p>
+                                                )}
+
+                                                {/* Existing lists */}
+                                                {distributionLists.map((list) => {
+                                                    const isEditing = editingDistListId === Number(list.id) && editingDistList !== null;
+                                                    // Calculate percentage warnings
+                                                    const totalBp = list.targets.reduce((sum, t) => sum + (t.basisPoints.length > 0 ? Number(t.basisPoints[0]) : 0), 0);
+                                                    const hasUnassigned = list.targets.some(t => t.basisPoints.length === 0);
+                                                    const overHundred = totalBp > 10000;
+
+                                                    if (isEditing) return null; // Render edit form below instead
+
+                                                    return (
+                                                        <div key={Number(list.id)} style={{
+                                                            marginBottom: '12px',
+                                                            padding: '12px',
+                                                            background: theme.colors.primaryBg,
+                                                            borderRadius: '10px',
+                                                            border: `1px solid ${theme.colors.border}`,
+                                                        }}>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                                                                <div>
+                                                                    <div style={{ fontSize: '0.9rem', fontWeight: '600', color: theme.colors.primaryText }}>{list.name || `List #${Number(list.id)}`}</div>
+                                                                    <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginTop: '2px' }}>
+                                                                        Token: <span style={{ fontFamily: 'monospace', fontSize: '0.7rem' }}>{list.tokenLedgerCanisterId.toString()}</span>
+                                                                    </div>
+                                                                    {list.sourceSubaccount.length > 0 && (
+                                                                        <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>
+                                                                            Source subaccount: <span style={{ fontFamily: 'monospace', fontSize: '0.7rem' }}>{Array.from(new Uint8Array(list.sourceSubaccount[0])).map(b => b.toString(16).padStart(2, '0')).join('')}</span>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                                <div style={{ display: 'flex', gap: '6px' }}>
+                                                                    <button
+                                                                        style={{ ...buttonStyle, fontSize: '0.7rem', padding: '4px 10px', background: `${neuronPrimary}10`, color: neuronPrimary, border: `1px solid ${neuronPrimary}25` }}
+                                                                        onClick={() => {
+                                                                            setEditingDistListId(Number(list.id));
+                                                                            setEditingDistList({
+                                                                                name: list.name,
+                                                                                sourceSubaccount: list.sourceSubaccount.length > 0 ? Array.from(new Uint8Array(list.sourceSubaccount[0])).map(b => b.toString(16).padStart(2, '0')).join('') : '',
+                                                                                tokenLedgerCanisterId: list.tokenLedgerCanisterId.toString(),
+                                                                                thresholdAmount: (Number(list.thresholdAmount) / 1e8).toString(),
+                                                                                maxDistributionAmount: (Number(list.maxDistributionAmount) / 1e8).toString(),
+                                                                                targets: list.targets.map(t => ({
+                                                                                    accountOwner: t.account.owner.toString(),
+                                                                                    accountSubaccount: t.account.subaccount.length > 0 ? Array.from(new Uint8Array(t.account.subaccount[0])).map(b => b.toString(16).padStart(2, '0')).join('') : '',
+                                                                                    basisPoints: t.basisPoints.length > 0 ? (Number(t.basisPoints[0]) / 100).toString() : '',
+                                                                                })),
+                                                                            });
+                                                                        }}
+                                                                    >Edit</button>
+                                                                    <button
+                                                                        style={{ ...buttonStyle, fontSize: '0.7rem', padding: '4px 10px', background: `${theme.colors.error}10`, color: theme.colors.error, border: `1px solid ${theme.colors.error}25` }}
+                                                                        disabled={savingChore}
+                                                                        onClick={async () => {
+                                                                            if (!window.confirm(`Remove distribution list "${list.name || 'List #' + Number(list.id)}"?`)) return;
+                                                                            setSavingChore(true);
+                                                                            try {
+                                                                                const agent = getAgent();
+                                                                                if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') await agent.fetchRootKey();
+                                                                                const manager = createManagerActor(canisterId, { agent });
+                                                                                await manager.removeDistributionList(BigInt(list.id));
+                                                                                setChoreSuccess('Distribution list removed.');
+                                                                                await loadChoreData();
+                                                                            } catch (err) {
+                                                                                setChoreError('Failed to remove list: ' + err.message);
+                                                                            } finally { setSavingChore(false); }
+                                                                        }}
+                                                                    >Remove</button>
+                                                                </div>
+                                                            </div>
+
+                                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '8px', marginBottom: '8px' }}>
+                                                                <div style={{ fontSize: '0.75rem' }}>
+                                                                    <span style={{ color: theme.colors.secondaryText }}>Threshold:</span>{' '}
+                                                                    <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{(Number(list.thresholdAmount) / 1e8).toFixed(4)}</span>
+                                                                </div>
+                                                                <div style={{ fontSize: '0.75rem' }}>
+                                                                    <span style={{ color: theme.colors.secondaryText }}>Max/round:</span>{' '}
+                                                                    <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{(Number(list.maxDistributionAmount) / 1e8).toFixed(4)}</span>
+                                                                </div>
+                                                                <div style={{ fontSize: '0.75rem' }}>
+                                                                    <span style={{ color: theme.colors.secondaryText }}>Targets:</span>{' '}
+                                                                    <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>{list.targets.length}</span>
+                                                                </div>
+                                                            </div>
+
+                                                            {overHundred && (
+                                                                <div style={{ fontSize: '0.75rem', color: '#f59e0b', marginBottom: '6px' }}>
+                                                                    Warning: Assigned percentages total {(totalBp / 100).toFixed(2)}% (over 100%). Will be renormalized.
+                                                                </div>
+                                                            )}
+
+                                                            {/* Targets summary table */}
+                                                            <div style={{ fontSize: '0.75rem' }}>
+                                                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                                                    <thead>
+                                                                        <tr style={{ borderBottom: `1px solid ${theme.colors.border}` }}>
+                                                                            <th style={{ textAlign: 'left', padding: '4px 6px', color: theme.colors.secondaryText, fontWeight: '500' }}>Recipient</th>
+                                                                            <th style={{ textAlign: 'right', padding: '4px 6px', color: theme.colors.secondaryText, fontWeight: '500', width: '80px' }}>Share</th>
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody>
+                                                                        {list.targets.map((t, ti) => (
+                                                                            <tr key={ti} style={{ borderBottom: `1px solid ${theme.colors.border}20` }}>
+                                                                                <td style={{ padding: '3px 6px', fontFamily: 'monospace', fontSize: '0.65rem', color: theme.colors.primaryText, wordBreak: 'break-all' }}>
+                                                                                    {t.account.owner.toString().slice(0, 15)}...
+                                                                                    {t.account.subaccount.length > 0 && <span style={{ opacity: 0.6 }}>.sub</span>}
+                                                                                </td>
+                                                                                <td style={{ padding: '3px 6px', textAlign: 'right', color: theme.colors.primaryText, fontWeight: '500' }}>
+                                                                                    {t.basisPoints.length > 0 ? `${(Number(t.basisPoints[0]) / 100).toFixed(2)}%` : <span style={{ fontStyle: 'italic', color: theme.colors.secondaryText }}>auto</span>}
+                                                                                </td>
+                                                                            </tr>
+                                                                        ))}
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+
+                                                {/* Edit / Add form */}
+                                                {editingDistList !== null && (
+                                                    <div style={{
+                                                        marginBottom: '12px',
+                                                        padding: '14px',
+                                                        background: `${neuronPrimary}06`,
+                                                        borderRadius: '10px',
+                                                        border: `1px solid ${neuronPrimary}30`,
+                                                    }}>
+                                                        <h5 style={{ margin: '0 0 10px 0', fontSize: '0.85rem', fontWeight: '600', color: theme.colors.primaryText }}>
+                                                            {editingDistListId !== null ? 'Edit Distribution List' : 'New Distribution List'}
+                                                        </h5>
+
+                                                        {/* Name */}
+                                                        <div style={{ marginBottom: '10px' }}>
+                                                            <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Name</label>
+                                                            <input type="text" value={editingDistList.name} style={{ ...inputStyle, width: '100%' }}
+                                                                onChange={e => setEditingDistList({ ...editingDistList, name: e.target.value })} />
+                                                        </div>
+
+                                                        {/* Token Ledger */}
+                                                        <div style={{ marginBottom: '10px' }}>
+                                                            <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Token Ledger Canister ID</label>
+                                                            <input type="text" value={editingDistList.tokenLedgerCanisterId} style={{ ...inputStyle, width: '100%', fontFamily: 'monospace', fontSize: '0.75rem' }}
+                                                                onChange={e => setEditingDistList({ ...editingDistList, tokenLedgerCanisterId: e.target.value })} />
+                                                        </div>
+
+                                                        {/* Source Subaccount */}
+                                                        <div style={{ marginBottom: '10px' }}>
+                                                            <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Source Subaccount (hex, leave empty for default)</label>
+                                                            <input type="text" value={editingDistList.sourceSubaccount} placeholder="default (no subaccount)" style={{ ...inputStyle, width: '100%', fontFamily: 'monospace', fontSize: '0.75rem' }}
+                                                                onChange={e => setEditingDistList({ ...editingDistList, sourceSubaccount: e.target.value })} />
+                                                        </div>
+
+                                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                                                            {/* Threshold */}
+                                                            <div>
+                                                                <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Threshold (token units)</label>
+                                                                <input type="number" min="0" step="0.0001" value={editingDistList.thresholdAmount} style={{ ...inputStyle, width: '100%' }}
+                                                                    onChange={e => setEditingDistList({ ...editingDistList, thresholdAmount: e.target.value })} />
+                                                            </div>
+                                                            {/* Max per round */}
+                                                            <div>
+                                                                <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Max per round (token units)</label>
+                                                                <input type="number" min="0" step="0.0001" value={editingDistList.maxDistributionAmount} style={{ ...inputStyle, width: '100%' }}
+                                                                    onChange={e => setEditingDistList({ ...editingDistList, maxDistributionAmount: e.target.value })} />
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Targets */}
+                                                        <div style={{ marginBottom: '10px' }}>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                                                <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>Targets</label>
+                                                                <button
+                                                                    style={{ ...buttonStyle, fontSize: '0.7rem', padding: '3px 8px', background: `${neuronPrimary}10`, color: neuronPrimary, border: `1px solid ${neuronPrimary}25` }}
+                                                                    onClick={() => setEditingDistList({
+                                                                        ...editingDistList,
+                                                                        targets: [...editingDistList.targets, { accountOwner: '', accountSubaccount: '', basisPoints: '' }],
+                                                                    })}
+                                                                >+ Add Target</button>
+                                                            </div>
+
+                                                            {(() => {
+                                                                const totalPct = editingDistList.targets.reduce((s, t) => s + (t.basisPoints ? parseFloat(t.basisPoints) || 0 : 0), 0);
+                                                                const overHundred = totalPct > 100;
+                                                                return (
+                                                                    <>
+                                                                    {overHundred && (
+                                                                        <div style={{ fontSize: '0.75rem', color: '#f59e0b', marginBottom: '6px' }}>
+                                                                            Warning: Assigned percentages total {totalPct.toFixed(2)}% (over 100%). Will be renormalized at distribution time.
+                                                                        </div>
+                                                                    )}
+                                                                    {editingDistList.targets.map((target, ti) => (
+                                                                        <div key={ti} style={{
+                                                                            display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '6px', alignItems: 'end',
+                                                                            marginBottom: '6px', padding: '8px', background: theme.colors.primaryBg, borderRadius: '6px', border: `1px solid ${theme.colors.border}`,
+                                                                        }}>
+                                                                            <div>
+                                                                                <label style={{ fontSize: '0.65rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '2px' }}>Principal</label>
+                                                                                <input type="text" value={target.accountOwner} placeholder="Principal ID" style={{ ...inputStyle, width: '100%', fontFamily: 'monospace', fontSize: '0.7rem' }}
+                                                                                    onChange={e => {
+                                                                                        const newTargets = [...editingDistList.targets];
+                                                                                        newTargets[ti] = { ...newTargets[ti], accountOwner: e.target.value };
+                                                                                        setEditingDistList({ ...editingDistList, targets: newTargets });
+                                                                                    }} />
+                                                                                <label style={{ fontSize: '0.65rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '2px', marginTop: '4px' }}>Subaccount (hex, optional)</label>
+                                                                                <input type="text" value={target.accountSubaccount} placeholder="optional" style={{ ...inputStyle, width: '100%', fontFamily: 'monospace', fontSize: '0.7rem' }}
+                                                                                    onChange={e => {
+                                                                                        const newTargets = [...editingDistList.targets];
+                                                                                        newTargets[ti] = { ...newTargets[ti], accountSubaccount: e.target.value };
+                                                                                        setEditingDistList({ ...editingDistList, targets: newTargets });
+                                                                                    }} />
+                                                                            </div>
+                                                                            <div>
+                                                                                <label style={{ fontSize: '0.65rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '2px' }}>% Share</label>
+                                                                                <input type="number" min="0" max="100" step="0.01" value={target.basisPoints} placeholder="auto" style={{ ...inputStyle, width: '70px', textAlign: 'right' }}
+                                                                                    onChange={e => {
+                                                                                        const newTargets = [...editingDistList.targets];
+                                                                                        newTargets[ti] = { ...newTargets[ti], basisPoints: e.target.value };
+                                                                                        setEditingDistList({ ...editingDistList, targets: newTargets });
+                                                                                    }} />
+                                                                            </div>
+                                                                            <button
+                                                                                style={{ ...buttonStyle, fontSize: '0.65rem', padding: '4px 8px', background: `${theme.colors.error}10`, color: theme.colors.error, border: `1px solid ${theme.colors.error}25`, marginBottom: '1px' }}
+                                                                                onClick={() => {
+                                                                                    const newTargets = editingDistList.targets.filter((_, i) => i !== ti);
+                                                                                    setEditingDistList({ ...editingDistList, targets: newTargets });
+                                                                                }}
+                                                                                disabled={editingDistList.targets.length <= 1}
+                                                                            >Remove</button>
+                                                                        </div>
+                                                                    ))}
+                                                                    </>
+                                                                );
+                                                            })()}
+                                                        </div>
+
+                                                        {/* Save / Cancel */}
+                                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                                            <button
+                                                                style={{
+                                                                    ...buttonStyle,
+                                                                    background: `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
+                                                                    color: '#fff',
+                                                                    border: 'none',
+                                                                    opacity: savingChore ? 0.6 : 1,
+                                                                }}
+                                                                disabled={savingChore}
+                                                                onClick={async () => {
+                                                                    // Validate
+                                                                    if (!editingDistList.name.trim()) { setChoreError('Distribution list name is required.'); return; }
+                                                                    if (!editingDistList.tokenLedgerCanisterId.trim()) { setChoreError('Token ledger canister ID is required.'); return; }
+                                                                    if (editingDistList.targets.length === 0) { setChoreError('At least one target is required.'); return; }
+                                                                    for (let i = 0; i < editingDistList.targets.length; i++) {
+                                                                        if (!editingDistList.targets[i].accountOwner.trim()) { setChoreError(`Target ${i + 1}: Principal ID is required.`); return; }
+                                                                    }
+
+                                                                    setSavingChore(true);
+                                                                    setChoreError('');
+                                                                    setChoreSuccess('');
+                                                                    try {
+                                                                        const { Principal } = await import('@dfinity/principal');
+
+                                                                        // Build targets
+                                                                        const targets = editingDistList.targets.map(t => {
+                                                                            const owner = Principal.fromText(t.accountOwner.trim());
+                                                                            let subaccount = [];
+                                                                            if (t.accountSubaccount && t.accountSubaccount.trim()) {
+                                                                                const hexStr = t.accountSubaccount.trim().replace(/^0x/, '');
+                                                                                const bytes = new Uint8Array(32);
+                                                                                const hexBytes = hexStr.match(/.{1,2}/g) || [];
+                                                                                for (let j = 0; j < Math.min(hexBytes.length, 32); j++) {
+                                                                                    bytes[32 - hexBytes.length + j] = parseInt(hexBytes[j], 16);
+                                                                                }
+                                                                                subaccount = [bytes];
+                                                                            }
+                                                                            const pctStr = t.basisPoints;
+                                                                            const basisPoints = (pctStr && pctStr !== '' && parseFloat(pctStr) > 0)
+                                                                                ? [BigInt(Math.round(parseFloat(pctStr) * 100))]
+                                                                                : [];
+                                                                            return {
+                                                                                account: { owner, subaccount },
+                                                                                basisPoints,
+                                                                            };
+                                                                        });
+
+                                                                        // Build source subaccount
+                                                                        let sourceSubaccount = [];
+                                                                        if (editingDistList.sourceSubaccount && editingDistList.sourceSubaccount.trim()) {
+                                                                            const hexStr = editingDistList.sourceSubaccount.trim().replace(/^0x/, '');
+                                                                            const bytes = new Uint8Array(32);
+                                                                            const hexBytes = hexStr.match(/.{1,2}/g) || [];
+                                                                            for (let j = 0; j < Math.min(hexBytes.length, 32); j++) {
+                                                                                bytes[32 - hexBytes.length + j] = parseInt(hexBytes[j], 16);
+                                                                            }
+                                                                            sourceSubaccount = [bytes];
+                                                                        }
+
+                                                                        const input = {
+                                                                            name: editingDistList.name.trim(),
+                                                                            sourceSubaccount,
+                                                                            tokenLedgerCanisterId: Principal.fromText(editingDistList.tokenLedgerCanisterId.trim()),
+                                                                            thresholdAmount: BigInt(Math.round(parseFloat(editingDistList.thresholdAmount || '0') * 1e8)),
+                                                                            maxDistributionAmount: BigInt(Math.round(parseFloat(editingDistList.maxDistributionAmount || '0') * 1e8)),
+                                                                            targets,
+                                                                        };
+
+                                                                        const agent = getAgent();
+                                                                        if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') await agent.fetchRootKey();
+                                                                        const manager = createManagerActor(canisterId, { agent });
+
+                                                                        if (editingDistListId !== null) {
+                                                                            await manager.updateDistributionList(BigInt(editingDistListId), input);
+                                                                            setChoreSuccess(`Distribution list "${input.name}" updated.`);
+                                                                        } else {
+                                                                            const newId = await manager.addDistributionList(input);
+                                                                            setChoreSuccess(`Distribution list "${input.name}" created (ID: ${Number(newId)}).`);
+                                                                        }
+                                                                        setEditingDistList(null);
+                                                                        setEditingDistListId(null);
+                                                                        await loadChoreData();
+                                                                    } catch (err) {
+                                                                        setChoreError('Failed to save distribution list: ' + err.message);
+                                                                    } finally { setSavingChore(false); }
+                                                                }}
+                                                            >
+                                                                {editingDistListId !== null ? 'Save Changes' : 'Create List'}
+                                                            </button>
+                                                            <button
+                                                                style={{ ...buttonStyle, background: 'transparent', color: theme.colors.secondaryText, border: `1px solid ${theme.colors.border}` }}
+                                                                onClick={() => { setEditingDistList(null); setEditingDistListId(null); }}
+                                                            >Cancel</button>
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                             )}
                                         </div>

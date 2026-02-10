@@ -16,6 +16,7 @@ import T "Types";
 import BotkeyPermissions "../BotkeyPermissions";
 import BotChoreTypes "../BotChoreTypes";
 import BotChoreEngine "../BotChoreEngine";
+import DistributionTypes "../DistributionTypes";
 
 // This is the actual canister that gets deployed for each user
 // No constructor arguments needed - access control uses IC canister controllers
@@ -47,6 +48,10 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // Collect-Maturity chore settings (chore-specific, stable)
     var collectMaturityThresholdE8s: ?Nat64 = null;  // null = collect any amount; otherwise min maturity e8s
     var collectMaturityDestination: ?T.Account = null; // null = bot's own account (no subaccount)
+
+    // Distribution chore settings (stable)
+    var distributionLists: [DistributionTypes.DistributionList] = [];
+    var nextDistributionListId: Nat = 1;
 
     // ============================================
     // PERMISSION SYSTEM (using reusable BotkeyPermissions engine)
@@ -1345,6 +1350,64 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         collectMaturityDestination := destination;
     };
 
+    // --- Distribution chore settings ---
+
+    // Get all distribution lists
+    public shared query ({ caller }) func getDistributionLists(): async [DistributionTypes.DistributionList] {
+        assertPermission(caller, T.NeuronPermission.ViewChores);
+        distributionLists
+    };
+
+    // Add a new distribution list, returns the assigned ID
+    public shared ({ caller }) func addDistributionList(input: DistributionTypes.DistributionListInput): async Nat {
+        assertPermission(caller, T.NeuronPermission.ManageChores);
+        let id = nextDistributionListId;
+        nextDistributionListId += 1;
+        let newList: DistributionTypes.DistributionList = {
+            id = id;
+            name = input.name;
+            sourceSubaccount = input.sourceSubaccount;
+            tokenLedgerCanisterId = input.tokenLedgerCanisterId;
+            thresholdAmount = input.thresholdAmount;
+            maxDistributionAmount = input.maxDistributionAmount;
+            targets = input.targets;
+        };
+        let buf = Buffer.fromArray<DistributionTypes.DistributionList>(distributionLists);
+        buf.add(newList);
+        distributionLists := Buffer.toArray(buf);
+        id
+    };
+
+    // Update an existing distribution list by ID
+    public shared ({ caller }) func updateDistributionList(id: Nat, input: DistributionTypes.DistributionListInput): async () {
+        assertPermission(caller, T.NeuronPermission.ManageChores);
+        distributionLists := Array.map<DistributionTypes.DistributionList, DistributionTypes.DistributionList>(
+            distributionLists,
+            func(list: DistributionTypes.DistributionList): DistributionTypes.DistributionList {
+                if (list.id == id) {
+                    {
+                        id = id;
+                        name = input.name;
+                        sourceSubaccount = input.sourceSubaccount;
+                        tokenLedgerCanisterId = input.tokenLedgerCanisterId;
+                        thresholdAmount = input.thresholdAmount;
+                        maxDistributionAmount = input.maxDistributionAmount;
+                        targets = input.targets;
+                    }
+                } else { list }
+            }
+        );
+    };
+
+    // Remove a distribution list by ID
+    public shared ({ caller }) func removeDistributionList(id: Nat): async () {
+        assertPermission(caller, T.NeuronPermission.ManageChores);
+        distributionLists := Array.filter<DistributionTypes.DistributionList>(
+            distributionLists,
+            func(list: DistributionTypes.DistributionList): Bool { list.id != id }
+        );
+    };
+
     // ============================================
     // INTERNAL HELPERS
     // ============================================
@@ -1795,6 +1858,138 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         };
     };
 
+    // --- Distribute Funds chore transient state ---
+    transient var _df_lists: [DistributionTypes.DistributionList] = [];
+    transient var _df_index: Nat = 0;
+
+    // Helper: create a task function that distributes funds for a single distribution list
+    func _df_makeTaskFn(list: DistributionTypes.DistributionList): () -> async BotChoreTypes.TaskAction {
+        func(): async BotChoreTypes.TaskAction {
+            let numTargets = list.targets.size();
+            if (numTargets == 0) return #Done; // No targets
+
+            // Create dynamic ledger actor for this token
+            let tokenLedger: T.LedgerActor = actor(Principal.toText(list.tokenLedgerCanisterId));
+
+            // Query fee
+            let fee = await tokenLedger.icrc1_fee();
+
+            // Query balance of source account
+            let sourceAccount: T.Account = {
+                owner = Principal.fromActor(this);
+                subaccount = list.sourceSubaccount;
+            };
+            let balance = await tokenLedger.icrc1_balance_of(sourceAccount);
+
+            // Check threshold
+            if (balance < list.thresholdAmount) return #Done; // Below threshold
+
+            // Calculate distributable amount (capped at max)
+            let distributable = Nat.min(balance, list.maxDistributionAmount);
+
+            // Reserve fees for all transfers
+            let totalFees = numTargets * fee;
+            if (distributable <= totalFees) return #Done; // Can't cover fees
+            let distributableNet: Nat = distributable - totalFees;
+
+            // Calculate basis points
+            var totalAssignedBp: Nat = 0;
+            var numUnassigned: Nat = 0;
+            for (target in list.targets.vals()) {
+                switch (target.basisPoints) {
+                    case (?bp) { totalAssignedBp += bp };
+                    case null { numUnassigned += 1 };
+                };
+            };
+
+            // Determine effective basis points for each target
+            let effectiveBps = Buffer.Buffer<Nat>(numTargets);
+            if (totalAssignedBp > 10000) {
+                // Over 100%: renormalize assigned, unassigned get nothing
+                for (target in list.targets.vals()) {
+                    switch (target.basisPoints) {
+                        case (?bp) { effectiveBps.add(bp * 10000 / totalAssignedBp) };
+                        case null { effectiveBps.add(0) };
+                    };
+                };
+            } else {
+                let remainderBp: Nat = 10000 - totalAssignedBp;
+                let eachUnassignedBp: Nat = if (numUnassigned > 0) { remainderBp / numUnassigned } else { 0 };
+                for (target in list.targets.vals()) {
+                    switch (target.basisPoints) {
+                        case (?bp) { effectiveBps.add(bp) };
+                        case null { effectiveBps.add(eachUnassignedBp) };
+                    };
+                };
+            };
+
+            // Calculate amounts and check hard minimum
+            let amounts = Buffer.Buffer<Nat>(numTargets);
+            var minAmount: Nat = distributableNet; // will find the real minimum
+            for (bp in effectiveBps.vals()) {
+                let amount: Nat = distributableNet * bp / 10000;
+                amounts.add(amount);
+                if (amount < minAmount) { minAmount := amount };
+            };
+
+            // Hard minimum: smallest recipient must get more than one tx fee
+            if (minAmount <= fee) return #Done; // Hard minimum not met
+
+            // Execute transfers
+            var transferErrors = Buffer.Buffer<Text>(0);
+            var i: Nat = 0;
+            for (target in list.targets.vals()) {
+                let amount = amounts.get(i);
+                if (amount > 0) {
+                    let transferResult = await tokenLedger.icrc1_transfer({
+                        to = { owner = target.account.owner; subaccount = target.account.subaccount };
+                        amount = amount;
+                        fee = ?fee;
+                        memo = null;
+                        from_subaccount = list.sourceSubaccount;
+                        created_at_time = null;
+                    });
+                    switch (transferResult) {
+                        case (#Err(e)) {
+                            let errMsg = switch (e) {
+                                case (#InsufficientFunds(d)) { "InsufficientFunds(balance=" # Nat.toText(d.balance) # ")" };
+                                case (#BadFee(d)) { "BadFee(expected=" # Nat.toText(d.expected_fee) # ")" };
+                                case (#GenericError(d)) { "GenericError(" # d.message # ")" };
+                                case (#TemporarilyUnavailable) { "TemporarilyUnavailable" };
+                                case (#BadBurn(d)) { "BadBurn(min=" # Nat.toText(d.min_burn_amount) # ")" };
+                                case (#Duplicate(d)) { "Duplicate(of=" # Nat.toText(d.duplicate_of) # ")" };
+                                case (#CreatedInFuture(_)) { "CreatedInFuture" };
+                                case (#TooOld) { "TooOld" };
+                            };
+                            transferErrors.add("Target " # Nat.toText(i) # ": " # errMsg);
+                        };
+                        case (#Ok(_)) { /* success */ };
+                    };
+                };
+                i += 1;
+            };
+
+            if (transferErrors.size() > 0) {
+                return #Error("Distribution '" # list.name # "' completed with " # Nat.toText(transferErrors.size()) # " error(s): " # Text.join("; ", transferErrors.vals()));
+            };
+
+            #Done
+        }
+    };
+
+    // Helper: start a distribute-funds task for the list at _df_index
+    func _df_startCurrentTask() {
+        if (_df_index < _df_lists.size()) {
+            let list = _df_lists[_df_index];
+            let taskFn = _df_makeTaskFn(list);
+            choreEngine.setPendingTask(
+                "distribute-funds",
+                "dist-" # Nat.toText(list.id),
+                taskFn
+            );
+        };
+    };
+
     // Register chores and start timers.
     // This runs on every canister start (first deploy + upgrades) because
     // it's inside a transient let expression.
@@ -1944,6 +2139,48 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
                         // Start next task and poll
                         _cm_startCurrentTask();
+                        return #ContinueIn(10);
+                    };
+                };
+            };
+        });
+
+        // --- Chore: Distribute Funds ---
+        choreEngine.registerChore({
+            id = "distribute-funds";
+            name = "Distribute Funds";
+            description = "Periodically checks configured distribution lists and sends funds from the bot's account (or a subaccount) to a set of target accounts based on configured percentages. Supports multiple lists, each with its own token, threshold, and targets.";
+            defaultIntervalSeconds = 24 * 60 * 60; // 1 day
+            defaultTaskTimeoutSeconds = 600; // 10 minutes per distribution list
+            conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
+                // If a task is still running, just poll again
+                if (ctx.isTaskRunning) {
+                    return #ContinueIn(10);
+                };
+
+                switch (ctx.lastCompletedTask) {
+                    case null {
+                        // First invocation: snapshot current distribution lists
+                        _df_lists := distributionLists;
+                        _df_index := 0;
+
+                        if (_df_lists.size() == 0) {
+                            return #Done; // No distribution lists configured
+                        };
+
+                        // Start first task and poll
+                        _df_startCurrentTask();
+                        return #ContinueIn(10);
+                    };
+                    case (?_lastResult) {
+                        // Previous task completed — advance to next list
+                        _df_index += 1;
+                        if (_df_index >= _df_lists.size()) {
+                            return #Done; // All lists processed
+                        };
+
+                        // Start next task and poll
+                        _df_startCurrentTask();
                         return #ContinueIn(10);
                     };
                 };

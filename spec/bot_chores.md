@@ -669,6 +669,69 @@ The ICP Staking Bot (`sneed_icp_neuron_manager`) uses the Bot Chores framework t
   - `setCollectMaturityThreshold(thresholdE8s: ?Nat64)` (ManageChores permission)
   - `setCollectMaturityDestination(destination: ?Account)` (ManageChores permission)
 
+### 4. Distribute Funds (`distribute-funds`)
+
+- **Purpose**: Periodically checks configured distribution lists and sends funds from the bot's account (or a subaccount) to target ICRC-1 accounts based on configured percentages. Designed for reusability across multiple bot products.
+- **Default interval**: 1 day.
+- **Task timeout**: 10 minutes per distribution list.
+- **Behavior**: For each distribution list (processed in definition order):
+  1. Creates a dynamic ledger actor from the list's `tokenLedgerCanisterId`.
+  2. Queries `icrc1_fee()` and `icrc1_balance_of()` for the source account.
+  3. If balance < `thresholdAmount`, skips the list.
+  4. Calculates distributable = min(balance, `maxDistributionAmount`).
+  5. Deducts total transfer fees (one fee per target).
+  6. Calculates each target's share based on basis points (see percentage logic below).
+  7. Applies hard minimum check: the smallest recipient's share must exceed one tx fee.
+  8. Executes `icrc1_transfer` for each target.
+
+- **Percentage Logic**:
+  - Targets with assigned `basisPoints` (0–10000, where 10000 = 100%) get their proportional share.
+  - If assigned percentages exceed 100%, they are renormalized (scaled down proportionally). The UI warns about this.
+  - Targets with `null` basisPoints evenly split the remainder (100% minus the sum of assigned percentages).
+  - If assigned percentages total 100% or more, auto-split targets receive nothing.
+  - If no targets have assigned percentages, all targets get equal shares.
+
+- **Hard Minimum**: Regardless of the user-configured threshold, a distribution is skipped entirely if the smallest recipient would receive an amount less than or equal to one transaction fee. This prevents wasteful micro-distributions.
+
+- **Multiple Lists**: Multiple distribution lists can target the same source subaccount and token. They run in definition order. If the first list's distribution leaves sufficient balance above the second list's threshold, the second list runs as well.
+
+- **Shared Types** (`src/DistributionTypes.mo` — reusable across bots):
+  ```motoko
+  DistributionTarget = {
+      account: Account;       // ICRC-1 account (owner + optional subaccount)
+      basisPoints: ?Nat;      // null = auto-split remainder; 0–10000 where 10000 = 100%
+  };
+
+  DistributionList = {
+      id: Nat;                         // Unique ID (assigned by canister)
+      name: Text;                      // Human-readable name
+      sourceSubaccount: ?Blob;         // null = default account
+      tokenLedgerCanisterId: Principal; // Which ICRC-1 token
+      thresholdAmount: Nat;            // Min balance to trigger
+      maxDistributionAmount: Nat;      // Cap per round
+      targets: [DistributionTarget];
+  };
+
+  DistributionListInput = { /* same as DistributionList but without id */ };
+  ```
+
+- **Stable Variables**:
+  - `distributionLists: [DistributionList]` — the configured distribution lists.
+  - `nextDistributionListId: Nat` — auto-incrementing ID counter.
+
+- **API Methods**:
+  - `getDistributionLists() -> [DistributionList]` (query, ViewChores)
+  - `addDistributionList(input: DistributionListInput) -> Nat` (ManageChores, returns assigned ID)
+  - `updateDistributionList(id: Nat, input: DistributionListInput)` (ManageChores)
+  - `removeDistributionList(id: Nat)` (ManageChores)
+
+- **Frontend**: The "Distribute Funds" chore tab includes a full distribution list management interface:
+  - View all lists with token, threshold, max amount, and target summary.
+  - Add new lists with a form for all fields including dynamic target rows.
+  - Edit existing lists inline.
+  - Remove lists with confirmation.
+  - Percentage warnings when assigned totals exceed 100%.
+
 ---
 
 ## Appendix: Naming Rationale
