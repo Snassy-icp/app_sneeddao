@@ -60,8 +60,12 @@ function formatUSD(amount) {
 
 function SlippageSettings({ value, onChange }) {
   const presets = [0.5, 1, 2, 5];
-  const [custom, setCustom] = useState('');
+  const [customInput, setCustomInput] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
   const active = value * 100;
+  const isPreset = presets.some(p => Math.abs(active - p) < 0.001);
+  // Show the custom input's own text while typing, otherwise derive from value prop
+  const displayCustom = isTyping ? customInput : (isPreset ? '' : String(parseFloat(active.toFixed(4))));
 
   return (
     <div style={{
@@ -74,7 +78,7 @@ function SlippageSettings({ value, onChange }) {
       {presets.map(p => (
         <button
           key={p}
-          onClick={() => { onChange(p / 100); setCustom(''); }}
+          onClick={() => { onChange(p / 100); setCustomInput(''); setIsTyping(false); }}
           style={{
             padding: '4px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600,
             cursor: 'pointer', transition: 'all 0.15s ease',
@@ -87,12 +91,14 @@ function SlippageSettings({ value, onChange }) {
       <input
         type="text"
         placeholder="Custom"
-        value={custom}
+        value={displayCustom}
         onChange={e => {
-          setCustom(e.target.value);
+          setCustomInput(e.target.value);
+          setIsTyping(true);
           const n = parseFloat(e.target.value);
           if (!isNaN(n) && n > 0 && n < 100) onChange(n / 100);
         }}
+        onBlur={() => setIsTyping(false)}
         style={{
           width: 54, padding: '4px 8px', borderRadius: 8, fontSize: 12,
           border: '1px solid var(--color-border)', background: 'transparent',
