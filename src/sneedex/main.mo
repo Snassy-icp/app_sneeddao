@@ -19,12 +19,6 @@ import Utils "Utils";
 import AssetHandlers "AssetHandlers";
 import PremiumClient "../PremiumClient";
 
-// Migration: discard the removed neuronManagerBotkeyCache stable variable
-(with migration = func (_old : {
-    var neuronManagerBotkeyCache : [(Principal, { fetched_at : Int; botkeys : [(Principal, [Nat])] })];
-}) : {} {
-    {}
-})
 shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this {
     // ============================================
     // STATE
