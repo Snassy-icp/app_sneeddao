@@ -374,9 +374,9 @@ function TokenSelector({
                 }}
             >
                 {loading ? (
-                    <span>Loading tokens...</span>
+                    <span style={{ flex: '0 1 auto' }}>Loading tokens...</span>
                 ) : selectedToken ? (
-                    <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '0 1 auto', minWidth: 0 }}>
                         <img 
                             src={selectedToken.logo || getProxyLogoUrl(selectedToken.ledger_id.toString())} 
                             alt={selectedToken.symbol}
@@ -387,14 +387,14 @@ function TokenSelector({
                             }}
                             onError={(e) => { e.target.onerror = null; e.target.src = getProxyLogoUrl(selectedToken.ledger_id.toString()); }}
                         />
-                        <span style={{ fontWeight: '600', color: theme.colors.primaryText }}>
+                        <span style={{ fontWeight: '600', color: theme.colors.primaryText, whiteSpace: 'nowrap' }}>
                             {selectedToken.symbol}
                         </span>
-                    </>
+                    </div>
                 ) : (
-                    <span>{placeholder}</span>
+                    <span style={{ flex: '0 1 auto' }}>{placeholder}</span>
                 )}
-                <span style={{ marginLeft: 'auto', color: theme.colors.mutedText }}>
+                <span style={{ marginLeft: 'auto', flexShrink: 0, color: theme.colors.mutedText }}>
                     {isOpen ? '▲' : '▼'}
                 </span>
             </div>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import SwapWidget from './SwapWidget';
 
@@ -13,6 +13,16 @@ import SwapWidget from './SwapWidget';
  *   initialOutputAmount - optional target output amount (human-readable string)
  */
 export default function SwapModal({ isOpen, onClose, initialInput, initialOutput, initialOutputAmount, onSwapComplete }) {
+  // Lock body scroll while modal is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   return createPortal(
@@ -23,10 +33,12 @@ export default function SwapModal({ isOpen, onClose, initialInput, initialOutput
         inset: 0,
         zIndex: 10500,
         display: 'flex',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         justifyContent: 'center',
         background: 'var(--color-modalBg)',
         backdropFilter: 'blur(4px)',
+        overflowY: 'auto',
+        WebkitOverflowScrolling: 'touch',
         padding: 16,
       }}
     >
@@ -35,6 +47,7 @@ export default function SwapModal({ isOpen, onClose, initialInput, initialOutput
         style={{
           width: '100%',
           maxWidth: 520,
+          margin: 'auto 0',
           animation: 'fadeInScale 0.2s ease-out',
         }}
       >
