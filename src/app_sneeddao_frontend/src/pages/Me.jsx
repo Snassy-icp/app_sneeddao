@@ -61,7 +61,7 @@ import InfoTooltip from '../components/InfoTooltip';
 import TokenIcon from '../components/TokenIcon';
 import { Principal } from '@dfinity/principal';
 import { createSneedexActor } from '../utils/SneedexUtils';
-import { FaUser, FaCrown, FaKey, FaWallet, FaComments, FaCoins, FaEnvelope, FaGift, FaLock, FaServer, FaAddressBook, FaCog, FaBrain, FaExchangeAlt, FaCheckCircle, FaBell, FaPalette, FaGavel, FaShareAlt, FaExternalLinkAlt, FaCopy, FaPen, FaChevronRight, FaChevronDown, FaVoteYea, FaUserShield, FaQuestion, FaTimes } from 'react-icons/fa';
+import { FaUser, FaCrown, FaKey, FaWallet, FaComments, FaCoins, FaEnvelope, FaGift, FaLock, FaServer, FaAddressBook, FaCog, FaBrain, FaExchangeAlt, FaCheckCircle, FaBell, FaPalette, FaGavel, FaShareAlt, FaExternalLinkAlt, FaCopy, FaPen, FaChevronRight, FaChevronDown, FaVoteYea, FaUserShield, FaQuestion, FaTimes, FaExclamationTriangle } from 'react-icons/fa';
 
 // Custom CSS for animations
 const customStyles = `
@@ -480,6 +480,8 @@ export default function Me() {
     const [cacheManagementExpanded, setCacheManagementExpanded] = useState(false);
     const [clearingCache, setClearingCache] = useState(false);
     const [cacheCleared, setCacheCleared] = useState(false);
+    const [nuclearClearing, setNuclearClearing] = useState(false);
+    const [nuclearCleared, setNuclearCleared] = useState(false);
     const [clearingGrayList, setClearingGrayList] = useState(false);
     const [grayListCleared, setGrayListCleared] = useState(false);
     const [grayListCount, setGrayListCount] = useState(0);
@@ -660,6 +662,34 @@ export default function Me() {
             alert('Failed to clear some caches. Try refreshing the page.');
         } finally {
             setClearingCache(false);
+        }
+    };
+
+    // Nuclear option: completely clear ALL browser site data (equivalent to DevTools > Application > Clear site data)
+    const nuclearClearSiteData = async () => {
+        if (!window.confirm(
+            'This will completely wipe ALL browser data for this site, including login sessions. ' +
+            'You WILL be logged out and all local data will be permanently deleted.\n\n' +
+            'This is the equivalent of clearing site data from browser developer tools.\n\n' +
+            'Continue?'
+        )) return;
+
+        setNuclearClearing(true);
+        try {
+            const { nuclearClearAllSiteData } = await import('../utils/cacheUtils');
+            const { errors } = await nuclearClearAllSiteData();
+            if (errors.length > 0) {
+                console.warn('[NuclearClear] Some items failed:', errors);
+            }
+            setNuclearCleared(true);
+            // Force full page reload after a brief delay to show success state
+            setTimeout(() => {
+                window.location.href = window.location.origin;
+            }, 500);
+        } catch (err) {
+            console.error('Nuclear clear failed:', err);
+            alert('Failed to clear site data: ' + err.message);
+            setNuclearClearing(false);
         }
     };
 
@@ -2581,6 +2611,63 @@ export default function Me() {
                                         }}>
                                             This clears: wallet data, token metadata, logos, neurons cache
                                         </p>
+
+                                        {/* Nuclear Clear - Complete Site Data Wipe */}
+                                        <div style={{
+                                            marginTop: '1.25rem',
+                                            paddingTop: '1rem',
+                                            borderTop: `1px solid ${theme.colors.border}`
+                                        }}>
+                                            <p style={{ 
+                                                color: theme.colors.secondaryText, 
+                                                fontSize: '0.85rem', 
+                                                marginBottom: '0.75rem',
+                                                lineHeight: '1.5'
+                                            }}>
+                                                If clearing caches above doesn't fix loading issues (e.g. wallet stuck loading after an update), 
+                                                use this to completely wipe all browser data for this site. This is equivalent to using 
+                                                browser DevTools &gt; Application &gt; "Clear site data". <strong style={{ color: '#dc2626' }}>You will be logged out.</strong>
+                                            </p>
+                                            
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                                                <button
+                                                    onClick={nuclearClearSiteData}
+                                                    disabled={nuclearClearing}
+                                                    style={{
+                                                        padding: '0.6rem 1.2rem',
+                                                        background: nuclearClearing ? theme.colors.border : '#7f1d1d',
+                                                        color: '#fff',
+                                                        border: '2px solid #dc2626',
+                                                        borderRadius: '8px',
+                                                        cursor: nuclearClearing ? 'not-allowed' : 'pointer',
+                                                        fontWeight: '600',
+                                                        fontSize: '0.9rem',
+                                                        opacity: nuclearClearing ? 0.6 : 1,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.5rem'
+                                                    }}
+                                                >
+                                                    <FaExclamationTriangle size={14} />
+                                                    {nuclearClearing ? 'Wiping all data...' : 'Completely Clear All Site Data'}
+                                                </button>
+                                                
+                                                {nuclearCleared && (
+                                                    <span style={{ color: '#22c55e', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                                        <FaCheckCircle size={14} /> All site data cleared! Reloading...
+                                                    </span>
+                                                )}
+                                            </div>
+                                            
+                                            <p style={{ 
+                                                color: theme.colors.secondaryText, 
+                                                fontSize: '0.75rem', 
+                                                marginTop: '0.75rem',
+                                                opacity: 0.7
+                                            }}>
+                                                This clears: ALL IndexedDB databases, ALL localStorage, sessionStorage, Cache API, service workers, cookies
+                                            </p>
+                                        </div>
 
                                         {/* Gray List (Ledger Skip List) */}
                                         <div style={{
