@@ -5224,7 +5224,7 @@ function SneedexOffer() {
                                                     </button>
                                                 </span>
                                             </div>
-                                            {/* Insufficient balance hint - right under balance */}
+                                            {/* Buy button & insufficient balance hint - right under balance */}
                                             {userBalance !== null && (() => {
                                                 const paymentLedger = offer.price_token_ledger.toString();
                                                 const paymentPrice = tokenPrices[paymentLedger];
@@ -5239,72 +5239,79 @@ function SneedexOffer() {
                                                 } else {
                                                     targetE8s = getMinimumBidE8s();
                                                 }
-                                                if (targetE8s > 0n && targetE8s > userBalance) {
-                                                    const deficitE8s = targetE8s - userBalance;
-                                                    const deficitFormatted = formatAmount(deficitE8s, tokenInfo.decimals);
-                                                    const deficitUsd = paymentPrice ? (Number(deficitE8s) / Math.pow(10, tokenInfo.decimals)) * paymentPrice : null;
-                                                    const logoUrl = tokenLogos[paymentLedger] || getLogoSync(paymentLedger) || getProxyLogoUrl(paymentLedger);
-                                                    return (
-                                                        <div style={{
-                                                            marginBottom: '10px',
-                                                            padding: '10px 14px',
-                                                            backgroundColor: `${theme.colors.warning}15`,
-                                                            border: `1px solid ${theme.colors.warning}50`,
-                                                            borderRadius: '8px',
-                                                            fontSize: '0.85rem',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            gap: '8px',
-                                                            flexWrap: 'wrap',
-                                                        }}>
-                                                            <FaExclamationTriangle style={{ color: theme.colors.warning, flexShrink: 0 }} />
-                                                            <span style={{ color: theme.colors.text, flex: 1, minWidth: '120px' }}>
-                                                                Insufficient balance. You need at least{' '}
-                                                                <strong style={{ whiteSpace: 'nowrap' }}>
-                                                                    {deficitFormatted} {tokenInfo.symbol}
-                                                                </strong>
-                                                                {deficitUsd != null && (
-                                                                    <span style={{ color: theme.colors.mutedText }}>
-                                                                        {' '}(≈ ${deficitUsd < 0.01 ? deficitUsd.toFixed(6) : deficitUsd < 1 ? deficitUsd.toFixed(4) : deficitUsd.toFixed(2)})
-                                                                    </span>
-                                                                )}
-                                                                {' '}more.
-                                                            </span>
-                                                            <button
-                                                                onClick={() => {
+                                                const hasDeficit = targetE8s > 0n && targetE8s > userBalance;
+                                                const deficitE8s = hasDeficit ? targetE8s - userBalance : 0n;
+                                                const deficitFormatted = hasDeficit ? formatAmount(deficitE8s, tokenInfo.decimals) : '';
+                                                const deficitUsd = hasDeficit && paymentPrice ? (Number(deficitE8s) / Math.pow(10, tokenInfo.decimals)) * paymentPrice : null;
+                                                const logoUrl = tokenLogos[paymentLedger] || getLogoSync(paymentLedger) || getProxyLogoUrl(paymentLedger);
+                                                return (
+                                                    <div style={{
+                                                        marginBottom: '10px',
+                                                        padding: hasDeficit ? '10px 14px' : '6px 14px',
+                                                        backgroundColor: hasDeficit ? `${theme.colors.warning}15` : 'transparent',
+                                                        border: hasDeficit ? `1px solid ${theme.colors.warning}50` : 'none',
+                                                        borderRadius: '8px',
+                                                        fontSize: '0.85rem',
+                                                        display: 'flex',
+                                                        alignItems: hasDeficit ? 'center' : 'center',
+                                                        justifyContent: hasDeficit ? 'flex-start' : 'flex-end',
+                                                        gap: '8px',
+                                                        flexWrap: 'wrap',
+                                                    }}>
+                                                        {hasDeficit && (
+                                                            <>
+                                                                <FaExclamationTriangle style={{ color: theme.colors.warning, flexShrink: 0 }} />
+                                                                <span style={{ color: theme.colors.text, flex: 1, minWidth: '120px' }}>
+                                                                    Insufficient balance. You need at least{' '}
+                                                                    <strong style={{ whiteSpace: 'nowrap' }}>
+                                                                        {deficitFormatted} {tokenInfo.symbol}
+                                                                    </strong>
+                                                                    {deficitUsd != null && (
+                                                                        <span style={{ color: theme.colors.mutedText }}>
+                                                                            {' '}(≈ ${deficitUsd < 0.01 ? deficitUsd.toFixed(6) : deficitUsd < 1 ? deficitUsd.toFixed(4) : deficitUsd.toFixed(2)})
+                                                                        </span>
+                                                                    )}
+                                                                    {' '}more.
+                                                                </span>
+                                                            </>
+                                                        )}
+                                                        <button
+                                                            onClick={() => {
+                                                                if (hasDeficit) {
                                                                     const deficitDecimal = Number(deficitE8s) / Math.pow(10, tokenInfo.decimals);
                                                                     setSwapTargetAmount(deficitDecimal.toString());
-                                                                    setSwapOpen(true);
-                                                                }}
-                                                                style={{
-                                                                    background: 'linear-gradient(135deg, #3498db, #8b5cf6)',
-                                                                    color: '#fff',
-                                                                    border: 'none',
-                                                                    borderRadius: '6px',
-                                                                    padding: '5px 12px',
-                                                                    cursor: 'pointer',
-                                                                    fontSize: '0.8rem',
-                                                                    fontWeight: '600',
-                                                                    display: 'inline-flex',
-                                                                    alignItems: 'center',
-                                                                    gap: '5px',
-                                                                    transition: 'filter 0.15s ease',
-                                                                    whiteSpace: 'nowrap',
-                                                                }}
-                                                                onMouseEnter={(e) => e.currentTarget.style.filter = 'brightness(1.15)'}
-                                                                onMouseLeave={(e) => e.currentTarget.style.filter = 'none'}
-                                                            >
-                                                                {logoUrl ? (
-                                                                    <img src={logoUrl} alt="" style={{ width: '14px', height: '14px', borderRadius: '50%' }} />
-                                                                ) : (
-                                                                    <FaShoppingCart size={10} />
-                                                                )}
-                                                                Buy {tokenInfo.symbol}
-                                                            </button>
-                                                        </div>
-                                                    );
-                                                }
-                                                return null;
+                                                                } else {
+                                                                    setSwapTargetAmount(null);
+                                                                }
+                                                                setSwapOpen(true);
+                                                            }}
+                                                            style={{
+                                                                background: 'linear-gradient(135deg, #3498db, #8b5cf6)',
+                                                                color: '#fff',
+                                                                border: 'none',
+                                                                borderRadius: '6px',
+                                                                padding: '5px 12px',
+                                                                cursor: 'pointer',
+                                                                fontSize: '0.8rem',
+                                                                fontWeight: '600',
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                gap: '5px',
+                                                                transition: 'filter 0.15s ease',
+                                                                whiteSpace: 'nowrap',
+                                                            }}
+                                                            onMouseEnter={(e) => e.currentTarget.style.filter = 'brightness(1.15)'}
+                                                            onMouseLeave={(e) => e.currentTarget.style.filter = 'none'}
+                                                        >
+                                                            {logoUrl ? (
+                                                                <img src={logoUrl} alt="" style={{ width: '14px', height: '14px', borderRadius: '50%' }} />
+                                                            ) : (
+                                                                <FaShoppingCart size={10} />
+                                                            )}
+                                                            Buy {tokenInfo.symbol}
+                                                        </button>
+                                                    </div>
+                                                );
                                             })()}
                                             {/* Input mode toggle (only show if price available) */}
                                             {(() => {
@@ -5659,44 +5666,54 @@ function SneedexOffer() {
                                                 </button>
                                             </span>
                                         </div>
-                                        {/* Insufficient balance hint for buyout-only */}
-                                        {userBalance !== null && offer.buyout_price?.[0] && userBalance < offer.buyout_price[0] && (() => {
+                                        {/* Buy button & insufficient balance hint for buyout-only */}
+                                        {userBalance !== null && offer.buyout_price?.[0] && (() => {
                                             const paymentLedger = offer.price_token_ledger.toString();
                                             const paymentPrice = tokenPrices[paymentLedger];
-                                            const deficitE8s = BigInt(offer.buyout_price[0]) - userBalance;
-                                            const deficitFormatted = formatAmount(deficitE8s, tokenInfo.decimals);
-                                            const deficitUsd = paymentPrice ? (Number(deficitE8s) / Math.pow(10, tokenInfo.decimals)) * paymentPrice : null;
+                                            const hasDeficit = userBalance < offer.buyout_price[0];
+                                            const deficitE8s = hasDeficit ? BigInt(offer.buyout_price[0]) - userBalance : 0n;
+                                            const deficitFormatted = hasDeficit ? formatAmount(deficitE8s, tokenInfo.decimals) : '';
+                                            const deficitUsd = hasDeficit && paymentPrice ? (Number(deficitE8s) / Math.pow(10, tokenInfo.decimals)) * paymentPrice : null;
                                             const logoUrl = tokenLogos[paymentLedger] || getLogoSync(paymentLedger) || getProxyLogoUrl(paymentLedger);
                                             return (
                                                 <div style={{
                                                     marginBottom: '10px',
-                                                    padding: '10px 14px',
-                                                    backgroundColor: `${theme.colors.warning}15`,
-                                                    border: `1px solid ${theme.colors.warning}50`,
+                                                    padding: hasDeficit ? '10px 14px' : '6px 14px',
+                                                    backgroundColor: hasDeficit ? `${theme.colors.warning}15` : 'transparent',
+                                                    border: hasDeficit ? `1px solid ${theme.colors.warning}50` : 'none',
                                                     borderRadius: '8px',
                                                     fontSize: '0.85rem',
                                                     display: 'flex',
-                                                    alignItems: 'center',
+                                                    alignItems: hasDeficit ? 'center' : 'center',
+                                                    justifyContent: hasDeficit ? 'flex-start' : 'flex-end',
                                                     gap: '8px',
                                                     flexWrap: 'wrap',
                                                 }}>
-                                                    <FaExclamationTriangle style={{ color: theme.colors.warning, flexShrink: 0 }} />
-                                                    <span style={{ color: theme.colors.text, flex: 1, minWidth: '120px' }}>
-                                                        Insufficient balance for buyout. You need at least{' '}
-                                                        <strong style={{ whiteSpace: 'nowrap' }}>
-                                                            {deficitFormatted} {tokenInfo.symbol}
-                                                        </strong>
-                                                        {deficitUsd != null && (
-                                                            <span style={{ color: theme.colors.mutedText }}>
-                                                                {' '}(≈ ${deficitUsd < 0.01 ? deficitUsd.toFixed(6) : deficitUsd < 1 ? deficitUsd.toFixed(4) : deficitUsd.toFixed(2)})
+                                                    {hasDeficit && (
+                                                        <>
+                                                            <FaExclamationTriangle style={{ color: theme.colors.warning, flexShrink: 0 }} />
+                                                            <span style={{ color: theme.colors.text, flex: 1, minWidth: '120px' }}>
+                                                                Insufficient balance for buyout. You need at least{' '}
+                                                                <strong style={{ whiteSpace: 'nowrap' }}>
+                                                                    {deficitFormatted} {tokenInfo.symbol}
+                                                                </strong>
+                                                                {deficitUsd != null && (
+                                                                    <span style={{ color: theme.colors.mutedText }}>
+                                                                        {' '}(≈ ${deficitUsd < 0.01 ? deficitUsd.toFixed(6) : deficitUsd < 1 ? deficitUsd.toFixed(4) : deficitUsd.toFixed(2)})
+                                                                    </span>
+                                                                )}
+                                                                {' '}more.
                                                             </span>
-                                                        )}
-                                                        {' '}more.
-                                                    </span>
+                                                        </>
+                                                    )}
                                                     <button
                                                         onClick={() => {
-                                                            const deficitDecimal = Number(deficitE8s) / Math.pow(10, tokenInfo.decimals);
-                                                            setSwapTargetAmount(deficitDecimal.toString());
+                                                            if (hasDeficit) {
+                                                                const deficitDecimal = Number(deficitE8s) / Math.pow(10, tokenInfo.decimals);
+                                                                setSwapTargetAmount(deficitDecimal.toString());
+                                                            } else {
+                                                                setSwapTargetAmount(null);
+                                                            }
                                                             setSwapOpen(true);
                                                         }}
                                                         style={{
