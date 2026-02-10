@@ -2828,7 +2828,7 @@ function SneedexOffer() {
                                         fontWeight: '600',
                                         color: theme.colors.success,
                                     }}>
-                                        <FaCheck /> All {total} asset{total !== 1 ? 's' : ''} fully escrowed
+                                        <FaCheck /> {total === 1 ? 'Asset fully escrowed' : `All ${total} assets fully escrowed`}
                                     </div>
                                 );
                             })()}
