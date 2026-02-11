@@ -2418,6 +2418,7 @@ export default function AppsPage() {
     }, [getManagerHealthStatus, isVersionOutdated]);
 
     // Helper to calculate overall health statistics for all groups
+    // Also includes virtual SNS sub-canisters when a canister is an SNS root
     const getGroupsHealthStats = useCallback((groups, ungrouped, statusMap, cycleSettings, detectedManagers, nmCycleSettings) => {
         const { cycleThresholdRed, cycleThresholdOrange } = cycleSettings;
         const nmRed = nmCycleSettings?.cycleThresholdRed || cycleThresholdRed;
@@ -2425,14 +2426,30 @@ export default function AppsPage() {
         
         let red = 0, orange = 0, green = 0, unknown = 0;
         let outdated = 0;
+        const counted = new Set(); // avoid double-counting virtual sub-canisters
         
-        // Recursively count canisters in groups
-        const countCanisterInGroup = (grp) => {
-            for (const canisterId of grp.canisters) {
-                // Check if this is a detected neuron manager
-                const detectedManager = detectedManagers?.[canisterId];
-                if (detectedManager?.isValid) {
-                    // Use neuron manager thresholds
+        // Count a single regular canister
+        const countRegularCanister = (canisterId) => {
+            if (counted.has(canisterId)) return;
+            counted.add(canisterId);
+            const status = statusMap[canisterId];
+            if (!status || status.cycles === null || status.cycles === undefined) {
+                unknown++;
+            } else {
+                const cycles = status.cycles;
+                if (cycles < cycleThresholdRed) red++;
+                else if (cycles < cycleThresholdOrange) orange++;
+                else green++;
+            }
+        };
+        
+        // Count a canister, expanding SNS roots to include virtual sub-canisters
+        const countCanister = (canisterId) => {
+            // Check if this is a detected neuron manager
+            const detectedManager = detectedManagers?.[canisterId];
+            if (detectedManager?.isValid) {
+                if (!counted.has(canisterId)) {
+                    counted.add(canisterId);
                     const cycles = detectedManager.cycles;
                     if (cycles === null || cycles === undefined) {
                         unknown++;
@@ -2443,24 +2460,33 @@ export default function AppsPage() {
                     } else {
                         green++;
                     }
-                    // Check if version is outdated
                     if (detectedManager.version && isVersionOutdated(detectedManager.version)) {
                         outdated++;
                     }
-                } else {
-                    // Regular canister
-                    const status = statusMap[canisterId];
-                    if (!status || status.cycles === null || status.cycles === undefined) {
-                        unknown++;
-                    } else {
-                        const cycles = status.cycles;
-                        if (cycles < cycleThresholdRed) red++;
-                        else if (cycles < cycleThresholdOrange) orange++;
-                        else green++;
-                    }
+                }
+            } else {
+                countRegularCanister(canisterId);
+            }
+            // If this is an SNS root, also count all its virtual sub-canisters
+            const snsData = snsRootDataMap.get(canisterId);
+            if (snsData) {
+                for (const sc of snsData.systemCanisters) {
+                    countRegularCanister(sc.id);
+                }
+                for (const d of snsData.dappCanisters) {
+                    countRegularCanister(d);
+                }
+                for (const a of snsData.archiveCanisters) {
+                    countRegularCanister(a);
                 }
             }
-            // Recurse into subgroups
+        };
+        
+        // Recursively count canisters in groups
+        const countCanisterInGroup = (grp) => {
+            for (const canisterId of grp.canisters) {
+                countCanister(canisterId);
+            }
             for (const subgroup of grp.subgroups) {
                 countCanisterInGroup(subgroup);
             }
@@ -2473,32 +2499,7 @@ export default function AppsPage() {
         
         // Count ungrouped canisters
         for (const canisterId of ungrouped) {
-            const detectedManager = detectedManagers?.[canisterId];
-            if (detectedManager?.isValid) {
-                const cycles = detectedManager.cycles;
-                if (cycles === null || cycles === undefined) {
-                    unknown++;
-                } else if (cycles < nmRed) {
-                    red++;
-                } else if (cycles < nmOrange) {
-                    orange++;
-                } else {
-                    green++;
-                }
-                if (detectedManager.version && isVersionOutdated(detectedManager.version)) {
-                    outdated++;
-                }
-            } else {
-                const status = statusMap[canisterId];
-                if (!status || status.cycles === null || status.cycles === undefined) {
-                    unknown++;
-                } else {
-                    const cycles = status.cycles;
-                    if (cycles < cycleThresholdRed) red++;
-                    else if (cycles < cycleThresholdOrange) orange++;
-                    else green++;
-                }
-            }
+            countCanister(canisterId);
         }
         
         // Determine overall status (worst wins)
@@ -2510,7 +2511,7 @@ export default function AppsPage() {
         const total = red + orange + green + unknown;
         
         return { red, orange, green, unknown, outdated, total, overallStatus };
-    }, [isVersionOutdated]);
+    }, [isVersionOutdated, snsRootDataMap]);
 
     // Helper to get overall section status for wallet canisters section
     const getWalletCanistersStatus = useCallback((canisterIds, statusMap, cycleSettings, detectedManagers, nmCycleSettings) => {
@@ -3401,7 +3402,9 @@ export default function AppsPage() {
         });
     }, [neuronManagers, latestOfficialVersion, isVersionOutdated]);
 
-    // Computed: low-cycles canisters (controllers only) for top-up banner
+    // Computed: low-cycles canisters for top-up banner
+    // Includes non-controller canisters since top-up is permissionless (CMC notify_top_up)
+    // Also expands SNS root canisters to include all virtual sub-canisters
     const lowCyclesCanistersForBanner = React.useMemo(() => {
         const result = [];
         const checkedIds = new Set();
@@ -3410,7 +3413,33 @@ export default function AppsPage() {
         const genRed = cycleSettings?.cycleThresholdRed || 500_000_000_000;
         const genOrange = cycleSettings?.cycleThresholdOrange || 2_000_000_000_000;
 
-        // Neuron managers
+        // Helper to check and add a regular canister
+        const checkRegularCanister = (canisterId, statusMap, label) => {
+            if (checkedIds.has(canisterId)) return;
+            checkedIds.add(canisterId);
+            const status = statusMap[canisterId];
+            if (!status) return;
+            const cycles = status.cycles;
+            if (cycles === null || cycles === undefined) return;
+            // Check if it's a detected neuron manager
+            const detectedManager = detectedNeuronManagers?.[canisterId];
+            const critLevel = detectedManager ? nmRed : genRed;
+            const healthLevel = detectedManager ? nmOrange : genOrange;
+            if (cycles < critLevel) {
+                result.push({
+                    canisterId,
+                    cycles,
+                    criticalLevel: critLevel,
+                    healthyLevel: healthLevel,
+                    type: detectedManager ? 'neuron_manager' : 'canister',
+                    label: detectedManager ? 'ICP Staking Bot' : label,
+                    version: detectedManager?.version,
+                    isController: status.isController === true,
+                });
+            }
+        };
+
+        // Neuron managers (must be controller for these - they are our bots)
         for (const m of neuronManagers) {
             const cid = typeof m.canisterId === 'string' ? m.canisterId : m.canisterId?.toText?.() || m.canisterId?.toString?.() || '';
             checkedIds.add(cid);
@@ -3426,11 +3455,12 @@ export default function AppsPage() {
                     type: 'neuron_manager',
                     label: 'ICP Staking Bot',
                     version: m.version,
+                    isController: true,
                 });
             }
         }
 
-        // Custom canister groups (all canisters)
+        // Custom canister groups (all canisters, including virtual SNS sub-canisters)
         const collectGroupCanisters = (groups) => {
             const ids = [];
             for (const g of groups) {
@@ -3448,51 +3478,29 @@ export default function AppsPage() {
             ...(canisterGroups.ungrouped || []),
         ];
         for (const canisterId of allCustomIds) {
-            if (checkedIds.has(canisterId)) continue;
-            checkedIds.add(canisterId);
-            const status = canisterStatus[canisterId];
-            if (!status || !status.isController) continue;
-            const cycles = status.cycles;
-            if (cycles === null || cycles === undefined) continue;
-            // Check if it's a detected neuron manager
-            const detectedManager = detectedNeuronManagers?.[canisterId];
-            const critLevel = detectedManager ? nmRed : genRed;
-            const healthLevel = detectedManager ? nmOrange : genOrange;
-            if (cycles < critLevel) {
-                result.push({
-                    canisterId,
-                    cycles,
-                    criticalLevel: critLevel,
-                    healthyLevel: healthLevel,
-                    type: detectedManager ? 'neuron_manager' : 'canister',
-                    label: detectedManager ? 'ICP Staking Bot' : 'Custom',
-                    version: detectedManager?.version,
-                });
+            checkRegularCanister(canisterId, canisterStatus, 'Custom');
+            // If this is an SNS root, also check all its virtual sub-canisters
+            const snsData = snsRootDataMap.get(canisterId);
+            if (snsData) {
+                for (const sc of snsData.systemCanisters) {
+                    checkRegularCanister(sc.id, canisterStatus, `SNS (${sc.label})`);
+                }
+                for (const d of snsData.dappCanisters) {
+                    checkRegularCanister(d, canisterStatus, 'SNS (Dapp)');
+                }
+                for (const a of snsData.archiveCanisters) {
+                    checkRegularCanister(a, canisterStatus, 'SNS (Archive)');
+                }
             }
         }
 
-        // Tracked (wallet) canisters
+        // Tracked (wallet) canisters - include even if not controller
         for (const canisterId of trackedCanisters) {
-            if (checkedIds.has(canisterId)) continue;
-            checkedIds.add(canisterId);
-            const status = trackedCanisterStatus[canisterId];
-            if (!status || !status.isController) continue;
-            const cycles = status.cycles;
-            if (cycles === null || cycles === undefined) continue;
-            if (cycles < genRed) {
-                result.push({
-                    canisterId,
-                    cycles,
-                    criticalLevel: genRed,
-                    healthyLevel: genOrange,
-                    type: 'canister',
-                    label: 'Wallet',
-                });
-            }
+            checkRegularCanister(canisterId, trackedCanisterStatus, 'Wallet');
         }
 
         return result;
-    }, [neuronManagers, canisterGroups, canisterStatus, trackedCanisters, trackedCanisterStatus, detectedNeuronManagers, neuronManagerCycleSettings, cycleSettings]);
+    }, [neuronManagers, canisterGroups, canisterStatus, trackedCanisters, trackedCanisterStatus, detectedNeuronManagers, neuronManagerCycleSettings, cycleSettings, snsRootDataMap]);
 
     const styles = {
         pageContainer: {

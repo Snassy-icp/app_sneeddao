@@ -1998,18 +1998,17 @@ export const WalletProvider = ({ children }) => {
         });
     }, [neuronManagers, latestOfficialVersion, isVersionOutdated, neuronManagerIsController]);
 
-    // Computed: list of canisters (managers + tracked) that are below their critical cycle level
-    // and that we are controller of (so we can top them up)
+    // Computed: list of canisters (managers + tracked + app manager) that are below their critical cycle level
+    // Includes canisters we're not controller of, since topping up cycles is permissionless (CMC notify_top_up)
+    // Each entry includes an `isController` flag so the UI can differentiate if needed
     const lowCyclesCanisters = React.useMemo(() => {
         const result = [];
-        // Check neuron managers
+        // Check neuron managers (must be controller for these)
         for (const manager of neuronManagers) {
             const cid = typeof manager.canisterId === 'string' ? manager.canisterId : manager.canisterId?.toText?.() || manager.canisterId?.toString?.() || '';
             if (!cid || neuronManagerIsController[cid] !== true) continue;
             const cycles = neuronManagerCycles[cid];
             if (cycles === null || cycles === undefined) continue;
-            // ICP Staking Bots use their own cycle settings from localStorage
-            // We import these at the top level to keep them in sync
             const criticalLevel = _getNeuronManagerCriticalLevel();
             if (cycles < criticalLevel) {
                 result.push({
@@ -2020,6 +2019,7 @@ export const WalletProvider = ({ children }) => {
                     type: 'neuron_manager',
                     label: 'ICP Staking Bot',
                     version: manager.version,
+                    isController: true,
                 });
             }
         }
@@ -2028,11 +2028,10 @@ export const WalletProvider = ({ children }) => {
             return typeof m.canisterId === 'string' ? m.canisterId : m.canisterId?.toText?.() || m.canisterId?.toString?.() || '';
         }));
         
-        // Check tracked canisters (wallet)
+        // Check tracked canisters (wallet) - include even if not controller (top-up is permissionless)
         for (const canisterId of trackedCanisters) {
             if (checkedIds.has(canisterId)) continue;
             checkedIds.add(canisterId);
-            if (trackedCanisterIsController[canisterId] !== true) continue;
             const cycles = trackedCanisterCycles[canisterId];
             if (cycles === null || cycles === undefined) continue;
             const criticalLevel = _getCanisterCriticalLevel();
@@ -2044,15 +2043,16 @@ export const WalletProvider = ({ children }) => {
                     healthyLevel: _getCanisterHealthyLevel(),
                     type: 'canister',
                     label: 'Wallet',
+                    isController: trackedCanisterIsController[canisterId] === true,
                 });
             }
         }
         
-        // Check app manager canisters (canister groups from /apps)
+        // Check app manager canisters (canister groups from /apps, including virtual SNS sub-canisters)
+        // Include even if not controller - top-up is permissionless
         for (const canisterId of appManagerCanisters) {
             if (checkedIds.has(canisterId)) continue;
             checkedIds.add(canisterId);
-            if (appManagerCanisterIsController[canisterId] !== true) continue;
             const cycles = appManagerCanisterCycles[canisterId];
             if (cycles === null || cycles === undefined) continue;
             const criticalLevel = _getCanisterCriticalLevel();
@@ -2063,7 +2063,8 @@ export const WalletProvider = ({ children }) => {
                     criticalLevel,
                     healthyLevel: _getCanisterHealthyLevel(),
                     type: 'canister',
-                    label: 'App',
+                    label: appManagerCanisterIsController[canisterId] === true ? 'App' : 'App (SNS)',
+                    isController: appManagerCanisterIsController[canisterId] === true,
                 });
             }
         }
@@ -2280,6 +2281,8 @@ export const WalletProvider = ({ children }) => {
             setAppManagerCanisterCycles(cyclesMap);
 
             // For SNS canisters we're not controller of, try fetching via SNS root
+            // Also discover and store ALL virtual SNS sub-canisters (governance, ledger, swap, etc.)
+            // since top-up is permissionless and we want to show low cycle warnings for all of them
             if (missingCyclesIds.length > 0) {
                 try {
                     const snsMap = buildSnsCanisterToRootMap();
@@ -2292,18 +2295,30 @@ export const WalletProvider = ({ children }) => {
                         }
                     }
                     if (rootsToFetch.size > 0) {
+                        const additionalIds = []; // virtual sub-canisters discovered
                         for (const [rootId, canisterIds] of rootsToFetch) {
                             try {
                                 const snsCycles = await fetchSnsCyclesFromRoot(rootId, identity);
+                                // Store cycles for ALL returned canisters, not just
+                                // the ones in our groups - this catches virtual sub-canisters
                                 for (const [cid, data] of snsCycles) {
-                                    if (canisterIds.has(cid)) {
-                                        cyclesMap[cid] = data.cycles;
+                                    cyclesMap[cid] = data.cycles;
+                                    controllerMap[cid] = controllerMap[cid] ?? false;
+                                    // Track newly discovered sub-canisters
+                                    if (!ids.includes(cid)) {
+                                        additionalIds.push(cid);
                                     }
                                 }
                             } catch (err) {
                                 // Non-critical
                             }
                         }
+                        // Add virtual SNS sub-canisters to the app manager canister list
+                        if (additionalIds.length > 0) {
+                            const allIds = [...ids, ...additionalIds];
+                            setAppManagerCanisters(allIds);
+                        }
+                        setAppManagerCanisterIsController({ ...controllerMap });
                         setAppManagerCanisterCycles({ ...cyclesMap });
                     }
                 } catch (err) {
