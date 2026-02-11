@@ -5726,21 +5726,46 @@ function IcpNeuronManager() {
                                                                 </div>
                                                             )}
 
-                                                            {/* Targets list */}
+                                                            {/* Targets list with effective % calculation */}
+                                                            {(() => {
+                                                                // Calculate effective percentages (mirrors backend logic)
+                                                                const tgts = list.targets;
+                                                                let totalAssignedBp = 0;
+                                                                let numUnassigned = 0;
+                                                                tgts.forEach(t => {
+                                                                    if (t.basisPoints.length > 0) totalAssignedBp += Number(t.basisPoints[0]);
+                                                                    else numUnassigned++;
+                                                                });
+                                                                const effectivePcts = tgts.map(t => {
+                                                                    if (totalAssignedBp > 10000) {
+                                                                        // Renormalize
+                                                                        return t.basisPoints.length > 0 ? (Number(t.basisPoints[0]) * 10000 / totalAssignedBp) / 100 : 0;
+                                                                    } else {
+                                                                        const remainderBp = 10000 - totalAssignedBp;
+                                                                        const eachUnassignedBp = numUnassigned > 0 ? remainderBp / numUnassigned : 0;
+                                                                        return t.basisPoints.length > 0 ? Number(t.basisPoints[0]) / 100 : eachUnassignedBp / 100;
+                                                                    }
+                                                                });
+                                                                const totalEffective = effectivePcts.reduce((s, p) => s + p, 0);
+                                                                const undistributed = 100 - totalEffective;
+
+                                                                return (
                                                             <div style={{ fontSize: '0.75rem' }}>
-                                                                {list.targets.map((t, ti) => {
+                                                                {tgts.map((t, ti) => {
                                                                     const ownerStr = t.account.owner.toString();
                                                                     const hasSub = t.account.subaccount.length > 0;
                                                                     const subHex = hasSub ? Array.from(new Uint8Array(t.account.subaccount[0])).map(b => b.toString(16).padStart(2, '0')).join('') : '';
-                                                                    // Build ICRC-1 long account string
                                                                     let longAccount = ownerStr;
                                                                     if (hasSub) {
                                                                         try {
                                                                             longAccount = encodeIcrcAccount({ owner: t.account.owner, subaccount: t.account.subaccount[0] });
                                                                         } catch (_) { longAccount = ownerStr + '.' + subHex; }
                                                                     }
+                                                                    const configuredLabel = t.basisPoints.length > 0 ? `${(Number(t.basisPoints[0]) / 100).toFixed(2)}%` : 'auto';
+                                                                    const effectiveLabel = `${effectivePcts[ti].toFixed(2)}%`;
+                                                                    const showEffective = configuredLabel !== effectiveLabel;
                                                                     return (
-                                                                        <div key={ti} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '6px 0', borderBottom: ti < list.targets.length - 1 ? `1px solid ${theme.colors.border}20` : 'none' }}>
+                                                                        <div key={ti} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '6px 0', borderBottom: ti < tgts.length - 1 ? `1px solid ${theme.colors.border}20` : 'none' }}>
                                                                             <div style={{ flex: 1, minWidth: 0 }}>
                                                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                                                     <PrincipalDisplay
@@ -5763,13 +5788,30 @@ function IcpNeuronManager() {
                                                                                     </>
                                                                                 )}
                                                                             </div>
-                                                                            <div style={{ textAlign: 'right', flexShrink: 0, paddingLeft: '8px', fontWeight: '500', color: theme.colors.primaryText }}>
-                                                                                {t.basisPoints.length > 0 ? `${(Number(t.basisPoints[0]) / 100).toFixed(2)}%` : <span style={{ fontStyle: 'italic', color: theme.colors.secondaryText }}>auto</span>}
+                                                                            <div style={{ textAlign: 'right', flexShrink: 0, paddingLeft: '8px' }}>
+                                                                                <div style={{ fontWeight: '500', color: theme.colors.primaryText }}>{effectiveLabel}</div>
+                                                                                {showEffective && (
+                                                                                    <div style={{ fontSize: '0.6rem', color: theme.colors.secondaryText }}>
+                                                                                        ({t.basisPoints.length > 0 ? configuredLabel : <span style={{ fontStyle: 'italic' }}>auto</span>})
+                                                                                    </div>
+                                                                                )}
                                                                             </div>
                                                                         </div>
                                                                     );
                                                                 })}
+                                                                {undistributed > 0.01 && (
+                                                                    <div style={{ padding: '4px 0', textAlign: 'right', fontSize: '0.7rem', color: theme.colors.warning || '#e6a700', fontStyle: 'italic' }}>
+                                                                        {undistributed.toFixed(2)}% undistributed
+                                                                    </div>
+                                                                )}
+                                                                {totalAssignedBp > 10000 && (
+                                                                    <div style={{ padding: '4px 0', textAlign: 'right', fontSize: '0.7rem', color: theme.colors.error || '#e74c3c', fontStyle: 'italic' }}>
+                                                                        Assigned total exceeds 100% — percentages are renormalized
+                                                                    </div>
+                                                                )}
                                                             </div>
+                                                                );
+                                                            })()}
                                                         </div>
                                                     );
                                                 })}
@@ -5864,6 +5906,22 @@ function IcpNeuronManager() {
                                                             {(() => {
                                                                 const totalPct = editingDistList.targets.reduce((s, t) => s + (t.basisPoints ? parseFloat(t.basisPoints) || 0 : 0), 0);
                                                                 const overHundred = totalPct > 100;
+                                                                // Calculate effective percentages (mirrors backend logic)
+                                                                const totalAssignedBpEdit = totalPct * 100; // user enters %, convert to bp
+                                                                const numUnassignedEdit = editingDistList.targets.filter(t => !t.basisPoints || t.basisPoints === '').length;
+                                                                const editEffectivePcts = editingDistList.targets.map(t => {
+                                                                    const bp = t.basisPoints ? (parseFloat(t.basisPoints) || 0) * 100 : 0;
+                                                                    const isAssigned = t.basisPoints && t.basisPoints !== '';
+                                                                    if (totalAssignedBpEdit > 10000) {
+                                                                        return isAssigned ? (bp * 10000 / totalAssignedBpEdit) / 100 : 0;
+                                                                    } else {
+                                                                        const remainderBp = 10000 - totalAssignedBpEdit;
+                                                                        const eachUnassignedBp = numUnassignedEdit > 0 ? remainderBp / numUnassignedEdit : 0;
+                                                                        return isAssigned ? bp / 100 : eachUnassignedBp / 100;
+                                                                    }
+                                                                });
+                                                                const editTotalEffective = editEffectivePcts.reduce((s, p) => s + p, 0);
+                                                                const editUndistributed = 100 - editTotalEffective;
                                                                 return (
                                                                     <>
                                                                     {overHundred && (
@@ -5925,7 +5983,7 @@ function IcpNeuronManager() {
                                                                                         inputStyle={{ fontSize: '0.75rem' }}
                                                                                     />
                                                                                 </div>
-                                                                                <div style={{ width: '70px', flexShrink: 0 }}>
+                                                                                <div style={{ width: '80px', flexShrink: 0 }}>
                                                                                     <label style={{ fontSize: '0.65rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '2px' }}>% Share</label>
                                                                                     <input type="text" inputMode="decimal" value={target.basisPoints} placeholder="auto" style={{ ...inputStyle, width: '100%', textAlign: 'right', fontSize: '0.75rem' }}
                                                                                         onChange={e => {
@@ -5933,6 +5991,9 @@ function IcpNeuronManager() {
                                                                                             newTargets[ti] = { ...newTargets[ti], basisPoints: e.target.value };
                                                                                             setEditingDistList({ ...editingDistList, targets: newTargets });
                                                                                         }} />
+                                                                                    <div style={{ fontSize: '0.6rem', color: theme.colors.secondaryText, textAlign: 'right', marginTop: '2px' }}>
+                                                                                        Effective: {editEffectivePcts[ti].toFixed(2)}%
+                                                                                    </div>
                                                                                 </div>
                                                                                 <button
                                                                                     style={{ ...buttonStyle, fontSize: '0.65rem', padding: '4px 8px', background: `${theme.colors.error}10`, color: theme.colors.error, border: `1px solid ${theme.colors.error}25`, flexShrink: 0 }}
@@ -5962,6 +6023,11 @@ function IcpNeuronManager() {
                                                                         </div>
                                                                         );
                                                                     })}
+                                                                    {editUndistributed > 0.01 && (
+                                                                        <div style={{ padding: '6px 0 2px', textAlign: 'right', fontSize: '0.7rem', color: theme.colors.warning || '#e6a700', fontStyle: 'italic' }}>
+                                                                            {editUndistributed.toFixed(2)}% will remain undistributed
+                                                                        </div>
+                                                                    )}
                                                                     </>
                                                                 );
                                                             })()}
