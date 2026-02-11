@@ -14,7 +14,7 @@ import { HttpAgent, Actor } from '@dfinity/agent';
 import { getTokenLogo, get_token_conversion_rate, get_token_icp_rate, get_available, get_available_backend } from '../utils/TokenUtils';
 import { fetchUserNeuronsForSns, uint8ArrayToHex } from '../utils/NeuronUtils';
 import { getTipTokensReceivedByUser, getTrackedCanisters, getCanisterGroups, convertGroupsFromBackend } from '../utils/BackendUtils';
-import { fetchAndCacheSnsData, getAllSnses, getSnsById } from '../utils/SnsUtils';
+import { fetchAndCacheSnsData, getAllSnses, getSnsById, buildSnsCanisterToRootMap, fetchSnsCyclesFromRoot } from '../utils/SnsUtils';
 import { getNeuronsFromCacheByIds, saveNeuronsToCache, getAllNeuronsForSns, normalizeId } from '../hooks/useNeuronsCache';
 import { initializeLogoCache, getLogo, setLogo, getLogoSync } from '../hooks/useLogoCache';
 import { initializeTokenCache, setLedgerList, getTokenMetadataSync } from '../hooks/useTokenCache';
@@ -2256,6 +2256,7 @@ export const WalletProvider = ({ children }) => {
             
             const controllerMap = {};
             const cyclesMap = {};
+            const missingCyclesIds = []; // IDs where we couldn't get cycles (not controller)
             for (const canisterId of ids) {
                 try {
                     const canisterIdPrincipal = Principal.fromText(canisterId);
@@ -2272,10 +2273,43 @@ export const WalletProvider = ({ children }) => {
                     cyclesMap[canisterId] = Number(status.cycles);
                 } catch (err) {
                     controllerMap[canisterId] = false;
+                    missingCyclesIds.push(canisterId);
                 }
             }
             setAppManagerCanisterIsController(controllerMap);
             setAppManagerCanisterCycles(cyclesMap);
+
+            // For SNS canisters we're not controller of, try fetching via SNS root
+            if (missingCyclesIds.length > 0) {
+                try {
+                    const snsMap = buildSnsCanisterToRootMap();
+                    const rootsToFetch = new Map();
+                    for (const cid of missingCyclesIds) {
+                        const rootId = snsMap.get(cid);
+                        if (rootId) {
+                            if (!rootsToFetch.has(rootId)) rootsToFetch.set(rootId, new Set());
+                            rootsToFetch.get(rootId).add(cid);
+                        }
+                    }
+                    if (rootsToFetch.size > 0) {
+                        for (const [rootId, canisterIds] of rootsToFetch) {
+                            try {
+                                const snsCycles = await fetchSnsCyclesFromRoot(rootId, identity);
+                                for (const [cid, data] of snsCycles) {
+                                    if (canisterIds.has(cid)) {
+                                        cyclesMap[cid] = data.cycles;
+                                    }
+                                }
+                            } catch (err) {
+                                // Non-critical
+                            }
+                        }
+                        setAppManagerCanisterCycles({ ...cyclesMap });
+                    }
+                } catch (err) {
+                    // Non-critical - SNS cycle fetch is a best-effort enhancement
+                }
+            }
         } catch (err) {
             console.warn('[WalletContext] Error fetching app manager canisters:', err);
         }

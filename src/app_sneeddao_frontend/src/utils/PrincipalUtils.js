@@ -282,6 +282,36 @@ export const getCanisterTypeIcon = (canisterTypes, size = 14, color = '#888') =>
     return React.createElement(FaCube, { size, color, style: { opacity: 0.7 } });
 };
 
+// Check if canister types indicate this is an SNS canister
+export const isSnsCanisterType = (canisterTypes) => {
+    if (!canisterTypes || !Array.isArray(canisterTypes)) return false;
+    return canisterTypes.some(t => t && t.startsWith('sns_'));
+};
+
+// Small "SNS" pill overlay for canister/token icons. Positioned absolutely within a position:relative parent.
+export const SnsPill = ({ size = 'normal' }) => {
+    const fontSize = size === 'small' ? '0.45rem' : '0.5rem';
+    const padding = size === 'small' ? '0px 3px' : '0px 4px';
+    return React.createElement('span', {
+        style: {
+            position: 'absolute',
+            bottom: -2,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'linear-gradient(135deg, #8b5cf6, #a78bfa)',
+            color: '#fff',
+            padding,
+            borderRadius: '6px',
+            fontSize,
+            fontWeight: '700',
+            letterSpacing: '0.5px',
+            lineHeight: '1.2',
+            whiteSpace: 'nowrap',
+            zIndex: 1,
+        }
+    }, 'SNS');
+};
+
 // Canister icon component (box/cube)
 const CanisterIcon = ({ size = 14, color = '#888' }) => {
     return React.createElement('svg', {

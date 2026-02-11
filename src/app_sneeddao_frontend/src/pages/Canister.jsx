@@ -7,7 +7,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { Principal } from '@dfinity/principal';
 import { Actor, HttpAgent } from '@dfinity/agent';
 import { getCanisterInfo, setCanisterName, setPrincipalNickname } from '../utils/BackendUtils';
-import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, isCanisterPrincipal, getCanisterTypeIcon } from '../utils/PrincipalUtils';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, isCanisterPrincipal, getCanisterTypeIcon, isSnsCanisterType, SnsPill } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
 import { FaEdit, FaSave, FaTimes, FaExternalLinkAlt, FaGasPump, FaUpload, FaExclamationTriangle, FaCube, FaChevronDown, FaChevronRight, FaArrowLeft, FaCheckCircle, FaMemory, FaUsers, FaLock, FaUnlock, FaCode, FaSpinner, FaCoins, FaUser } from 'react-icons/fa';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
@@ -1462,7 +1462,10 @@ export default function CanisterPage() {
                                 alignItems: 'center',
                                 gap: '0.5rem'
                             }}>
-                                {getCanisterTypeIcon(canisterTypes, 20, canisterPrimary)}
+                                <span style={{ position: 'relative', display: 'inline-flex' }}>
+                                    {getCanisterTypeIcon(canisterTypes, 20, canisterPrimary)}
+                                    {isSnsCanisterType(canisterTypes) && <SnsPill size="small" />}
+                                </span>
                                 Canister Details
                             </h2>
                             <span style={{

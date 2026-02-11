@@ -720,4 +720,83 @@ export function clearSnsCache() {
     console.log('Clearing SNS cache...'); // Debug log
     safeStorage.removeItem(SNS_CACHE_KEY);
     notifySnsCacheUpdated();
-} 
+}
+
+/**
+ * Build a map from any SNS canister ID to its SNS root canister ID.
+ * Includes: governance, ledger, swap, index, dapps, archives.
+ * Returns: Map<string, string> (canisterId -> rootCanisterId)
+ */
+export function buildSnsCanisterToRootMap() {
+    const allSnses = getCachedSnsData() || [];
+    const map = new Map();
+    for (const sns of allSnses) {
+        const rootId = sns.rootCanisterId;
+        if (!rootId) continue;
+        const c = sns.canisters;
+        if (!c) continue;
+        // Map each known canister to the root
+        if (c.root) map.set(c.root, rootId);
+        if (c.governance) map.set(c.governance, rootId);
+        if (c.ledger) map.set(c.ledger, rootId);
+        if (c.swap) map.set(c.swap, rootId);
+        if (c.index) map.set(c.index, rootId);
+        if (c.dapps && Array.isArray(c.dapps)) {
+            for (const d of c.dapps) { if (d) map.set(d, rootId); }
+        }
+        if (c.archives && Array.isArray(c.archives)) {
+            for (const a of c.archives) { if (a) map.set(a, rootId); }
+        }
+    }
+    return map;
+}
+
+/**
+ * Fetch cycles/memory for all canisters of a given SNS using get_sns_canisters_summary.
+ * @param {string} rootCanisterId - The SNS root canister ID
+ * @param {object} identity - The agent identity
+ * @returns {Map<string, { cycles: number, memory: number }>} - canisterId -> { cycles, memory }
+ */
+export async function fetchSnsCyclesFromRoot(rootCanisterId, identity) {
+    const result = new Map();
+    try {
+        const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging'
+            ? 'https://ic0.app'
+            : 'http://localhost:4943';
+        const agent = new HttpAgent({ identity, host });
+        if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+            await agent.fetchRootKey();
+        }
+        const rootActor = createSnsRootActor(rootCanisterId, { agent });
+        const summary = await rootActor.get_sns_canisters_summary({ update_canister_list: [] });
+
+        const extractStatus = (canisterSummary) => {
+            if (!canisterSummary) return;
+            const cid = canisterSummary.canister_id?.[0]?.toText?.() || canisterSummary.canister_id?.[0]?.toString?.();
+            const status = canisterSummary.status?.[0];
+            if (cid && status) {
+                result.set(cid, {
+                    cycles: Number(status.cycles),
+                    memory: Number(status.memory_size),
+                });
+            }
+        };
+
+        // Infrastructure canisters
+        if (summary.root?.[0]) extractStatus(summary.root[0]);
+        if (summary.governance?.[0]) extractStatus(summary.governance[0]);
+        if (summary.ledger?.[0]) extractStatus(summary.ledger[0]);
+        if (summary.swap?.[0]) extractStatus(summary.swap[0]);
+        if (summary.index?.[0]) extractStatus(summary.index[0]);
+        // Dapp and archive canisters
+        if (summary.dapps) {
+            for (const d of summary.dapps) extractStatus(d);
+        }
+        if (summary.archives) {
+            for (const a of summary.archives) extractStatus(a);
+        }
+    } catch (err) {
+        console.warn(`[SNS] Failed to fetch canisters summary from root ${rootCanisterId}:`, err.message || err);
+    }
+    return result;
+}

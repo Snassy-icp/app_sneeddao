@@ -38,7 +38,7 @@ import { getPositionTVL, isLockedPosition } from "./utils/PositionUtils";
 import { headerStyles } from './styles/HeaderStyles';
 import { usePremiumStatus } from './hooks/usePremiumStatus';
 import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
-import { fetchAndCacheSnsData, getAllSnses, getSnsById, getSnsByLedgerId } from './utils/SnsUtils';
+import { fetchAndCacheSnsData, getAllSnses, getSnsById, getSnsByLedgerId, buildSnsCanisterToRootMap, fetchSnsCyclesFromRoot } from './utils/SnsUtils';
 import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
 import Header from './components/Header';
 import PrincipalInput from './components/PrincipalInput';
@@ -56,7 +56,7 @@ import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
 import { useNaming } from './NamingContext';
 import { useWhitelistTokens } from './contexts/WhitelistTokensContext';
 import { useWallet } from './contexts/WalletContext';
-import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, computeAccountId } from './utils/PrincipalUtils';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, computeAccountId, isSnsCanisterType, SnsPill, getCanisterTypeIcon } from './utils/PrincipalUtils';
 import { getCyclesColor, formatCyclesCompact, formatMemory, getNeuronManagerSettings, getCanisterManagerSettings } from './utils/NeuronManagerSettings';
 import StatusLamp, {
     LAMP_OFF, LAMP_COLORS,
@@ -435,7 +435,7 @@ var summed_locks = {};
 function Wallet() {
     const { identity, isAuthenticated, logout } = useAuth();
     const { theme } = useTheme();
-    const { principalNames, principalNicknames } = useNaming();
+    const { principalNames, principalNicknames, verifiedNames, principalCanisterTypes } = useNaming();
     const { whitelistedTokens } = useWhitelistTokens();
     const { isPremium } = usePremiumStatus(identity);
     const { 
@@ -1865,6 +1865,51 @@ function Wallet() {
                 statusMap[canisterId] = { cycles, memory, isController, moduleHash };
             }));
             setTrackedCanisterStatus(prev => ({ ...prev, ...statusMap }));
+
+            // For SNS canisters we couldn't get cycles for, try via SNS root
+            const missingCyclesIds = canisterIds.filter(cid => {
+                const s = statusMap[cid];
+                return !s || s.cycles === null || s.cycles === undefined;
+            });
+            if (missingCyclesIds.length > 0) {
+                try {
+                    const snsMap = buildSnsCanisterToRootMap();
+                    const rootsToFetch = new Map();
+                    for (const cid of missingCyclesIds) {
+                        const rootId = snsMap.get(cid);
+                        if (rootId) {
+                            if (!rootsToFetch.has(rootId)) rootsToFetch.set(rootId, new Set());
+                            rootsToFetch.get(rootId).add(cid);
+                        }
+                    }
+                    if (rootsToFetch.size > 0) {
+                        for (const [rootId, cidsSet] of rootsToFetch) {
+                            try {
+                                const snsCycles = await fetchSnsCyclesFromRoot(rootId, identity);
+                                const snsUpdate = {};
+                                for (const [cid, data] of snsCycles) {
+                                    if (cidsSet.has(cid)) {
+                                        snsUpdate[cid] = {
+                                            ...(statusMap[cid] || {}),
+                                            cycles: data.cycles,
+                                            memory: data.memory,
+                                            isController: false,
+                                            snsRoot: rootId,
+                                        };
+                                    }
+                                }
+                                if (Object.keys(snsUpdate).length > 0) {
+                                    setTrackedCanisterStatus(prev => ({ ...prev, ...snsUpdate }));
+                                }
+                            } catch (err) {
+                                // Non-critical
+                            }
+                        }
+                    }
+                } catch (err) {
+                    // Non-critical
+                }
+            }
         } catch (err) {
             console.error('Error fetching tracked canister status:', err);
         }
@@ -7827,7 +7872,7 @@ function Wallet() {
                         ) : (
                             <div className="card-grid">
                                 {trackedCanisters.map((canisterId) => {
-                                    const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
+                                    const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames, verifiedNames, principalCanisterTypes);
                                     const isConfirming = confirmRemoveTrackedCanister === canisterId;
                                     const isRemoving = removingTrackedCanister === canisterId;
                                     const status = trackedCanisterStatus[canisterId];
@@ -8723,7 +8768,7 @@ function Wallet() {
                                                 onClick={() => setExpandedCanisterCards(prev => ({ ...prev, [canisterId]: !prev[canisterId] }))}
                                             >
                                                 <div className="header-logo-column" style={{ alignSelf: 'flex-start', minWidth: '48px', minHeight: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-                                                    <FaBox size={36} style={{ color: theme.colors.mutedText }} />
+                                                    {getCanisterTypeIcon(displayInfo?.canisterTypes, 36, theme.colors.mutedText)}
                                                     {isController && (
                                                         <span 
                                                             style={{ 
@@ -8737,6 +8782,7 @@ function Wallet() {
                                                             <FaCrown size={14} />
                                                         </span>
                                                     )}
+                                                    {isSnsCanisterType(displayInfo?.canisterTypes) && <SnsPill />}
                                                 </div>
                                                 <div className="header-content-column">
                                                     {/* Row 1: Name */}

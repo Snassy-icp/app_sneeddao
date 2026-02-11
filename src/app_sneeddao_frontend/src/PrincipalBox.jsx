@@ -8,7 +8,7 @@ import { useAuth } from './AuthContext';
 import { useTheme } from './contexts/ThemeContext';
 import { useNaming } from './NamingContext';
 import { useWalletOptional } from './contexts/WalletContext';
-import { computeAccountId, PrincipalDisplay, getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
+import { computeAccountId, PrincipalDisplay, getPrincipalDisplayInfoFromContext, isSnsCanisterType, getCanisterTypeIcon } from './utils/PrincipalUtils';
 import { formatAmount } from './utils/StringUtils';
 import { get_available, get_available_backend } from './utils/TokenUtils';
 import { normalizeId } from './hooks/useNeuronsCache';
@@ -98,7 +98,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const popupRef = useRef(null);
     const { login, identity } = useAuth();
     const { theme } = useTheme();
-    const { getPrincipalDisplayName } = useNaming();
+    const { getPrincipalDisplayName, principalCanisterTypes } = useNaming();
     const walletContext = useWalletOptional();
     const navigate = useNavigate();
     const { isPremium } = usePremiumStatus(identity);
@@ -1851,7 +1851,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                               flexShrink: 0,
                                               display: 'flex',
                                               alignItems: 'center',
-                                              justifyContent: 'center'
+                                              justifyContent: 'center',
+                                              position: 'relative',
                                           }}>
                                               {token.logo ? (
                                                   <img 
@@ -1885,6 +1886,24 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                               >
                                                   {token.symbol?.charAt(0) || '?'}
                                               </div>
+                                              {isTokenSns && isTokenSns(token.ledger_canister_id) && (
+                                                  <span style={{
+                                                      position: 'absolute',
+                                                      bottom: -2,
+                                                      left: '50%',
+                                                      transform: 'translateX(-50%)',
+                                                      background: 'linear-gradient(135deg, #8b5cf6, #a78bfa)',
+                                                      color: '#fff',
+                                                      padding: '0px 3px',
+                                                      borderRadius: '4px',
+                                                      fontSize: '0.4rem',
+                                                      fontWeight: '700',
+                                                      letterSpacing: '0.5px',
+                                                      lineHeight: '1.2',
+                                                      whiteSpace: 'nowrap',
+                                                      zIndex: 1,
+                                                  }}>SNS</span>
+                                              )}
                                           </div>
                                           
                                           {/* Balance, Symbol and USD Value */}

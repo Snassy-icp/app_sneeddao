@@ -10,7 +10,7 @@ import { IDL } from '@dfinity/candid';
 import { getCanisterGroups, setCanisterGroups, convertGroupsFromBackend, getTrackedCanisters, registerTrackedCanister, unregisterTrackedCanister, getCanisterInfo } from '../utils/BackendUtils';
 import { createActor as createBackendActor, canisterId as BACKEND_CANISTER_ID } from 'declarations/app_sneeddao_backend';
 import { usePremiumStatus } from '../hooks/usePremiumStatus';
-import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, getCanisterTypeIcon } from '../utils/PrincipalUtils';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, getCanisterTypeIcon, isSnsCanisterType, SnsPill } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
 import { FaPlus, FaTrash, FaCube, FaSpinner, FaChevronDown, FaChevronRight, FaBrain, FaFolder, FaFolderOpen, FaEdit, FaCheck, FaTimes, FaCrown, FaLock, FaStar, FaArrowRight, FaWallet, FaQuestionCircle, FaBox, FaExclamationTriangle, FaBolt } from 'react-icons/fa';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
@@ -18,6 +18,7 @@ import { useNavigate } from 'react-router-dom';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
 import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings, getCanisterManagerSettings } from '../utils/NeuronManagerSettings';
+import { buildSnsCanisterToRootMap, fetchSnsCyclesFromRoot } from '../utils/SnsUtils';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import UpgradeBotsDialog from '../components/UpgradeBotsDialog';
@@ -699,6 +700,87 @@ export default function AppsPage() {
         
         fetchTracked();
     }, [identity]);
+
+    // Fetch cycles/memory for SNS canisters via get_sns_canisters_summary (non-blocking, progressive)
+    // Runs after initial canister statuses are loaded, for any SNS canisters we couldn't get cycles for
+    useEffect(() => {
+        if (!identity || loading || loadingTrackedCanisters) return;
+
+        const fetchSnsCycles = async () => {
+            // Build a map of canisterId -> rootCanisterId from cached SNS data
+            const snsMap = buildSnsCanisterToRootMap();
+            if (snsMap.size === 0) return;
+
+            // Collect all canister IDs that are SNS canisters and don't have cycles data yet
+            const allCustomIds = getAllCanisterIds(canisterGroups);
+            const allIds = [...allCustomIds, ...trackedCanisters];
+            
+            // Group by root canister ID
+            const rootsToFetch = new Map(); // rootId -> Set<canisterId>
+            for (const cid of allIds) {
+                const rootId = snsMap.get(cid);
+                if (!rootId) continue;
+                // Check if we already have cycles data for this canister
+                const existingStatus = canisterStatus[cid] || trackedCanisterStatus[cid];
+                if (existingStatus && existingStatus.cycles !== null && existingStatus.cycles !== undefined) continue;
+                if (!rootsToFetch.has(rootId)) rootsToFetch.set(rootId, new Set());
+                rootsToFetch.get(rootId).add(cid);
+            }
+
+            if (rootsToFetch.size === 0) return;
+
+            console.log(`[SNS Cycles] Fetching from ${rootsToFetch.size} SNS root(s) for canisters without status...`);
+
+            // Fetch from each root sequentially (to be polite) with a small delay between
+            for (const [rootId, canisterIds] of rootsToFetch) {
+                try {
+                    const cyclesMap = await fetchSnsCyclesFromRoot(rootId, identity);
+                    if (cyclesMap.size > 0) {
+                        // Update custom canister status
+                        setCanisterStatus(prev => {
+                            const updated = { ...prev };
+                            for (const [cid, data] of cyclesMap) {
+                                if (canisterIds.has(cid) || allCustomIds.includes(cid)) {
+                                    updated[cid] = {
+                                        ...(prev[cid] || {}),
+                                        cycles: data.cycles,
+                                        memory: data.memory,
+                                        isController: false,
+                                        snsRoot: rootId,
+                                    };
+                                }
+                            }
+                            return updated;
+                        });
+                        // Update tracked canister status
+                        setTrackedCanisterStatus(prev => {
+                            const updated = { ...prev };
+                            for (const [cid, data] of cyclesMap) {
+                                if (trackedCanisters.includes(cid)) {
+                                    updated[cid] = {
+                                        ...(prev[cid] || {}),
+                                        cycles: data.cycles,
+                                        memory: data.memory,
+                                        isController: false,
+                                        snsRoot: rootId,
+                                    };
+                                }
+                            }
+                            return updated;
+                        });
+                    }
+                } catch (err) {
+                    console.warn(`[SNS Cycles] Error fetching from root ${rootId}:`, err);
+                }
+                // Small delay between roots to avoid hammering the network
+                await new Promise(r => setTimeout(r, 500));
+            }
+        };
+
+        // Delay to avoid competing with initial loads
+        const timer = setTimeout(fetchSnsCycles, 3000);
+        return () => clearTimeout(timer);
+    }, [identity, loading, loadingTrackedCanisters, canisterGroups, trackedCanisters, canisterStatus, trackedCanisterStatus, getAllCanisterIds]);
 
     // Fetch canister group limits and usage
     useEffect(() => {
@@ -2390,6 +2472,7 @@ export default function AppsPage() {
                                 title="You are a controller"
                             />
                         )}
+                        {isSnsCanisterType(displayInfo?.canisterTypes) && <SnsPill size="small" />}
                     </div>
                     <PrincipalDisplay
                         principal={canisterId}
@@ -4573,7 +4656,7 @@ export default function AppsPage() {
                                                                 title={`Health: ${canisterHealth}`}
                                                             />
                                                             <div style={{ ...styles.canisterIcon, position: 'relative' }}>
-                                                                <FaCube size={18} />
+                                                                {getCanisterTypeIcon(displayInfo?.canisterTypes, 18, theme.colors.accent)}
                                                                 {isController && (
                                                                     <FaCrown 
                                                                         size={10} 
@@ -4586,6 +4669,7 @@ export default function AppsPage() {
                                                                         title="You are a controller"
                                                                     />
                                                                 )}
+                                                                {isSnsCanisterType(displayInfo?.canisterTypes) && <SnsPill size="small" />}
                                                             </div>
                                                             <PrincipalDisplay
                                                                 principal={canisterId}
