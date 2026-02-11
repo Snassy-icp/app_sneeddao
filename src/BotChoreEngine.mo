@@ -3,6 +3,7 @@ import Time "mo:base/Time";
 import Array "mo:base/Array";
 import Buffer "mo:base/Buffer";
 import Int "mo:base/Int";
+import Nat "mo:base/Nat";
 import Error "mo:base/Error";
 
 import BotChoreTypes "BotChoreTypes";
@@ -70,6 +71,7 @@ module {
                     enabled = false; // Stopped by default — admin must start
                     paused = false;
                     intervalSeconds = def.defaultIntervalSeconds;
+                    maxIntervalSeconds = def.defaultMaxIntervalSeconds;
                     taskTimeoutSeconds = def.defaultTaskTimeoutSeconds;
                 };
                 stateAccessor.setConfigs(Array.append(configs, [(def.id, newConfig)]));
@@ -215,12 +217,12 @@ module {
                 scheduleConductorTick<system>(choreId, 0);
             };
 
-            // Schedule the next run
+            // Schedule the next run (with optional randomization)
             let now = Time.now();
-            let intervalNanos = config.intervalSeconds * 1_000_000_000;
+            let intervalSecs = computeInterval(config);
+            let intervalNanos = intervalSecs * 1_000_000_000;
             let nextRunAt = now + intervalNanos;
 
-            let intervalSecs = config.intervalSeconds;
             let tid = Timer.setTimer<system>(#seconds intervalSecs, func(): async () {
                 await schedulerFired<system>(choreId);
             });
@@ -293,8 +295,8 @@ module {
                             });
                             scheduleConductorTick<system>(choreId, 0);
                         };
-                        // Schedule the next regular run
-                        let intervalSecs = config.intervalSeconds;
+                        // Schedule the next regular run (with optional randomization)
+                        let intervalSecs = computeInterval(config);
                         let intervalNanos = intervalSecs * 1_000_000_000;
                         let nextRunAt = now + intervalNanos;
                         let tid = Timer.setTimer<system>(#seconds intervalSecs, func(): async () {
@@ -375,6 +377,15 @@ module {
         public func setInterval(choreId: Text, seconds: Nat) {
             updateConfig(choreId, func(c: BotChoreTypes.ChoreConfig): BotChoreTypes.ChoreConfig {
                 { c with intervalSeconds = seconds }
+            });
+        };
+
+        /// Change the max interval for randomized scheduling (in seconds).
+        /// Pass null to disable randomization (use exact intervalSeconds).
+        /// When set and > intervalSeconds, each reschedule picks a random time in [intervalSeconds, maxIntervalSeconds].
+        public func setMaxInterval(choreId: Text, seconds: ?Nat) {
+            updateConfig(choreId, func(c: BotChoreTypes.ChoreConfig): BotChoreTypes.ChoreConfig {
+                { c with maxIntervalSeconds = seconds }
             });
         };
 
@@ -477,7 +488,8 @@ module {
 
             // Calculate delay until next fire
             let now = Time.now();
-            let intervalNanos = config.intervalSeconds * 1_000_000_000;
+            let intervalSecs = computeInterval(config);
+            let intervalNanos = intervalSecs * 1_000_000_000;
 
             let delayNanos: Nat = switch (state.nextScheduledRunAt) {
                 case (?nextRun) {
@@ -536,10 +548,10 @@ module {
                 scheduleConductorTick<system>(choreId, 0);
             };
 
-            // Reschedule for next interval (only if enabled and not paused)
+            // Reschedule for next interval (only if enabled and not paused, with optional randomization)
             if (config.enabled and not config.paused) {
                 let now = Time.now();
-                let interval = config.intervalSeconds;
+                let interval = computeInterval(config);
                 let intervalNanos = interval * 1_000_000_000;
                 let nextRunAt = now + intervalNanos;
 
@@ -884,7 +896,7 @@ module {
             for ((id, config) in configs.vals()) {
                 if (id == choreId) return config;
             };
-            { enabled = false; paused = false; intervalSeconds = 3600; taskTimeoutSeconds = 300 }
+            { enabled = false; paused = false; intervalSeconds = 3600; maxIntervalSeconds = null; taskTimeoutSeconds = 300 }
         };
 
         /// Get runtime state for a chore, or empty state if not found.
@@ -950,6 +962,31 @@ module {
         };
 
         // ============================================
+        // INTERNAL: Interval randomization
+        // ============================================
+
+        /// Compute the actual interval to use for scheduling.
+        /// If maxIntervalSeconds is set and > intervalSeconds, picks a pseudo-random
+        /// value in [intervalSeconds, maxIntervalSeconds] using Time.now() as entropy.
+        /// This provides scheduling jitter for chores that should not be perfectly regular.
+        func computeInterval(config: BotChoreTypes.ChoreConfig): Nat {
+            let min = config.intervalSeconds;
+            switch (config.maxIntervalSeconds) {
+                case (?max) {
+                    if (max > min) {
+                        let range = max - min + 1; // inclusive range
+                        let entropy = Int.abs(Time.now()); // nanosecond timestamp as entropy
+                        let jitter = entropy % range;
+                        min + jitter
+                    } else {
+                        min // max <= min, no range
+                    };
+                };
+                case null { min }; // no max set, use exact interval
+            };
+        };
+
+        // ============================================
         // INTERNAL: Status builder
         // ============================================
 
@@ -985,6 +1022,7 @@ module {
                 enabled = config.enabled;
                 paused = config.paused;
                 intervalSeconds = config.intervalSeconds;
+                maxIntervalSeconds = config.maxIntervalSeconds;
                 taskTimeoutSeconds = config.taskTimeoutSeconds;
 
                 schedulerStatus = schedulerStatus;

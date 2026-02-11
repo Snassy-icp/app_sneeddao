@@ -22,6 +22,37 @@ import DistributionTypes "../DistributionTypes";
 // This is the actual canister that gets deployed for each user
 // No constructor arguments needed - access control uses IC canister controllers
 
+// Migration: ChoreConfig gained maxIntervalSeconds: ?Nat field
+(with migration = func (old : {
+    var choreConfigs: [(Text, {
+        enabled: Bool;
+        paused: Bool;
+        intervalSeconds: Nat;
+        taskTimeoutSeconds: Nat;
+    })]
+}) : {
+    var choreConfigs: [(Text, BotChoreTypes.ChoreConfig)]
+} {
+    {
+        var choreConfigs = Array.map<(Text, {
+            enabled: Bool;
+            paused: Bool;
+            intervalSeconds: Nat;
+            taskTimeoutSeconds: Nat;
+        }), (Text, BotChoreTypes.ChoreConfig)>(
+            old.choreConfigs,
+            func ((id, c)) : (Text, BotChoreTypes.ChoreConfig) {
+                (id, {
+                    enabled = c.enabled;
+                    paused = c.paused;
+                    intervalSeconds = c.intervalSeconds;
+                    maxIntervalSeconds = null;
+                    taskTimeoutSeconds = c.taskTimeoutSeconds;
+                })
+            }
+        );
+    }
+})
 shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     // ============================================
@@ -1361,6 +1392,12 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         choreEngine.setInterval(choreId, seconds);
     };
 
+    // Change the max interval for randomized scheduling (in seconds), or null to disable
+    public shared ({ caller }) func setChoreMaxInterval(choreId: Text, seconds: ?Nat): async () {
+        assertPermission(caller, choreManagePermission(choreId));
+        choreEngine.setMaxInterval(choreId, seconds);
+    };
+
     // Change the task timeout for a chore (in seconds)
     public shared ({ caller }) func setChoreTaskTimeout(choreId: Text, seconds: Nat): async () {
         assertPermission(caller, choreManagePermission(choreId));
@@ -2064,6 +2101,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             name = "Confirm Following";
             description = "Periodically re-confirms neuron followees to keep neurons eligible for voting rewards. NNS requires followees to be re-confirmed at least every 6 months.";
             defaultIntervalSeconds = 30 * 24 * 60 * 60; // 30 days (monthly, well within 6-month deadline)
+            defaultMaxIntervalSeconds = null; // No randomization for confirm following
             defaultTaskTimeoutSeconds = 600; // 10 minutes (confirming many topics can take time)
             conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
                 // If a task is still running, just poll again
@@ -2115,6 +2153,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             name = "Refresh Stake";
             description = "Periodically refreshes the stake of all managed neurons. This picks up any ICP that was deposited directly to a neuron's account, counting it as staked. Useful when external processes send ICP to neuron accounts.";
             defaultIntervalSeconds = 24 * 60 * 60; // 1 day
+            defaultMaxIntervalSeconds = null; // No randomization for refresh stake
             defaultTaskTimeoutSeconds = 300; // 5 minutes per neuron refresh
             conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
                 // If a task is still running, just poll again
@@ -2165,6 +2204,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             name = "Collect Maturity";
             description = "Periodically collects (disburses) maturity from all managed neurons and sends it to a configured account. Maturity accumulates from voting rewards. A threshold can be set to only collect when a minimum amount is available.";
             defaultIntervalSeconds = 7 * 24 * 60 * 60; // 7 days (weekly)
+            defaultMaxIntervalSeconds = null; // No randomization for collect maturity
             defaultTaskTimeoutSeconds = 300; // 5 minutes per neuron
             conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
                 // If a task is still running, just poll again
@@ -2215,6 +2255,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             name = "Distribute Funds";
             description = "Periodically checks configured distribution lists and sends funds from the bot's account (or a subaccount) to a set of target accounts based on configured percentages. Supports multiple lists, each with its own token, threshold, and targets.";
             defaultIntervalSeconds = 24 * 60 * 60; // 1 day
+            defaultMaxIntervalSeconds = null; // No randomization for distribution
             defaultTaskTimeoutSeconds = 600; // 10 minutes per distribution list
             conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
                 // If a task is still running, just poll again

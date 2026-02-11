@@ -4883,6 +4883,7 @@ function IcpNeuronManager() {
 
                                 // Format interval for display
                                 const intervalDays = config ? Math.round(Number(config.intervalSeconds) / 86400) : 0;
+                                const maxIntervalDays = config?.maxIntervalSeconds?.[0] != null ? Math.round(Number(config.maxIntervalSeconds[0]) / 86400) : null;
 
                                 // Lamp states for each timer level
                                 const schedulerLamp = getSchedulerLampState(chore);
@@ -4956,7 +4957,11 @@ function IcpNeuronManager() {
                                                 </div>
                                                 <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
                                                     <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Interval</div>
-                                                    <div style={{ fontSize: '0.9rem', color: theme.colors.primaryText, fontWeight: '500' }}>{intervalDays} days</div>
+                                                    <div style={{ fontSize: '0.9rem', color: theme.colors.primaryText, fontWeight: '500' }}>
+                                                        {maxIntervalDays && maxIntervalDays > intervalDays
+                                                            ? `${intervalDays}–${maxIntervalDays} days`
+                                                            : `${intervalDays} days`}
+                                                    </div>
                                                 </div>
                                                 <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
                                                     <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Next Scheduled Run</div>
@@ -5216,15 +5221,27 @@ function IcpNeuronManager() {
                                                 <label style={{ fontSize: '0.8rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '6px' }}>
                                                     Run every (days):
                                                 </label>
-                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                                                     <input
                                                         type="number"
                                                         min="1"
-                                                        max="180"
+                                                        max="365"
                                                         defaultValue={intervalDays}
-                                                        style={{ ...inputStyle, width: '100px' }}
+                                                        style={{ ...inputStyle, width: '80px' }}
                                                         id={`chore-interval-${chore.choreId}`}
                                                     />
+                                                    <span style={{ fontSize: '0.8rem', color: theme.colors.secondaryText }}>to</span>
+                                                    <input
+                                                        type="number"
+                                                        min=""
+                                                        max="365"
+                                                        defaultValue={maxIntervalDays || ''}
+                                                        placeholder="exact"
+                                                        style={{ ...inputStyle, width: '80px' }}
+                                                        id={`chore-max-interval-${chore.choreId}`}
+                                                        title="Optional max interval for randomized scheduling. Leave blank for exact interval."
+                                                    />
+                                                    <span style={{ fontSize: '0.7rem', color: theme.colors.secondaryText }}>days</span>
                                                     <button
                                                         style={{
                                                             ...buttonStyle,
@@ -5235,10 +5252,17 @@ function IcpNeuronManager() {
                                                         }}
                                                         disabled={savingChore}
                                                         onClick={async () => {
-                                                            const input = document.getElementById(`chore-interval-${chore.choreId}`);
-                                                            const days = parseInt(input?.value);
-                                                            if (!days || days < 1 || days > 180) {
-                                                                setChoreError('Interval must be between 1 and 180 days.');
+                                                            const minInput = document.getElementById(`chore-interval-${chore.choreId}`);
+                                                            const maxInput = document.getElementById(`chore-max-interval-${chore.choreId}`);
+                                                            const minDays = parseInt(minInput?.value);
+                                                            const maxDaysRaw = maxInput?.value?.trim();
+                                                            const maxDays = maxDaysRaw ? parseInt(maxDaysRaw) : null;
+                                                            if (!minDays || minDays < 1 || minDays > 365) {
+                                                                setChoreError('Interval must be between 1 and 365 days.');
+                                                                return;
+                                                            }
+                                                            if (maxDays !== null && (maxDays < minDays || maxDays > 365)) {
+                                                                setChoreError(`Max interval must be between ${minDays} and 365 days, or leave blank for exact interval.`);
                                                                 return;
                                                             }
                                                             setSavingChore(true);
@@ -5250,8 +5274,12 @@ function IcpNeuronManager() {
                                                                     await agent.fetchRootKey();
                                                                 }
                                                                 const manager = createManagerActor(canisterId, { agent });
-                                                                await manager.setChoreInterval(chore.choreId, BigInt(days * 86400));
-                                                                setChoreSuccess(`Interval updated to ${days} days.`);
+                                                                await manager.setChoreInterval(chore.choreId, BigInt(minDays * 86400));
+                                                                await manager.setChoreMaxInterval(chore.choreId, maxDays !== null ? [BigInt(maxDays * 86400)] : []);
+                                                                const msg = maxDays !== null && maxDays > minDays
+                                                                    ? `Interval updated to ${minDays}–${maxDays} days (randomized).`
+                                                                    : `Interval updated to ${minDays} days.`;
+                                                                setChoreSuccess(msg);
                                                                 await loadChoreData();
                                                             } catch (err) {
                                                                 setChoreError('Failed to update interval: ' + err.message);
@@ -5263,6 +5291,9 @@ function IcpNeuronManager() {
                                                         Save
                                                     </button>
                                                 </div>
+                                                <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: theme.colors.mutedText }}>
+                                                    Set a max to randomize the interval. Leave max blank for exact scheduling.
+                                                </p>
                                                 {chore.choreId === 'confirm-following' && (
                                                 <p style={{ margin: '6px 0 0', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
                                                     NNS requires following confirmation at least every 6 months. We recommend 30 days or less.

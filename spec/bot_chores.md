@@ -31,6 +31,8 @@ The **Scheduler** is the outermost timer. It fires on a recurring schedule (e.g.
 
 The Scheduler is a simple periodic trigger. It does no actual work.
 
+**Interval Randomization**: If `maxIntervalSeconds` is set in the chore config and is greater than `intervalSeconds`, the scheduler picks a random time within `[intervalSeconds, maxIntervalSeconds]` each time it reschedules. The randomization uses `Time.now()` nanosecond timestamp as entropy source. This is useful for bots where perfectly regular scheduling is undesirable (e.g. trading bots that should vary the timing of their actions).
+
 ### 2.2 Conductor (Level 2)
 
 The **Conductor** orchestrates the chore's execution. It uses a **polling pattern**:
@@ -142,7 +144,12 @@ Each bot:
 type ChoreConfig = {
     enabled: Bool;              // true = started (Running or Paused), false = Stopped
     paused: Bool;               // true = Paused (schedule preserved), false = Running or Stopped
-    intervalSeconds: Nat;       // How often the scheduler fires
+    intervalSeconds: Nat;       // How often the scheduler fires (minimum interval)
+    maxIntervalSeconds: ?Nat;   // Optional max interval — when set, scheduler picks a random
+                                // time in [intervalSeconds, maxIntervalSeconds] each time it reschedules.
+                                // Useful for bots where perfectly regular scheduling is undesirable
+                                // (e.g. trading bots that should vary timing).
+                                // When null, exact intervalSeconds is used.
     taskTimeoutSeconds: Nat;    // Max seconds a task can run before considered dead
 };
 ```
@@ -224,6 +231,7 @@ type ChoreStatus = {
     enabled: Bool;
     paused: Bool;
     intervalSeconds: Nat;
+    maxIntervalSeconds: ?Nat;
     taskTimeoutSeconds: Nat;
 
     schedulerStatus: { #Idle; #Scheduled };
@@ -372,7 +380,7 @@ Called in both the actor body (first deploy) and `postupgrade` (upgrades):
    - If **enabled** and has a valid `nextScheduledRunAt`:
      - If in the future → schedule for that time.
      - If in the past → schedule immediately (missed while stopped).
-     - If none → schedule for `intervalSeconds` from now.
+     - If none → schedule for `computeInterval(config)` from now (respecting randomization if configured).
    - If a **conductor was active** when the upgrade happened:
      - Restart the conductor from the beginning (`invocationCount = 0`).
      - The conductor's captured mutable state is lost, so it starts fresh.
@@ -468,6 +476,7 @@ getChoreStatus(choreId: Text) : async ?ChoreStatus
 // Admin controls
 setChoreEnabled(choreId: Text, enabled: Bool) : async ()
 setChoreInterval(choreId: Text, seconds: Nat) : async ()
+setChoreMaxInterval(choreId: Text, seconds: ?Nat) : async ()  // Set optional max interval for randomization
 setChoreTaskTimeout(choreId: Text, seconds: Nat) : async ()
 triggerChore(choreId: Text) : async ()
 stopChore(choreId: Text) : async ()

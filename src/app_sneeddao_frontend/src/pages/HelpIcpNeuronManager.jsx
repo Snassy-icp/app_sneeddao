@@ -609,6 +609,20 @@ function HelpIcpNeuronManager() {
                         </ul>
                     </div>
 
+                    <div style={styles.tipBox}>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaClock size={14} color={icpPrimary} />
+                            Interval Randomization
+                        </h4>
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                            Each chore's interval can optionally be set as a <strong style={styles.strong}>range</strong> (e.g. 
+                            "every 5 to 10 days"). When a range is set, the bot picks a random time within 
+                            the range each time it reschedules. This is useful for bots where perfectly regular 
+                            scheduling is undesirable — for example, a trading bot that should vary the timing of its actions. 
+                            Leave the max field blank for exact, predictable scheduling.
+                        </p>
+                    </div>
+
                     {/* Confirm Following */}
                     <div style={styles.featureCard}>
                         <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>

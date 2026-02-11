@@ -30,7 +30,8 @@ module {
     public type ChoreConfig = {
         enabled: Bool;              // Whether the chore is started (true) or stopped (false)
         paused: Bool;               // Whether the chore is paused (schedule preserved but suspended)
-        intervalSeconds: Nat;       // How often the scheduler fires (in seconds)
+        intervalSeconds: Nat;       // Minimum interval: how often the scheduler fires (in seconds)
+        maxIntervalSeconds: ?Nat;   // Optional max interval for random scheduling (null = use intervalSeconds exactly)
         taskTimeoutSeconds: Nat;    // Max seconds a task can run before considered dead
     };
 
@@ -164,6 +165,9 @@ module {
         description: Text;
         /// Default schedule interval in seconds (used when first registered).
         defaultIntervalSeconds: Nat;
+        /// Default max interval in seconds (null = no range, use exact interval).
+        /// When set, each reschedule picks a random time in [defaultIntervalSeconds, defaultMaxIntervalSeconds].
+        defaultMaxIntervalSeconds: ?Nat;
         /// Default task timeout in seconds (used when first registered).
         /// Timed-out tasks are marked as failed and the conductor can recover.
         defaultTaskTimeoutSeconds: Nat;
@@ -205,6 +209,7 @@ module {
         enabled: Bool;
         paused: Bool;
         intervalSeconds: Nat;
+        maxIntervalSeconds: ?Nat;
         taskTimeoutSeconds: Nat;
 
         // Scheduler
