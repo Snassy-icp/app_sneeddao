@@ -1650,6 +1650,14 @@ function IcpNeuronManager() {
         'ManageVisibility': 'Manage Visibility',
         'WithdrawFunds': 'Withdraw Funds',
         'ViewNeuron': 'View Neuron',
+        'MakeProposal': 'Make Proposal',
+        'ManageConfirmFollowing': 'Manage Confirm Following',
+        'ManageRefreshStake': 'Manage Refresh Stake',
+        'ManageCollectMaturity': 'Manage Collect Maturity',
+        'ManageDistributeFunds': 'Manage Distribute Funds',
+        'ConfigureCollectMaturity': 'Configure Collect Maturity',
+        'ConfigureDistribution': 'Configure Distribution',
+        'ViewChores': 'View Chores',
     };
 
     // Known descriptions for permission keys (empty string for unknown permissions)
@@ -1658,6 +1666,7 @@ function IcpNeuronManager() {
         'ManagePermissions': 'Add/remove botkey principals and manage their permissions',
         'ConfigureDissolveState': 'Start/stop dissolving, set dissolve delay',
         'Vote': 'Vote on proposals, refresh voting power',
+        'MakeProposal': 'Submit NNS proposals using a neuron',
         'Disburse': 'Disburse neuron stake',
         'Split': 'Split neuron into multiple neurons',
         'MergeMaturity': 'Merge maturity into stake',
@@ -1672,6 +1681,13 @@ function IcpNeuronManager() {
         'ManageVisibility': 'Set neuron visibility',
         'WithdrawFunds': 'Withdraw ICP or tokens from the canister',
         'ViewNeuron': 'View neuron info, list neurons, and check balances',
+        'ManageConfirmFollowing': 'Start, stop, pause, resume, and configure the Confirm Following chore',
+        'ManageRefreshStake': 'Start, stop, pause, resume, and configure the Refresh Stake chore',
+        'ManageCollectMaturity': 'Start, stop, pause, resume, and configure the Collect Maturity chore',
+        'ManageDistributeFunds': 'Start, stop, pause, resume, and configure the Distribute Funds chore',
+        'ConfigureCollectMaturity': 'Set the maturity collection threshold and destination account',
+        'ConfigureDistribution': 'Add, edit, and remove distribution lists (controls where funds are sent)',
+        'ViewChores': 'View bot chore statuses, configurations, and settings',
     };
 
     // Get human-readable label for a permission key (dynamic: falls back to splitting CamelCase)
