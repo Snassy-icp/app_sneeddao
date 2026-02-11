@@ -302,11 +302,19 @@ function _getNeuronManagerCriticalLevel() {
     const s = getNeuronManagerSettings();
     return s.cycleThresholdRed || 1_000_000_000_000;
 }
+function _getNeuronManagerHealthyLevel() {
+    const s = getNeuronManagerSettings();
+    return s.cycleThresholdOrange || 5_000_000_000_000;
+}
 
 // Helper: get critical cycle level for generic tracked canisters
 function _getCanisterCriticalLevel() {
     const s = getCanisterManagerSettings();
     return s.cycleThresholdRed || 1_000_000_000_000;
+}
+function _getCanisterHealthyLevel() {
+    const s = getCanisterManagerSettings();
+    return s.cycleThresholdOrange || 5_000_000_000_000;
 }
 
 // ============================================================================
@@ -2008,6 +2016,7 @@ export const WalletProvider = ({ children }) => {
                     canisterId: cid,
                     cycles,
                     criticalLevel,
+                    healthyLevel: _getNeuronManagerHealthyLevel(),
                     type: 'neuron_manager',
                     label: 'ICP Staking Bot',
                     version: manager.version,
@@ -2032,6 +2041,7 @@ export const WalletProvider = ({ children }) => {
                     canisterId,
                     cycles,
                     criticalLevel,
+                    healthyLevel: _getCanisterHealthyLevel(),
                     type: 'canister',
                     label: 'Wallet',
                 });
@@ -2051,6 +2061,7 @@ export const WalletProvider = ({ children }) => {
                     canisterId,
                     cycles,
                     criticalLevel,
+                    healthyLevel: _getCanisterHealthyLevel(),
                     type: 'canister',
                     label: 'App',
                 });

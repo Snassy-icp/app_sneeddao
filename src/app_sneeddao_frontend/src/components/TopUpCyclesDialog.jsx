@@ -7,7 +7,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 import { useNaming } from '../NamingContext';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
-import { formatCyclesCompact } from '../utils/NeuronManagerSettings';
+import { formatCyclesCompact, parseCyclesInput } from '../utils/NeuronManagerSettings';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
 
@@ -19,7 +19,7 @@ const TOP_UP_MEMO = new Uint8Array([0x54, 0x50, 0x55, 0x50, 0x00, 0x00, 0x00, 0x
 const MANAGEMENT_CANISTER_ID_TEXT = 'aaaaa-aa';
 const managementCanisterIdlFactory = ({ IDL }) => IDL.Service({});
 
-const MODE_TO_CRITICAL = 'to_critical';
+const MODE_TO_LEVEL = 'to_level';
 const MODE_SPLIT_EQUAL = 'split_equal';
 const MODE_EACH = 'each';
 
@@ -39,8 +39,9 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
     const { getPrincipalDisplayName } = useNaming();
 
     const [selected, setSelected] = useState({}); // canisterId -> boolean
-    const [mode, setMode] = useState(MODE_TO_CRITICAL);
+    const [mode, setMode] = useState(MODE_TO_LEVEL);
     const [icpAmount, setIcpAmount] = useState('');
+    const [targetCycleLevel, setTargetCycleLevel] = useState(''); // cycles target for MODE_TO_LEVEL
     const [icpBalance, setIcpBalance] = useState(null);
     const [balanceLoading, setBalanceLoading] = useState(false);
     const [topUpStatus, setTopUpStatus] = useState({}); // canisterId -> 'pending' | 'topping_up' | 'success' | 'error'
@@ -52,6 +53,8 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
     const abortRef = useRef(false);
 
     const effectiveRate = icpToCyclesRate || localRate;
+
+    const hasSmartPrefilledRef = useRef(false);
 
     // Initialize selection when dialog opens
     useEffect(() => {
@@ -66,10 +69,59 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
             setTopUpResults({});
             setIsProcessing(false);
             setIcpAmount('');
-            setMode(MODE_TO_CRITICAL);
+            setMode(MODE_TO_LEVEL);
+            // Default target: the max healthy level (will be adjusted by smart prefill below)
+            const maxHealthy = Math.max(...lowCyclesCanisters.map(c => c.healthyLevel || c.criticalLevel));
+            setTargetCycleLevel(formatCyclesCompact(maxHealthy));
+            hasSmartPrefilledRef.current = false;
             abortRef.current = false;
         }
     }, [isOpen, lowCyclesCanisters]);
+
+    // Smart prefill: once we know the balance and rate, pick the best affordable target
+    useEffect(() => {
+        if (!isOpen || hasSmartPrefilledRef.current || !effectiveRate || effectiveRate <= 0 || icpBalance === null) return;
+        if (lowCyclesCanisters.length === 0) return;
+        hasSmartPrefilledRef.current = true;
+
+        const canisters = lowCyclesCanisters;
+        const fees = canisters.length * ICP_FEE / E8S_ICP;
+
+        // Helper: ICP needed to bring all canisters to a given cycle level
+        const icpNeededForLevel = (level) => {
+            let total = 0;
+            for (const c of canisters) {
+                const deficit = level - (c.cycles || 0);
+                if (deficit > 0) total += (deficit * 1.1) / effectiveRate;
+            }
+            return total + fees;
+        };
+
+        const maxHealthy = Math.max(...canisters.map(c => c.healthyLevel || c.criticalLevel));
+        const maxCritical = Math.max(...canisters.map(c => c.criticalLevel || 0));
+
+        const icpForHealthy = icpNeededForLevel(maxHealthy);
+        const icpForCritical = icpNeededForLevel(maxCritical);
+
+        if (icpBalance >= icpForHealthy) {
+            // Can afford healthy — set to healthy
+            setTargetCycleLevel(formatCyclesCompact(maxHealthy));
+        } else if (icpBalance >= icpForCritical) {
+            // Can afford critical but not healthy — set to critical
+            setTargetCycleLevel(formatCyclesCompact(maxCritical));
+        } else {
+            // Can't even afford critical — compute the max affordable level
+            const availableIcp = Math.max(0, icpBalance - fees);
+            if (availableIcp > 0) {
+                const totalCyclesAffordable = availableIcp * effectiveRate / 1.1; // account for the 10% buffer
+                // Distribute proportionally — in the simplest case, the max level we can top them all to
+                // is: current_min + totalCyclesAffordable / N
+                const minCycles = Math.min(...canisters.map(c => c.cycles || 0));
+                const levelWeCanAfford = minCycles + totalCyclesAffordable / canisters.length;
+                setTargetCycleLevel(formatCyclesCompact(Math.floor(levelWeCanAfford)));
+            }
+        }
+    }, [isOpen, effectiveRate, icpBalance, lowCyclesCanisters]);
 
     // Fetch ICP balance when dialog opens
     useEffect(() => {
@@ -151,14 +203,17 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
     const selectedCanisters = lowCyclesCanisters.filter(c => selected[c.canisterId]);
     const selectedCount = selectedCanisters.length;
 
-    // Compute ICP needed per canister for "to critical" mode
-    const computeToCriticalAmounts = useCallback(() => {
-        if (!effectiveRate || effectiveRate <= 0) return {};
+    // Parse the user-specified target cycle level
+    const parsedTargetLevel = parseCyclesInput(targetCycleLevel) || 0;
+
+    // Compute ICP needed per canister for "to level" mode
+    const computeToLevelAmounts = useCallback(() => {
+        if (!effectiveRate || effectiveRate <= 0 || !parsedTargetLevel) return {};
         const amounts = {};
         for (const c of selectedCanisters) {
-            const deficit = c.criticalLevel - (c.cycles || 0);
+            const deficit = parsedTargetLevel - (c.cycles || 0);
             if (deficit > 0) {
-                // Add 10% buffer to ensure we reach the critical level
+                // Add 10% buffer to ensure we reach the target level
                 const icpNeeded = (deficit * 1.1) / effectiveRate;
                 amounts[c.canisterId] = Math.max(icpNeeded, 0.001); // minimum 0.001 ICP
             } else {
@@ -166,16 +221,16 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
             }
         }
         return amounts;
-    }, [selectedCanisters, effectiveRate]);
+    }, [selectedCanisters, effectiveRate, parsedTargetLevel]);
 
-    const toCriticalAmounts = mode === MODE_TO_CRITICAL ? computeToCriticalAmounts() : {};
-    const totalToCritical = Object.values(toCriticalAmounts).reduce((sum, v) => sum + v, 0);
-    const totalToCriticalWithFees = totalToCritical + (selectedCount * ICP_FEE / E8S_ICP);
+    const toLevelAmounts = mode === MODE_TO_LEVEL ? computeToLevelAmounts() : {};
+    const totalToLevel = Object.values(toLevelAmounts).reduce((sum, v) => sum + v, 0);
+    const totalToLevelWithFees = totalToLevel + (selectedCount * ICP_FEE / E8S_ICP);
 
     // Compute total ICP needed based on mode
     const computeTotalIcp = () => {
-        if (mode === MODE_TO_CRITICAL) {
-            return totalToCriticalWithFees;
+        if (mode === MODE_TO_LEVEL) {
+            return totalToLevelWithFees;
         }
         const amt = parseFloat(icpAmount) || 0;
         if (mode === MODE_EACH) {
@@ -192,7 +247,8 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
     // Handle top-up
     const handleTopUp = async () => {
         if (!identity || selectedCount === 0 || isProcessing) return;
-        if (mode !== MODE_TO_CRITICAL && (!icpAmount || parseFloat(icpAmount) <= 0)) return;
+        if (mode !== MODE_TO_LEVEL && (!icpAmount || parseFloat(icpAmount) <= 0)) return;
+        if (mode === MODE_TO_LEVEL && (!parsedTargetLevel || parsedTargetLevel <= 0)) return;
 
         setIsProcessing(true);
         abortRef.current = false;
@@ -219,8 +275,8 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
             const amt = parseFloat(icpAmount) || 0;
 
             for (const c of selectedCanisters) {
-                if (mode === MODE_TO_CRITICAL) {
-                    perCanisterIcp[c.canisterId] = toCriticalAmounts[c.canisterId] || 0;
+                if (mode === MODE_TO_LEVEL) {
+                    perCanisterIcp[c.canisterId] = toLevelAmounts[c.canisterId] || 0;
                 } else if (mode === MODE_SPLIT_EQUAL) {
                     perCanisterIcp[c.canisterId] = amt / selectedCount;
                 } else {
@@ -335,7 +391,7 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
     const successCount = Object.values(topUpStatus).filter(s => s === 'success').length;
 
     const canStart = selectedCount > 0 && !isProcessing &&
-        (mode === MODE_TO_CRITICAL ? (effectiveRate && totalToCritical > 0) : (parseFloat(icpAmount) > 0)) &&
+        (mode === MODE_TO_LEVEL ? (effectiveRate && parsedTargetLevel > 0 && totalToLevel > 0) : (parseFloat(icpAmount) > 0)) &&
         hasEnoughBalance;
 
     return (
@@ -410,7 +466,7 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                             {[
-                                { id: MODE_TO_CRITICAL, label: 'Top up each to critical level', desc: 'Auto-calculates the ICP needed to bring each canister to its critical threshold' },
+                                { id: MODE_TO_LEVEL, label: 'Top up each to a target cycle level', desc: 'Auto-calculates the ICP needed to bring each canister to the specified cycle level' },
                                 { id: MODE_SPLIT_EQUAL, label: 'Split ICP equally', desc: 'Divide a total ICP amount equally among selected canisters' },
                                 { id: MODE_EACH, label: 'Same amount for each', desc: 'Send the same ICP amount to each selected canister' },
                             ].map(m => (
@@ -441,8 +497,99 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
                         </div>
                     </div>
 
-                    {/* ICP Amount Input (hidden for to_critical mode) */}
-                    {mode !== MODE_TO_CRITICAL && (
+                    {/* Target Cycle Level Input (for to_level mode) */}
+                    {mode === MODE_TO_LEVEL && (
+                        <div style={{ marginBottom: '16px' }}>
+                            <div style={{ color: theme.colors.mutedText, fontSize: '11px', textTransform: 'uppercase', marginBottom: '6px', letterSpacing: '0.5px' }}>
+                                Target Cycle Level
+                            </div>
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. 5T, 1T, 500B"
+                                    value={targetCycleLevel}
+                                    onChange={(e) => setTargetCycleLevel(e.target.value)}
+                                    disabled={isProcessing}
+                                    style={{
+                                        flex: 1, minWidth: '120px', padding: '10px 12px', borderRadius: '8px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        backgroundColor: theme.colors.primaryBg, color: theme.colors.primaryText,
+                                        fontSize: '14px', boxSizing: 'border-box',
+                                    }}
+                                />
+                                {(() => {
+                                    // Compute the critical and healthy levels
+                                    const maxCritical = selectedCanisters.length > 0
+                                        ? Math.max(...selectedCanisters.map(c => c.criticalLevel || 0))
+                                        : 0;
+                                    const maxHealthy = selectedCanisters.length > 0
+                                        ? Math.max(...selectedCanisters.map(c => c.healthyLevel || c.criticalLevel || 0))
+                                        : 0;
+
+                                    // Compute ICP needed for each level to check affordability
+                                    const computeIcpForLevel = (level) => {
+                                        if (!effectiveRate || effectiveRate <= 0 || !level) return Infinity;
+                                        let total = 0;
+                                        for (const c of selectedCanisters) {
+                                            const deficit = level - (c.cycles || 0);
+                                            if (deficit > 0) {
+                                                total += (deficit * 1.1) / effectiveRate;
+                                            }
+                                        }
+                                        return total + (selectedCanisters.length * ICP_FEE / E8S_ICP);
+                                    };
+
+                                    const icpForCritical = computeIcpForLevel(maxCritical);
+                                    const icpForHealthy = computeIcpForLevel(maxHealthy);
+                                    const canAffordCritical = icpBalance !== null && icpBalance >= icpForCritical;
+                                    const canAffordHealthy = icpBalance !== null && icpBalance >= icpForHealthy;
+
+                                    const btnStyle = (active) => ({
+                                        padding: '7px 12px', borderRadius: '8px', border: 'none',
+                                        fontSize: '11px', fontWeight: '600', whiteSpace: 'nowrap',
+                                        cursor: isProcessing ? 'not-allowed' : 'pointer',
+                                        opacity: isProcessing ? 0.5 : 1,
+                                        transition: 'all 0.15s ease',
+                                    });
+
+                                    return (<>
+                                        <button
+                                            onClick={() => !isProcessing && setTargetCycleLevel(formatCyclesCompact(maxCritical))}
+                                            disabled={isProcessing}
+                                            title={`Set target to just above critical (${formatCyclesCompact(maxCritical)}) — ${canAffordCritical ? `needs ~${icpForCritical.toFixed(4)} ICP` : 'insufficient balance'}`}
+                                            style={{
+                                                ...btnStyle(),
+                                                backgroundColor: canAffordCritical ? '#f59e0b20' : '#ef444415',
+                                                color: canAffordCritical ? '#f59e0b' : '#ef444480',
+                                            }}
+                                        >
+                                            Critical
+                                        </button>
+                                        <button
+                                            onClick={() => !isProcessing && setTargetCycleLevel(formatCyclesCompact(maxHealthy))}
+                                            disabled={isProcessing}
+                                            title={`Set target to healthy (${formatCyclesCompact(maxHealthy)}) — ${canAffordHealthy ? `needs ~${icpForHealthy.toFixed(4)} ICP` : 'insufficient balance'}`}
+                                            style={{
+                                                ...btnStyle(),
+                                                backgroundColor: canAffordHealthy ? '#22c55e20' : '#ef444415',
+                                                color: canAffordHealthy ? '#22c55e' : '#ef444480',
+                                            }}
+                                        >
+                                            Healthy
+                                        </button>
+                                    </>);
+                                })()}
+                            </div>
+                            {parsedTargetLevel > 0 && (
+                                <div style={{ marginTop: '6px', fontSize: '11px', color: theme.colors.mutedText }}>
+                                    Target: {parsedTargetLevel.toLocaleString()} cycles ({formatCyclesCompact(parsedTargetLevel)})
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ICP Amount Input (hidden for to_level mode) */}
+                    {mode !== MODE_TO_LEVEL && (
                         <div style={{ marginBottom: '16px' }}>
                             <div style={{ color: theme.colors.mutedText, fontSize: '11px', textTransform: 'uppercase', marginBottom: '6px', letterSpacing: '0.5px' }}>
                                 {mode === MODE_SPLIT_EQUAL ? 'Total ICP to Split' : 'ICP per Canister'}
@@ -497,8 +644,8 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
                         </div>
                     )}
 
-                    {/* To-critical summary */}
-                    {mode === MODE_TO_CRITICAL && effectiveRate && selectedCount > 0 && (
+                    {/* To-level summary */}
+                    {mode === MODE_TO_LEVEL && effectiveRate && selectedCount > 0 && parsedTargetLevel > 0 && (
                         <div style={{
                             padding: '12px 16px', borderRadius: '10px', marginBottom: '16px',
                             backgroundColor: `${theme.colors.accent}08`,
@@ -509,10 +656,15 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
                                     Total ICP needed (incl. fees)
                                 </span>
                                 <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '14px' }}>
-                                    {totalToCriticalWithFees.toFixed(4)} ICP
+                                    {totalToLevelWithFees.toFixed(4)} ICP
                                 </span>
                             </div>
-                            {!hasEnoughBalance && icpBalance !== null && (
+                            {totalToLevel <= 0 && (
+                                <div style={{ marginTop: '6px', color: '#22c55e', fontSize: '11px' }}>
+                                    All selected canisters are already at or above this level
+                                </div>
+                            )}
+                            {totalToLevel > 0 && !hasEnoughBalance && icpBalance !== null && (
                                 <div style={{ marginTop: '6px', color: '#ef4444', fontSize: '11px' }}>
                                     Insufficient balance ({icpBalance.toFixed(4)} ICP available)
                                 </div>
@@ -521,7 +673,7 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
                     )}
 
                     {/* Rate loading indicator */}
-                    {mode === MODE_TO_CRITICAL && !effectiveRate && (
+                    {mode === MODE_TO_LEVEL && !effectiveRate && (
                         <div style={{
                             padding: '12px', borderRadius: '10px', marginBottom: '16px',
                             backgroundColor: theme.colors.secondaryBg, textAlign: 'center',
@@ -531,8 +683,8 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
                         </div>
                     )}
 
-                    {/* Total needed (for non-to-critical modes) */}
-                    {mode !== MODE_TO_CRITICAL && parseFloat(icpAmount) > 0 && (
+                    {/* Total needed (for non-to-level modes) */}
+                    {mode !== MODE_TO_LEVEL && parseFloat(icpAmount) > 0 && (
                         <div style={{
                             padding: '10px 14px', borderRadius: '8px', marginBottom: '16px',
                             backgroundColor: theme.colors.secondaryBg,
@@ -589,8 +741,8 @@ export default function TopUpCyclesDialog({ isOpen, onClose, lowCyclesCanisters 
                             const error = topUpErrors[c.canisterId];
                             const cyclesAdded = topUpResults[c.canisterId];
                             const deficit = c.criticalLevel - (c.cycles || 0);
-                            const icpForThis = mode === MODE_TO_CRITICAL
-                                ? (toCriticalAmounts[c.canisterId] || 0)
+                            const icpForThis = mode === MODE_TO_LEVEL
+                                ? (toLevelAmounts[c.canisterId] || 0)
                                 : mode === MODE_SPLIT_EQUAL
                                     ? ((parseFloat(icpAmount) || 0) / Math.max(selectedCount, 1))
                                     : (parseFloat(icpAmount) || 0);
