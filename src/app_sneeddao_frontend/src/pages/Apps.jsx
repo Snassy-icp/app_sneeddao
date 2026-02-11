@@ -2446,6 +2446,10 @@ export default function AppsPage() {
         const memory = status?.memory;
         const isController = status?.isController;
         const isConfirming = confirmRemoveCanister?.canisterId === canisterId && confirmRemoveCanister?.groupId === groupId;
+        
+        // Compute health status for cycle lamp overlay
+        const canisterHealth = getCanisterHealthStatus(canisterId, canisterStatus, cycleSettings);
+        const canisterLampColor = getStatusLampColor(canisterHealth);
 
         return (
             <div 
@@ -2472,6 +2476,21 @@ export default function AppsPage() {
                                 title="You are a controller"
                             />
                         )}
+                        {/* Cycle status lamp - top left */}
+                        <span
+                            style={{
+                                position: 'absolute',
+                                top: -3,
+                                left: -3,
+                                width: '8px',
+                                height: '8px',
+                                borderRadius: '50%',
+                                backgroundColor: canisterLampColor,
+                                boxShadow: canisterHealth !== 'unknown' ? `0 0 6px ${canisterLampColor}` : 'none',
+                                zIndex: 2,
+                            }}
+                            title={`Health: ${canisterHealth}`}
+                        />
                         {isSnsCanisterType(displayInfo?.canisterTypes) && <SnsPill size="small" />}
                     </div>
                     <PrincipalDisplay
@@ -2633,18 +2652,6 @@ export default function AppsPage() {
                 }}
             >
                 <div style={styles.managerInfo}>
-                    {/* Health status lamp */}
-                    <span
-                        style={{
-                            width: '8px',
-                            height: '8px',
-                            borderRadius: '50%',
-                            backgroundColor: lampColor,
-                            boxShadow: healthStatus !== 'unknown' ? `0 0 6px ${lampColor}` : 'none',
-                            flexShrink: 0,
-                        }}
-                        title={`Health: ${healthStatus}${isVersionOutdated(version) ? ' (outdated version)' : ''}`}
-                    />
                     <div style={{ ...styles.managerIcon, position: 'relative' }}>
                         <FaBrain size={18} />
                         {isController && (
@@ -2659,6 +2666,21 @@ export default function AppsPage() {
                                 title="You are a controller"
                             />
                         )}
+                        {/* Cycle status lamp - top left */}
+                        <span
+                            style={{
+                                position: 'absolute',
+                                top: -3,
+                                left: -3,
+                                width: '8px',
+                                height: '8px',
+                                borderRadius: '50%',
+                                backgroundColor: lampColor,
+                                boxShadow: healthStatus !== 'unknown' ? `0 0 6px ${lampColor}` : 'none',
+                                zIndex: 2,
+                            }}
+                            title={`Health: ${healthStatus}${isVersionOutdated(version) ? ' (outdated version)' : ''}`}
+                        />
                     </div>
                     <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
@@ -4643,18 +4665,6 @@ export default function AppsPage() {
                                                         }}
                                                     >
                                                         <div style={styles.canisterInfo}>
-                                                            {/* Health status lamp */}
-                                                            <span
-                                                                style={{
-                                                                    width: '8px',
-                                                                    height: '8px',
-                                                                    borderRadius: '50%',
-                                                                    backgroundColor: canisterLampColor,
-                                                                    boxShadow: canisterHealth !== 'unknown' ? `0 0 6px ${canisterLampColor}` : 'none',
-                                                                    flexShrink: 0,
-                                                                }}
-                                                                title={`Health: ${canisterHealth}`}
-                                                            />
                                                             <div style={{ ...styles.canisterIcon, position: 'relative' }}>
                                                                 {getCanisterTypeIcon(displayInfo?.canisterTypes, 18, theme.colors.accent)}
                                                                 {isController && (
@@ -4669,6 +4679,21 @@ export default function AppsPage() {
                                                                         title="You are a controller"
                                                                     />
                                                                 )}
+                                                                {/* Cycle status lamp - top left */}
+                                                                <span
+                                                                    style={{
+                                                                        position: 'absolute',
+                                                                        top: -3,
+                                                                        left: -3,
+                                                                        width: '8px',
+                                                                        height: '8px',
+                                                                        borderRadius: '50%',
+                                                                        backgroundColor: canisterLampColor,
+                                                                        boxShadow: canisterHealth !== 'unknown' ? `0 0 6px ${canisterLampColor}` : 'none',
+                                                                        zIndex: 2,
+                                                                    }}
+                                                                    title={`Health: ${canisterHealth}`}
+                                                                />
                                                                 {isSnsCanisterType(displayInfo?.canisterTypes) && <SnsPill size="small" />}
                                                             </div>
                                                             <PrincipalDisplay
@@ -5072,17 +5097,6 @@ export default function AppsPage() {
                                                         }}
                                                     >
                                                         <div style={styles.canisterInfo}>
-                                                            <span
-                                                                style={{
-                                                                    width: '8px',
-                                                                    height: '8px',
-                                                                    borderRadius: '50%',
-                                                                    backgroundColor: canisterLampColor,
-                                                                    boxShadow: canisterHealth !== 'unknown' ? `0 0 6px ${canisterLampColor}` : 'none',
-                                                                    flexShrink: 0,
-                                                                }}
-                                                            title={`Health: ${canisterHealth}${!manager.moduleHash ? ' (WASM unknown - not controller)' : ' (WASM mismatch)'}`}
-                                                        />
                                                         <div style={{ ...styles.canisterIcon, position: 'relative' }}>
                                                             {getCanisterTypeIcon(displayInfo?.canisterTypes, 18, theme.colors.accent)}
                                                             {manager.isController && (
@@ -5097,6 +5111,21 @@ export default function AppsPage() {
                                                                     title="You are a controller"
                                                                 />
                                                             )}
+                                                            {/* Cycle status lamp - top left */}
+                                                            <span
+                                                                style={{
+                                                                    position: 'absolute',
+                                                                    top: -3,
+                                                                    left: -3,
+                                                                    width: '8px',
+                                                                    height: '8px',
+                                                                    borderRadius: '50%',
+                                                                    backgroundColor: canisterLampColor,
+                                                                    boxShadow: canisterHealth !== 'unknown' ? `0 0 6px ${canisterLampColor}` : 'none',
+                                                                    zIndex: 2,
+                                                                }}
+                                                                title={`Health: ${canisterHealth}${!manager.moduleHash ? ' (WASM unknown - not controller)' : ' (WASM mismatch)'}`}
+                                                            />
                                                         </div>
                                                         <div>
                                                             <PrincipalDisplay
@@ -5232,18 +5261,6 @@ export default function AppsPage() {
                                                     }}
                                                 >
                                                     <div style={styles.managerInfo}>
-                                                        {/* Health status lamp */}
-                                                        <span
-                                                            style={{
-                                                                width: '8px',
-                                                                height: '8px',
-                                                                borderRadius: '50%',
-                                                                backgroundColor: managerLampColor,
-                                                                boxShadow: managerHealth !== 'unknown' ? `0 0 6px ${managerLampColor}` : 'none',
-                                                                flexShrink: 0,
-                                                            }}
-                                                            title={`Health: ${managerHealth}${isVersionOutdated(manager.version) ? ' (outdated version)' : ''}`}
-                                                        />
                                                         <div style={{ ...styles.managerIcon, position: 'relative' }}>
                                                             <FaBrain size={18} />
                                                             {manager.isController && (
@@ -5258,6 +5275,21 @@ export default function AppsPage() {
                                                                     title="You are a controller"
                                                                 />
                                                             )}
+                                                            {/* Cycle status lamp - top left */}
+                                                            <span
+                                                                style={{
+                                                                    position: 'absolute',
+                                                                    top: -3,
+                                                                    left: -3,
+                                                                    width: '8px',
+                                                                    height: '8px',
+                                                                    borderRadius: '50%',
+                                                                    backgroundColor: managerLampColor,
+                                                                    boxShadow: managerHealth !== 'unknown' ? `0 0 6px ${managerLampColor}` : 'none',
+                                                                    zIndex: 2,
+                                                                }}
+                                                                title={`Health: ${managerHealth}${isVersionOutdated(manager.version) ? ' (outdated version)' : ''}`}
+                                                            />
                                                         </div>
                                                         <div>
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
