@@ -2947,17 +2947,32 @@ export default function AppsPage() {
                             }}
                             title={`SNS health: ${overallHealth}`}
                         />
-                        {/* SNS Logo or fallback icon */}
-                        <div style={{ position: 'relative', width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            {snsData.logo ? (
+                        {/* Layered icon: folder (back) → SNS logo (middle) → SNS pill (front) */}
+                        <div style={{ position: 'relative', width: '26px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            {/* Layer 1: Folder icon (back) */}
+                            {isExpanded 
+                                ? <FaFolderOpen style={{ color: '#8b5cf6', fontSize: '20px' }} /> 
+                                : <FaFolder style={{ color: '#8b5cf6', fontSize: '20px' }} />
+                            }
+                            {/* Layer 2: SNS logo (middle, overlaid on folder) */}
+                            {snsData.logo && (
                                 <img 
                                     src={snsData.logo} 
                                     alt={snsData.name}
-                                    style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover' }}
+                                    style={{ 
+                                        position: 'absolute',
+                                        bottom: 0,
+                                        right: -2,
+                                        width: '14px', 
+                                        height: '14px', 
+                                        borderRadius: '50%', 
+                                        objectFit: 'cover',
+                                        border: '1.5px solid ' + theme.colors.secondaryBg,
+                                        zIndex: 1,
+                                    }}
                                 />
-                            ) : (
-                                isExpanded ? <FaFolderOpen style={{ color: '#8b5cf6', fontSize: '18px' }} /> : <FaFolder style={{ color: '#8b5cf6', fontSize: '18px' }} />
                             )}
+                            {/* Layer 3: SNS pill (front) */}
                             <SnsPill size="small" />
                         </div>
                         <span style={{ fontWeight: 600, color: theme.colors.text, fontSize: '14px' }}>
