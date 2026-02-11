@@ -1747,8 +1747,29 @@ export default function AppsPage() {
         const isEditing = editingGroup === group.id;
         const isAddingSubgroup = newSubgroupParent === group.id;
         const isAddingCanister = addingCanisterToGroupId === group.id;
-        const totalCanisters = group.canisters.length + 
-            group.subgroups.reduce((sum, sg) => sum + sg.canisters.length, 0);
+        // Count canisters including virtual SNS sub-canisters
+        const countCanistersWithSns = (canisters) => {
+            let count = 0;
+            for (const cid of canisters) {
+                count++; // count the canister itself
+                const snsData = snsRootDataMap.get(cid);
+                if (snsData) {
+                    // Add virtual sub-canisters (minus root which is already counted)
+                    count += snsData.systemCanisters.filter(sc => sc.id !== cid).length;
+                    count += snsData.dappCanisters.length;
+                    count += snsData.archiveCanisters.length;
+                }
+            }
+            return count;
+        };
+        const countGroupCanisters = (grp) => {
+            let total = countCanistersWithSns(grp.canisters);
+            for (const sg of grp.subgroups) {
+                total += countGroupCanisters(sg);
+            }
+            return total;
+        };
+        const totalCanisters = countGroupCanisters(group);
         
         // Calculate health status for this group
         const healthStatus = getGroupHealthStatus(group, canisterStatus, cycleSettings);
@@ -4820,7 +4841,10 @@ export default function AppsPage() {
                                                         marginBottom: '8px',
                                                         fontWeight: 500,
                                                     }}>
-                                                        Ungrouped ({canisterGroups.ungrouped.length})
+                                                        Ungrouped ({canisterGroups.ungrouped.reduce((sum, cid) => {
+                                                            const snsData = snsRootDataMap.get(cid);
+                                                            return sum + 1 + (snsData ? snsData.systemCanisters.filter(sc => sc.id !== cid).length + snsData.dappCanisters.length + snsData.archiveCanisters.length : 0);
+                                                        }, 0)})
                                                         {isOver && (
                                                             <span style={{ marginLeft: '8px', color: theme.colors.accent }}>
                                                                 Drop here
