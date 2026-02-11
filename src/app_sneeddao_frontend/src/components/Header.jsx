@@ -140,6 +140,18 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             return true;
         }
     });
+    // Per-notification-type visibility settings
+    const readNotifySetting = (key) => {
+        try { const s = localStorage.getItem(key); return s !== null ? JSON.parse(s) : true; } catch { return true; }
+    };
+    const [notifyRepliesSetting, setNotifyRepliesSetting] = useState(() => readNotifySetting('notifyReplies'));
+    const [notifyTipsSetting, setNotifyTipsSetting] = useState(() => readNotifySetting('notifyTips'));
+    const [notifyMessagesSetting, setNotifyMessagesSetting] = useState(() => readNotifySetting('notifyMessages'));
+    const [notifyCollectiblesSetting, setNotifyCollectiblesSetting] = useState(() => readNotifySetting('notifyCollectibles'));
+    const [notifyVotableProposalsSetting, setNotifyVotableProposalsSetting] = useState(() => readNotifySetting('notifyVotableProposals'));
+    const [notifyOutdatedBotsSetting, setNotifyOutdatedBotsSetting] = useState(() => readNotifySetting('notifyOutdatedBots'));
+    const [notifyLowCyclesSetting, setNotifyLowCyclesSetting] = useState(() => readNotifySetting('notifyLowCycles'));
+    const [notifyUpdatesSetting, setNotifyUpdatesSetting] = useState(() => readNotifySetting('notifyUpdates'));
     const [expandQuickLinksOnDesktop, setExpandQuickLinksOnDesktop] = useState(() => {
         try {
             const saved = localStorage.getItem('expandQuickLinksOnDesktop');
@@ -225,6 +237,21 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     setShowHeaderNotificationsSetting(true);
                 }
             }
+            // Per-notification-type storage changes (cross-tab)
+            const notifyStorageMap = {
+                notifyReplies: setNotifyRepliesSetting,
+                notifyTips: setNotifyTipsSetting,
+                notifyMessages: setNotifyMessagesSetting,
+                notifyCollectibles: setNotifyCollectiblesSetting,
+                notifyVotableProposals: setNotifyVotableProposalsSetting,
+                notifyOutdatedBots: setNotifyOutdatedBotsSetting,
+                notifyLowCycles: setNotifyLowCyclesSetting,
+                notifyUpdates: setNotifyUpdatesSetting,
+            };
+            const setter = notifyStorageMap[e.key];
+            if (setter) {
+                try { setter(e.newValue !== null ? JSON.parse(e.newValue) : true); } catch { setter(true); }
+            }
         };
         
         // Listen for custom event (when setting is changed on the same page)
@@ -239,16 +266,35 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         const handleExpandQuickLinksChanged = (e) => {
             setExpandQuickLinksOnDesktop(e.detail);
         };
+
+        const notifySetterMap = {
+            notifyReplies: setNotifyRepliesSetting,
+            notifyTips: setNotifyTipsSetting,
+            notifyMessages: setNotifyMessagesSetting,
+            notifyCollectibles: setNotifyCollectiblesSetting,
+            notifyVotableProposals: setNotifyVotableProposalsSetting,
+            notifyOutdatedBots: setNotifyOutdatedBotsSetting,
+            notifyLowCycles: setNotifyLowCyclesSetting,
+            notifyUpdates: setNotifyUpdatesSetting,
+        };
+
+        const handleNotifySettingChanged = (e) => {
+            const { key, value } = e.detail;
+            const setter = notifySetterMap[key];
+            if (setter) setter(value);
+        };
         
         window.addEventListener('storage', handleStorageChange);
         window.addEventListener('showVpBarChanged', handleVpBarChanged);
         window.addEventListener('showHeaderNotificationsChanged', handleHeaderNotificationsChanged);
         window.addEventListener('expandQuickLinksOnDesktopChanged', handleExpandQuickLinksChanged);
+        window.addEventListener('notifySettingChanged', handleNotifySettingChanged);
         return () => {
             window.removeEventListener('storage', handleStorageChange);
             window.removeEventListener('showVpBarChanged', handleVpBarChanged);
             window.removeEventListener('showHeaderNotificationsChanged', handleHeaderNotificationsChanged);
             window.removeEventListener('expandQuickLinksOnDesktopChanged', handleExpandQuickLinksChanged);
+            window.removeEventListener('notifySettingChanged', handleNotifySettingChanged);
         };
     }, []);
 
@@ -1617,7 +1663,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             )}
 
             {/* Notifications Row: Shows when there are notifications or update available */}
-            {!isHeaderCollapsed && (hasUpdateAvailable || (showHeaderNotificationsSetting && isAuthenticated && (newReplyCount > 0 || newTipCount > 0 || newMessageCount > 0 || collectiblesCount > 0 || votableCount > 0 || outdatedCount > 0 || lowCyclesCount > 0))) && (
+            {!isHeaderCollapsed && ((hasUpdateAvailable && notifyUpdatesSetting) || (showHeaderNotificationsSetting && isAuthenticated && ((notifyRepliesSetting && newReplyCount > 0) || (notifyTipsSetting && newTipCount > 0) || (notifyMessagesSetting && newMessageCount > 0) || (notifyCollectiblesSetting && collectiblesCount > 0) || (notifyVotableProposalsSetting && votableCount > 0) || (notifyOutdatedBotsSetting && outdatedCount > 0) || (notifyLowCyclesSetting && lowCyclesCount > 0)))) && (
                 <div style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
@@ -1649,7 +1695,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         gap: '10px'
                     }}>
                         {/* Update Available - click to refresh now */}
-                        {hasUpdateAvailable && (
+                        {hasUpdateAvailable && notifyUpdatesSetting && (
                             <div 
                                 onClick={() => triggerRefresh?.()}
                                 style={{
@@ -1686,7 +1732,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         )}
                         
                         {/* Reply Notifications */}
-                        {newReplyCount > 0 && (
+                        {notifyRepliesSetting && newReplyCount > 0 && (
                             <div 
                                 onClick={() => navigate('/posts')}
                                 style={{
@@ -1720,7 +1766,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         )}
                         
                         {/* SMS Notifications */}
-                        {newMessageCount > 0 && (
+                        {notifyMessagesSetting && newMessageCount > 0 && (
                             <div 
                                 onClick={() => navigate('/sms')}
                                 style={{
@@ -1754,7 +1800,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         )}
                         
                         {/* Votable Proposals Notifications */}
-                        {votableCount > 0 && (
+                        {notifyVotableProposalsSetting && votableCount > 0 && (
                             <div 
                                 onClick={() => navigate('/active_proposals')}
                                 style={{
@@ -1788,7 +1834,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         )}
                         
                         {/* Tip Notifications */}
-                        {newTipCount > 0 && (
+                        {notifyTipsSetting && newTipCount > 0 && (
                             <div 
                                 onClick={() => navigate('/tips')}
                                 style={{
@@ -1822,7 +1868,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         )}
                         
                         {/* Collectibles/Rewards Notifications */}
-                        {collectiblesCount > 0 && (
+                        {notifyCollectiblesSetting && collectiblesCount > 0 && (
                             <div 
                                 onClick={openCollectModal}
                                 style={{
@@ -1856,7 +1902,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         )}
                         
                         {/* Low Cycles */}
-                        {lowCyclesCount > 0 && (
+                        {notifyLowCyclesSetting && lowCyclesCount > 0 && (
                             <div 
                                 onClick={openTopUpDialog}
                                 style={{
@@ -1890,7 +1936,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         )}
 
                         {/* Outdated Bots */}
-                        {outdatedCount > 0 && (
+                        {notifyOutdatedBotsSetting && outdatedCount > 0 && (
                             <div 
                                 onClick={openUpgradeDialog}
                                 style={{

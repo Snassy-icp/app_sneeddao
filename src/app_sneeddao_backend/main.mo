@@ -130,6 +130,15 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   stable var stable_user_setting_frontend_update_check_interval_sec : [(Principal, Nat)] = [];
   stable var stable_user_setting_frontend_update_countdown_sec : [(Principal, Nat)] = [];
   stable var stable_user_setting_swap_slippage_tolerance : [(Principal, Float)] = [];
+  // Per-notification-type visibility settings
+  stable var stable_user_setting_notify_replies : [(Principal, Bool)] = [];
+  stable var stable_user_setting_notify_tips : [(Principal, Bool)] = [];
+  stable var stable_user_setting_notify_messages : [(Principal, Bool)] = [];
+  stable var stable_user_setting_notify_collectibles : [(Principal, Bool)] = [];
+  stable var stable_user_setting_notify_votable_proposals : [(Principal, Bool)] = [];
+  stable var stable_user_setting_notify_outdated_bots : [(Principal, Bool)] = [];
+  stable var stable_user_setting_notify_low_cycles : [(Principal, Bool)] = [];
+  stable var stable_user_setting_notify_updates : [(Principal, Bool)] = [];
 
   // Stable storage for neuron names and nicknames
   stable var stable_neuron_names : [(NeuronNameKey, (Text, Bool))] = [];
@@ -242,6 +251,14 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   transient let default_frontend_update_check_interval_sec : Nat = 600;
   transient let default_frontend_update_countdown_sec : Nat = 300;
   transient let default_swap_slippage_tolerance : Float = 0.01;
+  transient let default_notify_replies : Bool = true;
+  transient let default_notify_tips : Bool = true;
+  transient let default_notify_messages : Bool = true;
+  transient let default_notify_collectibles : Bool = true;
+  transient let default_notify_votable_proposals : Bool = true;
+  transient let default_notify_outdated_bots : Bool = true;
+  transient let default_notify_low_cycles : Bool = true;
+  transient let default_notify_updates : Bool = true;
 
   // Runtime storage for user settings
   transient var user_setting_principal_color_coding : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
@@ -259,6 +276,14 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   transient var user_setting_frontend_update_check_interval_sec : HashMap.HashMap<Principal, Nat> = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
   transient var user_setting_frontend_update_countdown_sec : HashMap.HashMap<Principal, Nat> = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
   transient var user_setting_swap_slippage_tolerance : HashMap.HashMap<Principal, Float> = HashMap.HashMap<Principal, Float>(100, Principal.equal, Principal.hash);
+  transient var user_setting_notify_replies : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
+  transient var user_setting_notify_tips : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
+  transient var user_setting_notify_messages : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
+  transient var user_setting_notify_collectibles : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
+  transient var user_setting_notify_votable_proposals : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
+  transient var user_setting_notify_outdated_bots : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
+  transient var user_setting_notify_low_cycles : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
+  transient var user_setting_notify_updates : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
 
   // Add after other runtime variables
   private transient var blacklisted_words = HashMap.fromIter<Text, Bool>(
@@ -436,6 +461,38 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         case (?value) value;
         case null default_swap_slippage_tolerance;
       };
+      notify_replies = switch (user_setting_notify_replies.get(user)) {
+        case (?value) value;
+        case null default_notify_replies;
+      };
+      notify_tips = switch (user_setting_notify_tips.get(user)) {
+        case (?value) value;
+        case null default_notify_tips;
+      };
+      notify_messages = switch (user_setting_notify_messages.get(user)) {
+        case (?value) value;
+        case null default_notify_messages;
+      };
+      notify_collectibles = switch (user_setting_notify_collectibles.get(user)) {
+        case (?value) value;
+        case null default_notify_collectibles;
+      };
+      notify_votable_proposals = switch (user_setting_notify_votable_proposals.get(user)) {
+        case (?value) value;
+        case null default_notify_votable_proposals;
+      };
+      notify_outdated_bots = switch (user_setting_notify_outdated_bots.get(user)) {
+        case (?value) value;
+        case null default_notify_outdated_bots;
+      };
+      notify_low_cycles = switch (user_setting_notify_low_cycles.get(user)) {
+        case (?value) value;
+        case null default_notify_low_cycles;
+      };
+      notify_updates = switch (user_setting_notify_updates.get(user)) {
+        case (?value) value;
+        case null default_notify_updates;
+      };
     }
   };
 
@@ -500,6 +557,38 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       case (?value) { user_setting_swap_slippage_tolerance.put(user, value) };
       case null {};
     };
+    switch (update.notify_replies) {
+      case (?value) { user_setting_notify_replies.put(user, value) };
+      case null {};
+    };
+    switch (update.notify_tips) {
+      case (?value) { user_setting_notify_tips.put(user, value) };
+      case null {};
+    };
+    switch (update.notify_messages) {
+      case (?value) { user_setting_notify_messages.put(user, value) };
+      case null {};
+    };
+    switch (update.notify_collectibles) {
+      case (?value) { user_setting_notify_collectibles.put(user, value) };
+      case null {};
+    };
+    switch (update.notify_votable_proposals) {
+      case (?value) { user_setting_notify_votable_proposals.put(user, value) };
+      case null {};
+    };
+    switch (update.notify_outdated_bots) {
+      case (?value) { user_setting_notify_outdated_bots.put(user, value) };
+      case null {};
+    };
+    switch (update.notify_low_cycles) {
+      case (?value) { user_setting_notify_low_cycles.put(user, value) };
+      case null {};
+    };
+    switch (update.notify_updates) {
+      case (?value) { user_setting_notify_updates.put(user, value) };
+      case null {};
+    };
   };
 
   // User settings endpoints
@@ -521,6 +610,14 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         frontend_update_check_interval_sec = default_frontend_update_check_interval_sec;
         frontend_update_countdown_sec = default_frontend_update_countdown_sec;
         swap_slippage_tolerance = default_swap_slippage_tolerance;
+        notify_replies = default_notify_replies;
+        notify_tips = default_notify_tips;
+        notify_messages = default_notify_messages;
+        notify_collectibles = default_notify_collectibles;
+        notify_votable_proposals = default_notify_votable_proposals;
+        notify_outdated_bots = default_notify_outdated_bots;
+        notify_low_cycles = default_notify_low_cycles;
+        notify_updates = default_notify_updates;
       };
     };
     get_user_settings(caller)
@@ -3233,6 +3330,14 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     stable_user_setting_frontend_update_check_interval_sec := Iter.toArray(user_setting_frontend_update_check_interval_sec.entries());
     stable_user_setting_frontend_update_countdown_sec := Iter.toArray(user_setting_frontend_update_countdown_sec.entries());
     stable_user_setting_swap_slippage_tolerance := Iter.toArray(user_setting_swap_slippage_tolerance.entries());
+    stable_user_setting_notify_replies := Iter.toArray(user_setting_notify_replies.entries());
+    stable_user_setting_notify_tips := Iter.toArray(user_setting_notify_tips.entries());
+    stable_user_setting_notify_messages := Iter.toArray(user_setting_notify_messages.entries());
+    stable_user_setting_notify_collectibles := Iter.toArray(user_setting_notify_collectibles.entries());
+    stable_user_setting_notify_votable_proposals := Iter.toArray(user_setting_notify_votable_proposals.entries());
+    stable_user_setting_notify_outdated_bots := Iter.toArray(user_setting_notify_outdated_bots.entries());
+    stable_user_setting_notify_low_cycles := Iter.toArray(user_setting_notify_low_cycles.entries());
+    stable_user_setting_notify_updates := Iter.toArray(user_setting_notify_updates.entries());
   };
 
   // initialize ephemeral state and empty stable arrays to save memory
@@ -3426,6 +3531,38 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         user_setting_swap_slippage_tolerance.put(user, value);
       };
       stable_user_setting_swap_slippage_tolerance := [];
+      for ((user, value) in stable_user_setting_notify_replies.vals()) {
+        user_setting_notify_replies.put(user, value);
+      };
+      stable_user_setting_notify_replies := [];
+      for ((user, value) in stable_user_setting_notify_tips.vals()) {
+        user_setting_notify_tips.put(user, value);
+      };
+      stable_user_setting_notify_tips := [];
+      for ((user, value) in stable_user_setting_notify_messages.vals()) {
+        user_setting_notify_messages.put(user, value);
+      };
+      stable_user_setting_notify_messages := [];
+      for ((user, value) in stable_user_setting_notify_collectibles.vals()) {
+        user_setting_notify_collectibles.put(user, value);
+      };
+      stable_user_setting_notify_collectibles := [];
+      for ((user, value) in stable_user_setting_notify_votable_proposals.vals()) {
+        user_setting_notify_votable_proposals.put(user, value);
+      };
+      stable_user_setting_notify_votable_proposals := [];
+      for ((user, value) in stable_user_setting_notify_outdated_bots.vals()) {
+        user_setting_notify_outdated_bots.put(user, value);
+      };
+      stable_user_setting_notify_outdated_bots := [];
+      for ((user, value) in stable_user_setting_notify_low_cycles.vals()) {
+        user_setting_notify_low_cycles.put(user, value);
+      };
+      stable_user_setting_notify_low_cycles := [];
+      for ((user, value) in stable_user_setting_notify_updates.vals()) {
+        user_setting_notify_updates.put(user, value);
+      };
+      stable_user_setting_notify_updates := [];
 
       // Update next_project_id to be one more than the highest existing ID
       var max_project_id : Nat = 0;

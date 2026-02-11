@@ -48,6 +48,14 @@ export const setMySettings = async (identity, updates) => {
             frontend_update_check_interval_sec: toOptional(updates.frontend_update_check_interval_sec),
             frontend_update_countdown_sec: toOptional(updates.frontend_update_countdown_sec),
             swap_slippage_tolerance: toOptional(updates.swap_slippage_tolerance),
+            notify_replies: toOptional(updates.notify_replies),
+            notify_tips: toOptional(updates.notify_tips),
+            notify_messages: toOptional(updates.notify_messages),
+            notify_collectibles: toOptional(updates.notify_collectibles),
+            notify_votable_proposals: toOptional(updates.notify_votable_proposals),
+            notify_outdated_bots: toOptional(updates.notify_outdated_bots),
+            notify_low_cycles: toOptional(updates.notify_low_cycles),
+            notify_updates: toOptional(updates.notify_updates),
         };
         return await actor.set_my_settings(payload);
     } catch (error) {

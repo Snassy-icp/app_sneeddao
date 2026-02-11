@@ -220,6 +220,14 @@ export default function Me() {
         frontend_update_check_interval_sec: 600,
         frontend_update_countdown_sec: 300,
         swap_slippage_tolerance: 0.01,
+        notify_replies: true,
+        notify_tips: true,
+        notify_messages: true,
+        notify_collectibles: true,
+        notify_votable_proposals: true,
+        notify_outdated_bots: true,
+        notify_low_cycles: true,
+        notify_updates: true,
     };
 
     const getLocalSettingsForBackend = () => {
@@ -269,6 +277,14 @@ export default function Me() {
             frontend_update_check_interval_sec: readNat('frontendUpdateCheckIntervalSec', defaultUserSettings.frontend_update_check_interval_sec),
             frontend_update_countdown_sec: readNat('frontendUpdateCountdownSec', defaultUserSettings.frontend_update_countdown_sec),
             swap_slippage_tolerance: readFloat('swapSlippageTolerance', defaultUserSettings.swap_slippage_tolerance),
+            notify_replies: readBool('notifyReplies', defaultUserSettings.notify_replies),
+            notify_tips: readBool('notifyTips', defaultUserSettings.notify_tips),
+            notify_messages: readBool('notifyMessages', defaultUserSettings.notify_messages),
+            notify_collectibles: readBool('notifyCollectibles', defaultUserSettings.notify_collectibles),
+            notify_votable_proposals: readBool('notifyVotableProposals', defaultUserSettings.notify_votable_proposals),
+            notify_outdated_bots: readBool('notifyOutdatedBots', defaultUserSettings.notify_outdated_bots),
+            notify_low_cycles: readBool('notifyLowCycles', defaultUserSettings.notify_low_cycles),
+            notify_updates: readBool('notifyUpdates', defaultUserSettings.notify_updates),
         };
     };
 
@@ -293,6 +309,14 @@ export default function Me() {
             && toNumber(settings.frontend_update_check_interval_sec ?? defaultUserSettings.frontend_update_check_interval_sec) === defaultUserSettings.frontend_update_check_interval_sec
             && toNumber(settings.frontend_update_countdown_sec ?? defaultUserSettings.frontend_update_countdown_sec) === defaultUserSettings.frontend_update_countdown_sec
             && toNumber(settings.swap_slippage_tolerance ?? defaultUserSettings.swap_slippage_tolerance) === defaultUserSettings.swap_slippage_tolerance
+            && (settings.notify_replies ?? defaultUserSettings.notify_replies) === defaultUserSettings.notify_replies
+            && (settings.notify_tips ?? defaultUserSettings.notify_tips) === defaultUserSettings.notify_tips
+            && (settings.notify_messages ?? defaultUserSettings.notify_messages) === defaultUserSettings.notify_messages
+            && (settings.notify_collectibles ?? defaultUserSettings.notify_collectibles) === defaultUserSettings.notify_collectibles
+            && (settings.notify_votable_proposals ?? defaultUserSettings.notify_votable_proposals) === defaultUserSettings.notify_votable_proposals
+            && (settings.notify_outdated_bots ?? defaultUserSettings.notify_outdated_bots) === defaultUserSettings.notify_outdated_bots
+            && (settings.notify_low_cycles ?? defaultUserSettings.notify_low_cycles) === defaultUserSettings.notify_low_cycles
+            && (settings.notify_updates ?? defaultUserSettings.notify_updates) === defaultUserSettings.notify_updates
         );
     };
 
@@ -392,6 +416,47 @@ export default function Me() {
         setSwapSlippageTolerance(slippageValue);
         localStorage.setItem('swapSlippageTolerance', slippageValue.toString());
         window.dispatchEvent(new CustomEvent('swapSlippageToleranceChanged', { detail: slippageValue }));
+
+        // Per-notification-type settings
+        const notifyRepliesValue = settings.notify_replies ?? true;
+        setNotifyReplies(notifyRepliesValue);
+        localStorage.setItem('notifyReplies', JSON.stringify(notifyRepliesValue));
+        window.dispatchEvent(new CustomEvent('notifySettingChanged', { detail: { key: 'notifyReplies', value: notifyRepliesValue } }));
+
+        const notifyTipsValue = settings.notify_tips ?? true;
+        setNotifyTips(notifyTipsValue);
+        localStorage.setItem('notifyTips', JSON.stringify(notifyTipsValue));
+        window.dispatchEvent(new CustomEvent('notifySettingChanged', { detail: { key: 'notifyTips', value: notifyTipsValue } }));
+
+        const notifyMessagesValue = settings.notify_messages ?? true;
+        setNotifyMessages(notifyMessagesValue);
+        localStorage.setItem('notifyMessages', JSON.stringify(notifyMessagesValue));
+        window.dispatchEvent(new CustomEvent('notifySettingChanged', { detail: { key: 'notifyMessages', value: notifyMessagesValue } }));
+
+        const notifyCollectiblesValue = settings.notify_collectibles ?? true;
+        setNotifyCollectibles(notifyCollectiblesValue);
+        localStorage.setItem('notifyCollectibles', JSON.stringify(notifyCollectiblesValue));
+        window.dispatchEvent(new CustomEvent('notifySettingChanged', { detail: { key: 'notifyCollectibles', value: notifyCollectiblesValue } }));
+
+        const notifyVotableProposalsValue = settings.notify_votable_proposals ?? true;
+        setNotifyVotableProposals(notifyVotableProposalsValue);
+        localStorage.setItem('notifyVotableProposals', JSON.stringify(notifyVotableProposalsValue));
+        window.dispatchEvent(new CustomEvent('notifySettingChanged', { detail: { key: 'notifyVotableProposals', value: notifyVotableProposalsValue } }));
+
+        const notifyOutdatedBotsValue = settings.notify_outdated_bots ?? true;
+        setNotifyOutdatedBots(notifyOutdatedBotsValue);
+        localStorage.setItem('notifyOutdatedBots', JSON.stringify(notifyOutdatedBotsValue));
+        window.dispatchEvent(new CustomEvent('notifySettingChanged', { detail: { key: 'notifyOutdatedBots', value: notifyOutdatedBotsValue } }));
+
+        const notifyLowCyclesValue = settings.notify_low_cycles ?? true;
+        setNotifyLowCycles(notifyLowCyclesValue);
+        localStorage.setItem('notifyLowCycles', JSON.stringify(notifyLowCyclesValue));
+        window.dispatchEvent(new CustomEvent('notifySettingChanged', { detail: { key: 'notifyLowCycles', value: notifyLowCyclesValue } }));
+
+        const notifyUpdatesValue = settings.notify_updates ?? true;
+        setNotifyUpdates(notifyUpdatesValue);
+        localStorage.setItem('notifyUpdates', JSON.stringify(notifyUpdatesValue));
+        window.dispatchEvent(new CustomEvent('notifySettingChanged', { detail: { key: 'notifyUpdates', value: notifyUpdatesValue } }));
     };
 
     // Color coding settings
@@ -435,6 +500,32 @@ export default function Me() {
             return 1.0;
         }
     });
+    // Per-notification-type visibility settings
+    const [notifyReplies, setNotifyReplies] = useState(() => {
+        try { const s = localStorage.getItem('notifyReplies'); return s !== null ? JSON.parse(s) : true; } catch { return true; }
+    });
+    const [notifyTips, setNotifyTips] = useState(() => {
+        try { const s = localStorage.getItem('notifyTips'); return s !== null ? JSON.parse(s) : true; } catch { return true; }
+    });
+    const [notifyMessages, setNotifyMessages] = useState(() => {
+        try { const s = localStorage.getItem('notifyMessages'); return s !== null ? JSON.parse(s) : true; } catch { return true; }
+    });
+    const [notifyCollectibles, setNotifyCollectibles] = useState(() => {
+        try { const s = localStorage.getItem('notifyCollectibles'); return s !== null ? JSON.parse(s) : true; } catch { return true; }
+    });
+    const [notifyVotableProposals, setNotifyVotableProposals] = useState(() => {
+        try { const s = localStorage.getItem('notifyVotableProposals'); return s !== null ? JSON.parse(s) : true; } catch { return true; }
+    });
+    const [notifyOutdatedBots, setNotifyOutdatedBots] = useState(() => {
+        try { const s = localStorage.getItem('notifyOutdatedBots'); return s !== null ? JSON.parse(s) : true; } catch { return true; }
+    });
+    const [notifyLowCycles, setNotifyLowCycles] = useState(() => {
+        try { const s = localStorage.getItem('notifyLowCycles'); return s !== null ? JSON.parse(s) : true; } catch { return true; }
+    });
+    const [notifyUpdates, setNotifyUpdates] = useState(() => {
+        try { const s = localStorage.getItem('notifyUpdates'); return s !== null ? JSON.parse(s) : true; } catch { return true; }
+    });
+    const [notificationBarSettingsExpanded, setNotificationBarSettingsExpanded] = useState(false);
     const [expandQuickLinksOnDesktop, setExpandQuickLinksOnDesktop] = useState(() => {
         try {
             const saved = localStorage.getItem('expandQuickLinksOnDesktop');
@@ -2165,62 +2256,6 @@ export default function Me() {
                                     </SettingItem>
 
                                     <SettingItem
-                                        title="Show Header Notifications"
-                                        description="Display the notification bar in the header"
-                                        theme={theme}
-                                    >
-                                        <ToggleSwitch
-                                            checked={showHeaderNotifications}
-                                            onChange={(e) => {
-                                                const newValue = e.target.checked;
-                                                setShowHeaderNotifications(newValue);
-                                                localStorage.setItem('showHeaderNotifications', JSON.stringify(newValue));
-                                                window.dispatchEvent(new CustomEvent('showHeaderNotificationsChanged', { detail: newValue }));
-                                                updateBackendSettings({ show_header_notifications: newValue });
-                                            }}
-                                        />
-                                    </SettingItem>
-                                    
-                                    <SettingItem
-                                        title="Collectibles Threshold"
-                                        description="Minimum USD value to show collectibles notifications (fees, rewards, maturity) in the header and wallet"
-                                        theme={theme}
-                                    >
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <span style={{ color: theme.colors.secondaryText }}>$</span>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                step="0.01"
-                                                value={collectiblesThreshold}
-                                                onChange={(e) => {
-                                                    const newValue = Math.max(0, parseFloat(e.target.value) || 0);
-                                                    setCollectiblesThreshold(newValue);
-                                                    localStorage.setItem('collectiblesThreshold', newValue.toString());
-                                                    window.dispatchEvent(new CustomEvent('collectiblesThresholdChanged', { detail: newValue }));
-                                                    if (collectiblesSaveTimerRef.current) {
-                                                        clearTimeout(collectiblesSaveTimerRef.current);
-                                                    }
-                                                    collectiblesSaveTimerRef.current = setTimeout(() => {
-                                                        updateBackendSettings({ collectibles_threshold: newValue });
-                                                    }, 500);
-                                                }}
-                                                style={{
-                                                    width: '80px',
-                                                    padding: '6px 10px',
-                                                    borderRadius: '8px',
-                                                    border: `1px solid ${theme.colors.border}`,
-                                                    backgroundColor: theme.colors.tertiaryBg,
-                                                    color: theme.colors.primaryText,
-                                                    fontSize: '14px',
-                                                    textAlign: 'right'
-                                                }}
-                                            />
-                                            <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>USD</span>
-                                        </div>
-                                    </SettingItem>
-                                    
-                                    <SettingItem
                                         title="Expand Quick Links on Desktop"
                                         description="Show individual quick link buttons on desktop instead of hamburger menu"
                                         theme={theme}
@@ -2348,6 +2383,212 @@ export default function Me() {
                                             <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>seconds</span>
                                         </div>
                                     </SettingItem>
+                                </SettingsSection>
+
+                                {/* Notification Bar Settings */}
+                                <SettingsSection
+                                    title="Notification Bar Settings"
+                                    icon={<FaBell size={16} />}
+                                    expanded={notificationBarSettingsExpanded}
+                                    onToggle={() => setNotificationBarSettingsExpanded(!notificationBarSettingsExpanded)}
+                                    theme={theme}
+                                >
+                                    <SettingItem
+                                        title="Show Header Notifications"
+                                        description="Master toggle: display the notification bar in the header"
+                                        theme={theme}
+                                    >
+                                        <ToggleSwitch
+                                            checked={showHeaderNotifications}
+                                            onChange={(e) => {
+                                                const newValue = e.target.checked;
+                                                setShowHeaderNotifications(newValue);
+                                                localStorage.setItem('showHeaderNotifications', JSON.stringify(newValue));
+                                                window.dispatchEvent(new CustomEvent('showHeaderNotificationsChanged', { detail: newValue }));
+                                                updateBackendSettings({ show_header_notifications: newValue });
+                                            }}
+                                        />
+                                    </SettingItem>
+
+                                    {showHeaderNotifications && (<>
+                                    <SettingItem
+                                        title="Reply Notifications"
+                                        description="Show notifications when someone replies to your posts"
+                                        theme={theme}
+                                    >
+                                        <ToggleSwitch
+                                            checked={notifyReplies}
+                                            onChange={(e) => {
+                                                const newValue = e.target.checked;
+                                                setNotifyReplies(newValue);
+                                                localStorage.setItem('notifyReplies', JSON.stringify(newValue));
+                                                window.dispatchEvent(new CustomEvent('notifySettingChanged', { detail: { key: 'notifyReplies', value: newValue } }));
+                                                updateBackendSettings({ notify_replies: newValue });
+                                            }}
+                                        />
+                                    </SettingItem>
+
+                                    <SettingItem
+                                        title="Tip Notifications"
+                                        description="Show notifications for new tips received"
+                                        theme={theme}
+                                    >
+                                        <ToggleSwitch
+                                            checked={notifyTips}
+                                            onChange={(e) => {
+                                                const newValue = e.target.checked;
+                                                setNotifyTips(newValue);
+                                                localStorage.setItem('notifyTips', JSON.stringify(newValue));
+                                                window.dispatchEvent(new CustomEvent('notifySettingChanged', { detail: { key: 'notifyTips', value: newValue } }));
+                                                updateBackendSettings({ notify_tips: newValue });
+                                            }}
+                                        />
+                                    </SettingItem>
+
+                                    <SettingItem
+                                        title="Message Notifications"
+                                        description="Show notifications for new direct messages"
+                                        theme={theme}
+                                    >
+                                        <ToggleSwitch
+                                            checked={notifyMessages}
+                                            onChange={(e) => {
+                                                const newValue = e.target.checked;
+                                                setNotifyMessages(newValue);
+                                                localStorage.setItem('notifyMessages', JSON.stringify(newValue));
+                                                window.dispatchEvent(new CustomEvent('notifySettingChanged', { detail: { key: 'notifyMessages', value: newValue } }));
+                                                updateBackendSettings({ notify_messages: newValue });
+                                            }}
+                                        />
+                                    </SettingItem>
+
+                                    <SettingItem
+                                        title="Collectibles Notifications"
+                                        description="Show notifications for collectible rewards, fees, and maturity"
+                                        theme={theme}
+                                    >
+                                        <ToggleSwitch
+                                            checked={notifyCollectibles}
+                                            onChange={(e) => {
+                                                const newValue = e.target.checked;
+                                                setNotifyCollectibles(newValue);
+                                                localStorage.setItem('notifyCollectibles', JSON.stringify(newValue));
+                                                window.dispatchEvent(new CustomEvent('notifySettingChanged', { detail: { key: 'notifyCollectibles', value: newValue } }));
+                                                updateBackendSettings({ notify_collectibles: newValue });
+                                            }}
+                                        />
+                                    </SettingItem>
+
+                                    {notifyCollectibles && (
+                                    <SettingItem
+                                        title="Collectibles Threshold"
+                                        description="Minimum USD value to show collectibles notifications (fees, rewards, maturity) in the header and wallet"
+                                        theme={theme}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{ color: theme.colors.secondaryText }}>$</span>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="0.01"
+                                                value={collectiblesThreshold}
+                                                onChange={(e) => {
+                                                    const newValue = Math.max(0, parseFloat(e.target.value) || 0);
+                                                    setCollectiblesThreshold(newValue);
+                                                    localStorage.setItem('collectiblesThreshold', newValue.toString());
+                                                    window.dispatchEvent(new CustomEvent('collectiblesThresholdChanged', { detail: newValue }));
+                                                    if (collectiblesSaveTimerRef.current) {
+                                                        clearTimeout(collectiblesSaveTimerRef.current);
+                                                    }
+                                                    collectiblesSaveTimerRef.current = setTimeout(() => {
+                                                        updateBackendSettings({ collectibles_threshold: newValue });
+                                                    }, 500);
+                                                }}
+                                                style={{
+                                                    width: '80px',
+                                                    padding: '6px 10px',
+                                                    borderRadius: '8px',
+                                                    border: `1px solid ${theme.colors.border}`,
+                                                    backgroundColor: theme.colors.tertiaryBg,
+                                                    color: theme.colors.primaryText,
+                                                    fontSize: '14px',
+                                                    textAlign: 'right'
+                                                }}
+                                            />
+                                            <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>USD</span>
+                                        </div>
+                                    </SettingItem>
+                                    )}
+
+                                    <SettingItem
+                                        title="Votable Proposals"
+                                        description="Show notifications for proposals available to vote on"
+                                        theme={theme}
+                                    >
+                                        <ToggleSwitch
+                                            checked={notifyVotableProposals}
+                                            onChange={(e) => {
+                                                const newValue = e.target.checked;
+                                                setNotifyVotableProposals(newValue);
+                                                localStorage.setItem('notifyVotableProposals', JSON.stringify(newValue));
+                                                window.dispatchEvent(new CustomEvent('notifySettingChanged', { detail: { key: 'notifyVotableProposals', value: newValue } }));
+                                                updateBackendSettings({ notify_votable_proposals: newValue });
+                                            }}
+                                        />
+                                    </SettingItem>
+
+                                    <SettingItem
+                                        title="Outdated Bots"
+                                        description="Show notifications when your bot canisters have updates available"
+                                        theme={theme}
+                                    >
+                                        <ToggleSwitch
+                                            checked={notifyOutdatedBots}
+                                            onChange={(e) => {
+                                                const newValue = e.target.checked;
+                                                setNotifyOutdatedBots(newValue);
+                                                localStorage.setItem('notifyOutdatedBots', JSON.stringify(newValue));
+                                                window.dispatchEvent(new CustomEvent('notifySettingChanged', { detail: { key: 'notifyOutdatedBots', value: newValue } }));
+                                                updateBackendSettings({ notify_outdated_bots: newValue });
+                                            }}
+                                        />
+                                    </SettingItem>
+
+                                    <SettingItem
+                                        title="Low Cycles"
+                                        description="Show notifications when your canisters are running low on cycles"
+                                        theme={theme}
+                                    >
+                                        <ToggleSwitch
+                                            checked={notifyLowCycles}
+                                            onChange={(e) => {
+                                                const newValue = e.target.checked;
+                                                setNotifyLowCycles(newValue);
+                                                localStorage.setItem('notifyLowCycles', JSON.stringify(newValue));
+                                                window.dispatchEvent(new CustomEvent('notifySettingChanged', { detail: { key: 'notifyLowCycles', value: newValue } }));
+                                                updateBackendSettings({ notify_low_cycles: newValue });
+                                            }}
+                                        />
+                                    </SettingItem>
+
+                                    <SettingItem
+                                        title="App Updates"
+                                        description="Show notifications when a new version of the app is available"
+                                        theme={theme}
+                                        isLast={true}
+                                    >
+                                        <ToggleSwitch
+                                            checked={notifyUpdates}
+                                            onChange={(e) => {
+                                                const newValue = e.target.checked;
+                                                setNotifyUpdates(newValue);
+                                                localStorage.setItem('notifyUpdates', JSON.stringify(newValue));
+                                                window.dispatchEvent(new CustomEvent('notifySettingChanged', { detail: { key: 'notifyUpdates', value: newValue } }));
+                                                updateBackendSettings({ notify_updates: newValue });
+                                            }}
+                                        />
+                                    </SettingItem>
+                                    </>)}
                                 </SettingsSection>
 
                                 {/* ICP Staking Bot Settings */}

@@ -52,6 +52,15 @@ module {
         frontend_update_check_interval_sec: Nat;
         frontend_update_countdown_sec: Nat;
         swap_slippage_tolerance: Float;
+        // Per-notification-type visibility settings
+        notify_replies: Bool;
+        notify_tips: Bool;
+        notify_messages: Bool;
+        notify_collectibles: Bool;
+        notify_votable_proposals: Bool;
+        notify_outdated_bots: Bool;
+        notify_low_cycles: Bool;
+        notify_updates: Bool;
     };
 
     public type UserSettingsUpdate = {
@@ -70,6 +79,15 @@ module {
         frontend_update_check_interval_sec: ?Nat;
         frontend_update_countdown_sec: ?Nat;
         swap_slippage_tolerance: ?Float;
+        // Per-notification-type visibility settings
+        notify_replies: ?Bool;
+        notify_tips: ?Bool;
+        notify_messages: ?Bool;
+        notify_collectibles: ?Bool;
+        notify_votable_proposals: ?Bool;
+        notify_outdated_bots: ?Bool;
+        notify_low_cycles: ?Bool;
+        notify_updates: ?Bool;
     };
 
     // token metadata types
