@@ -842,7 +842,12 @@ module {
         #ManageVisibility;        // Set neuron visibility
         #WithdrawFunds;           // Withdraw ICP or tokens from the canister
         #ViewNeuron;              // View neuron info, list neurons, check balances
-        #ManageChores;            // Enable/disable, configure, trigger, and stop bot chores
+        #ManageConfirmFollowing;   // Start/pause/resume/stop/trigger + set interval for confirm-following chore
+        #ManageRefreshStake;      // Start/pause/resume/stop/trigger + set interval for refresh-stake chore
+        #ManageCollectMaturity;   // Start/pause/resume/stop/trigger + set interval for collect-maturity chore
+        #ManageDistributeFunds;   // Start/pause/resume/stop/trigger + set interval for distribute-funds chore
+        #ConfigureCollectMaturity; // Set collect-maturity threshold and destination account
+        #ConfigureDistribution;   // Add/update/remove distribution lists
         #ViewChores;              // View bot chore statuses and configurations
     };
 
@@ -873,8 +878,13 @@ module {
         public let ManageVisibility: Nat = 16;
         public let WithdrawFunds: Nat = 17;
         public let ViewNeuron: Nat = 18;
-        public let ManageChores: Nat = 19;
-        public let ViewChores: Nat = 20;
+        public let ManageConfirmFollowing: Nat = 19;
+        public let ManageRefreshStake: Nat = 20;
+        public let ManageCollectMaturity: Nat = 21;
+        public let ManageDistributeFunds: Nat = 22;
+        public let ConfigureCollectMaturity: Nat = 23;
+        public let ConfigureDistribution: Nat = 24;
+        public let ViewChores: Nat = 25;
     };
 
     // Info about a botkey principal and their permissions (for API responses)

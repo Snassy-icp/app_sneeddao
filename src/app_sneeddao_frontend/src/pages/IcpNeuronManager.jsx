@@ -579,6 +579,31 @@ function IcpNeuronManager() {
         return userPermissions.has(permKey);
     }, [isController, userPermissions]);
 
+    // Map choreId to its per-chore manage permission key
+    const choreManagePerm = useCallback((choreId) => {
+        switch (choreId) {
+            case 'confirm-following': return 'ManageConfirmFollowing';
+            case 'refresh-stake': return 'ManageRefreshStake';
+            case 'collect-maturity': return 'ManageCollectMaturity';
+            case 'distribute-funds': return 'ManageDistributeFunds';
+            default: return null;
+        }
+    }, []);
+
+    // Check if user can manage a specific chore
+    const canManageChore = useCallback((choreId) => {
+        const perm = choreManagePerm(choreId);
+        return perm ? hasPermission(perm) : false;
+    }, [choreManagePerm, hasPermission]);
+
+    // Check if user can manage ANY chore (for showing chores tab)
+    const canManageAnyChore = hasPermission('ManageConfirmFollowing') ||
+        hasPermission('ManageRefreshStake') ||
+        hasPermission('ManageCollectMaturity') ||
+        hasPermission('ManageDistributeFunds') ||
+        hasPermission('ConfigureCollectMaturity') ||
+        hasPermission('ConfigureDistribution');
+
     // Check if user has ANY permission at all (controller or any botkey)
     const hasAnyPermission = isController || (userPermissions && userPermissions.size > 0);
 
@@ -3566,7 +3591,7 @@ function IcpNeuronManager() {
                                     <button style={tabStyle(canisterActiveTab === 'permissions')} onClick={() => setCanisterActiveTab('permissions')}>
                                         Botkeys
                                     </button>
-                                    {(hasPermission('ViewChores') || hasPermission('ManageChores')) && (
+                                    {(hasPermission('ViewChores') || canManageAnyChore) && (
                                     <button style={{...tabStyle(canisterActiveTab === 'chores'), display: 'inline-flex', alignItems: 'center', gap: '6px'}} onClick={() => setCanisterActiveTab('chores')}>
                                         {choreStatuses.length > 0 && (
                                             <StatusLamp
@@ -5165,11 +5190,13 @@ function IcpNeuronManager() {
                                         </div>
 
                                         {/* Controls Card */}
-                                        {hasPermission('ManageChores') && (
+                                        {(canManageChore(chore.choreId) || (chore.choreId === 'collect-maturity' && hasPermission('ConfigureCollectMaturity')) || (chore.choreId === 'distribute-funds' && hasPermission('ConfigureDistribution'))) && (
                                         <div style={cardStyle}>
                                             <h3 style={{ color: theme.colors.primaryText, margin: '0 0 12px 0', fontSize: '0.95rem', fontWeight: '600' }}>
                                                 Controls
                                             </h3>
+                                            {canManageChore(chore.choreId) && (
+                                            <>
                                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
                                                 {/* Start — shown when Stopped */}
                                                 {isStopped && (
@@ -5435,9 +5462,11 @@ function IcpNeuronManager() {
                                                 </p>
                                                 )}
                                             </div>
+                                            </>
+                                            )}
 
                                             {/* Collect-Maturity specific settings */}
-                                            {chore.choreId === 'collect-maturity' && (
+                                            {chore.choreId === 'collect-maturity' && hasPermission('ConfigureCollectMaturity') && (
                                             <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: `1px solid ${theme.colors.border}` }}>
                                                 <h4 style={{ color: theme.colors.primaryText, margin: '0 0 12px 0', fontSize: '0.9rem', fontWeight: '600' }}>
                                                     Collection Settings
@@ -5585,7 +5614,7 @@ function IcpNeuronManager() {
                                             )}
 
                                             {/* Distribute-Funds specific settings: Distribution Lists */}
-                                            {chore.choreId === 'distribute-funds' && (
+                                            {chore.choreId === 'distribute-funds' && hasPermission('ConfigureDistribution') && (
                                             <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: `1px solid ${theme.colors.border}` }}>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                                                     <h4 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '0.9rem', fontWeight: '600' }}>

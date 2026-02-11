@@ -9,6 +9,7 @@ import Array "mo:base/Array";
 import Nat8 "mo:base/Nat8";
 import Buffer "mo:base/Buffer";
 import Text "mo:base/Text";
+import Debug "mo:base/Debug";
 
 import Nat "mo:base/Nat";
 
@@ -79,8 +80,13 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         (16, #ManageVisibility),
         (17, #WithdrawFunds),
         (18, #ViewNeuron),
-        (19, #ManageChores),
-        (20, #ViewChores),
+        (19, #ManageConfirmFollowing),
+        (20, #ManageRefreshStake),
+        (21, #ManageCollectMaturity),
+        (22, #ManageDistributeFunds),
+        (23, #ConfigureCollectMaturity),
+        (24, #ConfigureDistribution),
+        (25, #ViewChores),
     ];
 
     // Bot-specific variant-to-ID conversion
@@ -105,8 +111,13 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             case (#ManageVisibility) { 16 };
             case (#WithdrawFunds) { 17 };
             case (#ViewNeuron) { 18 };
-            case (#ManageChores) { 19 };
-            case (#ViewChores) { 20 };
+            case (#ManageConfirmFollowing) { 19 };
+            case (#ManageRefreshStake) { 20 };
+            case (#ManageCollectMaturity) { 21 };
+            case (#ManageDistributeFunds) { 22 };
+            case (#ConfigureCollectMaturity) { 23 };
+            case (#ConfigureDistribution) { 24 };
+            case (#ViewChores) { 25 };
         }
     };
 
@@ -132,8 +143,13 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             case (16) { ?#ManageVisibility };
             case (17) { ?#WithdrawFunds };
             case (18) { ?#ViewNeuron };
-            case (19) { ?#ManageChores };
-            case (20) { ?#ViewChores };
+            case (19) { ?#ManageConfirmFollowing };
+            case (20) { ?#ManageRefreshStake };
+            case (21) { ?#ManageCollectMaturity };
+            case (22) { ?#ManageDistributeFunds };
+            case (23) { ?#ConfigureCollectMaturity };
+            case (24) { ?#ConfigureDistribution };
+            case (25) { ?#ViewChores };
             case (_)  { null };
         }
     };
@@ -172,6 +188,17 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     func assertPermission(caller: Principal, permissionId: Nat) {
         permEngine.assertPermission(caller, permissionId, hotkeyPermissions)
+    };
+
+    // Map a chore ID to its per-chore manage permission ID
+    func choreManagePermission(choreId: Text): Nat {
+        switch (choreId) {
+            case ("confirm-following") { T.NeuronPermission.ManageConfirmFollowing };
+            case ("refresh-stake") { T.NeuronPermission.ManageRefreshStake };
+            case ("collect-maturity") { T.NeuronPermission.ManageCollectMaturity };
+            case ("distribute-funds") { T.NeuronPermission.ManageDistributeFunds };
+            case (_) { Debug.trap("Unknown chore: " # choreId) };
+        }
     };
 
     // ============================================
@@ -1312,49 +1339,52 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     // Start a chore: run immediately + schedule next run (Stopped → Running)
     public shared ({ caller }) func startChore(choreId: Text): async () {
-        assertPermission(caller, T.NeuronPermission.ManageChores);
+        assertPermission(caller, choreManagePermission(choreId));
         choreEngine.start<system>(choreId);
     };
 
     // Pause a running chore: suspend schedule but preserve next-run time (Running → Paused)
     public shared ({ caller }) func pauseChore(choreId: Text): async () {
-        assertPermission(caller, T.NeuronPermission.ManageChores);
+        assertPermission(caller, choreManagePermission(choreId));
         choreEngine.pause(choreId);
     };
 
     // Resume a paused chore: re-activate preserved schedule (Paused → Running)
     public shared ({ caller }) func resumeChore(choreId: Text): async () {
-        assertPermission(caller, T.NeuronPermission.ManageChores);
+        assertPermission(caller, choreManagePermission(choreId));
         choreEngine.resume<system>(choreId);
     };
 
     // Change the schedule interval for a chore (in seconds)
     public shared ({ caller }) func setChoreInterval(choreId: Text, seconds: Nat): async () {
-        assertPermission(caller, T.NeuronPermission.ManageChores);
+        assertPermission(caller, choreManagePermission(choreId));
         choreEngine.setInterval(choreId, seconds);
     };
 
     // Change the task timeout for a chore (in seconds)
     public shared ({ caller }) func setChoreTaskTimeout(choreId: Text, seconds: Nat): async () {
-        assertPermission(caller, T.NeuronPermission.ManageChores);
+        assertPermission(caller, choreManagePermission(choreId));
         choreEngine.setTaskTimeout(choreId, seconds);
     };
 
     // Force-run a chore immediately (regardless of schedule)
     public shared ({ caller }) func triggerChore(choreId: Text): async () {
-        assertPermission(caller, T.NeuronPermission.ManageChores);
+        assertPermission(caller, choreManagePermission(choreId));
         choreEngine.trigger<system>(choreId);
     };
 
     // Stop a chore completely: cancel everything, clear schedule (Running/Paused → Stopped)
     public shared ({ caller }) func stopChore(choreId: Text): async () {
-        assertPermission(caller, T.NeuronPermission.ManageChores);
+        assertPermission(caller, choreManagePermission(choreId));
         choreEngine.stop(choreId);
     };
 
-    // Stop all running chores
+    // Stop all running chores (requires all per-chore manage permissions)
     public shared ({ caller }) func stopAllChores(): async () {
-        assertPermission(caller, T.NeuronPermission.ManageChores);
+        assertPermission(caller, T.NeuronPermission.ManageConfirmFollowing);
+        assertPermission(caller, T.NeuronPermission.ManageRefreshStake);
+        assertPermission(caller, T.NeuronPermission.ManageCollectMaturity);
+        assertPermission(caller, T.NeuronPermission.ManageDistributeFunds);
         choreEngine.stopAllChores();
     };
 
@@ -1374,13 +1404,13 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     // Set collect-maturity threshold (null = collect any amount)
     public shared ({ caller }) func setCollectMaturityThreshold(thresholdE8s: ?Nat64): async () {
-        assertPermission(caller, T.NeuronPermission.ManageChores);
+        assertPermission(caller, T.NeuronPermission.ConfigureCollectMaturity);
         collectMaturityThresholdE8s := thresholdE8s;
     };
 
     // Set collect-maturity destination (null = bot's own account)
     public shared ({ caller }) func setCollectMaturityDestination(destination: ?T.Account): async () {
-        assertPermission(caller, T.NeuronPermission.ManageChores);
+        assertPermission(caller, T.NeuronPermission.ConfigureCollectMaturity);
         collectMaturityDestination := destination;
     };
 
@@ -1394,7 +1424,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     // Add a new distribution list, returns the assigned ID
     public shared ({ caller }) func addDistributionList(input: DistributionTypes.DistributionListInput): async Nat {
-        assertPermission(caller, T.NeuronPermission.ManageChores);
+        assertPermission(caller, T.NeuronPermission.ConfigureDistribution);
         let id = nextDistributionListId;
         nextDistributionListId += 1;
         let newList: DistributionTypes.DistributionList = {
@@ -1414,7 +1444,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     // Update an existing distribution list by ID
     public shared ({ caller }) func updateDistributionList(id: Nat, input: DistributionTypes.DistributionListInput): async () {
-        assertPermission(caller, T.NeuronPermission.ManageChores);
+        assertPermission(caller, T.NeuronPermission.ConfigureDistribution);
         distributionLists := Array.map<DistributionTypes.DistributionList, DistributionTypes.DistributionList>(
             distributionLists,
             func(list: DistributionTypes.DistributionList): DistributionTypes.DistributionList {
@@ -1435,7 +1465,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     // Remove a distribution list by ID
     public shared ({ caller }) func removeDistributionList(id: Nat): async () {
-        assertPermission(caller, T.NeuronPermission.ManageChores);
+        assertPermission(caller, T.NeuronPermission.ConfigureDistribution);
         distributionLists := Array.filter<DistributionTypes.DistributionList>(
             distributionLists,
             func(list: DistributionTypes.DistributionList): Bool { list.id != id }
