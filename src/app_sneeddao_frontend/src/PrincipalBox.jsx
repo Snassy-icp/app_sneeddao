@@ -22,6 +22,7 @@ import { getCanisterInfo } from './utils/BackendUtils';
 import SendTokenModal from './SendTokenModal';
 import SendLiquidityPositionModal from './SendLiquidityPositionModal';
 import StatusLamp, { getAllChoresSummaryLamp, getSummaryLabel } from './components/ChoreStatusLamp';
+import UpgradeBotsDialog from './components/UpgradeBotsDialog';
 
 // Management canister constants
 const MANAGEMENT_CANISTER_ID = 'aaaaa-aa';
@@ -65,6 +66,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const [showLockModal, setShowLockModal] = useState(false);
     const [lockToken, setLockToken] = useState(null);
     const [isRefreshingToken, setIsRefreshingToken] = useState(false);
+    const [upgradeDialogOpen, setUpgradeDialogOpen] = useState(false);
     const [tokenLocks, setTokenLocks] = useState([]);
     const [lockDetailsLoading, setLockDetailsLoading] = useState({});
     const [hideDust, setHideDust] = useState(() => {
@@ -122,6 +124,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const managerChoreStatuses = walletContext?.managerChoreStatuses || {};
     const neuronManagersLoading = walletContext?.neuronManagersLoading || false;
     const hasFetchedManagers = walletContext?.hasFetchedManagers || false;
+    const outdatedManagers = walletContext?.outdatedManagers || [];
+    const latestOfficialVersion = walletContext?.latestOfficialVersion;
     
     // Get tracked canisters from context
     const trackedCanisters = walletContext?.trackedCanisters || [];
@@ -2505,6 +2509,41 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                               </div>
                           ) : (
                               <>
+                              {/* Outdated bots message */}
+                              {outdatedManagers.length > 0 && latestOfficialVersion && (
+                                  <div
+                                      onClick={(e) => { e.stopPropagation(); setUpgradeDialogOpen(true); }}
+                                      style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '8px',
+                                          padding: '8px 12px',
+                                          background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(139, 92, 246, 0.05))',
+                                          border: '1px solid rgba(139, 92, 246, 0.2)',
+                                          borderRadius: '8px',
+                                          margin: '0 0 4px 0',
+                                          cursor: 'pointer',
+                                          fontSize: '11px',
+                                          color: theme.colors.primaryText,
+                                      }}
+                                  >
+                                      <FaBrain size={11} style={{ color: '#f59e0b', flexShrink: 0 }} />
+                                      <span style={{ flex: 1 }}>
+                                          <strong>{outdatedManagers.length}</strong> bot{outdatedManagers.length !== 1 ? 's' : ''} outdated
+                                      </span>
+                                      <span style={{
+                                          padding: '2px 8px',
+                                          borderRadius: '4px',
+                                          backgroundColor: '#8b5cf6',
+                                          color: '#fff',
+                                          fontSize: '10px',
+                                          fontWeight: '600',
+                                          flexShrink: 0,
+                                      }}>
+                                          Upgrade
+                                      </span>
+                                  </div>
+                              )}
                               {/* Neuron Managers first */}
                               {neuronManagers.map((manager, index) => {
                                   // Safely convert canisterId to string - handle Principal objects and plain objects
@@ -3185,6 +3224,17 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
               </div>
           </div>
       )}
+
+      {/* Upgrade Bots Dialog (from quick wallet) */}
+      <UpgradeBotsDialog
+          isOpen={upgradeDialogOpen}
+          onClose={() => setUpgradeDialogOpen(false)}
+          outdatedManagers={outdatedManagers}
+          latestVersion={latestOfficialVersion}
+          onUpgradeComplete={() => {
+              window.dispatchEvent(new Event('neuronManagersRefresh'));
+          }}
+      />
   </>
   );
 }

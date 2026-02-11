@@ -23,6 +23,8 @@ import { getSnsById, fetchSnsLogo } from '../utils/SnsUtils';
 import { safePrincipalString, safePermissionType } from '../utils/NeuronUtils';
 import { HttpAgent } from '@dfinity/agent';
 import { useFrontendUpdate } from '../contexts/FrontendUpdateContext';
+import { useOutdatedBotsNotification } from '../hooks/useOutdatedBotsNotification';
+import UpgradeBotsDialog from './UpgradeBotsDialog';
 
 function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const location = useLocation();
@@ -95,6 +97,14 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         handleConsolidate 
     } = useCollectiblesNotifications();
     const { votableCount } = useVotableProposalsNotifications();
+    const {
+        outdatedCount,
+        outdatedManagers: outdatedBots,
+        latestOfficialVersion: latestBotVersion,
+        isDialogOpen: isUpgradeDialogOpen,
+        openDialog: openUpgradeDialog,
+        closeDialog: closeUpgradeDialog,
+    } = useOutdatedBotsNotification();
     const frontendUpdate = useFrontendUpdate();
     const hasUpdateAvailable = frontendUpdate?.hasUpdateAvailable ?? false;
     const countdownSeconds = frontendUpdate?.countdownSeconds ?? 0;
@@ -1598,7 +1608,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             )}
 
             {/* Notifications Row: Shows when there are notifications or update available */}
-            {!isHeaderCollapsed && (hasUpdateAvailable || (showHeaderNotificationsSetting && isAuthenticated && (newReplyCount > 0 || newTipCount > 0 || newMessageCount > 0 || collectiblesCount > 0 || votableCount > 0))) && (
+            {!isHeaderCollapsed && (hasUpdateAvailable || (showHeaderNotificationsSetting && isAuthenticated && (newReplyCount > 0 || newTipCount > 0 || newMessageCount > 0 || collectiblesCount > 0 || votableCount > 0 || outdatedCount > 0))) && (
                 <div style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
@@ -1835,9 +1845,55 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                 <span>{collectiblesCount}</span>
                             </div>
                         )}
+                        
+                        {/* Outdated Bots */}
+                        {outdatedCount > 0 && (
+                            <div 
+                                onClick={openUpgradeDialog}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    padding: '5px 12px',
+                                    background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(139, 92, 246, 0.1))',
+                                    border: '1px solid rgba(139, 92, 246, 0.3)',
+                                    borderRadius: '16px',
+                                    cursor: 'pointer',
+                                    fontSize: '12px',
+                                    fontWeight: '600',
+                                    color: '#8b5cf6',
+                                    transition: 'all 0.2s ease',
+                                    boxShadow: '0 2px 8px rgba(139, 92, 246, 0.15)'
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(-1px)';
+                                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(139, 92, 246, 0.25)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(139, 92, 246, 0.15)';
+                                }}
+                                title={`${outdatedCount} bot${outdatedCount !== 1 ? 's' : ''} can be upgraded`}
+                            >
+                                <FaBrain size={11} />
+                                <span>{outdatedCount} bot{outdatedCount !== 1 ? 's' : ''} outdated</span>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
+            
+            {/* Upgrade Bots Dialog (from header notification) */}
+            <UpgradeBotsDialog
+                isOpen={isUpgradeDialogOpen}
+                onClose={closeUpgradeDialog}
+                outdatedManagers={outdatedBots}
+                latestVersion={latestBotVersion}
+                onUpgradeComplete={() => {
+                    // Trigger refresh of manager data
+                    window.dispatchEvent(new Event('neuronManagersRefresh'));
+                }}
+            />
             
             {isMenuOpen && (
                 <div 

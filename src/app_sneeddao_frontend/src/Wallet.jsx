@@ -63,6 +63,7 @@ import StatusLamp, {
     getSchedulerLampState, getConductorLampState, getTaskLampState,
     getChoreSummaryLamp, getAllChoresSummaryLamp, getSummaryLabel
 } from './components/ChoreStatusLamp';
+import UpgradeBotsDialog from './components/UpgradeBotsDialog';
 import { PERM } from './utils/NeuronPermissionUtils.jsx';
 import { IDL } from '@dfinity/candid';
 import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle, FaTint, FaSeedling, FaGift, FaHourglassHalf, FaWater, FaUnlock, FaCheck, FaExclamationTriangle, FaCrown, FaBox, FaDatabase, FaCog, FaExternalLinkAlt, FaTimes, FaLightbulb, FaArrowRight, FaDollarSign, FaChartBar, FaBullseye, FaMoneyBillWave, FaBug, FaCopy, FaExpandAlt, FaSearch, FaArrowUp } from 'react-icons/fa';
@@ -470,6 +471,11 @@ function Wallet() {
         setRefreshingTokens: setContextRefreshingTokens,
         // Chore statuses from context (shared with quick wallet)
         managerChoreStatuses: contextManagerChoreStatuses,
+        // Official versions and outdated bot detection (shared)
+        officialVersions: contextOfficialVersions,
+        latestOfficialVersion: contextLatestOfficialVersion,
+        outdatedManagers: contextOutdatedManagers,
+        isVersionOutdated: contextIsVersionOutdated,
     } = useWallet();
     const navigate = useNavigate();
     
@@ -657,6 +663,10 @@ function Wallet() {
     const managerNeuronsTotal = contextManagerNeuronsTotal || 0;
     const neuronManagersLoading = contextNeuronManagersLoading;
     const managerChoreStatuses = contextManagerChoreStatuses || {};
+    const officialVersions = contextOfficialVersions || [];
+    const latestOfficialVersion = contextLatestOfficialVersion;
+    const outdatedManagers = contextOutdatedManagers || [];
+    const isVersionOutdated = contextIsVersionOutdated;
     
     // Local UI state for managers (not shared with context)
     const [neuronManagerCounts, setNeuronManagerCounts] = useState({}); // canisterId -> neuron count
@@ -664,7 +674,7 @@ function Wallet() {
     const [neuronManagerMemory, setNeuronManagerMemory] = useState({}); // canisterId -> memory bytes
     const [neuronManagerIsController, setNeuronManagerIsController] = useState({}); // canisterId -> boolean
     const [neuronManagerModuleHash, setNeuronManagerModuleHash] = useState({}); // canisterId -> moduleHash string
-    const [latestOfficialVersion, setLatestOfficialVersion] = useState(null);
+    // latestOfficialVersion now comes from WalletContext (contextLatestOfficialVersion)
     const [neuronManagerCycleSettings] = useState(() => getNeuronManagerSettings());
     const [canisterCycleSettings] = useState(() => getCanisterManagerSettings());
     // Cycles top-up state
@@ -700,6 +710,10 @@ function Wallet() {
     const [managerCardTab, setManagerCardTab] = useState({}); // canisterId -> 'actions' | 'chores'
     const [choreActionLoading, setChoreActionLoading] = useState({}); // "canisterId:choreId" -> true
     
+    // Upgrade bots dialog state
+    const [upgradeDialogOpen, setUpgradeDialogOpen] = useState(false);
+    const [upgradeSingleBot, setUpgradeSingleBot] = useState(null); // if upgrading a single bot from its card
+    
     // Tracked canisters from context - local alias and extra state
     const trackedCanisters = contextTrackedCanisters || [];
     const trackedCanistersLoading = contextTrackedCanistersLoading;
@@ -732,7 +746,7 @@ function Wallet() {
     const [expandedCanisterCards, setExpandedCanisterCards] = useState({}); // canisterId -> boolean
     
     // Neuron manager detection for tracked canisters
-    const [officialVersions, setOfficialVersions] = useState([]); // Known neuron manager WASM hashes
+    // officialVersions now comes from WalletContext (contextOfficialVersions)
     const [detectedNeuronManagers, setDetectedNeuronManagers] = useState({}); // canisterId -> { version, neuronCount, cycles, memory, isController }
     // Canister top-up and transfer state
     const [topUpCanisterId, setTopUpCanisterId] = useState(null); // Which canister is showing top-up UI
@@ -1686,53 +1700,8 @@ function Wallet() {
         }
     }
 
-    // Helper to compare versions
-    const compareVersions = (a, b) => {
-        const aMajor = Number(a.major), aMinor = Number(a.minor), aPatch = Number(a.patch);
-        const bMajor = Number(b.major), bMinor = Number(b.minor), bPatch = Number(b.patch);
-        if (aMajor !== bMajor) return aMajor - bMajor;
-        if (aMinor !== bMinor) return aMinor - bMinor;
-        return aPatch - bPatch;
-    };
-
-    // Check if a version is outdated compared to latest
-    const isVersionOutdated = (version) => {
-        if (!latestOfficialVersion || !version) return false;
-        return compareVersions(version, latestOfficialVersion) < 0;
-    };
-
-    // Fetch official versions for neuron manager detection
-    async function fetchOfficialVersions() {
-        if (!identity) return;
-        
-        try {
-            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
-                ? 'https://ic0.app' 
-                : 'http://localhost:4943';
-            const agent = new HttpAgent({ identity, host });
-            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                await agent.fetchRootKey();
-            }
-            
-            const factory = createFactoryActor(factoryCanisterId, { agent });
-            const fetchedOfficialVersions = await factory.getOfficialVersions();
-            console.log(`[NM Detection] Loaded ${fetchedOfficialVersions?.length || 0} official versions`);
-            setOfficialVersions(fetchedOfficialVersions || []);
-            if (fetchedOfficialVersions && fetchedOfficialVersions.length > 0) {
-                const sorted = [...fetchedOfficialVersions].sort((a, b) => compareVersions(b, a));
-                setLatestOfficialVersion(sorted[0]);
-            }
-        } catch (err) {
-            console.error('Error fetching official versions:', err);
-        }
-    }
-    
-    // Fetch official versions on auth
-    useEffect(() => {
-        if (isAuthenticated) {
-            fetchOfficialVersions();
-        }
-    }, [isAuthenticated]);
+    // compareVersions, isVersionOutdated, officialVersions, latestOfficialVersion
+    // now come from WalletContext (lazy-loaded after managers are fetched)
     
     // Fetch additional manager data (cycles, controller status) - supplements context data
     // Main manager fetching is done by WalletContext
@@ -6418,6 +6387,52 @@ function Wallet() {
                                 </Link>
                             </div>
                         ) : (
+                            <>
+                            {/* Outdated bots banner */}
+                            {outdatedManagers.length > 0 && (
+                                <div
+                                    onClick={() => setUpgradeDialogOpen(true)}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '10px',
+                                        padding: '10px 14px',
+                                        marginBottom: '12px',
+                                        borderRadius: '10px',
+                                        background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(139, 92, 246, 0.05))',
+                                        border: '1px solid rgba(139, 92, 246, 0.25)',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s ease',
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.5)';
+                                        e.currentTarget.style.transform = 'translateY(-1px)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.25)';
+                                        e.currentTarget.style.transform = 'translateY(0)';
+                                    }}
+                                >
+                                    <FaExclamationTriangle size={14} style={{ color: '#f59e0b', flexShrink: 0 }} />
+                                    <span style={{ flex: 1, fontSize: '13px', color: theme.colors.primaryText }}>
+                                        <strong>{outdatedManagers.length}</strong> bot{outdatedManagers.length !== 1 ? 's' : ''} can be upgraded to{' '}
+                                        <span style={{ color: '#8b5cf6', fontWeight: '600' }}>
+                                            v{Number(latestOfficialVersion.major)}.{Number(latestOfficialVersion.minor)}.{Number(latestOfficialVersion.patch)}
+                                        </span>
+                                    </span>
+                                    <span style={{
+                                        padding: '4px 12px',
+                                        borderRadius: '6px',
+                                        backgroundColor: '#8b5cf6',
+                                        color: '#fff',
+                                        fontSize: '12px',
+                                        fontWeight: '600',
+                                        flexShrink: 0,
+                                    }}>
+                                        Upgrade
+                                    </span>
+                                </div>
+                            )}
                             <div className="card-grid">
                                 {neuronManagers.map((manager) => {
                                     const canisterId = normalizeId(manager.canisterId);
@@ -7337,6 +7352,7 @@ function Wallet() {
                                     );
                                 })}
                             </div>
+                        </>
                         )}
                             </>
                             )}
@@ -7816,6 +7832,31 @@ function Wallet() {
                                                                 <FaBrain size={12} />
                                                                 Manage Neurons
                                                             </Link>
+                                                            {isVersionOutdated && isVersionOutdated(manager.version) && latestOfficialVersion && (
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setUpgradeSingleBot(manager);
+                                                                        setUpgradeDialogOpen(true);
+                                                                    }}
+                                                                    style={{
+                                                                        padding: '8px 16px',
+                                                                        borderRadius: '8px',
+                                                                        backgroundColor: '#f59e0b',
+                                                                        color: '#fff',
+                                                                        fontSize: '13px',
+                                                                        border: 'none',
+                                                                        cursor: 'pointer',
+                                                                        fontWeight: '600',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '6px',
+                                                                    }}
+                                                                >
+                                                                    <FaArrowUp size={12} />
+                                                                    Upgrade
+                                                                </button>
+                                                            )}
                                                             <Link
                                                                 to={`/canister?id=${canisterId}`}
                                                                 style={{
@@ -9544,6 +9585,17 @@ function Wallet() {
                 />
                     </>
                 )}
+
+                {/* Upgrade Bots Dialog */}
+                <UpgradeBotsDialog
+                    isOpen={upgradeDialogOpen}
+                    onClose={() => { setUpgradeDialogOpen(false); setUpgradeSingleBot(null); }}
+                    outdatedManagers={upgradeSingleBot ? [upgradeSingleBot] : outdatedManagers}
+                    latestVersion={latestOfficialVersion}
+                    onUpgradeComplete={() => {
+                        if (contextRefreshNeuronManagers) contextRefreshNeuronManagers();
+                    }}
+                />
             </div>
         </div>
     );

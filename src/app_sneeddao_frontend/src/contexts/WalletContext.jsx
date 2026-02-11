@@ -377,6 +377,10 @@ export const WalletProvider = ({ children }) => {
     // Chore statuses for neuron managers - shared between quick wallet and /wallet page
     const [managerChoreStatuses, setManagerChoreStatuses] = useState({}); // canisterId -> choreStatuses[]
     
+    // Official bot versions - shared for outdated detection across all UI surfaces
+    const [officialVersions, setOfficialVersions] = useState([]);
+    const [latestOfficialVersion, setLatestOfficialVersion] = useState(null);
+    
     // Controller status for neuron managers - shared between quick wallet and /wallet page
     const [neuronManagerIsController, setNeuronManagerIsController] = useState({}); // canisterId -> boolean
     
@@ -1896,6 +1900,70 @@ export const WalletProvider = ({ children }) => {
         fetchNeuronManagers();
     }, [fetchNeuronManagers]);
     
+    // Listen for external refresh requests (e.g. after bot upgrades)
+    useEffect(() => {
+        const handleRefresh = () => refreshNeuronManagers();
+        window.addEventListener('neuronManagersRefresh', handleRefresh);
+        return () => window.removeEventListener('neuronManagersRefresh', handleRefresh);
+    }, [refreshNeuronManagers]);
+    
+    // --- Official versions (for outdated bot detection) ---
+    const compareVersions = useCallback((a, b) => {
+        const aMajor = Number(a.major), aMinor = Number(a.minor), aPatch = Number(a.patch);
+        const bMajor = Number(b.major), bMinor = Number(b.minor), bPatch = Number(b.patch);
+        if (aMajor !== bMajor) return aMajor - bMajor;
+        if (aMinor !== bMinor) return aMinor - bMinor;
+        return aPatch - bPatch;
+    }, []);
+
+    const isVersionOutdated = useCallback((version) => {
+        if (!latestOfficialVersion || !version) return false;
+        return compareVersions(version, latestOfficialVersion) < 0;
+    }, [latestOfficialVersion, compareVersions]);
+
+    const fetchOfficialVersions = useCallback(async () => {
+        if (!identity) return;
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging'
+                ? 'https://ic0.app'
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const factory = createFactoryActor(factoryCanisterId, { agent });
+            const fetched = await factory.getOfficialVersions();
+            setOfficialVersions(fetched || []);
+            if (fetched && fetched.length > 0) {
+                const sorted = [...fetched].sort((a, b) => {
+                    const am = Number(a.major), an = Number(a.minor), ap = Number(a.patch);
+                    const bm = Number(b.major), bn = Number(b.minor), bp = Number(b.patch);
+                    if (am !== bm) return bm - am;
+                    if (an !== bn) return bn - an;
+                    return bp - ap;
+                });
+                setLatestOfficialVersion(sorted[0]);
+            }
+        } catch (err) {
+            // Silent — low-priority background fetch
+        }
+    }, [identity]);
+
+    // Fetch official versions lazily after managers are loaded (low priority, non-blocking)
+    useEffect(() => {
+        if (hasFetchedManagers && identity && officialVersions.length === 0) {
+            // Small delay so it doesn't compete with initial wallet loads
+            const timer = setTimeout(fetchOfficialVersions, 2000);
+            return () => clearTimeout(timer);
+        }
+    }, [hasFetchedManagers, identity, officialVersions.length, fetchOfficialVersions]);
+
+    // Computed: list of outdated managers
+    const outdatedManagers = React.useMemo(() => {
+        if (!latestOfficialVersion || neuronManagers.length === 0) return [];
+        return neuronManagers.filter(m => m.version && isVersionOutdated(m.version));
+    }, [neuronManagers, latestOfficialVersion, isVersionOutdated]);
+
     // Fetch tracked canisters (wallet canisters)
     const fetchTrackedCanisters = useCallback(async () => {
         if (!identity || !isAuthenticated) {
@@ -2429,6 +2497,11 @@ export const WalletProvider = ({ children }) => {
             managerNeurons,
             managerNeuronsTotal,
             managerChoreStatuses,
+            officialVersions,
+            latestOfficialVersion,
+            outdatedManagers,
+            isVersionOutdated,
+            compareVersions,
             neuronManagersLoading,
             hasFetchedManagers,
             refreshNeuronManagers,
