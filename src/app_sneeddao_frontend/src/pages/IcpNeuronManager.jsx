@@ -17,7 +17,7 @@ import { setPrincipalNickname, setPrincipalNameFor } from '../utils/BackendUtils
 import { FaGasPump, FaRobot, FaBrain, FaArrowRight, FaSync, FaChevronDown, FaChevronUp, FaShieldAlt, FaWallet } from 'react-icons/fa';
 import PrincipalInput from '../components/PrincipalInput';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
-import { encodeIcrcAccount } from '@dfinity/ledger-icrc';
+import { encodeIcrcAccount, decodeIcrcAccount } from '@dfinity/ledger-icrc';
 import { getCyclesColor, getNeuronManagerSettings } from '../utils/NeuronManagerSettings';
 import TokenIcon from '../components/TokenIcon';
 import { getLogoSync } from '../hooks/useLogoCache';
@@ -336,6 +336,8 @@ function IcpNeuronManager() {
     // Collect-Maturity chore-specific settings
     const [cmThresholdE8s, setCmThresholdE8s] = useState(null); // null = no threshold
     const [cmDestination, setCmDestination] = useState(null);   // null = bot's own account
+    const [cmDestPrincipalInput, setCmDestPrincipalInput] = useState(''); // PrincipalInput value
+    const [cmDestSubaccount, setCmDestSubaccount] = useState(null); // Uint8Array|null
     // Distribution chore settings
     const [distributionLists, setDistributionLists] = useState([]);
     const [editingDistList, setEditingDistList] = useState(null); // working copy being edited
@@ -1227,7 +1229,16 @@ function IcpNeuronManager() {
             try {
                 const cmSettings = await manager.getCollectMaturitySettings();
                 setCmThresholdE8s(cmSettings.thresholdE8s.length > 0 ? cmSettings.thresholdE8s[0] : null);
-                setCmDestination(cmSettings.destination.length > 0 ? cmSettings.destination[0] : null);
+                const dest = cmSettings.destination.length > 0 ? cmSettings.destination[0] : null;
+                setCmDestination(dest);
+                if (dest) {
+                    setCmDestPrincipalInput(dest.owner.toString());
+                    const sub = dest.subaccount && dest.subaccount.length > 0 ? new Uint8Array(dest.subaccount[0]) : null;
+                    setCmDestSubaccount(sub && !sub.every(b => b === 0) ? sub : null);
+                } else {
+                    setCmDestPrincipalInput('');
+                    setCmDestSubaccount(null);
+                }
             } catch (e) {
                 console.warn('Could not load collect-maturity settings:', e);
             }
@@ -5351,14 +5362,42 @@ function IcpNeuronManager() {
                                                     <label style={{ fontSize: '0.8rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '6px' }}>
                                                         Send collected maturity to:
                                                     </label>
-                                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                                        <input
-                                                            type="text"
-                                                            placeholder="Bot's own account (default)"
-                                                            defaultValue={cmDestination ? `${cmDestination.owner.toString()}${cmDestination.subaccount && cmDestination.subaccount.length > 0 ? '.' + Array.from(new Uint8Array(cmDestination.subaccount[0])).map(b => b.toString(16).padStart(2, '0')).join('') : ''}` : ''}
-                                                            style={{ ...inputStyle, width: '320px', fontFamily: 'monospace', fontSize: '0.75rem' }}
-                                                            id="cm-destination-input"
-                                                        />
+                                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                                                        <div style={{ flex: 1, minWidth: '220px', maxWidth: '360px' }}>
+                                                            <PrincipalInput
+                                                                value={cmDestPrincipalInput}
+                                                                onChange={(val) => {
+                                                                    // Check if user entered a long account string
+                                                                    if (val && val.includes('-') && val.length > 30) {
+                                                                        try {
+                                                                            const decoded = decodeIcrcAccount(val);
+                                                                            if (decoded && decoded.owner) {
+                                                                                setCmDestPrincipalInput(decoded.owner.toString());
+                                                                                const sub = decoded.subaccount ? new Uint8Array(decoded.subaccount) : null;
+                                                                                setCmDestSubaccount(sub && !sub.every(b => b === 0) ? sub : null);
+                                                                                return;
+                                                                            }
+                                                                        } catch (_) { /* not a valid encoded account, treat as principal */ }
+                                                                    }
+                                                                    setCmDestPrincipalInput(val);
+                                                                }}
+                                                                placeholder="Bot's own account (default)"
+                                                                inputStyle={{ fontFamily: 'monospace', fontSize: '0.75rem' }}
+                                                            />
+                                                            {cmDestSubaccount && (
+                                                                <div style={{ marginTop: '4px', display: 'flex', gap: '4px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                                    <span style={{ fontSize: '0.7rem', color: theme.colors.mutedText }}>Subaccount:</span>
+                                                                    <code style={{ fontSize: '0.65rem', color: theme.colors.secondaryText, background: `${theme.colors.border}40`, padding: '2px 6px', borderRadius: '4px', wordBreak: 'break-all' }}>
+                                                                        {Array.from(cmDestSubaccount).map(b => b.toString(16).padStart(2, '0')).join('')}
+                                                                    </code>
+                                                                    <button
+                                                                        onClick={() => setCmDestSubaccount(null)}
+                                                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: theme.colors.mutedText, fontSize: '0.7rem', padding: '0 4px' }}
+                                                                        title="Clear subaccount"
+                                                                    >✕</button>
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                         <button
                                                             style={{
                                                                 ...buttonStyle,
@@ -5366,30 +5405,22 @@ function IcpNeuronManager() {
                                                                 color: neuronPrimary,
                                                                 border: `1px solid ${neuronPrimary}25`,
                                                                 opacity: savingChore ? 0.6 : 1,
+                                                                marginTop: '1px',
                                                             }}
                                                             disabled={savingChore}
                                                             onClick={async () => {
-                                                                const input = document.getElementById('cm-destination-input');
-                                                                const val = input?.value?.trim();
+                                                                const principalStr = cmDestPrincipalInput?.trim();
                                                                 setSavingChore(true);
                                                                 setChoreError('');
                                                                 setChoreSuccess('');
                                                                 try {
                                                                     let destOpt = [];
-                                                                    if (val && val !== '') {
-                                                                        // Parse principal (optionally with .subaccount hex suffix)
-                                                                        const parts = val.split('.');
+                                                                    if (principalStr && principalStr !== '') {
                                                                         const { Principal } = await import('@dfinity/principal');
-                                                                        const owner = Principal.fromText(parts[0]);
+                                                                        const owner = Principal.fromText(principalStr);
                                                                         let subaccount = [];
-                                                                        if (parts.length > 1 && parts[1]) {
-                                                                            const hexStr = parts[1].replace(/^0x/, '');
-                                                                            const bytes = new Uint8Array(32);
-                                                                            const hexBytes = hexStr.match(/.{1,2}/g) || [];
-                                                                            for (let i = 0; i < Math.min(hexBytes.length, 32); i++) {
-                                                                                bytes[32 - hexBytes.length + i] = parseInt(hexBytes[i], 16);
-                                                                            }
-                                                                            subaccount = [bytes];
+                                                                        if (cmDestSubaccount && !cmDestSubaccount.every(b => b === 0)) {
+                                                                            subaccount = [cmDestSubaccount];
                                                                         }
                                                                         destOpt = [{ owner, subaccount }];
                                                                     }
@@ -5400,7 +5431,7 @@ function IcpNeuronManager() {
                                                                     const manager = createManagerActor(canisterId, { agent });
                                                                     await manager.setCollectMaturityDestination(destOpt);
                                                                     setChoreSuccess(destOpt.length > 0
-                                                                        ? `Destination set to ${val.split('.')[0]}.`
+                                                                        ? `Destination set to ${principalStr}.`
                                                                         : "Destination reset — maturity will be sent to the bot's own account.");
                                                                     await loadChoreData();
                                                                 } catch (err) {
@@ -5415,10 +5446,14 @@ function IcpNeuronManager() {
                                                     </div>
                                                     <p style={{ margin: '4px 0 0', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
                                                         {cmDestination
-                                                            ? `Current: ${cmDestination.owner.toString()}`
+                                                            ? (() => {
+                                                                const ownerStr = cmDestination.owner.toString();
+                                                                const hasSub = cmDestination.subaccount && cmDestination.subaccount.length > 0 && !new Uint8Array(cmDestination.subaccount[0]).every(b => b === 0);
+                                                                return `Current: ${ownerStr}${hasSub ? ' (with subaccount)' : ''}`;
+                                                            })()
                                                             : "Default: Bot's own account (canister principal, no subaccount)."
                                                         }
-                                                        {' '}Enter a principal ID, optionally followed by .subaccount-hex. Leave empty for default.
+                                                        {' '}Enter a principal ID or paste a full account string. Leave empty for default.
                                                     </p>
                                                 </div>
                                             </div>

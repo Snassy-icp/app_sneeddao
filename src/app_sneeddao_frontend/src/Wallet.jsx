@@ -697,17 +697,6 @@ function Wallet() {
         }
     }, [neuronManagerCycles, contextSetNeuronManagerCycles]);
 
-    // Sync tracked canister controller status to WalletContext
-    useEffect(() => {
-        if (contextSetTrackedCanisterCycles && Object.keys(trackedCanisterStatus).length > 0) {
-            const cyclesMap = {};
-            for (const [cid, status] of Object.entries(trackedCanisterStatus)) {
-                cyclesMap[cid] = status.cycles;
-            }
-            contextSetTrackedCanisterCycles(cyclesMap);
-        }
-    }, [trackedCanisterStatus, contextSetTrackedCanisterCycles]);
-
     const [neuronManagersExpanded, setNeuronManagersExpanded] = useState(() => {
         try {
             const saved = localStorage.getItem('neuronManagersExpanded');
@@ -768,6 +757,16 @@ function Wallet() {
     const [removingTrackedCanister, setRemovingTrackedCanister] = useState(null);
     // Tracked canister status (cycles, memory, isController)
     const [trackedCanisterStatus, setTrackedCanisterStatus] = useState({}); // canisterId -> { cycles, memory, isController, moduleHash }
+    // Sync tracked canister controller status to WalletContext
+    useEffect(() => {
+        if (contextSetTrackedCanisterCycles && Object.keys(trackedCanisterStatus).length > 0) {
+            const cyclesMap = {};
+            for (const [cid, status] of Object.entries(trackedCanisterStatus)) {
+                cyclesMap[cid] = status.cycles;
+            }
+            contextSetTrackedCanisterCycles(cyclesMap);
+        }
+    }, [trackedCanisterStatus, contextSetTrackedCanisterCycles]);
     const [expandedCanisterCards, setExpandedCanisterCards] = useState({}); // canisterId -> boolean
     
     // Neuron manager detection for tracked canisters

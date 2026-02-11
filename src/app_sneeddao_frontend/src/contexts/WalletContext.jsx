@@ -13,7 +13,7 @@ import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { getTokenLogo, get_token_conversion_rate, get_token_icp_rate, get_available, get_available_backend } from '../utils/TokenUtils';
 import { fetchUserNeuronsForSns, uint8ArrayToHex } from '../utils/NeuronUtils';
-import { getTipTokensReceivedByUser, getTrackedCanisters } from '../utils/BackendUtils';
+import { getTipTokensReceivedByUser, getTrackedCanisters, getCanisterGroups, convertGroupsFromBackend } from '../utils/BackendUtils';
 import { fetchAndCacheSnsData, getAllSnses, getSnsById } from '../utils/SnsUtils';
 import { getNeuronsFromCacheByIds, saveNeuronsToCache, getAllNeuronsForSns, normalizeId } from '../hooks/useNeuronsCache';
 import { initializeLogoCache, getLogo, setLogo, getLogoSync } from '../hooks/useLogoCache';
@@ -409,6 +409,11 @@ export const WalletProvider = ({ children }) => {
     // Cycles data - shared for low-cycles notifications across Header, Wallet, PrincipalBox
     const [neuronManagerCycles, setNeuronManagerCycles] = useState({}); // canisterId -> number|null
     const [trackedCanisterCycles, setTrackedCanisterCycles] = useState({}); // canisterId -> number|null
+    
+    // App manager canisters (canister groups from /apps page) - for low-cycles notifications
+    const [appManagerCanisters, setAppManagerCanisters] = useState([]); // Array of canister ID strings
+    const [appManagerCanisterIsController, setAppManagerCanisterIsController] = useState({}); // canisterId -> boolean
+    const [appManagerCanisterCycles, setAppManagerCanisterCycles] = useState({}); // canisterId -> number|null
     
     // Track if we loaded from persistent cache (for instant display)
     const [loadedFromCache, setLoadedFromCache] = useState(false);
@@ -2009,16 +2014,36 @@ export const WalletProvider = ({ children }) => {
                 });
             }
         }
-        // Check tracked canisters
+        // Collect all canister IDs already checked (managers)
+        const checkedIds = new Set(neuronManagers.map(m => {
+            return typeof m.canisterId === 'string' ? m.canisterId : m.canisterId?.toText?.() || m.canisterId?.toString?.() || '';
+        }));
+        
+        // Check tracked canisters (wallet)
         for (const canisterId of trackedCanisters) {
-            // Skip any that are also neuron managers (already checked above)
-            const isAlsoManager = neuronManagers.some(m => {
-                const mid = typeof m.canisterId === 'string' ? m.canisterId : m.canisterId?.toText?.() || m.canisterId?.toString?.() || '';
-                return mid === canisterId;
-            });
-            if (isAlsoManager) continue;
+            if (checkedIds.has(canisterId)) continue;
+            checkedIds.add(canisterId);
             if (trackedCanisterIsController[canisterId] !== true) continue;
             const cycles = trackedCanisterCycles[canisterId];
+            if (cycles === null || cycles === undefined) continue;
+            const criticalLevel = _getCanisterCriticalLevel();
+            if (cycles < criticalLevel) {
+                result.push({
+                    canisterId,
+                    cycles,
+                    criticalLevel,
+                    type: 'canister',
+                    label: 'Wallet',
+                });
+            }
+        }
+        
+        // Check app manager canisters (canister groups from /apps)
+        for (const canisterId of appManagerCanisters) {
+            if (checkedIds.has(canisterId)) continue;
+            checkedIds.add(canisterId);
+            if (appManagerCanisterIsController[canisterId] !== true) continue;
+            const cycles = appManagerCanisterCycles[canisterId];
             if (cycles === null || cycles === undefined) continue;
             const criticalLevel = _getCanisterCriticalLevel();
             if (cycles < criticalLevel) {
@@ -2032,7 +2057,7 @@ export const WalletProvider = ({ children }) => {
             }
         }
         return result;
-    }, [neuronManagers, neuronManagerIsController, neuronManagerCycles, trackedCanisters, trackedCanisterIsController, trackedCanisterCycles]);
+    }, [neuronManagers, neuronManagerIsController, neuronManagerCycles, trackedCanisters, trackedCanisterIsController, trackedCanisterCycles, appManagerCanisters, appManagerCanisterIsController, appManagerCanisterCycles]);
 
     // Fetch tracked canisters (wallet canisters)
     const fetchTrackedCanisters = useCallback(async () => {
@@ -2087,6 +2112,7 @@ export const WalletProvider = ({ children }) => {
             }
             
             const controllerMap = {};
+            const cyclesMap = {};
             for (const manager of neuronManagers) {
                 // Safely convert canisterId to string
                 let canisterId = '';
@@ -2112,14 +2138,16 @@ export const WalletProvider = ({ children }) => {
                             effectiveCanisterId: canisterIdPrincipal,
                         }),
                     });
-                    await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
+                    const status = await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
                     controllerMap[canisterId] = true;
+                    cyclesMap[canisterId] = Number(status.cycles);
                 } catch (err) {
                     // Not a controller
                     controllerMap[canisterId] = false;
                 }
             }
             setNeuronManagerIsController(controllerMap);
+            setNeuronManagerCycles(prev => ({ ...prev, ...cyclesMap }));
         } catch (err) {
             console.warn('[WalletContext] Error fetching manager controller status:', err);
         }
@@ -2141,6 +2169,7 @@ export const WalletProvider = ({ children }) => {
             }
             
             const controllerMap = {};
+            const cyclesMap = {};
             for (const canisterId of trackedCanisters) {
                 try {
                     const canisterIdPrincipal = Principal.fromText(canisterId);
@@ -2152,14 +2181,16 @@ export const WalletProvider = ({ children }) => {
                             effectiveCanisterId: canisterIdPrincipal,
                         }),
                     });
-                    await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
+                    const status = await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
                     controllerMap[canisterId] = true;
+                    cyclesMap[canisterId] = Number(status.cycles);
                 } catch (err) {
                     // Not a controller
                     controllerMap[canisterId] = false;
                 }
             }
             setTrackedCanisterIsController(controllerMap);
+            setTrackedCanisterCycles(prev => ({ ...prev, ...cyclesMap }));
         } catch (err) {
             console.warn('[WalletContext] Error fetching tracked canister controller status:', err);
         }
@@ -2177,6 +2208,76 @@ export const WalletProvider = ({ children }) => {
             fetchTrackedCanisterControllerStatus();
         }
     }, [trackedCanisters, identity, fetchTrackedCanisterControllerStatus]);
+
+    // Fetch app manager canisters (canister groups from /apps page) and check controller status + cycles
+    const fetchAppManagerCanisters = useCallback(async () => {
+        if (!identity) return;
+        
+        try {
+            const result = await getCanisterGroups(identity);
+            const groups = convertGroupsFromBackend(result);
+            if (!groups) {
+                setAppManagerCanisters([]);
+                return;
+            }
+            
+            // Extract all canister IDs from groups
+            const ids = [...groups.ungrouped];
+            const collectFromGroups = (groupsList) => {
+                for (const group of groupsList) {
+                    ids.push(...group.canisters);
+                    collectFromGroups(group.subgroups);
+                }
+            };
+            collectFromGroups(groups.groups);
+            setAppManagerCanisters(ids);
+            
+            if (ids.length === 0) return;
+            
+            // Check controller status + cycles for each
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const controllerMap = {};
+            const cyclesMap = {};
+            for (const canisterId of ids) {
+                try {
+                    const canisterIdPrincipal = Principal.fromText(canisterId);
+                    const mgmtActor = Actor.createActor(managementCanisterIdlFactory, {
+                        agent,
+                        canisterId: MANAGEMENT_CANISTER_ID,
+                        callTransform: (methodName, args, callConfig) => ({
+                            ...callConfig,
+                            effectiveCanisterId: canisterIdPrincipal,
+                        }),
+                    });
+                    const status = await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
+                    controllerMap[canisterId] = true;
+                    cyclesMap[canisterId] = Number(status.cycles);
+                } catch (err) {
+                    controllerMap[canisterId] = false;
+                }
+            }
+            setAppManagerCanisterIsController(controllerMap);
+            setAppManagerCanisterCycles(cyclesMap);
+        } catch (err) {
+            console.warn('[WalletContext] Error fetching app manager canisters:', err);
+        }
+    }, [identity]);
+    
+    // Auto-fetch app manager canisters when identity is available
+    useEffect(() => {
+        if (identity && isAuthenticated) {
+            // Delay to avoid competing with higher-priority fetches
+            const timer = setTimeout(() => fetchAppManagerCanisters(), 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [identity, isAuthenticated, fetchAppManagerCanisters]);
 
     // Fetch tokens and positions when user authenticates
     // Always fetch fresh data in background, even if we loaded from persistent cache
@@ -2228,6 +2329,9 @@ export const WalletProvider = ({ children }) => {
             setNeuronManagerIsController({});
             setTrackedCanisters([]);
             setTrackedCanisterIsController({});
+            setAppManagerCanisters([]);
+            setAppManagerCanisterIsController({});
+            setAppManagerCanisterCycles({});
             setNeuronCache(new Map());
             setHasFetchedInitial(false);
             setHasFetchedPositions(false);
