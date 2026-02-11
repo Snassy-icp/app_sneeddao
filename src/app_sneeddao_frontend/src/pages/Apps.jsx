@@ -2447,7 +2447,7 @@ export default function AppsPage() {
         const countCanister = (canisterId) => {
             // Check if this is a detected neuron manager
             const detectedManager = detectedManagers?.[canisterId];
-            if (detectedManager?.isValid) {
+            if (detectedManager) {
                 if (!counted.has(canisterId)) {
                     counted.add(canisterId);
                     const cycles = detectedManager.cycles;
@@ -2523,8 +2523,9 @@ export default function AppsPage() {
         
         for (const canisterId of canisterIds) {
             const detectedManager = detectedManagers?.[canisterId];
-            if (detectedManager?.isValid) {
-                const cycles = detectedManager.cycles;
+            if (detectedManager) {
+                // Use neuron manager thresholds for detected managers
+                const cycles = detectedManager.cycles ?? statusMap[canisterId]?.cycles;
                 if (cycles === null || cycles === undefined) {
                     unknown++;
                 } else if (cycles < nmRed) {
@@ -4285,7 +4286,7 @@ export default function AppsPage() {
                                 detectedNeuronManagers,
                                 neuronManagerCycleSettings
                             );
-                            const walletCanisterStats = getWalletCanistersStatus(trackedCanisters, canisterStatus, cycleSettings, detectedNeuronManagers, neuronManagerCycleSettings);
+                            const walletCanisterStats = getWalletCanistersStatus(trackedCanisters, trackedCanisterStatus, cycleSettings, detectedNeuronManagers, neuronManagerCycleSettings);
                             const managerStats = getManagersHealthStats(neuronManagers, neuronManagerCycleSettings);
                             
                             // Calculate totals
@@ -4908,7 +4909,7 @@ export default function AppsPage() {
                                 {walletExpanded ? <FaChevronDown /> : <FaChevronRight />}
                                 {/* Wallet health lamp - combines canisters and managers */}
                                 {(() => {
-                                    const canisterStats = getWalletCanistersStatus(trackedCanisters, canisterStatus, cycleSettings, detectedNeuronManagers, neuronManagerCycleSettings);
+                                    const canisterStats = getWalletCanistersStatus(trackedCanisters, trackedCanisterStatus, cycleSettings, detectedNeuronManagers, neuronManagerCycleSettings);
                                     const managerStats = getManagersHealthStats(neuronManagers, neuronManagerCycleSettings);
                                     // Combine stats
                                     const totalCount = canisterStats.total + managerStats.total;
@@ -4994,7 +4995,7 @@ export default function AppsPage() {
                                         {walletCanistersExpanded ? <FaChevronDown size={12} /> : <FaChevronRight size={12} />}
                                         {/* Apps health lamp */}
                                         {(() => {
-                                            const stats = getWalletCanistersStatus(trackedCanisters, canisterStatus, cycleSettings, detectedNeuronManagers, neuronManagerCycleSettings);
+                                            const stats = getWalletCanistersStatus(trackedCanisters, trackedCanisterStatus, cycleSettings, detectedNeuronManagers, neuronManagerCycleSettings);
                                             if (stats.total === 0) return null;
                                             const lampColor = getStatusLampColor(stats.overallStatus);
                                             return (
