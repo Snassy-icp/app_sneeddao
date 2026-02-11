@@ -12,7 +12,7 @@ import { createActor as createBackendActor, canisterId as BACKEND_CANISTER_ID } 
 import { usePremiumStatus } from '../hooks/usePremiumStatus';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, getCanisterTypeIcon } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
-import { FaPlus, FaTrash, FaCube, FaSpinner, FaChevronDown, FaChevronRight, FaBrain, FaFolder, FaFolderOpen, FaEdit, FaCheck, FaTimes, FaCrown, FaLock, FaStar, FaArrowRight, FaWallet, FaQuestionCircle, FaBox } from 'react-icons/fa';
+import { FaPlus, FaTrash, FaCube, FaSpinner, FaChevronDown, FaChevronRight, FaBrain, FaFolder, FaFolderOpen, FaEdit, FaCheck, FaTimes, FaCrown, FaLock, FaStar, FaArrowRight, FaWallet, FaQuestionCircle, FaBox, FaExclamationTriangle, FaBolt } from 'react-icons/fa';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
 import { useNavigate } from 'react-router-dom';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
@@ -20,6 +20,8 @@ import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron
 import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings, getCanisterManagerSettings } from '../utils/NeuronManagerSettings';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
+import UpgradeBotsDialog from '../components/UpgradeBotsDialog';
+import TopUpCyclesDialog from '../components/TopUpCyclesDialog';
 
 // Drag item types for react-dnd
 const DragItemTypes = {
@@ -244,6 +246,10 @@ export default function AppsPage() {
     const [confirmRemoveWalletCanister, setConfirmRemoveWalletCanister] = useState(null);
     const [removingWalletCanister, setRemovingWalletCanister] = useState(null);
     const [trackedCanisterStatus, setTrackedCanisterStatus] = useState({}); // canisterId -> { cycles, memory, isController }
+
+    // Upgrade bots + top-up cycles dialog state
+    const [upgradeDialogOpen, setUpgradeDialogOpen] = useState(false);
+    const [topUpDialogOpen, setTopUpDialogOpen] = useState(false);
 
     // Drag and drop state - simplified for react-dnd
     // react-dnd handles the drag state internally, we just need to track the current drag for UI
@@ -2730,6 +2736,108 @@ export default function AppsPage() {
         );
     };
 
+    // Computed: outdated neuron managers (controllers only) for upgrade banner
+    const outdatedManagersForBanner = React.useMemo(() => {
+        if (!latestOfficialVersion || neuronManagers.length === 0) return [];
+        return neuronManagers.filter(m => {
+            if (!m.version || !isVersionOutdated(m.version)) return false;
+            return m.isController === true;
+        });
+    }, [neuronManagers, latestOfficialVersion, isVersionOutdated]);
+
+    // Computed: low-cycles canisters (controllers only) for top-up banner
+    const lowCyclesCanistersForBanner = React.useMemo(() => {
+        const result = [];
+        const checkedIds = new Set();
+        const nmRed = neuronManagerCycleSettings?.cycleThresholdRed || 500_000_000_000;
+        const nmOrange = neuronManagerCycleSettings?.cycleThresholdOrange || 2_000_000_000_000;
+        const genRed = cycleSettings?.cycleThresholdRed || 500_000_000_000;
+        const genOrange = cycleSettings?.cycleThresholdOrange || 2_000_000_000_000;
+
+        // Neuron managers
+        for (const m of neuronManagers) {
+            const cid = typeof m.canisterId === 'string' ? m.canisterId : m.canisterId?.toText?.() || m.canisterId?.toString?.() || '';
+            checkedIds.add(cid);
+            if (!m.isController) continue;
+            const cycles = m.cycles;
+            if (cycles === null || cycles === undefined) continue;
+            if (cycles < nmRed) {
+                result.push({
+                    canisterId: cid,
+                    cycles,
+                    criticalLevel: nmRed,
+                    healthyLevel: nmOrange,
+                    type: 'neuron_manager',
+                    label: 'ICP Staking Bot',
+                    version: m.version,
+                });
+            }
+        }
+
+        // Custom canister groups (all canisters)
+        const collectGroupCanisters = (groups) => {
+            const ids = [];
+            for (const g of groups) {
+                for (const cid of (g.canisters || [])) {
+                    ids.push(cid);
+                }
+                if (g.subgroups) {
+                    ids.push(...collectGroupCanisters(g.subgroups));
+                }
+            }
+            return ids;
+        };
+        const allCustomIds = [
+            ...collectGroupCanisters(canisterGroups.groups || []),
+            ...(canisterGroups.ungrouped || []),
+        ];
+        for (const canisterId of allCustomIds) {
+            if (checkedIds.has(canisterId)) continue;
+            checkedIds.add(canisterId);
+            const status = canisterStatus[canisterId];
+            if (!status || !status.isController) continue;
+            const cycles = status.cycles;
+            if (cycles === null || cycles === undefined) continue;
+            // Check if it's a detected neuron manager
+            const detectedManager = detectedNeuronManagers?.[canisterId];
+            const critLevel = detectedManager ? nmRed : genRed;
+            const healthLevel = detectedManager ? nmOrange : genOrange;
+            if (cycles < critLevel) {
+                result.push({
+                    canisterId,
+                    cycles,
+                    criticalLevel: critLevel,
+                    healthyLevel: healthLevel,
+                    type: detectedManager ? 'neuron_manager' : 'canister',
+                    label: detectedManager ? 'ICP Staking Bot' : 'Custom',
+                    version: detectedManager?.version,
+                });
+            }
+        }
+
+        // Tracked (wallet) canisters
+        for (const canisterId of trackedCanisters) {
+            if (checkedIds.has(canisterId)) continue;
+            checkedIds.add(canisterId);
+            const status = trackedCanisterStatus[canisterId];
+            if (!status || !status.isController) continue;
+            const cycles = status.cycles;
+            if (cycles === null || cycles === undefined) continue;
+            if (cycles < genRed) {
+                result.push({
+                    canisterId,
+                    cycles,
+                    criticalLevel: genRed,
+                    healthyLevel: genOrange,
+                    type: 'canister',
+                    label: 'Wallet',
+                });
+            }
+        }
+
+        return result;
+    }, [neuronManagers, canisterGroups, canisterStatus, trackedCanisters, trackedCanisterStatus, detectedNeuronManagers, neuronManagerCycleSettings, cycleSettings]);
+
     const styles = {
         pageContainer: {
             minHeight: '100vh',
@@ -3414,6 +3522,94 @@ export default function AppsPage() {
                                 </button>
                             </div>
                         </div>
+
+                        {/* Outdated bots banner */}
+                        {outdatedManagersForBanner.length > 0 && (
+                            <div
+                                onClick={() => setUpgradeDialogOpen(true)}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '10px',
+                                    padding: '10px 14px',
+                                    marginBottom: '12px',
+                                    borderRadius: '10px',
+                                    background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(139, 92, 246, 0.05))',
+                                    border: '1px solid rgba(139, 92, 246, 0.25)',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease',
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.5)';
+                                    e.currentTarget.style.transform = 'translateY(-1px)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.25)';
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                }}
+                            >
+                                <FaExclamationTriangle size={14} style={{ color: '#f59e0b', flexShrink: 0 }} />
+                                <span style={{ flex: 1, fontSize: '13px', color: theme.colors.primaryText }}>
+                                    <strong>{outdatedManagersForBanner.length}</strong> bot{outdatedManagersForBanner.length !== 1 ? 's' : ''} can be upgraded to{' '}
+                                    <span style={{ color: '#8b5cf6', fontWeight: '600' }}>
+                                        v{Number(latestOfficialVersion.major)}.{Number(latestOfficialVersion.minor)}.{Number(latestOfficialVersion.patch)}
+                                    </span>
+                                </span>
+                                <span style={{
+                                    padding: '4px 12px',
+                                    borderRadius: '6px',
+                                    backgroundColor: '#8b5cf6',
+                                    color: '#fff',
+                                    fontSize: '12px',
+                                    fontWeight: '600',
+                                    flexShrink: 0,
+                                }}>
+                                    Upgrade
+                                </span>
+                            </div>
+                        )}
+                        {/* Low cycles banner */}
+                        {lowCyclesCanistersForBanner.length > 0 && (
+                            <div
+                                onClick={() => setTopUpDialogOpen(true)}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '10px',
+                                    padding: '10px 14px',
+                                    marginBottom: '12px',
+                                    borderRadius: '10px',
+                                    background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.05))',
+                                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease',
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.5)';
+                                    e.currentTarget.style.transform = 'translateY(-1px)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.25)';
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                }}
+                            >
+                                <FaBolt size={14} style={{ color: '#ef4444', flexShrink: 0 }} />
+                                <span style={{ flex: 1, fontSize: '13px', color: theme.colors.primaryText }}>
+                                    <strong>{lowCyclesCanistersForBanner.length}</strong> canister{lowCyclesCanistersForBanner.length !== 1 ? 's' : ''} low on cycles
+                                </span>
+                                <span style={{
+                                    padding: '4px 12px',
+                                    borderRadius: '6px',
+                                    backgroundColor: '#ef4444',
+                                    color: '#fff',
+                                    fontSize: '12px',
+                                    fontWeight: '600',
+                                    flexShrink: 0,
+                                }}>
+                                    Top Up
+                                </span>
+                            </div>
+                        )}
 
                         {/* Overall Status Summary */}
                         {(() => {
@@ -5166,6 +5362,33 @@ export default function AppsPage() {
                 }
             `}</style>
             </DndProvider>
+
+            {/* Upgrade Bots Dialog */}
+            <UpgradeBotsDialog
+                isOpen={upgradeDialogOpen}
+                onClose={() => setUpgradeDialogOpen(false)}
+                outdatedManagers={outdatedManagersForBanner}
+                latestVersion={latestOfficialVersion}
+                onUpgradeComplete={() => {
+                    fetchNeuronManagers();
+                }}
+            />
+
+            {/* Top Up Cycles Dialog */}
+            <TopUpCyclesDialog
+                isOpen={topUpDialogOpen}
+                onClose={() => setTopUpDialogOpen(false)}
+                lowCyclesCanisters={lowCyclesCanistersForBanner}
+                onTopUpComplete={() => {
+                    fetchNeuronManagers();
+                    // Re-fetch custom canister statuses
+                    const allIds = [
+                        ...getAllCanisterIds(canisterGroups),
+                        ...trackedCanisters,
+                    ];
+                    allIds.forEach(id => fetchCanisterStatus(id));
+                }}
+            />
         </div>
     );
 }
