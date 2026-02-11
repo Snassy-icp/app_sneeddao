@@ -7,5 +7,12 @@
         "moduleResolution": "node",
         "allowJs": true,
         "outDir": "HACK_BECAUSE_OF_ALLOW_JS"
-    }
+    },
+    "exclude": [
+        "node_modules",
+        ".dfx",
+        "dist",
+        "releases",
+        "HACK_BECAUSE_OF_ALLOW_JS"
+    ]
 }
