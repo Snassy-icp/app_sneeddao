@@ -3161,8 +3161,30 @@ export default function AppsPage() {
                                     }}
                                     onClick={() => setExpandedSnsSubfolders(prev => ({ ...prev, [`${canisterId}_archives`]: !(expandedSnsSubfolders[`${canisterId}_archives`] ?? false) }))}
                                 >
-                                    {(expandedSnsSubfolders[`${canisterId}_archives`] ?? false) ? <FaFolderOpen size={12} style={{ color: '#9ca3af' }} /> : <FaFolder size={12} style={{ color: '#9ca3af' }} />}
-                                    <span style={{ fontWeight: 500, color: theme.colors.secondaryText }}>Archives</span>
+                                    {/* Sub-folder health lamp */}
+                                    {(() => {
+                                        const { cycleThresholdRed, cycleThresholdOrange } = cSettings;
+                                        let worst = 0;
+                                        for (const a of snsData.archiveCanisters) {
+                                            const s = statusMap[a];
+                                            if (!s || s.cycles == null) continue;
+                                            if (s.cycles < cycleThresholdRed) { worst = 3; break; }
+                                            if (s.cycles < cycleThresholdOrange && worst < 2) worst = 2;
+                                            else if (worst < 1) worst = 1;
+                                        }
+                                        const health = worst === 3 ? 'red' : worst === 2 ? 'orange' : worst === 1 ? 'green' : 'unknown';
+                                        const color = getStatusLampColor(health);
+                                        return (
+                                            <span style={{
+                                                width: '7px', height: '7px', borderRadius: '50%',
+                                                backgroundColor: color,
+                                                boxShadow: health !== 'unknown' ? `0 0 5px ${color}` : 'none',
+                                                flexShrink: 0,
+                                            }} title={`Archives health: ${health}`} />
+                                        );
+                                    })()}
+                                    {(expandedSnsSubfolders[`${canisterId}_archives`] ?? false) ? <FaFolderOpen size={12} style={{ color: '#a78bfa' }} /> : <FaFolder size={12} style={{ color: '#a78bfa' }} />}
+                                    <span style={{ fontWeight: 500, color: theme.colors.text }}>Archives</span>
                                     <span style={{ fontSize: '10px', color: theme.colors.secondaryText }}>
                                         {snsData.archiveCanisters.length}
                                     </span>
