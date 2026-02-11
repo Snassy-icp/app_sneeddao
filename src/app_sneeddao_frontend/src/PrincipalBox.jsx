@@ -23,6 +23,7 @@ import SendTokenModal from './SendTokenModal';
 import SendLiquidityPositionModal from './SendLiquidityPositionModal';
 import StatusLamp, { getAllChoresSummaryLamp, getSummaryLabel } from './components/ChoreStatusLamp';
 import UpgradeBotsDialog from './components/UpgradeBotsDialog';
+import TopUpCyclesDialog from './components/TopUpCyclesDialog';
 
 // Management canister constants
 const MANAGEMENT_CANISTER_ID = 'aaaaa-aa';
@@ -67,6 +68,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const [lockToken, setLockToken] = useState(null);
     const [isRefreshingToken, setIsRefreshingToken] = useState(false);
     const [upgradeDialogOpen, setUpgradeDialogOpen] = useState(false);
+    const [topUpDialogOpen, setTopUpDialogOpen] = useState(false);
     const [tokenLocks, setTokenLocks] = useState([]);
     const [lockDetailsLoading, setLockDetailsLoading] = useState({});
     const [hideDust, setHideDust] = useState(() => {
@@ -127,6 +129,9 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const outdatedManagers = walletContext?.outdatedManagers || [];
     const latestOfficialVersion = walletContext?.latestOfficialVersion;
     const fetchManagerNeuronsData = walletContext?.fetchManagerNeuronsData;
+    const lowCyclesCanisters = walletContext?.lowCyclesCanisters || [];
+    const contextSetNeuronManagerCycles = walletContext?.setNeuronManagerCycles;
+    const contextSetTrackedCanisterCycles = walletContext?.setTrackedCanisterCycles;
     
     // Get tracked canisters from context
     const trackedCanisters = walletContext?.trackedCanisters || [];
@@ -153,6 +158,21 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     
     // Get shared ICP price from context (ensures same value as Wallet page)
     const icpPrice = walletContext?.icpPrice;
+
+    // Sync tracked canister cycles to context for low-cycles notifications
+    useEffect(() => {
+        if (contextSetTrackedCanisterCycles && Object.keys(trackedCanisterStatus).length > 0) {
+            const cyclesMap = {};
+            for (const [cid, status] of Object.entries(trackedCanisterStatus)) {
+                if (status.cycles !== null && status.cycles !== undefined) {
+                    cyclesMap[cid] = status.cycles;
+                }
+            }
+            if (Object.keys(cyclesMap).length > 0) {
+                contextSetTrackedCanisterCycles(prev => ({ ...(prev || {}), ...cyclesMap }));
+            }
+        }
+    }, [trackedCanisterStatus, contextSetTrackedCanisterCycles]);
     
     // Sync hideDust with localStorage and listen for changes from other components
     useEffect(() => {
@@ -2576,6 +2596,41 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                       </span>
                                   </div>
                               )}
+                              {/* Low cycles message */}
+                              {lowCyclesCanisters.length > 0 && (
+                                  <div
+                                      onClick={(e) => { e.stopPropagation(); setTopUpDialogOpen(true); }}
+                                      style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '8px',
+                                          padding: '8px 12px',
+                                          background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.05))',
+                                          border: '1px solid rgba(239, 68, 68, 0.2)',
+                                          borderRadius: '8px',
+                                          margin: '0 0 4px 0',
+                                          cursor: 'pointer',
+                                          fontSize: '11px',
+                                          color: theme.colors.primaryText,
+                                      }}
+                                  >
+                                      <span style={{ fontSize: '11px', color: '#ef4444', flexShrink: 0 }}>⚡</span>
+                                      <span style={{ flex: 1 }}>
+                                          <strong>{lowCyclesCanisters.length}</strong> canister{lowCyclesCanisters.length !== 1 ? 's' : ''} low on cycles
+                                      </span>
+                                      <span style={{
+                                          padding: '2px 8px',
+                                          borderRadius: '4px',
+                                          backgroundColor: '#ef4444',
+                                          color: '#fff',
+                                          fontSize: '10px',
+                                          fontWeight: '600',
+                                          flexShrink: 0,
+                                      }}>
+                                          Top Up
+                                      </span>
+                                  </div>
+                              )}
                               {/* Neuron Managers first */}
                               {neuronManagers.map((manager, index) => {
                                   // Safely convert canisterId to string - handle Principal objects and plain objects
@@ -3266,6 +3321,16 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
           outdatedManagers={outdatedManagers}
           latestVersion={latestOfficialVersion}
           onUpgradeComplete={() => {
+              window.dispatchEvent(new Event('neuronManagersRefresh'));
+          }}
+      />
+
+      {/* Top Up Cycles Dialog (from quick wallet) */}
+      <TopUpCyclesDialog
+          isOpen={topUpDialogOpen}
+          onClose={() => setTopUpDialogOpen(false)}
+          lowCyclesCanisters={lowCyclesCanisters}
+          onTopUpComplete={() => {
               window.dispatchEvent(new Event('neuronManagersRefresh'));
           }}
       />

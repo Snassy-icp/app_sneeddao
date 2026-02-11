@@ -64,9 +64,10 @@ import StatusLamp, {
     getChoreSummaryLamp, getAllChoresSummaryLamp, getSummaryLabel
 } from './components/ChoreStatusLamp';
 import UpgradeBotsDialog from './components/UpgradeBotsDialog';
+import TopUpCyclesDialog from './components/TopUpCyclesDialog';
 import { PERM } from './utils/NeuronPermissionUtils.jsx';
 import { IDL } from '@dfinity/candid';
-import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle, FaTint, FaSeedling, FaGift, FaHourglassHalf, FaWater, FaUnlock, FaCheck, FaExclamationTriangle, FaCrown, FaBox, FaDatabase, FaCog, FaExternalLinkAlt, FaTimes, FaLightbulb, FaArrowRight, FaDollarSign, FaChartBar, FaBullseye, FaMoneyBillWave, FaBug, FaCopy, FaExpandAlt, FaSearch, FaArrowUp } from 'react-icons/fa';
+import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle, FaTint, FaSeedling, FaGift, FaHourglassHalf, FaWater, FaUnlock, FaCheck, FaExclamationTriangle, FaCrown, FaBox, FaDatabase, FaCog, FaExternalLinkAlt, FaTimes, FaLightbulb, FaArrowRight, FaDollarSign, FaChartBar, FaBullseye, FaMoneyBillWave, FaBug, FaCopy, FaExpandAlt, FaSearch, FaArrowUp, FaBolt } from 'react-icons/fa';
 
 // Custom CSS for Wallet page animations
 const walletCustomStyles = `
@@ -476,6 +477,10 @@ function Wallet() {
         latestOfficialVersion: contextLatestOfficialVersion,
         outdatedManagers: contextOutdatedManagers,
         isVersionOutdated: contextIsVersionOutdated,
+        // Cycles data shared with context for low-cycles notifications
+        setNeuronManagerCycles: contextSetNeuronManagerCycles,
+        setTrackedCanisterCycles: contextSetTrackedCanisterCycles,
+        lowCyclesCanisters: contextLowCyclesCanisters,
     } = useWallet();
     const navigate = useNavigate();
     
@@ -667,6 +672,7 @@ function Wallet() {
     const latestOfficialVersion = contextLatestOfficialVersion;
     const outdatedManagers = contextOutdatedManagers || [];
     const isVersionOutdated = contextIsVersionOutdated;
+    const lowCyclesCanisters = contextLowCyclesCanisters || [];
     
     // Local UI state for managers (not shared with context)
     const [neuronManagerCounts, setNeuronManagerCounts] = useState({}); // canisterId -> neuron count
@@ -684,6 +690,24 @@ function Wallet() {
     const [topUpError, setTopUpError] = useState('');
     const [topUpSuccess, setTopUpSuccess] = useState('');
     const [icpToCyclesRate, setIcpToCyclesRate] = useState(null);
+    // Sync local cycles data to WalletContext for low-cycles notifications
+    useEffect(() => {
+        if (contextSetNeuronManagerCycles && Object.keys(neuronManagerCycles).length > 0) {
+            contextSetNeuronManagerCycles(neuronManagerCycles);
+        }
+    }, [neuronManagerCycles, contextSetNeuronManagerCycles]);
+
+    // Sync tracked canister controller status to WalletContext
+    useEffect(() => {
+        if (contextSetTrackedCanisterCycles && Object.keys(trackedCanisterStatus).length > 0) {
+            const cyclesMap = {};
+            for (const [cid, status] of Object.entries(trackedCanisterStatus)) {
+                cyclesMap[cid] = status.cycles;
+            }
+            contextSetTrackedCanisterCycles(cyclesMap);
+        }
+    }, [trackedCanisterStatus, contextSetTrackedCanisterCycles]);
+
     const [neuronManagersExpanded, setNeuronManagersExpanded] = useState(() => {
         try {
             const saved = localStorage.getItem('neuronManagersExpanded');
@@ -713,6 +737,7 @@ function Wallet() {
     // Upgrade bots dialog state
     const [upgradeDialogOpen, setUpgradeDialogOpen] = useState(false);
     const [upgradeSingleBot, setUpgradeSingleBot] = useState(null); // if upgrading a single bot from its card
+    const [topUpDialogOpen, setTopUpDialogOpen] = useState(false);
     
     // Tracked canisters from context - local alias and extra state
     const trackedCanisters = contextTrackedCanisters || [];
@@ -6433,6 +6458,48 @@ function Wallet() {
                                     </span>
                                 </div>
                             )}
+                            {/* Low cycles banner */}
+                            {lowCyclesCanisters.length > 0 && (
+                                <div
+                                    onClick={() => setTopUpDialogOpen(true)}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '10px',
+                                        padding: '10px 14px',
+                                        marginBottom: '12px',
+                                        borderRadius: '10px',
+                                        background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.05))',
+                                        border: '1px solid rgba(239, 68, 68, 0.25)',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s ease',
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.5)';
+                                        e.currentTarget.style.transform = 'translateY(-1px)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.25)';
+                                        e.currentTarget.style.transform = 'translateY(0)';
+                                    }}
+                                >
+                                    <FaBolt size={14} style={{ color: '#ef4444', flexShrink: 0 }} />
+                                    <span style={{ flex: 1, fontSize: '13px', color: theme.colors.primaryText }}>
+                                        <strong>{lowCyclesCanisters.length}</strong> canister{lowCyclesCanisters.length !== 1 ? 's' : ''} low on cycles
+                                    </span>
+                                    <span style={{
+                                        padding: '4px 12px',
+                                        borderRadius: '6px',
+                                        backgroundColor: '#ef4444',
+                                        color: '#fff',
+                                        fontSize: '12px',
+                                        fontWeight: '600',
+                                        flexShrink: 0,
+                                    }}>
+                                        Top Up
+                                    </span>
+                                </div>
+                            )}
                             <div className="card-grid">
                                 {neuronManagers.map((manager) => {
                                     const canisterId = normalizeId(manager.canisterId);
@@ -9829,6 +9896,18 @@ function Wallet() {
                     latestVersion={latestOfficialVersion}
                     onUpgradeComplete={() => {
                         if (contextRefreshNeuronManagers) contextRefreshNeuronManagers();
+                    }}
+                />
+
+                {/* Top Up Cycles Dialog */}
+                <TopUpCyclesDialog
+                    isOpen={topUpDialogOpen}
+                    onClose={() => setTopUpDialogOpen(false)}
+                    lowCyclesCanisters={lowCyclesCanisters}
+                    icpToCyclesRate={icpToCyclesRate}
+                    onTopUpComplete={() => {
+                        if (contextRefreshNeuronManagers) contextRefreshNeuronManagers();
+                        fetchTokens();
                     }}
                 />
             </div>

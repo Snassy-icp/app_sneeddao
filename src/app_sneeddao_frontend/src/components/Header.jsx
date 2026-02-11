@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars, FaComments, FaUnlock, FaCrown, FaGift, FaBrain, FaKey, FaHandPaper, FaBell, FaEnvelope, FaCoins, FaSync, FaVoteYea, FaCloudDownloadAlt } from 'react-icons/fa';
+import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars, FaComments, FaUnlock, FaCrown, FaGift, FaBrain, FaKey, FaHandPaper, FaBell, FaEnvelope, FaCoins, FaSync, FaVoteYea, FaCloudDownloadAlt, FaBolt } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { headerStyles } from '../styles/HeaderStyles';
@@ -24,7 +24,9 @@ import { safePrincipalString, safePermissionType } from '../utils/NeuronUtils';
 import { HttpAgent } from '@dfinity/agent';
 import { useFrontendUpdate } from '../contexts/FrontendUpdateContext';
 import { useOutdatedBotsNotification } from '../hooks/useOutdatedBotsNotification';
+import { useLowCyclesNotification } from '../hooks/useLowCyclesNotification';
 import UpgradeBotsDialog from './UpgradeBotsDialog';
+import TopUpCyclesDialog from './TopUpCyclesDialog';
 
 function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const location = useLocation();
@@ -105,6 +107,13 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         openDialog: openUpgradeDialog,
         closeDialog: closeUpgradeDialog,
     } = useOutdatedBotsNotification();
+    const {
+        lowCyclesCount,
+        lowCyclesCanisters,
+        isDialogOpen: isTopUpDialogOpen,
+        openDialog: openTopUpDialog,
+        closeDialog: closeTopUpDialog,
+    } = useLowCyclesNotification();
     const frontendUpdate = useFrontendUpdate();
     const hasUpdateAvailable = frontendUpdate?.hasUpdateAvailable ?? false;
     const countdownSeconds = frontendUpdate?.countdownSeconds ?? 0;
@@ -1608,7 +1617,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             )}
 
             {/* Notifications Row: Shows when there are notifications or update available */}
-            {!isHeaderCollapsed && (hasUpdateAvailable || (showHeaderNotificationsSetting && isAuthenticated && (newReplyCount > 0 || newTipCount > 0 || newMessageCount > 0 || collectiblesCount > 0 || votableCount > 0 || outdatedCount > 0))) && (
+            {!isHeaderCollapsed && (hasUpdateAvailable || (showHeaderNotificationsSetting && isAuthenticated && (newReplyCount > 0 || newTipCount > 0 || newMessageCount > 0 || collectiblesCount > 0 || votableCount > 0 || outdatedCount > 0 || lowCyclesCount > 0))) && (
                 <div style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
@@ -1846,6 +1855,40 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                             </div>
                         )}
                         
+                        {/* Low Cycles */}
+                        {lowCyclesCount > 0 && (
+                            <div 
+                                onClick={openTopUpDialog}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    padding: '4px 10px',
+                                    borderRadius: '12px',
+                                    backgroundColor: '#ef444420',
+                                    color: '#ef4444',
+                                    fontSize: '11px',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s ease',
+                                    boxShadow: '0 2px 8px rgba(239, 68, 68, 0.15)',
+                                    whiteSpace: 'nowrap',
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(-1px)';
+                                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(239, 68, 68, 0.25)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(239, 68, 68, 0.15)';
+                                }}
+                                title={`${lowCyclesCount} canister${lowCyclesCount !== 1 ? 's' : ''} low on cycles`}
+                            >
+                                <FaBolt size={11} />
+                                <span>{lowCyclesCount} low cycles</span>
+                            </div>
+                        )}
+
                         {/* Outdated Bots */}
                         {outdatedCount > 0 && (
                             <div 
@@ -1891,6 +1934,16 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 latestVersion={latestBotVersion}
                 onUpgradeComplete={() => {
                     // Trigger refresh of manager data
+                    window.dispatchEvent(new Event('neuronManagersRefresh'));
+                }}
+            />
+
+            {/* Top Up Cycles Dialog (from header notification) */}
+            <TopUpCyclesDialog
+                isOpen={isTopUpDialogOpen}
+                onClose={closeTopUpDialog}
+                lowCyclesCanisters={lowCyclesCanisters}
+                onTopUpComplete={() => {
                     window.dispatchEvent(new Event('neuronManagersRefresh'));
                 }}
             />

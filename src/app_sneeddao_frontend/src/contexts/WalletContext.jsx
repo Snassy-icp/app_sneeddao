@@ -18,6 +18,7 @@ import { fetchAndCacheSnsData, getAllSnses, getSnsById } from '../utils/SnsUtils
 import { getNeuronsFromCacheByIds, saveNeuronsToCache, getAllNeuronsForSns, normalizeId } from '../hooks/useNeuronsCache';
 import { initializeLogoCache, getLogo, setLogo, getLogoSync } from '../hooks/useLogoCache';
 import { initializeTokenCache, setLedgerList, getTokenMetadataSync } from '../hooks/useTokenCache';
+import { getNeuronManagerSettings, getCanisterManagerSettings } from '../utils/NeuronManagerSettings';
 import { getCachedRewards, setCachedRewards } from '../hooks/useRewardsCache';
 import priceService from '../services/PriceService';
 
@@ -296,6 +297,18 @@ const migrateFromLocalStorage = async (principalId) => {
     }
 };
 
+// Helper: get critical cycle level for ICP Staking Bots (from localStorage settings)
+function _getNeuronManagerCriticalLevel() {
+    const s = getNeuronManagerSettings();
+    return s.cycleThresholdRed || 1_000_000_000_000;
+}
+
+// Helper: get critical cycle level for generic tracked canisters
+function _getCanisterCriticalLevel() {
+    const s = getCanisterManagerSettings();
+    return s.cycleThresholdRed || 1_000_000_000_000;
+}
+
 // ============================================================================
 // WALLET PROVIDER
 // ============================================================================
@@ -392,6 +405,10 @@ export const WalletProvider = ({ children }) => {
     
     // Controller status for tracked canisters - shared between quick wallet and /wallet page
     const [trackedCanisterIsController, setTrackedCanisterIsController] = useState({}); // canisterId -> boolean
+    
+    // Cycles data - shared for low-cycles notifications across Header, Wallet, PrincipalBox
+    const [neuronManagerCycles, setNeuronManagerCycles] = useState({}); // canisterId -> number|null
+    const [trackedCanisterCycles, setTrackedCanisterCycles] = useState({}); // canisterId -> number|null
     
     // Track if we loaded from persistent cache (for instant display)
     const [loadedFromCache, setLoadedFromCache] = useState(false);
@@ -1958,11 +1975,64 @@ export const WalletProvider = ({ children }) => {
         }
     }, [hasFetchedManagers, identity, officialVersions.length, fetchOfficialVersions]);
 
-    // Computed: list of outdated managers
+    // Computed: list of outdated managers (only ones we are controller of)
     const outdatedManagers = React.useMemo(() => {
         if (!latestOfficialVersion || neuronManagers.length === 0) return [];
-        return neuronManagers.filter(m => m.version && isVersionOutdated(m.version));
-    }, [neuronManagers, latestOfficialVersion, isVersionOutdated]);
+        return neuronManagers.filter(m => {
+            if (!m.version || !isVersionOutdated(m.version)) return false;
+            const cid = typeof m.canisterId === 'string' ? m.canisterId : m.canisterId?.toText?.() || m.canisterId?.toString?.() || '';
+            return neuronManagerIsController[cid] === true;
+        });
+    }, [neuronManagers, latestOfficialVersion, isVersionOutdated, neuronManagerIsController]);
+
+    // Computed: list of canisters (managers + tracked) that are below their critical cycle level
+    // and that we are controller of (so we can top them up)
+    const lowCyclesCanisters = React.useMemo(() => {
+        const result = [];
+        // Check neuron managers
+        for (const manager of neuronManagers) {
+            const cid = typeof manager.canisterId === 'string' ? manager.canisterId : manager.canisterId?.toText?.() || manager.canisterId?.toString?.() || '';
+            if (!cid || neuronManagerIsController[cid] !== true) continue;
+            const cycles = neuronManagerCycles[cid];
+            if (cycles === null || cycles === undefined) continue;
+            // ICP Staking Bots use their own cycle settings from localStorage
+            // We import these at the top level to keep them in sync
+            const criticalLevel = _getNeuronManagerCriticalLevel();
+            if (cycles < criticalLevel) {
+                result.push({
+                    canisterId: cid,
+                    cycles,
+                    criticalLevel,
+                    type: 'neuron_manager',
+                    label: 'ICP Staking Bot',
+                    version: manager.version,
+                });
+            }
+        }
+        // Check tracked canisters
+        for (const canisterId of trackedCanisters) {
+            // Skip any that are also neuron managers (already checked above)
+            const isAlsoManager = neuronManagers.some(m => {
+                const mid = typeof m.canisterId === 'string' ? m.canisterId : m.canisterId?.toText?.() || m.canisterId?.toString?.() || '';
+                return mid === canisterId;
+            });
+            if (isAlsoManager) continue;
+            if (trackedCanisterIsController[canisterId] !== true) continue;
+            const cycles = trackedCanisterCycles[canisterId];
+            if (cycles === null || cycles === undefined) continue;
+            const criticalLevel = _getCanisterCriticalLevel();
+            if (cycles < criticalLevel) {
+                result.push({
+                    canisterId,
+                    cycles,
+                    criticalLevel,
+                    type: 'canister',
+                    label: 'App',
+                });
+            }
+        }
+        return result;
+    }, [neuronManagers, neuronManagerIsController, neuronManagerCycles, trackedCanisters, trackedCanisterIsController, trackedCanisterCycles]);
 
     // Fetch tracked canisters (wallet canisters)
     const fetchTrackedCanisters = useCallback(async () => {
@@ -2514,6 +2584,12 @@ export const WalletProvider = ({ children }) => {
             // Controller status - shared between quick wallet and /wallet page
             neuronManagerIsController,
             trackedCanisterIsController,
+            // Cycles data - shared for low-cycles notifications
+            neuronManagerCycles,
+            setNeuronManagerCycles,
+            trackedCanisterCycles,
+            setTrackedCanisterCycles,
+            lowCyclesCanisters,
             // Shared ICP price - ensures consistent values across components
             icpPrice,
             fetchIcpPrice
