@@ -1667,7 +1667,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 <div style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
-                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '6px',
                     width: '100%',
                     paddingTop: '10px',
                     borderTop: '1px solid rgba(139, 92, 246, 0.2)',
@@ -1678,22 +1679,16 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     <div style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '6px',
+                        gap: '4px',
                         color: theme.colors.mutedText,
-                        fontSize: '0.75rem',
+                        fontSize: '0.7rem',
                         fontWeight: '600',
                         textTransform: 'uppercase',
-                        letterSpacing: '0.5px'
+                        letterSpacing: '0.5px',
+                        marginRight: '2px',
                     }}>
-                        <FaBell size={12} />
-                        <span>Notifications</span>
+                        <FaBell size={10} />
                     </div>
-                    
-                    <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '10px'
-                    }}>
                         {/* Update Available - click to refresh now */}
                         {hasUpdateAvailable && notifyUpdatesSetting && (
                             <div 
@@ -1701,30 +1696,28 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                 style={{
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '5px',
-                                    padding: '5px 12px',
+                                    gap: '4px',
+                                    padding: '3px 8px',
                                     background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(16, 185, 129, 0.1))',
                                     border: '1px solid rgba(16, 185, 129, 0.3)',
-                                    borderRadius: '16px',
+                                    borderRadius: '12px',
                                     cursor: 'pointer',
-                                    fontSize: '12px',
+                                    fontSize: '11px',
                                     fontWeight: '600',
                                     color: '#10b981',
                                     transition: 'all 0.2s ease',
-                                    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.15)'
+                                    whiteSpace: 'nowrap',
                                 }}
                                 onMouseEnter={(e) => {
                                     e.currentTarget.style.transform = 'translateY(-1px)';
-                                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.25)';
                                 }}
                                 onMouseLeave={(e) => {
                                     e.currentTarget.style.transform = 'translateY(0)';
-                                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(16, 185, 129, 0.15)';
                                 }}
                                 title={autoUpdateEnabled ? "New version available - Click to refresh now or wait for auto-refresh" : "New version available - Click to refresh"}
                             >
-                                <FaCloudDownloadAlt size={11} />
-                                <span>Update available</span>
+                                <FaCloudDownloadAlt size={10} />
+                                <span>Update</span>
                                 {autoUpdateEnabled && (
                                     <span style={{ opacity: 0.9, fontWeight: 500 }}>({countdownSeconds}s)</span>
                                 )}
@@ -1738,29 +1731,27 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                 style={{
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '5px',
-                                    padding: '5px 12px',
+                                    gap: '4px',
+                                    padding: '3px 8px',
                                     background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(139, 92, 246, 0.1))',
                                     border: '1px solid rgba(139, 92, 246, 0.3)',
-                                    borderRadius: '16px',
+                                    borderRadius: '12px',
                                     cursor: 'pointer',
-                                    fontSize: '12px',
+                                    fontSize: '11px',
                                     fontWeight: '600',
                                     color: '#a78bfa',
                                     transition: 'all 0.2s ease',
-                                    boxShadow: '0 2px 8px rgba(139, 92, 246, 0.15)'
+                                    whiteSpace: 'nowrap',
                                 }}
                                 onMouseEnter={(e) => {
                                     e.currentTarget.style.transform = 'translateY(-1px)';
-                                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(139, 92, 246, 0.25)';
                                 }}
                                 onMouseLeave={(e) => {
                                     e.currentTarget.style.transform = 'translateY(0)';
-                                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(139, 92, 246, 0.15)';
                                 }}
-                                title={`You have ${newReplyCount} new ${newReplyCount === 1 ? 'reply' : 'replies'}`}
+                                title={`${newReplyCount} new ${newReplyCount === 1 ? 'reply' : 'replies'}`}
                             >
-                                <FaComments size={11} />
+                                <FaComments size={10} />
                                 <span>{newReplyCount}</span>
                             </div>
                         )}
@@ -1772,29 +1763,27 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                 style={{
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '5px',
-                                    padding: '5px 12px',
+                                    gap: '4px',
+                                    padding: '3px 8px',
                                     background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(59, 130, 246, 0.1))',
                                     border: '1px solid rgba(59, 130, 246, 0.3)',
-                                    borderRadius: '16px',
+                                    borderRadius: '12px',
                                     cursor: 'pointer',
-                                    fontSize: '12px',
+                                    fontSize: '11px',
                                     fontWeight: '600',
                                     color: '#60a5fa',
                                     transition: 'all 0.2s ease',
-                                    boxShadow: '0 2px 8px rgba(59, 130, 246, 0.15)'
+                                    whiteSpace: 'nowrap',
                                 }}
                                 onMouseEnter={(e) => {
                                     e.currentTarget.style.transform = 'translateY(-1px)';
-                                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.25)';
                                 }}
                                 onMouseLeave={(e) => {
                                     e.currentTarget.style.transform = 'translateY(0)';
-                                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(59, 130, 246, 0.15)';
                                 }}
-                                title={`You have ${newMessageCount} new ${newMessageCount === 1 ? 'message' : 'messages'}`}
+                                title={`${newMessageCount} new ${newMessageCount === 1 ? 'message' : 'messages'}`}
                             >
-                                <FaEnvelope size={11} />
+                                <FaEnvelope size={10} />
                                 <span>{newMessageCount}</span>
                             </div>
                         )}
@@ -1806,29 +1795,27 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                 style={{
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '5px',
-                                    padding: '5px 12px',
+                                    gap: '4px',
+                                    padding: '3px 8px',
                                     background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(139, 92, 246, 0.1))',
                                     border: '1px solid rgba(139, 92, 246, 0.3)',
-                                    borderRadius: '16px',
+                                    borderRadius: '12px',
                                     cursor: 'pointer',
-                                    fontSize: '12px',
+                                    fontSize: '11px',
                                     fontWeight: '600',
                                     color: '#a78bfa',
                                     transition: 'all 0.2s ease',
-                                    boxShadow: '0 2px 8px rgba(139, 92, 246, 0.15)'
+                                    whiteSpace: 'nowrap',
                                 }}
                                 onMouseEnter={(e) => {
                                     e.currentTarget.style.transform = 'translateY(-1px)';
-                                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(139, 92, 246, 0.25)';
                                 }}
                                 onMouseLeave={(e) => {
                                     e.currentTarget.style.transform = 'translateY(0)';
-                                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(139, 92, 246, 0.15)';
                                 }}
-                                title={`You have ${votableCount} proposal${votableCount === 1 ? '' : 's'} to vote on`}
+                                title={`${votableCount} proposal${votableCount === 1 ? '' : 's'} to vote on`}
                             >
-                                <FaVoteYea size={11} />
+                                <FaVoteYea size={10} />
                                 <span>{votableCount}</span>
                             </div>
                         )}
@@ -1840,29 +1827,27 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                 style={{
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '5px',
-                                    padding: '5px 12px',
+                                    gap: '4px',
+                                    padding: '3px 8px',
                                     background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(245, 158, 11, 0.1))',
                                     border: '1px solid rgba(245, 158, 11, 0.3)',
-                                    borderRadius: '16px',
+                                    borderRadius: '12px',
                                     cursor: 'pointer',
-                                    fontSize: '12px',
+                                    fontSize: '11px',
                                     fontWeight: '600',
                                     color: '#fbbf24',
                                     transition: 'all 0.2s ease',
-                                    boxShadow: '0 2px 8px rgba(245, 158, 11, 0.15)'
+                                    whiteSpace: 'nowrap',
                                 }}
                                 onMouseEnter={(e) => {
                                     e.currentTarget.style.transform = 'translateY(-1px)';
-                                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(245, 158, 11, 0.25)';
                                 }}
                                 onMouseLeave={(e) => {
                                     e.currentTarget.style.transform = 'translateY(0)';
-                                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(245, 158, 11, 0.15)';
                                 }}
-                                title={`You have ${newTipCount} new ${newTipCount === 1 ? 'tip' : 'tips'}`}
+                                title={`${newTipCount} new ${newTipCount === 1 ? 'tip' : 'tips'}`}
                             >
-                                <FaCoins size={11} />
+                                <FaCoins size={10} />
                                 <span>{newTipCount}</span>
                             </div>
                         )}
@@ -1874,29 +1859,27 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                 style={{
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '5px',
-                                    padding: '5px 12px',
+                                    gap: '4px',
+                                    padding: '3px 8px',
                                     background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(16, 185, 129, 0.1))',
                                     border: '1px solid rgba(16, 185, 129, 0.3)',
-                                    borderRadius: '16px',
+                                    borderRadius: '12px',
                                     cursor: 'pointer',
-                                    fontSize: '12px',
+                                    fontSize: '11px',
                                     fontWeight: '600',
                                     color: '#34d399',
                                     transition: 'all 0.2s ease',
-                                    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.15)'
+                                    whiteSpace: 'nowrap',
                                 }}
                                 onMouseEnter={(e) => {
                                     e.currentTarget.style.transform = 'translateY(-1px)';
-                                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.25)';
                                 }}
                                 onMouseLeave={(e) => {
                                     e.currentTarget.style.transform = 'translateY(0)';
-                                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(16, 185, 129, 0.15)';
                                 }}
-                                title={`You have ${collectiblesCount} ${collectiblesCount === 1 ? 'item' : 'items'} to collect worth $${collectiblesItems.reduce((sum, item) => sum + (item.usdValue || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (fees, rewards, maturity)`}
+                                title={`${collectiblesCount} ${collectiblesCount === 1 ? 'item' : 'items'} to collect worth $${collectiblesItems.reduce((sum, item) => sum + (item.usdValue || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (fees, rewards, maturity)`}
                             >
-                                <FaGift size={11} />
+                                <FaGift size={10} />
                                 <span>{collectiblesCount}</span>
                             </div>
                         )}
@@ -1908,30 +1891,28 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                 style={{
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '5px',
-                                    padding: '4px 10px',
+                                    gap: '4px',
+                                    padding: '3px 8px',
                                     borderRadius: '12px',
-                                    backgroundColor: '#ef444420',
+                                    background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(239, 68, 68, 0.1))',
+                                    border: '1px solid rgba(239, 68, 68, 0.3)',
                                     color: '#ef4444',
                                     fontSize: '11px',
                                     fontWeight: '600',
                                     cursor: 'pointer',
                                     transition: 'all 0.2s ease',
-                                    boxShadow: '0 2px 8px rgba(239, 68, 68, 0.15)',
                                     whiteSpace: 'nowrap',
                                 }}
                                 onMouseEnter={(e) => {
                                     e.currentTarget.style.transform = 'translateY(-1px)';
-                                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(239, 68, 68, 0.25)';
                                 }}
                                 onMouseLeave={(e) => {
                                     e.currentTarget.style.transform = 'translateY(0)';
-                                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(239, 68, 68, 0.15)';
                                 }}
                                 title={`${lowCyclesCount} canister${lowCyclesCount !== 1 ? 's' : ''} low on cycles`}
                             >
-                                <FaBolt size={11} />
-                                <span>{lowCyclesCount} low cycles</span>
+                                <FaBolt size={10} />
+                                <span>{lowCyclesCount}</span>
                             </div>
                         )}
 
@@ -1942,33 +1923,30 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                 style={{
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '5px',
-                                    padding: '5px 12px',
+                                    gap: '4px',
+                                    padding: '3px 8px',
                                     background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(139, 92, 246, 0.1))',
                                     border: '1px solid rgba(139, 92, 246, 0.3)',
-                                    borderRadius: '16px',
+                                    borderRadius: '12px',
                                     cursor: 'pointer',
-                                    fontSize: '12px',
+                                    fontSize: '11px',
                                     fontWeight: '600',
                                     color: '#8b5cf6',
                                     transition: 'all 0.2s ease',
-                                    boxShadow: '0 2px 8px rgba(139, 92, 246, 0.15)'
+                                    whiteSpace: 'nowrap',
                                 }}
                                 onMouseEnter={(e) => {
                                     e.currentTarget.style.transform = 'translateY(-1px)';
-                                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(139, 92, 246, 0.25)';
                                 }}
                                 onMouseLeave={(e) => {
                                     e.currentTarget.style.transform = 'translateY(0)';
-                                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(139, 92, 246, 0.15)';
                                 }}
                                 title={`${outdatedCount} bot${outdatedCount !== 1 ? 's' : ''} can be upgraded`}
                             >
-                                <FaBrain size={11} />
-                                <span>{outdatedCount} bot{outdatedCount !== 1 ? 's' : ''} outdated</span>
+                                <FaBrain size={10} />
+                                <span>{outdatedCount}</span>
                             </div>
                         )}
-                    </div>
                 </div>
             )}
             

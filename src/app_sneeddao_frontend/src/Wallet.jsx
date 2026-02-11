@@ -6746,13 +6746,44 @@ function Wallet() {
 
                                                     {activeTab === 'info' && (
                                                     <>
-                                                    {/* First Row: Send button (right-aligned) */}
+                                                    {/* First Row: Upgrade + Send buttons */}
                                                     {neuronManagerIsController[canisterId] && (
                                                         <div style={{ 
                                                             display: 'flex', 
                                                             justifyContent: 'flex-end',
-                                                            marginBottom: '12px'
+                                                            gap: '8px',
+                                                            marginBottom: '12px',
+                                                            flexWrap: 'wrap',
                                                         }}>
+                                                            {isVersionOutdated && isVersionOutdated(manager.version) && latestOfficialVersion && (
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setUpgradeSingleBot(manager);
+                                                                        setUpgradeDialogOpen(true);
+                                                                    }}
+                                                                    style={{
+                                                                        background: '#f59e0b',
+                                                                        color: '#fff',
+                                                                        border: 'none',
+                                                                        borderRadius: '6px',
+                                                                        padding: '6px 12px',
+                                                                        cursor: 'pointer',
+                                                                        fontSize: '0.85rem',
+                                                                        fontWeight: '600',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '6px',
+                                                                        transition: 'all 0.2s ease',
+                                                                    }}
+                                                                    onMouseEnter={(e) => { e.currentTarget.style.background = '#d97706'; }}
+                                                                    onMouseLeave={(e) => { e.currentTarget.style.background = '#f59e0b'; }}
+                                                                    title={`Upgrade to v${Number(latestOfficialVersion.major)}.${Number(latestOfficialVersion.minor)}.${Number(latestOfficialVersion.patch)}`}
+                                                                >
+                                                                    <FaArrowUp size={12} />
+                                                                    Upgrade
+                                                                </button>
+                                                            )}
                                                             <button
                                                                 onClick={() => {
                                                                     setTransferTargetManager(manager);
