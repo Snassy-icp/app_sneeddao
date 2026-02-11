@@ -64,22 +64,23 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         (1,  #ManagePermissions),
         (2,  #ConfigureDissolveState),
         (3,  #Vote),
-        (4,  #Disburse),
-        (5,  #Split),
-        (6,  #MergeMaturity),
-        (7,  #DisburseMaturity),
-        (8,  #StakeMaturity),
-        (9,  #ManageFollowees),
-        (10, #Spawn),
-        (11, #ManageNeuronHotkeys),
-        (12, #StakeNeuron),
-        (13, #MergeNeurons),
-        (14, #AutoStakeMaturity),
-        (15, #ManageVisibility),
-        (16, #WithdrawFunds),
-        (17, #ViewNeuron),
-        (18, #ManageChores),
-        (19, #ViewChores),
+        (4,  #MakeProposal),
+        (5,  #Disburse),
+        (6,  #Split),
+        (7,  #MergeMaturity),
+        (8,  #DisburseMaturity),
+        (9,  #StakeMaturity),
+        (10, #ManageFollowees),
+        (11, #Spawn),
+        (12, #ManageNeuronHotkeys),
+        (13, #StakeNeuron),
+        (14, #MergeNeurons),
+        (15, #AutoStakeMaturity),
+        (16, #ManageVisibility),
+        (17, #WithdrawFunds),
+        (18, #ViewNeuron),
+        (19, #ManageChores),
+        (20, #ViewChores),
     ];
 
     // Bot-specific variant-to-ID conversion
@@ -89,22 +90,23 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             case (#ManagePermissions) { 1 };
             case (#ConfigureDissolveState) { 2 };
             case (#Vote) { 3 };
-            case (#Disburse) { 4 };
-            case (#Split) { 5 };
-            case (#MergeMaturity) { 6 };
-            case (#DisburseMaturity) { 7 };
-            case (#StakeMaturity) { 8 };
-            case (#ManageFollowees) { 9 };
-            case (#Spawn) { 10 };
-            case (#ManageNeuronHotkeys) { 11 };
-            case (#StakeNeuron) { 12 };
-            case (#MergeNeurons) { 13 };
-            case (#AutoStakeMaturity) { 14 };
-            case (#ManageVisibility) { 15 };
-            case (#WithdrawFunds) { 16 };
-            case (#ViewNeuron) { 17 };
-            case (#ManageChores) { 18 };
-            case (#ViewChores) { 19 };
+            case (#MakeProposal) { 4 };
+            case (#Disburse) { 5 };
+            case (#Split) { 6 };
+            case (#MergeMaturity) { 7 };
+            case (#DisburseMaturity) { 8 };
+            case (#StakeMaturity) { 9 };
+            case (#ManageFollowees) { 10 };
+            case (#Spawn) { 11 };
+            case (#ManageNeuronHotkeys) { 12 };
+            case (#StakeNeuron) { 13 };
+            case (#MergeNeurons) { 14 };
+            case (#AutoStakeMaturity) { 15 };
+            case (#ManageVisibility) { 16 };
+            case (#WithdrawFunds) { 17 };
+            case (#ViewNeuron) { 18 };
+            case (#ManageChores) { 19 };
+            case (#ViewChores) { 20 };
         }
     };
 
@@ -115,22 +117,23 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             case (1)  { ?#ManagePermissions };
             case (2)  { ?#ConfigureDissolveState };
             case (3)  { ?#Vote };
-            case (4)  { ?#Disburse };
-            case (5)  { ?#Split };
-            case (6)  { ?#MergeMaturity };
-            case (7)  { ?#DisburseMaturity };
-            case (8)  { ?#StakeMaturity };
-            case (9)  { ?#ManageFollowees };
-            case (10) { ?#Spawn };
-            case (11) { ?#ManageNeuronHotkeys };
-            case (12) { ?#StakeNeuron };
-            case (13) { ?#MergeNeurons };
-            case (14) { ?#AutoStakeMaturity };
-            case (15) { ?#ManageVisibility };
-            case (16) { ?#WithdrawFunds };
-            case (17) { ?#ViewNeuron };
-            case (18) { ?#ManageChores };
-            case (19) { ?#ViewChores };
+            case (4)  { ?#MakeProposal };
+            case (5)  { ?#Disburse };
+            case (6)  { ?#Split };
+            case (7)  { ?#MergeMaturity };
+            case (8)  { ?#DisburseMaturity };
+            case (9)  { ?#StakeMaturity };
+            case (10) { ?#ManageFollowees };
+            case (11) { ?#Spawn };
+            case (12) { ?#ManageNeuronHotkeys };
+            case (13) { ?#StakeNeuron };
+            case (14) { ?#MergeNeurons };
+            case (15) { ?#AutoStakeMaturity };
+            case (16) { ?#ManageVisibility };
+            case (17) { ?#WithdrawFunds };
+            case (18) { ?#ViewNeuron };
+            case (19) { ?#ManageChores };
+            case (20) { ?#ViewChores };
             case (_)  { null };
         }
     };
@@ -962,6 +965,37 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
             case (?#Error(e)) { #Err(#GovernanceError(e)) };
             case (?#RegisterVote(_)) { #Ok };
+            case (_) { #Err(#InvalidOperation("Unexpected response")) };
+        };
+    };
+
+    // ============================================
+    // PROPOSALS
+    // ============================================
+
+    public shared ({ caller }) func makeProposal(
+        neuronId: T.NeuronId,
+        proposal: T.Proposal
+    ): async T.MakeProposalResult {
+        assertPermission(caller, T.NeuronPermission.MakeProposal);
+        
+        let hasControl = await hasNeuronInternal(neuronId);
+        if (not hasControl) {
+            return #Err(#NoNeuron);
+        };
+        
+        let request: T.ManageNeuronRequest = {
+            id = ?neuronId;
+            command = ?#MakeProposal(proposal);
+            neuron_id_or_subaccount = null;
+        };
+        
+        let result = await governance.manage_neuron(request);
+        
+        switch (result.command) {
+            case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
+            case (?#Error(e)) { #Err(#GovernanceError(e)) };
+            case (?#MakeProposal(resp)) { #Ok({ proposal_id = resp.proposal_id; message = resp.message }) };
             case (_) { #Err(#InvalidOperation("Unexpected response")) };
         };
     };

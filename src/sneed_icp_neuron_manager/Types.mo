@@ -479,6 +479,12 @@ module {
         #Err: OperationError;
     };
 
+    // MakeProposal result
+    public type MakeProposalResult = {
+        #Ok: { proposal_id: ?ProposalId; message: ?Text };
+        #Err: OperationError;
+    };
+
     // Manager canister info (for factory tracking)
     public type ManagerInfo = {
         canisterId: Principal;
@@ -821,6 +827,7 @@ module {
         #ManagePermissions;       // Add/remove botkey principals and their permissions
         #ConfigureDissolveState;  // Start/stop dissolving, set dissolve delay
         #Vote;                    // Vote on proposals, refresh voting power
+        #MakeProposal;            // Submit NNS proposals using a neuron
         #Disburse;                // Disburse neuron stake
         #Split;                   // Split neuron
         #MergeMaturity;           // Merge maturity into stake
@@ -851,22 +858,23 @@ module {
         public let ManagePermissions: Nat = BotkeyTypes.BasePermission.ManagePermissions;  // 1
         public let ConfigureDissolveState: Nat = 2;
         public let Vote: Nat = 3;
-        public let Disburse: Nat = 4;
-        public let Split: Nat = 5;
-        public let MergeMaturity: Nat = 6;
-        public let DisburseMaturity: Nat = 7;
-        public let StakeMaturity: Nat = 8;
-        public let ManageFollowees: Nat = 9;
-        public let Spawn: Nat = 10;
-        public let ManageNeuronHotkeys: Nat = 11;
-        public let StakeNeuron: Nat = 12;
-        public let MergeNeurons: Nat = 13;
-        public let AutoStakeMaturity: Nat = 14;
-        public let ManageVisibility: Nat = 15;
-        public let WithdrawFunds: Nat = 16;
-        public let ViewNeuron: Nat = 17;
-        public let ManageChores: Nat = 18;
-        public let ViewChores: Nat = 19;
+        public let MakeProposal: Nat = 4;
+        public let Disburse: Nat = 5;
+        public let Split: Nat = 6;
+        public let MergeMaturity: Nat = 7;
+        public let DisburseMaturity: Nat = 8;
+        public let StakeMaturity: Nat = 9;
+        public let ManageFollowees: Nat = 10;
+        public let Spawn: Nat = 11;
+        public let ManageNeuronHotkeys: Nat = 12;
+        public let StakeNeuron: Nat = 13;
+        public let MergeNeurons: Nat = 14;
+        public let AutoStakeMaturity: Nat = 15;
+        public let ManageVisibility: Nat = 16;
+        public let WithdrawFunds: Nat = 17;
+        public let ViewNeuron: Nat = 18;
+        public let ManageChores: Nat = 19;
+        public let ViewChores: Nat = 20;
     };
 
     // Info about a botkey principal and their permissions (for API responses)
