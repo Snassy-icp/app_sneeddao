@@ -21,6 +21,7 @@ import { uint8ArrayToHex } from './utils/NeuronUtils';
 import { getCanisterInfo } from './utils/BackendUtils';
 import SendTokenModal from './SendTokenModal';
 import SendLiquidityPositionModal from './SendLiquidityPositionModal';
+import StatusLamp, { getAllChoresSummaryLamp, getSummaryLabel } from './components/ChoreStatusLamp';
 
 // Management canister constants
 const MANAGEMENT_CANISTER_ID = 'aaaaa-aa';
@@ -118,6 +119,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const neuronManagers = walletContext?.neuronManagers || [];
     const managerNeurons = walletContext?.managerNeurons || {};
     const managerNeuronsTotal = walletContext?.managerNeuronsTotal || 0;
+    const managerChoreStatuses = walletContext?.managerChoreStatuses || {};
     const neuronManagersLoading = walletContext?.neuronManagersLoading || false;
     const hasFetchedManagers = walletContext?.hasFetchedManagers || false;
     
@@ -2645,6 +2647,12 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                                   }}>
                                                       {neurons.length}n
                                                   </span>
+                                                  {/* Chore status lamp */}
+                                                  {managerChoreStatuses[canisterIdStr] && managerChoreStatuses[canisterIdStr].length > 0 && (() => {
+                                                      const overallState = getAllChoresSummaryLamp(managerChoreStatuses[canisterIdStr]);
+                                                      const overallLabel = getSummaryLabel(overallState, 'Chores');
+                                                      return <StatusLamp state={overallState} size={7} label={overallLabel} />;
+                                                  })()}
                                               </div>
                                               {/* USD Value */}
                                               <span style={{ 

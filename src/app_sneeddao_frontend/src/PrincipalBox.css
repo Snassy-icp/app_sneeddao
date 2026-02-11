@@ -282,3 +282,8 @@
     transform: translateY(0);
   }
 }
+
+@keyframes lampPulse {
+    0%, 100% { box-shadow: 0 0 4px var(--lamp-color, #22c55e), 0 0 8px var(--lamp-color, #22c55e)40; }
+    50% { box-shadow: 0 0 8px var(--lamp-color, #22c55e), 0 0 16px var(--lamp-color, #22c55e)60; }
+}

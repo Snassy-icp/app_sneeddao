@@ -374,6 +374,9 @@ export const WalletProvider = ({ children }) => {
     const [hasFetchedManagers, setHasFetchedManagers] = useState(false);
     const managersFetchSessionRef = useRef(0);
     
+    // Chore statuses for neuron managers - shared between quick wallet and /wallet page
+    const [managerChoreStatuses, setManagerChoreStatuses] = useState({}); // canisterId -> choreStatuses[]
+    
     // Controller status for neuron managers - shared between quick wallet and /wallet page
     const [neuronManagerIsController, setNeuronManagerIsController] = useState({}); // canisterId -> boolean
     
@@ -1734,6 +1737,19 @@ export const WalletProvider = ({ children }) => {
                 ...prev,
                 [canisterIdStr]: { loading: false, neurons: neuronsData, error: null }
             }));
+            
+            // Also fetch chore statuses (silently fail if canister version doesn't support chores)
+            try {
+                const choreStatuses = await manager.getChoreStatuses();
+                if (choreStatuses && choreStatuses.length > 0) {
+                    setManagerChoreStatuses(prev => ({
+                        ...prev,
+                        [canisterIdStr]: choreStatuses
+                    }));
+                }
+            } catch (_) {
+                // Chores API not available on this canister version - ignore
+            }
         } catch (err) {
             // Only log if not a "method not found" error (canister isn't an ICP Staking Bot)
             if (!err.message?.includes('has no') && !err.message?.includes('Method not found')) {
@@ -2412,6 +2428,7 @@ export const WalletProvider = ({ children }) => {
             neuronManagers,
             managerNeurons,
             managerNeuronsTotal,
+            managerChoreStatuses,
             neuronManagersLoading,
             hasFetchedManagers,
             refreshNeuronManagers,
