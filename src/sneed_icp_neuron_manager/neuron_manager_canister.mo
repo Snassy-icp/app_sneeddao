@@ -22,37 +22,10 @@ import DistributionTypes "../DistributionTypes";
 // This is the actual canister that gets deployed for each user
 // No constructor arguments needed - access control uses IC canister controllers
 
-// Migration: ChoreConfig gained maxIntervalSeconds: ?Nat field
-(with migration = func (old : {
-    var choreConfigs: [(Text, {
-        enabled: Bool;
-        paused: Bool;
-        intervalSeconds: Nat;
-        taskTimeoutSeconds: Nat;
-    })]
-}) : {
-    var choreConfigs: [(Text, BotChoreTypes.ChoreConfig)]
-} {
-    {
-        var choreConfigs = Array.map<(Text, {
-            enabled: Bool;
-            paused: Bool;
-            intervalSeconds: Nat;
-            taskTimeoutSeconds: Nat;
-        }), (Text, BotChoreTypes.ChoreConfig)>(
-            old.choreConfigs,
-            func ((id, c)) : (Text, BotChoreTypes.ChoreConfig) {
-                (id, {
-                    enabled = c.enabled;
-                    paused = c.paused;
-                    intervalSeconds = c.intervalSeconds;
-                    maxIntervalSeconds = null;
-                    taskTimeoutSeconds = c.taskTimeoutSeconds;
-                })
-            }
-        );
-    }
-})
+// Note: Previous migration (ChoreConfig gained maxIntervalSeconds: ?Nat) has been applied.
+// The deployed canisters already have the full ChoreConfig type.
+// Remove stale migration expressions once deployed to avoid compatibility errors.
+
 shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     // ============================================
