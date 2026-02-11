@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../AuthContext';
 import { Link } from 'react-router-dom';
 import Header from '../components/Header';
@@ -18,7 +18,8 @@ import { useNavigate } from 'react-router-dom';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
 import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings, getCanisterManagerSettings } from '../utils/NeuronManagerSettings';
-import { buildSnsCanisterToRootMap, fetchSnsCyclesFromRoot } from '../utils/SnsUtils';
+import { buildSnsCanisterToRootMap, fetchSnsCyclesFromRoot, getSnsById } from '../utils/SnsUtils';
+import { getLogoSync } from '../hooks/useLogoCache';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import UpgradeBotsDialog from '../components/UpgradeBotsDialog';
@@ -255,6 +256,69 @@ export default function AppsPage() {
     // Drag and drop state - simplified for react-dnd
     // react-dnd handles the drag state internally, we just need to track the current drag for UI
     const [dropInProgress, setDropInProgress] = useState(null); // { itemType, itemId, targetType } - shown in progress dialog
+
+    // SNS Root folder expansion state (separate from group expansion)
+    const [expandedSnsRoots, setExpandedSnsRoots] = useState({}); // rootCanisterId -> boolean
+    const [expandedSnsSubfolders, setExpandedSnsSubfolders] = useState({}); // `${rootId}_system` or `${rootId}_dapps` -> boolean
+
+    // Build a map of canister ID -> SNS data for canisters that are SNS roots
+    // This is used to render SNS root canisters as special folders
+    const snsRootDataMap = useMemo(() => {
+        const map = new Map(); // canisterId -> { name, logo, canisters: { governance, ledger, swap, index, root }, dapps: [], archives: [] }
+        const snsToRootMap = buildSnsCanisterToRootMap();
+        // Collect all canister IDs from groups and ungrouped
+        const allCustomIds = canisterGroups ? [
+            ...canisterGroups.ungrouped,
+            ...(canisterGroups.groups || []).flatMap(g => {
+                const ids = [...g.canisters];
+                const collectSub = (groups) => {
+                    for (const sg of groups) {
+                        ids.push(...sg.canisters);
+                        if (sg.subgroups) collectSub(sg.subgroups);
+                    }
+                };
+                if (g.subgroups) collectSub(g.subgroups);
+                return ids;
+            })
+        ] : [];
+        // Check each canister if it's an SNS root
+        for (const cid of allCustomIds) {
+            const rootId = snsToRootMap.get(cid);
+            if (rootId && rootId === cid) {
+                // This canister IS an SNS root
+                const snsData = getSnsById(cid);
+                if (snsData) {
+                    const logo = snsData.logo || getLogoSync(cid) || getLogoSync(snsData.canisters?.governance);
+                    map.set(cid, {
+                        name: snsData.name || 'Unknown SNS',
+                        logo: logo,
+                        tokenSymbol: snsData.token_symbol,
+                        systemCanisters: [
+                            { id: snsData.canisters?.root, type: 'sns_root', label: 'Root' },
+                            { id: snsData.canisters?.governance, type: 'sns_governance', label: 'Governance' },
+                            { id: snsData.canisters?.ledger, type: 'sns_ledger', label: 'Ledger' },
+                            { id: snsData.canisters?.swap, type: 'sns_swap', label: 'Swap' },
+                            { id: snsData.canisters?.index, type: 'sns_index', label: 'Index' },
+                        ].filter(c => c.id),
+                        dappCanisters: (snsData.canisters?.dapps || []).filter(Boolean),
+                        archiveCanisters: (snsData.canisters?.archives || []).filter(Boolean),
+                    });
+                }
+            }
+        }
+        return map;
+    }, [canisterGroups, principalCanisterTypes]);
+
+    // Collect all virtual SNS sub-canister IDs for health computations
+    const allVirtualSnsCanisterIds = useMemo(() => {
+        const ids = new Set();
+        for (const [, snsData] of snsRootDataMap) {
+            for (const c of snsData.systemCanisters) ids.add(c.id);
+            for (const d of snsData.dappCanisters) ids.add(d);
+            for (const a of snsData.archiveCanisters) ids.add(a);
+        }
+        return ids;
+    }, [snsRootDataMap]);
 
     // Helper to compare versions
     const compareVersions = (a, b) => {
@@ -703,6 +767,7 @@ export default function AppsPage() {
 
     // Fetch cycles/memory for SNS canisters via get_sns_canisters_summary (non-blocking, progressive)
     // Runs after initial canister statuses are loaded, for any SNS canisters we couldn't get cycles for
+    // Also fetches for all virtual SNS sub-canisters (shown in SNS root folders)
     useEffect(() => {
         if (!identity || loading || loadingTrackedCanisters) return;
 
@@ -713,7 +778,7 @@ export default function AppsPage() {
 
             // Collect all canister IDs that are SNS canisters and don't have cycles data yet
             const allCustomIds = getAllCanisterIds(canisterGroups);
-            const allIds = [...allCustomIds, ...trackedCanisters];
+            const allIds = [...allCustomIds, ...trackedCanisters, ...allVirtualSnsCanisterIds];
             
             // Group by root canister ID
             const rootsToFetch = new Map(); // rootId -> Set<canisterId>
@@ -736,11 +801,13 @@ export default function AppsPage() {
                 try {
                     const cyclesMap = await fetchSnsCyclesFromRoot(rootId, identity);
                     if (cyclesMap.size > 0) {
-                        // Update custom canister status
+                        // Update custom canister status - also store ALL returned sub-canisters
+                        // for virtual SNS folder display
                         setCanisterStatus(prev => {
                             const updated = { ...prev };
                             for (const [cid, data] of cyclesMap) {
-                                if (canisterIds.has(cid) || allCustomIds.includes(cid)) {
+                                // Store for any canister that is: in our groups, a virtual SNS sub-canister, or returned by this root
+                                if (canisterIds.has(cid) || allCustomIds.includes(cid) || allVirtualSnsCanisterIds.has(cid)) {
                                     updated[cid] = {
                                         ...(prev[cid] || {}),
                                         cycles: data.cycles,
@@ -780,7 +847,7 @@ export default function AppsPage() {
         // Delay to avoid competing with initial loads
         const timer = setTimeout(fetchSnsCycles, 3000);
         return () => clearTimeout(timer);
-    }, [identity, loading, loadingTrackedCanisters, canisterGroups, trackedCanisters, canisterStatus, trackedCanisterStatus, getAllCanisterIds]);
+    }, [identity, loading, loadingTrackedCanisters, canisterGroups, trackedCanisters, canisterStatus, trackedCanisterStatus, getAllCanisterIds, allVirtualSnsCanisterIds]);
 
     // Fetch canister group limits and usage
     useEffect(() => {
@@ -1991,6 +2058,22 @@ export default function AppsPage() {
                         {group.canisters.length > 0 && (
                             <div style={styles.canisterList}>
                                 {group.canisters.map((canisterId) => {
+                                    // Check if this canister is an SNS Root - show as special folder
+                                    const snsData = snsRootDataMap.get(canisterId);
+                                    if (snsData) {
+                                        return (
+                                            <SnsRootFolder
+                                                key={canisterId}
+                                                canisterId={canisterId}
+                                                groupId={group.id}
+                                                snsData={snsData}
+                                                styles={styles}
+                                                theme={theme}
+                                                canisterStatus={canisterStatus}
+                                                cycleSettings={cycleSettings}
+                                            />
+                                        );
+                                    }
                                     // Check if this canister is a detected neuron manager
                                     const detectedManager = detectedNeuronManagers?.[canisterId];
                                     if (detectedManager) {
@@ -2071,6 +2154,7 @@ export default function AppsPage() {
     };
 
     // Helper to get group health status (worst status of all canisters in group and subgroups)
+    // Also considers virtual SNS sub-canisters when a canister is an SNS root
     // Returns: 'red' | 'orange' | 'green' | 'unknown'
     const getGroupHealthStatus = useCallback((group, canisterStatus, cycleSettings) => {
         const { cycleThresholdRed, cycleThresholdOrange } = cycleSettings;
@@ -2087,13 +2171,40 @@ export default function AppsPage() {
             return 1; // green
         };
         
+        // Get worst status for a single canister, including its virtual SNS sub-canisters if it's an SNS root
+        const getCanisterAndSubsLevel = (canisterId) => {
+            let worst = getCanisterStatusLevel(canisterId);
+            if (worst === 3) return 3;
+            // If this is an SNS root, also check all its virtual sub-canisters
+            const snsData = snsRootDataMap.get(canisterId);
+            if (snsData) {
+                for (const sc of snsData.systemCanisters) {
+                    if (sc.id === canisterId) continue; // skip root itself (already checked)
+                    const level = getCanisterStatusLevel(sc.id);
+                    if (level > worst) worst = level;
+                    if (worst === 3) return 3;
+                }
+                for (const dappId of snsData.dappCanisters) {
+                    const level = getCanisterStatusLevel(dappId);
+                    if (level > worst) worst = level;
+                    if (worst === 3) return 3;
+                }
+                for (const archId of snsData.archiveCanisters) {
+                    const level = getCanisterStatusLevel(archId);
+                    if (level > worst) worst = level;
+                    if (worst === 3) return 3;
+                }
+            }
+            return worst;
+        };
+        
         // Recursively find worst status
         const getWorstStatus = (grp) => {
             let worst = 0;
             
-            // Check all canisters in this group
+            // Check all canisters in this group (including virtual SNS sub-canisters)
             for (const canisterId of grp.canisters) {
-                const level = getCanisterStatusLevel(canisterId);
+                const level = getCanisterAndSubsLevel(canisterId);
                 if (level > worst) worst = level;
                 if (worst === 3) return 3; // Can't get worse than red
             }
@@ -2115,7 +2226,7 @@ export default function AppsPage() {
             case 1: return 'green';
             default: return 'unknown';
         }
-    }, []);
+    }, [snsRootDataMap]);
 
     // Helper to get status lamp color
     const getStatusLampColor = (status) => {
@@ -2178,19 +2289,37 @@ export default function AppsPage() {
     }, []);
 
     // Helper to calculate overall health statistics for all canisters
+    // Also includes virtual SNS sub-canisters for SNS root canisters
     const getOverallHealthStats = useCallback((groupsRoot, canisterStatus, cycleSettings) => {
         const { cycleThresholdRed, cycleThresholdOrange } = cycleSettings;
         
-        // Collect all canister IDs
-        const allCanisterIds = [];
+        // Collect all canister IDs (including virtual SNS sub-canisters)
+        const allCanisterIds = new Set();
         const collectFromGroups = (groups) => {
             for (const group of groups) {
-                allCanisterIds.push(...group.canisters);
+                for (const cid of group.canisters) {
+                    allCanisterIds.add(cid);
+                    // If this is an SNS root, also add its virtual sub-canisters
+                    const snsData = snsRootDataMap.get(cid);
+                    if (snsData) {
+                        for (const sc of snsData.systemCanisters) allCanisterIds.add(sc.id);
+                        for (const d of snsData.dappCanisters) allCanisterIds.add(d);
+                        for (const a of snsData.archiveCanisters) allCanisterIds.add(a);
+                    }
+                }
                 collectFromGroups(group.subgroups);
             }
         };
         collectFromGroups(groupsRoot.groups);
-        allCanisterIds.push(...groupsRoot.ungrouped);
+        for (const cid of groupsRoot.ungrouped) {
+            allCanisterIds.add(cid);
+            const snsData = snsRootDataMap.get(cid);
+            if (snsData) {
+                for (const sc of snsData.systemCanisters) allCanisterIds.add(sc.id);
+                for (const d of snsData.dappCanisters) allCanisterIds.add(d);
+                for (const a of snsData.archiveCanisters) allCanisterIds.add(a);
+            }
+        }
         
         // Count by status
         let red = 0, orange = 0, green = 0, unknown = 0;
@@ -2218,10 +2347,10 @@ export default function AppsPage() {
             orange,
             green,
             unknown,
-            total: allCanisterIds.length,
+            total: allCanisterIds.size,
             overallStatus
         };
-    }, []);
+    }, [snsRootDataMap]);
 
     // Helper to get individual manager health status (considers cycles AND version)
     // Returns: 'red' | 'orange' | 'green' | 'unknown'
@@ -2601,6 +2730,428 @@ export default function AppsPage() {
         );
     };
     
+    // Component for rendering a virtual (non-draggable, non-removable) canister card
+    // Used for SNS sub-canisters shown inside SNS root folders
+    const VirtualCanisterCard = ({ canisterId, typeLabel, styles, theme, canisterStatus: statusMap, cycleSettings: cSettings }) => {
+        const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames, verifiedNames, principalCanisterTypes);
+        const status = statusMap[canisterId];
+        const cycles = status?.cycles;
+        const memory = status?.memory;
+        
+        const canisterHealth = getCanisterHealthStatus(canisterId, statusMap, cSettings);
+        const canisterLampColor = getStatusLampColor(canisterHealth);
+
+        return (
+            <div 
+                style={{
+                    ...styles.canisterCard,
+                    cursor: 'default',
+                    transition: 'opacity 0.15s ease',
+                }}
+            >
+                <div style={styles.canisterInfo}>
+                    <div style={{ ...styles.canisterIcon, position: 'relative' }}>
+                        {getCanisterTypeIcon(displayInfo?.canisterTypes, 18, theme.colors.accent)}
+                        {/* Cycle status lamp - top left */}
+                        <span
+                            style={{
+                                position: 'absolute',
+                                top: -3,
+                                left: -3,
+                                width: '8px',
+                                height: '8px',
+                                borderRadius: '50%',
+                                backgroundColor: canisterLampColor,
+                                boxShadow: canisterHealth !== 'unknown' ? `0 0 6px ${canisterLampColor}` : 'none',
+                                zIndex: 2,
+                            }}
+                            title={`Health: ${canisterHealth}`}
+                        />
+                        {isSnsCanisterType(displayInfo?.canisterTypes) && <SnsPill size="small" />}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <PrincipalDisplay
+                                principal={canisterId}
+                                displayInfo={displayInfo}
+                                showCopyButton={true}
+                                isAuthenticated={isAuthenticated}
+                                noLink={true}
+                                style={{ fontSize: '13px' }}
+                                showSendMessage={false}
+                                showViewProfile={false}
+                            />
+                        </div>
+                        {typeLabel && (
+                            <span style={{
+                                fontSize: '10px',
+                                color: theme.colors.secondaryText,
+                                fontWeight: 500,
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.5px',
+                            }}>
+                                {typeLabel}
+                            </span>
+                        )}
+                    </div>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
+                    {cycles !== undefined && cycles !== null && (
+                        <span 
+                            style={{
+                                ...styles.managerVersion,
+                                backgroundColor: `${getCyclesColor(cycles, neuronManagerCycleSettings)}20`,
+                                color: getCyclesColor(cycles, neuronManagerCycleSettings),
+                            }}
+                            title={`${cycles.toLocaleString()} cycles`}
+                        >
+                            ⚡ {formatCyclesCompact(cycles)}
+                        </span>
+                    )}
+                    {memory !== undefined && memory !== null && (
+                        <span 
+                            style={{
+                                ...styles.managerVersion,
+                                backgroundColor: `${theme.colors.accent}20`,
+                                color: theme.colors.accent,
+                            }}
+                            title={`${memory.toLocaleString()} bytes`}
+                        >
+                            💾 {formatMemory(memory)}
+                        </span>
+                    )}
+                    {status === undefined && (
+                        <span 
+                            style={{
+                                ...styles.managerVersion,
+                                backgroundColor: `${theme.colors.mutedText || theme.colors.secondaryText}20`,
+                                color: theme.colors.mutedText || theme.colors.secondaryText,
+                            }}
+                        >
+                            ⚡ ...
+                        </span>
+                    )}
+                    <Link
+                        to={`/canister?id=${canisterId}`}
+                        style={{
+                            ...styles.viewLink,
+                            padding: '6px 8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                        }}
+                        title="View details"
+                    >
+                        <FaEdit size={12} />
+                    </Link>
+                </div>
+            </div>
+        );
+    };
+
+    // Component for rendering an SNS Root canister as a special folder
+    // Shows the SNS logo and DAO name, with System and Dapps sub-folders
+    const SnsRootFolder = ({ canisterId, groupId, snsData, styles, theme, canisterStatus: statusMap, cycleSettings: cSettings }) => {
+        const isExpanded = expandedSnsRoots[canisterId] ?? false;
+        const systemExpanded = expandedSnsSubfolders[`${canisterId}_system`] ?? true;
+        const dappsExpanded = expandedSnsSubfolders[`${canisterId}_dapps`] ?? true;
+        
+        // react-dnd drag hook - the SNS root folder is still draggable
+        const [{ isDragging }, drag] = useDrag(() => ({
+            type: DragItemTypes.CANISTER,
+            item: { type: 'canister', id: canisterId, sourceGroupId: groupId },
+            collect: (monitor) => ({
+                isDragging: monitor.isDragging(),
+            }),
+        }), [canisterId, groupId]);
+
+        // Compute overall health for the SNS folder (worst of all sub-canisters)
+        const getSnsOverallHealth = () => {
+            const { cycleThresholdRed, cycleThresholdOrange } = cSettings;
+            let worst = 0;
+            const checkCanister = (cid) => {
+                const status = statusMap[cid];
+                if (!status || status.cycles === null || status.cycles === undefined) return;
+                if (status.cycles < cycleThresholdRed) { worst = 3; return; }
+                if (status.cycles < cycleThresholdOrange) { if (worst < 2) worst = 2; return; }
+                if (worst < 1) worst = 1;
+            };
+            for (const sc of snsData.systemCanisters) { checkCanister(sc.id); if (worst === 3) break; }
+            if (worst < 3) {
+                for (const d of snsData.dappCanisters) { checkCanister(d); if (worst === 3) break; }
+            }
+            switch (worst) {
+                case 3: return 'red';
+                case 2: return 'orange';
+                case 1: return 'green';
+                default: return 'unknown';
+            }
+        };
+        const overallHealth = getSnsOverallHealth();
+        const overallLampColor = getStatusLampColor(overallHealth);
+        
+        const totalCanisters = snsData.systemCanisters.length + snsData.dappCanisters.length;
+
+        return (
+            <div style={{ marginBottom: '4px' }}>
+                {/* SNS Folder Header - draggable */}
+                <div 
+                    ref={drag}
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '8px 12px',
+                        backgroundColor: theme.colors.secondaryBg,
+                        borderRadius: '8px',
+                        border: `1px solid ${theme.colors.border}`,
+                        cursor: isDragging ? 'grabbing' : 'grab',
+                        opacity: isDragging ? 0.4 : 1,
+                        transition: 'all 0.15s ease',
+                    }}
+                    onClick={() => setExpandedSnsRoots(prev => ({ ...prev, [canisterId]: !isExpanded }))}
+                >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        {/* Health status lamp */}
+                        <span
+                            style={{
+                                width: '8px',
+                                height: '8px',
+                                borderRadius: '50%',
+                                backgroundColor: overallLampColor,
+                                boxShadow: overallHealth !== 'unknown' ? `0 0 6px ${overallLampColor}` : 'none',
+                                flexShrink: 0,
+                            }}
+                            title={`SNS health: ${overallHealth}`}
+                        />
+                        {/* SNS Logo or fallback icon */}
+                        <div style={{ position: 'relative', width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {snsData.logo ? (
+                                <img 
+                                    src={snsData.logo} 
+                                    alt={snsData.name}
+                                    style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover' }}
+                                />
+                            ) : (
+                                isExpanded ? <FaFolderOpen style={{ color: '#8b5cf6', fontSize: '18px' }} /> : <FaFolder style={{ color: '#8b5cf6', fontSize: '18px' }} />
+                            )}
+                            <SnsPill size="small" />
+                        </div>
+                        <span style={{ fontWeight: 600, color: theme.colors.text, fontSize: '14px' }}>
+                            {snsData.name}
+                        </span>
+                        {snsData.tokenSymbol && (
+                            <span style={{
+                                fontSize: '11px',
+                                color: '#8b5cf6',
+                                fontWeight: 600,
+                                backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                                padding: '2px 6px',
+                                borderRadius: '8px',
+                            }}>
+                                ${snsData.tokenSymbol}
+                            </span>
+                        )}
+                        <span style={{ 
+                            fontSize: '11px', 
+                            color: theme.colors.secondaryText,
+                            backgroundColor: theme.colors.tertiaryBg,
+                            padding: '2px 8px',
+                            borderRadius: '10px',
+                        }}>
+                            {totalCanisters}
+                        </span>
+                        {isExpanded ? <FaChevronDown size={10} style={{ color: theme.colors.secondaryText }} /> : <FaChevronRight size={10} style={{ color: theme.colors.secondaryText }} />}
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
+                        <Link
+                            to={`/canister?id=${canisterId}`}
+                            style={{
+                                ...styles.viewLink,
+                                padding: '4px 8px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                            }}
+                            title="View root canister"
+                        >
+                            <FaEdit size={12} />
+                        </Link>
+                    </div>
+                </div>
+                
+                {/* SNS Folder Contents */}
+                {isExpanded && (
+                    <div style={{ marginTop: '6px', marginLeft: '16px' }}>
+                        {/* System sub-folder */}
+                        {snsData.systemCanisters.length > 0 && (
+                            <div style={{ marginBottom: '6px' }}>
+                                <div 
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        padding: '6px 10px',
+                                        backgroundColor: theme.colors.tertiaryBg,
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        fontSize: '13px',
+                                    }}
+                                    onClick={() => setExpandedSnsSubfolders(prev => ({ ...prev, [`${canisterId}_system`]: !systemExpanded }))}
+                                >
+                                    {/* Sub-folder health lamp */}
+                                    {(() => {
+                                        const { cycleThresholdRed, cycleThresholdOrange } = cSettings;
+                                        let worst = 0;
+                                        for (const sc of snsData.systemCanisters) {
+                                            const s = statusMap[sc.id];
+                                            if (!s || s.cycles == null) continue;
+                                            if (s.cycles < cycleThresholdRed) { worst = 3; break; }
+                                            if (s.cycles < cycleThresholdOrange && worst < 2) worst = 2;
+                                            else if (worst < 1) worst = 1;
+                                        }
+                                        const health = worst === 3 ? 'red' : worst === 2 ? 'orange' : worst === 1 ? 'green' : 'unknown';
+                                        const color = getStatusLampColor(health);
+                                        return (
+                                            <span style={{
+                                                width: '7px', height: '7px', borderRadius: '50%',
+                                                backgroundColor: color,
+                                                boxShadow: health !== 'unknown' ? `0 0 5px ${color}` : 'none',
+                                                flexShrink: 0,
+                                            }} title={`System health: ${health}`} />
+                                        );
+                                    })()}
+                                    {systemExpanded ? <FaFolderOpen size={12} style={{ color: '#a78bfa' }} /> : <FaFolder size={12} style={{ color: '#a78bfa' }} />}
+                                    <span style={{ fontWeight: 500, color: theme.colors.text }}>System</span>
+                                    <span style={{ fontSize: '10px', color: theme.colors.secondaryText }}>
+                                        {snsData.systemCanisters.length}
+                                    </span>
+                                </div>
+                                {systemExpanded && (
+                                    <div style={{ marginTop: '4px', marginLeft: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        {snsData.systemCanisters.map(sc => (
+                                            <VirtualCanisterCard
+                                                key={sc.id}
+                                                canisterId={sc.id}
+                                                typeLabel={sc.label}
+                                                styles={styles}
+                                                theme={theme}
+                                                canisterStatus={statusMap}
+                                                cycleSettings={cSettings}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                        
+                        {/* Dapps sub-folder */}
+                        {snsData.dappCanisters.length > 0 && (
+                            <div style={{ marginBottom: '6px' }}>
+                                <div 
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        padding: '6px 10px',
+                                        backgroundColor: theme.colors.tertiaryBg,
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        fontSize: '13px',
+                                    }}
+                                    onClick={() => setExpandedSnsSubfolders(prev => ({ ...prev, [`${canisterId}_dapps`]: !dappsExpanded }))}
+                                >
+                                    {/* Sub-folder health lamp */}
+                                    {(() => {
+                                        const { cycleThresholdRed, cycleThresholdOrange } = cSettings;
+                                        let worst = 0;
+                                        for (const d of snsData.dappCanisters) {
+                                            const s = statusMap[d];
+                                            if (!s || s.cycles == null) continue;
+                                            if (s.cycles < cycleThresholdRed) { worst = 3; break; }
+                                            if (s.cycles < cycleThresholdOrange && worst < 2) worst = 2;
+                                            else if (worst < 1) worst = 1;
+                                        }
+                                        const health = worst === 3 ? 'red' : worst === 2 ? 'orange' : worst === 1 ? 'green' : 'unknown';
+                                        const color = getStatusLampColor(health);
+                                        return (
+                                            <span style={{
+                                                width: '7px', height: '7px', borderRadius: '50%',
+                                                backgroundColor: color,
+                                                boxShadow: health !== 'unknown' ? `0 0 5px ${color}` : 'none',
+                                                flexShrink: 0,
+                                            }} title={`Dapps health: ${health}`} />
+                                        );
+                                    })()}
+                                    {dappsExpanded ? <FaFolderOpen size={12} style={{ color: '#60a5fa' }} /> : <FaFolder size={12} style={{ color: '#60a5fa' }} />}
+                                    <span style={{ fontWeight: 500, color: theme.colors.text }}>Dapps</span>
+                                    <span style={{ fontSize: '10px', color: theme.colors.secondaryText }}>
+                                        {snsData.dappCanisters.length}
+                                    </span>
+                                </div>
+                                {dappsExpanded && (
+                                    <div style={{ marginTop: '4px', marginLeft: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        {snsData.dappCanisters.map(dappId => (
+                                            <VirtualCanisterCard
+                                                key={dappId}
+                                                canisterId={dappId}
+                                                typeLabel="Dapp"
+                                                styles={styles}
+                                                theme={theme}
+                                                canisterStatus={statusMap}
+                                                cycleSettings={cSettings}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Archives (if any) */}
+                        {snsData.archiveCanisters.length > 0 && (
+                            <div style={{ marginBottom: '6px' }}>
+                                <div 
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        padding: '6px 10px',
+                                        backgroundColor: theme.colors.tertiaryBg,
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        fontSize: '13px',
+                                    }}
+                                    onClick={() => setExpandedSnsSubfolders(prev => ({ ...prev, [`${canisterId}_archives`]: !(expandedSnsSubfolders[`${canisterId}_archives`] ?? false) }))}
+                                >
+                                    {(expandedSnsSubfolders[`${canisterId}_archives`] ?? false) ? <FaFolderOpen size={12} style={{ color: '#9ca3af' }} /> : <FaFolder size={12} style={{ color: '#9ca3af' }} />}
+                                    <span style={{ fontWeight: 500, color: theme.colors.secondaryText }}>Archives</span>
+                                    <span style={{ fontSize: '10px', color: theme.colors.secondaryText }}>
+                                        {snsData.archiveCanisters.length}
+                                    </span>
+                                </div>
+                                {(expandedSnsSubfolders[`${canisterId}_archives`] ?? false) && (
+                                    <div style={{ marginTop: '4px', marginLeft: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        {snsData.archiveCanisters.map(archId => (
+                                            <VirtualCanisterCard
+                                                key={archId}
+                                                canisterId={archId}
+                                                typeLabel="Archive"
+                                                styles={styles}
+                                                theme={theme}
+                                                canisterStatus={statusMap}
+                                                cycleSettings={cSettings}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     // Component for rendering a detected neuron manager card (can be used in any section)
     const NeuronManagerCardItem = ({
         canisterId,
@@ -4270,6 +4821,22 @@ export default function AppsPage() {
                                                     {canisterGroups.ungrouped.length > 0 && (
                                                         <div style={styles.canisterList}>
                                                             {canisterGroups.ungrouped.map((canisterId) => {
+                                                                // Check if this canister is an SNS Root - show as special folder
+                                                                const ungroupedSnsData = snsRootDataMap.get(canisterId);
+                                                                if (ungroupedSnsData) {
+                                                                    return (
+                                                                        <SnsRootFolder
+                                                                            key={canisterId}
+                                                                            canisterId={canisterId}
+                                                                            groupId="ungrouped"
+                                                                            snsData={ungroupedSnsData}
+                                                                            styles={styles}
+                                                                            theme={theme}
+                                                                            canisterStatus={canisterStatus}
+                                                                            cycleSettings={cycleSettings}
+                                                                        />
+                                                                    );
+                                                                }
                                                                 // Check if this canister is a detected neuron manager
                                                                 const detectedManager = detectedNeuronManagers[canisterId];
                                                                 if (detectedManager) {
