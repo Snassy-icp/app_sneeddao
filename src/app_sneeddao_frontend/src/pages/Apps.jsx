@@ -213,6 +213,14 @@ export default function AppsPage() {
     const [cycleSettings] = useState(() => getCanisterManagerSettings());
     const [neuronManagerCycleSettings] = useState(() => getNeuronManagerSettings());
     
+    // Responsive
+    const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+    useEffect(() => {
+        const handleResize = () => setIsMobile(window.innerWidth <= 768);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
     // Collapsible section states
     const [customExpanded, setCustomExpanded] = useState(() => {
         try {
@@ -4623,25 +4631,25 @@ export default function AppsPage() {
                                                         {stats.red > 0 && (
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                                                                 <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#ef4444', boxShadow: '0 0 5px #ef4444' }} />
-                                                                <span style={{ color: '#ef4444', fontWeight: 500, fontSize: '0.75rem' }}>{stats.red} critical</span>
+                                                                <span style={{ color: '#ef4444', fontWeight: 500, fontSize: '0.75rem' }}>{stats.red}{!isMobile && ' critical'}</span>
                                                             </div>
                                                         )}
                                                         {stats.orange > 0 && (
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                                                                 <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#f59e0b', boxShadow: '0 0 5px #f59e0b' }} />
-                                                                <span style={{ color: '#f59e0b', fontWeight: 500, fontSize: '0.75rem' }}>{stats.orange} warning</span>
+                                                                <span style={{ color: '#f59e0b', fontWeight: 500, fontSize: '0.75rem' }}>{stats.orange}{!isMobile && ' warning'}</span>
                                                             </div>
                                                         )}
                                                         {stats.green > 0 && (
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                                                                 <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#22c55e', boxShadow: '0 0 5px #22c55e' }} />
-                                                                <span style={{ color: '#22c55e', fontWeight: 500, fontSize: '0.75rem' }}>{stats.green} healthy</span>
+                                                                <span style={{ color: '#22c55e', fontWeight: 500, fontSize: '0.75rem' }}>{stats.green}{!isMobile && ' healthy'}</span>
                                                             </div>
                                                         )}
                                                         {stats.unknown > 0 && (
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                                                                 <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#6b7280' }} />
-                                                                <span style={{ color: '#6b7280', fontWeight: 500, fontSize: '0.75rem' }}>{stats.unknown} unknown</span>
+                                                                <span style={{ color: '#6b7280', fontWeight: 500, fontSize: '0.75rem' }}>{stats.unknown}{!isMobile && ' unknown'}</span>
                                                             </div>
                                                         )}
 
@@ -5086,25 +5094,25 @@ export default function AppsPage() {
                                                 {walletStats.red > 0 && (
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                         <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#ef4444', boxShadow: '0 0 4px #ef4444' }} />
-                                                        <span style={{ color: '#ef4444', fontWeight: 500, fontSize: '0.7rem' }}>{walletStats.red} critical</span>
+                                                        <span style={{ color: '#ef4444', fontWeight: 500, fontSize: '0.7rem' }}>{walletStats.red}{!isMobile && ' critical'}</span>
                                                     </div>
                                                 )}
                                                 {walletStats.orange > 0 && (
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                         <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#f59e0b', boxShadow: '0 0 4px #f59e0b' }} />
-                                                        <span style={{ color: '#f59e0b', fontWeight: 500, fontSize: '0.7rem' }}>{walletStats.orange} low</span>
+                                                        <span style={{ color: '#f59e0b', fontWeight: 500, fontSize: '0.7rem' }}>{walletStats.orange}{!isMobile && ' low'}</span>
                                                     </div>
                                                 )}
                                                 {walletStats.green > 0 && (
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                         <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#22c55e', boxShadow: '0 0 4px #22c55e' }} />
-                                                        <span style={{ color: '#22c55e', fontWeight: 500, fontSize: '0.7rem' }}>{walletStats.green} healthy</span>
+                                                        <span style={{ color: '#22c55e', fontWeight: 500, fontSize: '0.7rem' }}>{walletStats.green}{!isMobile && ' healthy'}</span>
                                                     </div>
                                                 )}
                                                 {walletStats.unknown > 0 && (
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                         <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#6b7280' }} />
-                                                        <span style={{ color: '#6b7280', fontWeight: 500, fontSize: '0.7rem' }}>{walletStats.unknown} unknown</span>
+                                                        <span style={{ color: '#6b7280', fontWeight: 500, fontSize: '0.7rem' }}>{walletStats.unknown}{!isMobile && ' unknown'}</span>
                                                     </div>
                                                 )}
                                             </div>
@@ -5476,31 +5484,31 @@ export default function AppsPage() {
                                                 {stats.red > 0 && (
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                         <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#ef4444', boxShadow: '0 0 4px #ef4444' }} />
-                                                        <span style={{ color: '#ef4444', fontWeight: 500, fontSize: '0.7rem' }}>{stats.red} critical</span>
+                                                        <span style={{ color: '#ef4444', fontWeight: 500, fontSize: '0.7rem' }}>{stats.red}{!isMobile && ' critical'}</span>
                                                     </div>
                                                 )}
                                                 {stats.orange > 0 && (
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                         <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#f59e0b', boxShadow: '0 0 4px #f59e0b' }} />
-                                                        <span style={{ color: '#f59e0b', fontWeight: 500, fontSize: '0.7rem' }}>{stats.orange} warning</span>
+                                                        <span style={{ color: '#f59e0b', fontWeight: 500, fontSize: '0.7rem' }}>{stats.orange}{!isMobile && ' warning'}</span>
                                                     </div>
                                                 )}
                                                 {stats.green > 0 && (
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                         <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#22c55e', boxShadow: '0 0 4px #22c55e' }} />
-                                                        <span style={{ color: '#22c55e', fontWeight: 500, fontSize: '0.7rem' }}>{stats.green} healthy</span>
+                                                        <span style={{ color: '#22c55e', fontWeight: 500, fontSize: '0.7rem' }}>{stats.green}{!isMobile && ' healthy'}</span>
                                                     </div>
                                                 )}
                                                 {stats.unknown > 0 && (
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                         <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#6b7280' }} />
-                                                        <span style={{ color: '#6b7280', fontWeight: 500, fontSize: '0.7rem' }}>{stats.unknown} unknown</span>
+                                                        <span style={{ color: '#6b7280', fontWeight: 500, fontSize: '0.7rem' }}>{stats.unknown}{!isMobile && ' unknown'}</span>
                                                     </div>
                                                 )}
                                                 {stats.outdated > 0 && (
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                         <span style={{ fontSize: '0.65rem' }}>⚠️</span>
-                                                        <span style={{ color: '#f59e0b', fontWeight: 500, fontSize: '0.7rem' }}>{stats.outdated} outdated</span>
+                                                        <span style={{ color: '#f59e0b', fontWeight: 500, fontSize: '0.7rem' }}>{stats.outdated}{!isMobile && ' outdated'}</span>
                                                     </div>
                                                 )}
                                             </div>
