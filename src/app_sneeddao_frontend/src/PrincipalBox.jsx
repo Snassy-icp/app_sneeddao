@@ -126,6 +126,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const hasFetchedManagers = walletContext?.hasFetchedManagers || false;
     const outdatedManagers = walletContext?.outdatedManagers || [];
     const latestOfficialVersion = walletContext?.latestOfficialVersion;
+    const fetchManagerNeuronsData = walletContext?.fetchManagerNeuronsData;
     
     // Get tracked canisters from context
     const trackedCanisters = walletContext?.trackedCanisters || [];
@@ -922,6 +923,37 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
             setIsRefreshingDapp(false);
         }
     }, [identity]);
+
+    // Handle chore actions from DappCardModal
+    const handleChoreAction = useCallback(async (canisterId, choreId, action) => {
+        if (!identity) return;
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging'
+                ? 'https://ic0.app'
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const manager = createManagerActor(canisterId, { agent });
+
+            switch (action) {
+                case 'start': await manager.startChore(choreId); break;
+                case 'stop': await manager.stopChore(choreId); break;
+                case 'pause': await manager.pauseChore(choreId); break;
+                case 'resume': await manager.resumeChore(choreId); break;
+                case 'trigger': await manager.triggerChore(choreId); break;
+                default: break;
+            }
+
+            // Refresh chore statuses via WalletContext
+            if (fetchManagerNeuronsData) {
+                await fetchManagerNeuronsData(canisterId);
+            }
+        } catch (err) {
+            console.error(`[QuickWallet] Chore action ${action} failed for ${choreId}:`, err);
+        }
+    }, [identity, fetchManagerNeuronsData]);
 
     // Handle send canister (opens transfer modal)
     const handleSendCanister = useCallback((canisterId, isNeuronManager = false) => {
@@ -3107,6 +3139,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
           neuronCount={detailDapp?.neuronCount}
           handleRefresh={handleRefreshDapp}
           isRefreshing={isRefreshingDapp}
+          choreStatuses={detailDapp?.canisterId ? (managerChoreStatuses[detailDapp.canisterId] || []) : []}
+          onChoreAction={handleChoreAction}
           handleSend={(canisterId) => handleSendCanister(canisterId, detailDapp?.isNeuronManager)}
       />
       

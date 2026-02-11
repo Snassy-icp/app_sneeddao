@@ -6692,13 +6692,81 @@ function Wallet() {
                                                                 <FaBrain size={12} />
                                                             </span>
                                                         )}
+                                                        {/* Chore status lamp badge */}
+                                                        {managerChoreStatuses[canisterId] && managerChoreStatuses[canisterId].length > 0 && (() => {
+                                                            const overallState = getAllChoresSummaryLamp(managerChoreStatuses[canisterId]);
+                                                            const overallLabel = getSummaryLabel(overallState, 'Chores');
+                                                            const color = LAMP_COLORS[overallState] || LAMP_COLORS.off;
+                                                            return (
+                                                                <span
+                                                                    style={{
+                                                                        background: `${color}20`,
+                                                                        color: color,
+                                                                        padding: '2px 8px',
+                                                                        borderRadius: '12px',
+                                                                        fontSize: '0.7rem',
+                                                                        fontWeight: '500',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '4px',
+                                                                    }}
+                                                                    title={overallLabel}
+                                                                >
+                                                                    <StatusLamp state={overallState} size={7} />
+                                                                    Chores
+                                                                </span>
+                                                            );
+                                                        })()}
                                                     </div>
                                                 </div>
                                             </div>
                                             
                                             {/* Expanded Section */}
-                                            {isExpanded && (
+                                            {isExpanded && (() => {
+                                                const activeTab = managerCardTab[canisterId] || 'info';
+                                                const choreStatuses = managerChoreStatuses[canisterId] || [];
+                                                const hasChores = choreStatuses.length > 0;
+                                                return (
                                                 <div className="card-content">
+                                                    {/* Tabs */}
+                                                    {hasChores && (
+                                                        <div style={{
+                                                            display: 'flex',
+                                                            borderBottom: `1px solid ${theme.colors.border}`,
+                                                            marginBottom: '12px',
+                                                            gap: '0',
+                                                        }}>
+                                                            {[
+                                                                { id: 'info', label: 'Info' },
+                                                                { id: 'chores', label: 'Chores', lamp: getAllChoresSummaryLamp(choreStatuses) },
+                                                            ].map(tab => (
+                                                                <button
+                                                                    key={tab.id}
+                                                                    onClick={(e) => { e.stopPropagation(); setManagerCardTab(prev => ({ ...prev, [canisterId]: tab.id })); }}
+                                                                    style={{
+                                                                        background: 'none',
+                                                                        border: 'none',
+                                                                        borderBottom: activeTab === tab.id ? '2px solid #8b5cf6' : '2px solid transparent',
+                                                                        color: activeTab === tab.id ? '#8b5cf6' : theme.colors.mutedText,
+                                                                        padding: '6px 14px',
+                                                                        fontSize: '12px',
+                                                                        fontWeight: activeTab === tab.id ? '600' : '400',
+                                                                        cursor: 'pointer',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '6px',
+                                                                        transition: 'all 0.15s ease',
+                                                                    }}
+                                                                >
+                                                                    {tab.lamp !== undefined && <StatusLamp state={tab.lamp} size={7} />}
+                                                                    {tab.label}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {activeTab === 'info' && (
+                                                    <>
                                                     {/* First Row: Send button (right-aligned) */}
                                                     {neuronManagerIsController[canisterId] && (
                                                         <div style={{ 
@@ -7346,8 +7414,173 @@ function Wallet() {
                                                             </div>
                                                         </div>
                                                     )}
+                                                    </>
+                                                    )}
+
+                                                    {/* Chores Tab */}
+                                                    {activeTab === 'chores' && (
+                                                        <div>
+                                                            {choreStatuses.length === 0 ? (
+                                                                <div style={{ 
+                                                                    padding: '20px', 
+                                                                    textAlign: 'center', 
+                                                                    color: theme.colors.mutedText,
+                                                                    fontSize: '13px',
+                                                                }}>
+                                                                    No chore data available
+                                                                </div>
+                                                            ) : (
+                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                                                    {choreStatuses.map((chore, idx) => {
+                                                                        const choreId = chore.choreId || `chore_${idx}`;
+                                                                        const choreName = CHORE_NAMES[choreId] || choreId;
+                                                                        const summaryLamp = getChoreSummaryLamp(chore);
+                                                                        const isLoading = choreActionLoading[`${canisterId}_${choreId}`];
+                                                                        const isRunning = chore.conductor && chore.conductor.status && 
+                                                                            (Object.keys(chore.conductor.status)[0] === 'running' || Object.keys(chore.conductor.status)[0] === 'waiting');
+                                                                        const isPaused = chore.config && chore.config.paused;
+                                                                        const isEnabled = chore.config && chore.config.enabled;
+                                                                        
+                                                                        return (
+                                                                            <div key={choreId} style={{
+                                                                                padding: '10px 12px',
+                                                                                borderRadius: '8px',
+                                                                                backgroundColor: theme.colors.tertiaryBg || 'rgba(0,0,0,0.05)',
+                                                                                border: `1px solid ${theme.colors.border}`,
+                                                                            }}>
+                                                                                {/* Chore header row */}
+                                                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '8px' }}>
+                                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                                        <StatusLamp state={summaryLamp} size={9} />
+                                                                                        <span style={{ fontWeight: '600', fontSize: '13px', color: theme.colors.primaryText }}>{choreName}</span>
+                                                                                    </div>
+                                                                                    <span style={{ fontSize: '11px', color: theme.colors.mutedText }}>
+                                                                                        {formatNextRun(chore)}
+                                                                                    </span>
+                                                                                </div>
+
+                                                                                {/* Lamp row */}
+                                                                                <div style={{ display: 'flex', gap: '12px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                                                                                    {[
+                                                                                        { label: 'Scheduler', state: getSchedulerLampState(chore) },
+                                                                                        { label: 'Conductor', state: getConductorLampState(chore) },
+                                                                                        { label: 'Task', state: getTaskLampState(chore) },
+                                                                                    ].map(lamp => (
+                                                                                        <div key={lamp.label} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                                            <StatusLamp state={lamp.state} size={7} />
+                                                                                            <span style={{ fontSize: '10px', color: theme.colors.mutedText }}>{lamp.label}</span>
+                                                                                        </div>
+                                                                                    ))}
+                                                                                </div>
+
+                                                                                {/* Action buttons */}
+                                                                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                                                                    {!isEnabled ? (
+                                                                                        <button
+                                                                                            onClick={(e) => { e.stopPropagation(); handleChoreAction(canisterId, choreId, 'start'); }}
+                                                                                            disabled={isLoading}
+                                                                                            style={{
+                                                                                                padding: '4px 10px', borderRadius: '4px', border: 'none',
+                                                                                                backgroundColor: '#22c55e', color: '#fff', fontSize: '11px',
+                                                                                                fontWeight: '600', cursor: isLoading ? 'not-allowed' : 'pointer',
+                                                                                                opacity: isLoading ? 0.6 : 1,
+                                                                                            }}
+                                                                                        >
+                                                                                            {isLoading ? '...' : '▶ Start'}
+                                                                                        </button>
+                                                                                    ) : (
+                                                                                        <>
+                                                                                            {isPaused ? (
+                                                                                                <button
+                                                                                                    onClick={(e) => { e.stopPropagation(); handleChoreAction(canisterId, choreId, 'resume'); }}
+                                                                                                    disabled={isLoading}
+                                                                                                    style={{
+                                                                                                        padding: '4px 10px', borderRadius: '4px', border: 'none',
+                                                                                                        backgroundColor: '#3b82f6', color: '#fff', fontSize: '11px',
+                                                                                                        fontWeight: '600', cursor: isLoading ? 'not-allowed' : 'pointer',
+                                                                                                        opacity: isLoading ? 0.6 : 1,
+                                                                                                    }}
+                                                                                                >
+                                                                                                    {isLoading ? '...' : '▶ Resume'}
+                                                                                                </button>
+                                                                                            ) : (
+                                                                                                <button
+                                                                                                    onClick={(e) => { e.stopPropagation(); handleChoreAction(canisterId, choreId, 'pause'); }}
+                                                                                                    disabled={isLoading}
+                                                                                                    style={{
+                                                                                                        padding: '4px 10px', borderRadius: '4px', border: 'none',
+                                                                                                        backgroundColor: '#f59e0b', color: '#fff', fontSize: '11px',
+                                                                                                        fontWeight: '600', cursor: isLoading ? 'not-allowed' : 'pointer',
+                                                                                                        opacity: isLoading ? 0.6 : 1,
+                                                                                                    }}
+                                                                                                >
+                                                                                                    {isLoading ? '...' : '⏸ Pause'}
+                                                                                                </button>
+                                                                                            )}
+                                                                                            <button
+                                                                                                onClick={(e) => { e.stopPropagation(); handleChoreAction(canisterId, choreId, 'stop'); }}
+                                                                                                disabled={isLoading}
+                                                                                                style={{
+                                                                                                    padding: '4px 10px', borderRadius: '4px', border: 'none',
+                                                                                                    backgroundColor: '#ef4444', color: '#fff', fontSize: '11px',
+                                                                                                    fontWeight: '600', cursor: isLoading ? 'not-allowed' : 'pointer',
+                                                                                                    opacity: isLoading ? 0.6 : 1,
+                                                                                                }}
+                                                                                            >
+                                                                                                {isLoading ? '...' : '⏹ Stop'}
+                                                                                            </button>
+                                                                                            {!isPaused && (
+                                                                                                <button
+                                                                                                    onClick={(e) => { e.stopPropagation(); handleChoreAction(canisterId, choreId, 'trigger'); }}
+                                                                                                    disabled={isLoading || isRunning}
+                                                                                                    style={{
+                                                                                                        padding: '4px 10px', borderRadius: '4px',
+                                                                                                        border: `1px solid ${theme.colors.border}`,
+                                                                                                        backgroundColor: 'transparent', color: theme.colors.primaryText, fontSize: '11px',
+                                                                                                        fontWeight: '600', cursor: (isLoading || isRunning) ? 'not-allowed' : 'pointer',
+                                                                                                        opacity: (isLoading || isRunning) ? 0.6 : 1,
+                                                                                                    }}
+                                                                                                >
+                                                                                                    {isLoading ? '...' : '⚡ Run Now'}
+                                                                                                </button>
+                                                                                            )}
+                                                                                        </>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+
+                                                                    {/* Link to full chore management */}
+                                                                    <Link
+                                                                        to={`/icp_neuron_manager/${canisterId}?tab=chores`}
+                                                                        onClick={(e) => e.stopPropagation()}
+                                                                        style={{
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            justifyContent: 'center',
+                                                                            gap: '6px',
+                                                                            padding: '8px',
+                                                                            color: '#8b5cf6',
+                                                                            fontSize: '12px',
+                                                                            fontWeight: '600',
+                                                                            textDecoration: 'none',
+                                                                            borderRadius: '6px',
+                                                                            border: `1px solid #8b5cf620`,
+                                                                            transition: 'all 0.15s ease',
+                                                                        }}
+                                                                        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#8b5cf610'; }}
+                                                                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                                                                    >
+                                                                        Full Chore Management <FaArrowRight size={10} />
+                                                                    </Link>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            )}
+                                                );
+                                            })()}
                                         </div>
                                     );
                                 })}
@@ -9533,6 +9766,8 @@ function Wallet() {
                     handleRefresh={handleRefreshDappModal}
                     isRefreshing={isRefreshingDapp}
                     neuronsData={detailDapp?.neuronsData}
+                    choreStatuses={detailDapp?.canisterId ? (managerChoreStatuses[detailDapp.canisterId] || []) : []}
+                    onChoreAction={handleChoreAction}
                     handleSend={(canisterId) => {
                         // Close the dapp modal first
                         setShowDappDetailModal(false);
