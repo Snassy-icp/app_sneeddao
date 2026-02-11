@@ -4563,53 +4563,6 @@ export default function AppsPage() {
                         
                         {customExpanded && (
                             <>
-                                {/* Limits Info */}
-                                {groupUsage && (
-                                    <div style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between',
-                                        padding: '0.65rem 1rem',
-                                        background: theme.colors.secondaryBgGradient,
-                                        borderRadius: '10px',
-                                        border: `1px solid ${theme.colors.border}`,
-                                        marginBottom: '1rem',
-                                        flexWrap: 'wrap',
-                                        gap: '0.75rem',
-                                        boxShadow: theme.colors.secondaryBgShadow,
-                                    }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-                                            <span style={{ color: theme.colors.secondaryText, fontSize: '0.8rem' }}>
-                                                Folders: <span style={{ 
-                                                    color: groupUsage.groupCount >= groupUsage.groupLimit ? '#ef4444' : theme.colors.primaryText,
-                                                    fontWeight: 600 
-                                                }}>{groupUsage.groupCount}</span> / {groupUsage.groupLimit}
-                                            </span>
-                                            <span style={{ color: theme.colors.secondaryText, fontSize: '0.8rem' }}>
-                                                Apps: <span style={{ 
-                                                    color: groupUsage.totalCanisters >= groupUsage.totalLimit ? '#ef4444' : theme.colors.primaryText,
-                                                    fontWeight: 600 
-                                                }}>{groupUsage.totalCanisters}</span> / {groupUsage.totalLimit}
-                                            </span>
-                                            <span style={{ color: theme.colors.secondaryText, fontSize: '0.8rem' }}>
-                                                Per Folder: max {groupUsage.perGroupLimit}
-                                            </span>
-                                        </div>
-                                        {groupUsage.isPremium && (
-                                            <span style={{
-                                                background: 'linear-gradient(135deg, #ffd700 0%, #ffb300 100%)',
-                                                color: '#000',
-                                                padding: '0.2rem 0.6rem',
-                                                borderRadius: '12px',
-                                                fontSize: '0.65rem',
-                                                fontWeight: 700,
-                                            }}>
-                                                ⭐ PREMIUM
-                                            </span>
-                                        )}
-                                    </div>
-                                )}
-                                
                                 {loading ? (
                                     <div style={styles.loadingSpinner}>
                                         <FaSpinner className="spin" size={24} />
@@ -4624,169 +4577,159 @@ export default function AppsPage() {
                                     </div>
                                 ) : (
                                     <div style={{ marginBottom: '24px' }}>
-                                        {/* Health Summary */}
+                                        {/* Combined Health Summary + Limits */}
                                         {(() => {
                                             const stats = getOverallHealthStats(canisterGroups, canisterStatus, cycleSettings);
                                             const overallColor = getStatusLampColor(stats.overallStatus);
                                             
                                             return (
                                                 <div style={{
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'space-between',
-                                                    padding: '0.875rem 1.25rem',
+                                                    padding: '0.65rem 1rem',
                                                     background: theme.colors.secondaryBgGradient,
-                                                    borderRadius: '12px',
+                                                    borderRadius: '10px',
                                                     border: `1px solid ${theme.colors.border}`,
                                                     marginBottom: '1rem',
-                                                    flexWrap: 'wrap',
-                                                    gap: '0.75rem',
                                                     boxShadow: theme.colors.secondaryBgShadow,
                                                 }}>
-                                                    {/* Overall status lamp */}
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                                        <div style={{
-                                                            width: '36px',
-                                                            height: '36px',
-                                                            borderRadius: '10px',
-                                                            background: `${overallColor}20`,
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'center',
-                                                        }}>
+                                                    <div style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        flexWrap: 'wrap',
+                                                        gap: '0.75rem',
+                                                    }}>
+                                                        {/* Overall status lamp + count */}
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                                             <span
                                                                 style={{
-                                                                    width: '14px',
-                                                                    height: '14px',
+                                                                    width: '12px',
+                                                                    height: '12px',
                                                                     borderRadius: '50%',
                                                                     backgroundColor: overallColor,
-                                                                    boxShadow: stats.overallStatus !== 'unknown' ? `0 0 10px ${overallColor}` : 'none',
+                                                                    boxShadow: stats.overallStatus !== 'unknown' ? `0 0 8px ${overallColor}` : 'none',
+                                                                    flexShrink: 0,
                                                                 }}
                                                                 title={`Overall health: ${stats.overallStatus}`}
                                                             />
+                                                            <span style={{ 
+                                                                fontWeight: 600, 
+                                                                color: theme.colors.primaryText,
+                                                                fontSize: '0.85rem',
+                                                            }}>
+                                                                {stats.total} {stats.total === 1 ? 'App' : 'Apps'}
+                                                            </span>
                                                         </div>
-                                                        <span style={{ 
-                                                            fontWeight: 600, 
-                                                            color: theme.colors.primaryText,
-                                                            fontSize: '0.95rem',
-                                                        }}>
-                                                            {stats.total} {stats.total === 1 ? 'App' : 'Apps'}
-                                                        </span>
-                                                    </div>
-                                                    
-                                                    {/* Status breakdown */}
-                                                    <div style={{ 
-                                                        display: 'flex', 
-                                                        alignItems: 'center', 
-                                                        gap: '1rem',
-                                                        flexWrap: 'wrap',
-                                                    }}>
+
+                                                        {/* Status breakdown */}
                                                         {stats.red > 0 && (
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                                                                <span style={{
-                                                                    width: '8px',
-                                                                    height: '8px',
-                                                                    borderRadius: '50%',
-                                                                    backgroundColor: '#ef4444',
-                                                                    boxShadow: '0 0 6px #ef4444',
-                                                                }} />
-                                                                <span style={{ color: '#ef4444', fontWeight: 500, fontSize: '0.8rem' }}>
-                                                                    {stats.red} critical
-                                                                </span>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                                                <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#ef4444', boxShadow: '0 0 5px #ef4444' }} />
+                                                                <span style={{ color: '#ef4444', fontWeight: 500, fontSize: '0.75rem' }}>{stats.red} critical</span>
                                                             </div>
                                                         )}
                                                         {stats.orange > 0 && (
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                                                                <span style={{
-                                                                    width: '8px',
-                                                                    height: '8px',
-                                                                    borderRadius: '50%',
-                                                                    backgroundColor: '#f59e0b',
-                                                                    boxShadow: '0 0 6px #f59e0b',
-                                                                }} />
-                                                                <span style={{ color: '#f59e0b', fontWeight: 500, fontSize: '0.8rem' }}>
-                                                                    {stats.orange} warning
-                                                                </span>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                                                <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#f59e0b', boxShadow: '0 0 5px #f59e0b' }} />
+                                                                <span style={{ color: '#f59e0b', fontWeight: 500, fontSize: '0.75rem' }}>{stats.orange} warning</span>
                                                             </div>
                                                         )}
                                                         {stats.green > 0 && (
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                                                                <span style={{
-                                                                    width: '8px',
-                                                                    height: '8px',
-                                                                    borderRadius: '50%',
-                                                                    backgroundColor: '#22c55e',
-                                                                    boxShadow: '0 0 6px #22c55e',
-                                                                }} />
-                                                                <span style={{ color: '#22c55e', fontWeight: 500, fontSize: '0.8rem' }}>
-                                                                    {stats.green} healthy
-                                                                </span>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                                                <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#22c55e', boxShadow: '0 0 5px #22c55e' }} />
+                                                                <span style={{ color: '#22c55e', fontWeight: 500, fontSize: '0.75rem' }}>{stats.green} healthy</span>
                                                             </div>
                                                         )}
                                                         {stats.unknown > 0 && (
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                                                                <span style={{
-                                                                    width: '8px',
-                                                                    height: '8px',
-                                                                    borderRadius: '50%',
-                                                                    backgroundColor: '#6b7280',
-                                                                }} />
-                                                                <span style={{ color: '#6b7280', fontWeight: 500, fontSize: '0.8rem' }}>
-                                                                    {stats.unknown} unknown
-                                                                </span>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                                                <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#6b7280' }} />
+                                                                <span style={{ color: '#6b7280', fontWeight: 500, fontSize: '0.75rem' }}>{stats.unknown} unknown</span>
                                                             </div>
                                                         )}
-                                                        
-                                                        {/* Expand/Collapse All buttons */}
-                                                        {canisterGroups.groups.length > 0 && (
-                                                            <div style={{ 
-                                                                display: 'flex', 
-                                                                alignItems: 'center', 
-                                                                gap: '0.5rem',
-                                                                marginLeft: '0.5rem',
-                                                                paddingLeft: '1rem',
-                                                                borderLeft: `1px solid ${theme.colors.border}`,
-                                                            }}>
-                                                                <button
-                                                                    onClick={handleExpandAll}
-                                                                    style={{
-                                                                        padding: '0.3rem 0.6rem',
-                                                                        borderRadius: '6px',
-                                                                        border: `1px solid ${theme.colors.border}`,
-                                                                        backgroundColor: 'transparent',
-                                                                        color: theme.colors.secondaryText,
-                                                                        fontSize: '0.7rem',
-                                                                        cursor: 'pointer',
-                                                                        display: 'flex',
-                                                                        alignItems: 'center',
-                                                                        gap: '0.25rem',
-                                                                        transition: 'all 0.2s'
-                                                                    }}
-                                                                    title="Expand all groups"
-                                                                >
-                                                                    <FaChevronDown size={9} /> Expand
-                                                                </button>
-                                                                <button
-                                                                    onClick={handleCollapseAll}
-                                                                    style={{
-                                                                        padding: '0.3rem 0.6rem',
-                                                                        borderRadius: '6px',
-                                                                        border: `1px solid ${theme.colors.border}`,
-                                                                        backgroundColor: 'transparent',
-                                                                        color: theme.colors.secondaryText,
-                                                                        fontSize: '0.7rem',
-                                                                        cursor: 'pointer',
-                                                                        display: 'flex',
-                                                                        alignItems: 'center',
-                                                                        gap: '0.25rem',
-                                                                        transition: 'all 0.2s'
-                                                                    }}
-                                                                    title="Collapse all groups"
-                                                                >
-                                                                    <FaChevronRight size={9} /> Collapse
-                                                                </button>
-                                                            </div>
-                                                        )}
+
+                                                        {/* Separator + Limits + PREMIUM + Expand/Collapse */}
+                                                        <div style={{ 
+                                                            display: 'flex', 
+                                                            alignItems: 'center', 
+                                                            gap: '0.75rem',
+                                                            marginLeft: 'auto',
+                                                            flexWrap: 'wrap',
+                                                        }}>
+                                                            {groupUsage && (
+                                                                <>
+                                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.7rem' }}>
+                                                                        <span style={{ 
+                                                                            color: groupUsage.groupCount >= groupUsage.groupLimit ? '#ef4444' : theme.colors.secondaryText,
+                                                                            fontWeight: groupUsage.groupCount >= groupUsage.groupLimit ? 600 : 400 
+                                                                        }}>{groupUsage.groupCount}/{groupUsage.groupLimit}</span> folders
+                                                                    </span>
+                                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.7rem' }}>
+                                                                        <span style={{ 
+                                                                            color: groupUsage.totalCanisters >= groupUsage.totalLimit ? '#ef4444' : theme.colors.secondaryText,
+                                                                            fontWeight: groupUsage.totalCanisters >= groupUsage.totalLimit ? 600 : 400 
+                                                                        }}>{groupUsage.totalCanisters}/{groupUsage.totalLimit}</span> apps
+                                                                    </span>
+                                                                    {groupUsage.isPremium && (
+                                                                        <span style={{
+                                                                            background: 'linear-gradient(135deg, #ffd700 0%, #ffb300 100%)',
+                                                                            color: '#000',
+                                                                            padding: '0.15rem 0.45rem',
+                                                                            borderRadius: '10px',
+                                                                            fontSize: '0.6rem',
+                                                                            fontWeight: 700,
+                                                                        }}>
+                                                                            PREMIUM
+                                                                        </span>
+                                                                    )}
+                                                                </>
+                                                            )}
+                                                            {canisterGroups.groups.length > 0 && (
+                                                                <div style={{ 
+                                                                    display: 'flex', 
+                                                                    alignItems: 'center', 
+                                                                    gap: '0.4rem',
+                                                                    paddingLeft: '0.5rem',
+                                                                    borderLeft: `1px solid ${theme.colors.border}`,
+                                                                }}>
+                                                                    <button
+                                                                        onClick={handleExpandAll}
+                                                                        style={{
+                                                                            padding: '0.2rem 0.5rem',
+                                                                            borderRadius: '5px',
+                                                                            border: `1px solid ${theme.colors.border}`,
+                                                                            backgroundColor: 'transparent',
+                                                                            color: theme.colors.secondaryText,
+                                                                            fontSize: '0.65rem',
+                                                                            cursor: 'pointer',
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '0.2rem',
+                                                                            transition: 'all 0.2s'
+                                                                        }}
+                                                                        title="Expand all groups"
+                                                                    >
+                                                                        <FaChevronDown size={8} /> Expand
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={handleCollapseAll}
+                                                                        style={{
+                                                                            padding: '0.2rem 0.5rem',
+                                                                            borderRadius: '5px',
+                                                                            border: `1px solid ${theme.colors.border}`,
+                                                                            backgroundColor: 'transparent',
+                                                                            color: theme.colors.secondaryText,
+                                                                            fontSize: '0.65rem',
+                                                                            cursor: 'pointer',
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '0.2rem',
+                                                                            transition: 'all 0.2s'
+                                                                        }}
+                                                                        title="Collapse all groups"
+                                                                    >
+                                                                        <FaChevronRight size={8} /> Collapse
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             );
@@ -5075,24 +5018,31 @@ export default function AppsPage() {
                         
                                 {walletCanistersExpanded && (
                             <>
-                                {/* Add app input */}
-                                <div style={{ ...styles.addSection, marginBottom: '16px' }}>
-                                    <div style={styles.addSectionTitle}>Add app to wallet</div>
-                                    <div style={styles.inputRow}>
+                                {/* Combined: Add app + Health Summary */}
+                                <div style={{
+                                    backgroundColor: theme.colors.secondaryBg,
+                                    borderRadius: '10px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    padding: '10px 14px',
+                                    marginBottom: '16px',
+                                }}>
+                                    {/* Add input row */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: trackedCanisters.length > 0 ? '8px' : 0 }}>
+                                        <span style={{ color: theme.colors.secondaryText, fontSize: '0.7rem', whiteSpace: 'nowrap' }}>Add app</span>
                                         <PrincipalInput
                                             value={newWalletCanisterId}
                                             onChange={(v) => {
                                                 setNewWalletCanisterId(v);
                                                 setWalletCanisterError(null);
                                             }}
-                                            placeholder="Enter app canister id"
+                                            placeholder="Enter canister id"
                                             onKeyDown={(e) => {
                                                 if (e.key === 'Enter' && newWalletCanisterId.trim()) {
                                                     handleAddWalletCanister();
                                                 }
                                             }}
                                             style={{ flex: 1, maxWidth: 'none' }}
-                                            inputStyle={{ fontFamily: 'monospace' }}
+                                            inputStyle={{ fontFamily: 'monospace', fontSize: '0.8rem', padding: '4px 8px' }}
                                             disabled={addingWalletCanister}
                                             defaultPrincipalType="canisters"
                                         />
@@ -5100,25 +5050,66 @@ export default function AppsPage() {
                                             onClick={handleAddWalletCanister}
                                             style={{
                                                 ...styles.addButton,
+                                                padding: '4px 10px',
+                                                fontSize: '0.75rem',
                                                 backgroundColor: (addingWalletCanister || !newWalletCanisterId.trim()) ? '#6c757d' : '#28a745',
                                                 cursor: (addingWalletCanister || !newWalletCanisterId.trim()) ? 'not-allowed' : 'pointer',
                                                 opacity: (addingWalletCanister || !newWalletCanisterId.trim()) ? 0.6 : 1,
                                             }}
                                             disabled={addingWalletCanister || !newWalletCanisterId.trim()}
                                         >
-                                            {addingWalletCanister ? (
-                                                <FaSpinner className="spin" />
-                                            ) : (
-                                                <FaPlus />
-                                            )}
+                                            {addingWalletCanister ? <FaSpinner className="spin" size={10} /> : <FaPlus size={10} />}
                                             Add
                                         </button>
                                     </div>
                                     {walletCanisterError && (
-                                        <div style={{ color: '#ef4444', fontSize: '12px', marginTop: '8px' }}>
+                                        <div style={{ color: '#ef4444', fontSize: '11px', marginBottom: '6px' }}>
                                             {walletCanisterError}
                                         </div>
                                     )}
+                                    {/* Inline health summary */}
+                                    {trackedCanisters.length > 0 && (() => {
+                                        const walletStats = getWalletHealthStats(trackedCanisters, trackedCanisterStatus, cycleSettings);
+                                        const walletOverallColor = getStatusLampColor(walletStats.overallStatus);
+                                        return (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', borderTop: `1px solid ${theme.colors.border}`, paddingTop: '8px' }}>
+                                                <span
+                                                    style={{
+                                                        width: '10px', height: '10px', borderRadius: '50%',
+                                                        backgroundColor: walletOverallColor,
+                                                        boxShadow: walletStats.overallStatus !== 'unknown' ? `0 0 6px ${walletOverallColor}` : 'none',
+                                                        flexShrink: 0,
+                                                    }}
+                                                    title={`Wallet health: ${walletStats.overallStatus}`}
+                                                />
+                                                <span style={{ fontWeight: 600, fontSize: '0.75rem', color: theme.colors.primaryText }}>Health</span>
+                                                {walletStats.red > 0 && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#ef4444', boxShadow: '0 0 4px #ef4444' }} />
+                                                        <span style={{ color: '#ef4444', fontWeight: 500, fontSize: '0.7rem' }}>{walletStats.red} critical</span>
+                                                    </div>
+                                                )}
+                                                {walletStats.orange > 0 && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#f59e0b', boxShadow: '0 0 4px #f59e0b' }} />
+                                                        <span style={{ color: '#f59e0b', fontWeight: 500, fontSize: '0.7rem' }}>{walletStats.orange} low</span>
+                                                    </div>
+                                                )}
+                                                {walletStats.green > 0 && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#22c55e', boxShadow: '0 0 4px #22c55e' }} />
+                                                        <span style={{ color: '#22c55e', fontWeight: 500, fontSize: '0.7rem' }}>{walletStats.green} healthy</span>
+                                                    </div>
+                                                )}
+                                                {walletStats.unknown > 0 && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#6b7280' }} />
+                                                        <span style={{ color: '#6b7280', fontWeight: 500, fontSize: '0.7rem' }}>{walletStats.unknown} unknown</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
 
                                 {loadingTrackedCanisters ? (
@@ -5135,106 +5126,6 @@ export default function AppsPage() {
                                     </div>
                                 ) : (
                                     <div style={{ marginBottom: '24px' }}>
-                                        {/* Wallet Health Summary */}
-                                        {(() => {
-                                            const walletStats = getWalletHealthStats(trackedCanisters, trackedCanisterStatus, cycleSettings);
-                                            const walletOverallColor = getStatusLampColor(walletStats.overallStatus);
-                                            
-                                            return (
-                                                <div style={{
-                                                    padding: '12px 16px',
-                                                    backgroundColor: theme.colors.secondaryBg,
-                                                    borderRadius: '10px',
-                                                    border: `1px solid ${theme.colors.border}`,
-                                                    marginBottom: '16px',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    flexWrap: 'wrap',
-                                                    gap: '12px',
-                                                }}>
-                                                    {/* Overall status lamp */}
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                        <span
-                                                            style={{
-                                                                width: '14px',
-                                                                height: '14px',
-                                                                borderRadius: '50%',
-                                                                backgroundColor: walletOverallColor,
-                                                                boxShadow: walletStats.overallStatus !== 'unknown' ? `0 0 10px ${walletOverallColor}` : 'none',
-                                                                flexShrink: 0,
-                                                            }}
-                                                            title={`Overall health: ${walletStats.overallStatus}`}
-                                                        />
-                                                        <span style={{ 
-                                                            fontWeight: 600, 
-                                                            fontSize: '13px',
-                                                            color: theme.colors.primaryText,
-                                                        }}>
-                                                            Wallet Health
-                                                        </span>
-                                                    </div>
-                                                    
-                                                    {/* Status breakdown */}
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginLeft: 'auto' }}>
-                                                        {walletStats.red > 0 && (
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                <span style={{
-                                                                    width: '8px',
-                                                                    height: '8px',
-                                                                    borderRadius: '50%',
-                                                                    backgroundColor: '#ef4444',
-                                                                    boxShadow: '0 0 6px #ef4444',
-                                                                }} />
-                                                                <span style={{ color: '#ef4444', fontWeight: 500, fontSize: '13px' }}>
-                                                                    {walletStats.red} critical
-                                                                </span>
-                                                            </div>
-                                                        )}
-                                                        {walletStats.orange > 0 && (
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                <span style={{
-                                                                    width: '8px',
-                                                                    height: '8px',
-                                                                    borderRadius: '50%',
-                                                                    backgroundColor: '#f59e0b',
-                                                                    boxShadow: '0 0 6px #f59e0b',
-                                                                }} />
-                                                                <span style={{ color: '#f59e0b', fontWeight: 500, fontSize: '13px' }}>
-                                                                    {walletStats.orange} low
-                                                                </span>
-                                                            </div>
-                                                        )}
-                                                        {walletStats.green > 0 && (
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                <span style={{
-                                                                    width: '8px',
-                                                                    height: '8px',
-                                                                    borderRadius: '50%',
-                                                                    backgroundColor: '#22c55e',
-                                                                    boxShadow: '0 0 6px #22c55e',
-                                                                }} />
-                                                                <span style={{ color: '#22c55e', fontWeight: 500, fontSize: '13px' }}>
-                                                                    {walletStats.green} healthy
-                                                                </span>
-                                                            </div>
-                                                        )}
-                                                        {walletStats.unknown > 0 && (
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                <span style={{
-                                                                    width: '8px',
-                                                                    height: '8px',
-                                                                    borderRadius: '50%',
-                                                                    backgroundColor: '#6b7280',
-                                                                }} />
-                                                                <span style={{ color: '#6b7280', fontWeight: 500, fontSize: '13px' }}>
-                                                                    {walletStats.unknown} unknown
-                                                                </span>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })()}
                                         
                                         <div style={styles.canisterList}>
                                             {trackedCanisters.map((canisterId) => {
@@ -5521,20 +5412,27 @@ export default function AppsPage() {
                         
                         {neuronManagersExpanded && (
                             <>
-                                {/* Add existing manager input */}
-                                <div style={{ ...styles.addSection, marginBottom: '16px' }}>
-                                    <div style={styles.addSectionTitle}>Add existing manager</div>
-                                    <div style={styles.inputRow}>
+                                {/* Combined: Add manager + Health Summary */}
+                                <div style={{
+                                    backgroundColor: theme.colors.secondaryBg,
+                                    borderRadius: '10px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    padding: '10px 14px',
+                                    marginBottom: '16px',
+                                }}>
+                                    {/* Add input row */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: neuronManagers.length > 0 ? '8px' : 0 }}>
+                                        <span style={{ color: theme.colors.secondaryText, fontSize: '0.7rem', whiteSpace: 'nowrap' }}>Add bot</span>
                                         <PrincipalInput
                                             value={newManagerId}
                                             onChange={(v) => {
                                                 setNewManagerId(v);
                                                 setManagerError(null);
                                             }}
-                                            placeholder="Enter ICP staking bot app canister id"
+                                            placeholder="Enter bot canister id"
                                             onKeyDown={(e) => e.key === 'Enter' && handleAddManager()}
                                             style={{ flex: 1, maxWidth: 'none' }}
-                                            inputStyle={{ fontFamily: 'monospace' }}
+                                            inputStyle={{ fontFamily: 'monospace', fontSize: '0.8rem', padding: '4px 8px' }}
                                             disabled={addingManager}
                                             defaultPrincipalType="canisters"
                                         />
@@ -5542,25 +5440,72 @@ export default function AppsPage() {
                                             onClick={handleAddManager}
                                             style={{
                                                 ...styles.addButton,
+                                                padding: '4px 10px',
+                                                fontSize: '0.75rem',
                                                 backgroundColor: (addingManager || !newManagerId.trim()) ? '#6c757d' : '#8b5cf6',
                                                 cursor: (addingManager || !newManagerId.trim()) ? 'not-allowed' : 'pointer',
                                                 opacity: (addingManager || !newManagerId.trim()) ? 0.6 : 1,
                                             }}
                                             disabled={addingManager || !newManagerId.trim()}
                                         >
-                                            {addingManager ? (
-                                                <FaSpinner className="spin" />
-                                            ) : (
-                                                <FaPlus />
-                                            )}
+                                            {addingManager ? <FaSpinner className="spin" size={10} /> : <FaPlus size={10} />}
                                             Add
                                         </button>
                                     </div>
                                     {managerError && (
-                                        <div style={{ color: '#dc3545', fontSize: '13px', marginTop: '8px' }}>
+                                        <div style={{ color: '#dc3545', fontSize: '11px', marginBottom: '6px' }}>
                                             {managerError}
                                         </div>
                                     )}
+                                    {/* Inline health summary */}
+                                    {neuronManagers.length > 0 && (() => {
+                                        const stats = getManagersHealthStats(neuronManagers, neuronManagerCycleSettings);
+                                        const overallColor = getStatusLampColor(stats.overallStatus);
+                                        return (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', borderTop: `1px solid ${theme.colors.border}`, paddingTop: '8px' }}>
+                                                <span
+                                                    style={{
+                                                        width: '10px', height: '10px', borderRadius: '50%',
+                                                        backgroundColor: overallColor,
+                                                        boxShadow: stats.overallStatus !== 'unknown' ? `0 0 6px ${overallColor}` : 'none',
+                                                        flexShrink: 0,
+                                                    }}
+                                                    title={`Bots health: ${stats.overallStatus}`}
+                                                />
+                                                <span style={{ fontWeight: 600, fontSize: '0.75rem', color: theme.colors.primaryText }}>Health</span>
+                                                {stats.red > 0 && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#ef4444', boxShadow: '0 0 4px #ef4444' }} />
+                                                        <span style={{ color: '#ef4444', fontWeight: 500, fontSize: '0.7rem' }}>{stats.red} critical</span>
+                                                    </div>
+                                                )}
+                                                {stats.orange > 0 && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#f59e0b', boxShadow: '0 0 4px #f59e0b' }} />
+                                                        <span style={{ color: '#f59e0b', fontWeight: 500, fontSize: '0.7rem' }}>{stats.orange} warning</span>
+                                                    </div>
+                                                )}
+                                                {stats.green > 0 && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#22c55e', boxShadow: '0 0 4px #22c55e' }} />
+                                                        <span style={{ color: '#22c55e', fontWeight: 500, fontSize: '0.7rem' }}>{stats.green} healthy</span>
+                                                    </div>
+                                                )}
+                                                {stats.unknown > 0 && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#6b7280' }} />
+                                                        <span style={{ color: '#6b7280', fontWeight: 500, fontSize: '0.7rem' }}>{stats.unknown} unknown</span>
+                                                    </div>
+                                                )}
+                                                {stats.outdated > 0 && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <span style={{ fontSize: '0.65rem' }}>⚠️</span>
+                                                        <span style={{ color: '#f59e0b', fontWeight: 500, fontSize: '0.7rem' }}>{stats.outdated} outdated</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
 
                                 {loadingNeuronManagers ? (
@@ -5579,120 +5524,6 @@ export default function AppsPage() {
                                     </div>
                                 ) : (
                                     <>
-                                        {/* Manager Health Summary */}
-                                        {(() => {
-                                            const stats = getManagersHealthStats(neuronManagers, neuronManagerCycleSettings);
-                                            const overallColor = getStatusLampColor(stats.overallStatus);
-                                            
-                                            return (
-                                                <div style={{
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'space-between',
-                                                    padding: '12px 16px',
-                                                    backgroundColor: theme.colors.secondaryBg,
-                                                    borderRadius: '8px',
-                                                    border: `1px solid ${theme.colors.border}`,
-                                                    marginBottom: '16px',
-                                                    flexWrap: 'wrap',
-                                                    gap: '12px',
-                                                }}>
-                                                    {/* Overall status lamp */}
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                        <span
-                                                            style={{
-                                                                width: '16px',
-                                                                height: '16px',
-                                                                borderRadius: '50%',
-                                                                backgroundColor: overallColor,
-                                                                boxShadow: stats.overallStatus !== 'unknown' ? `0 0 10px ${overallColor}` : 'none',
-                                                                flexShrink: 0,
-                                                            }}
-                                                            title={`Overall health: ${stats.overallStatus}`}
-                                                        />
-                                                        <span style={{ 
-                                                            fontWeight: 600, 
-                                                            color: theme.colors.primaryText,
-                                                            fontSize: '14px',
-                                                        }}>
-                                                            {stats.total} {stats.total === 1 ? 'Manager' : 'Managers'}
-                                                        </span>
-                                                    </div>
-                                                    
-                                                    {/* Status breakdown */}
-                                                    <div style={{ 
-                                                        display: 'flex', 
-                                                        alignItems: 'center', 
-                                                        gap: '16px',
-                                                        flexWrap: 'wrap',
-                                                    }}>
-                                                        {stats.red > 0 && (
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                <span style={{
-                                                                    width: '8px',
-                                                                    height: '8px',
-                                                                    borderRadius: '50%',
-                                                                    backgroundColor: '#ef4444',
-                                                                    boxShadow: '0 0 6px #ef4444',
-                                                                }} />
-                                                                <span style={{ color: '#ef4444', fontWeight: 500, fontSize: '13px' }}>
-                                                                    {stats.red} critical
-                                                                </span>
-                                                            </div>
-                                                        )}
-                                                        {stats.orange > 0 && (
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                <span style={{
-                                                                    width: '8px',
-                                                                    height: '8px',
-                                                                    borderRadius: '50%',
-                                                                    backgroundColor: '#f59e0b',
-                                                                    boxShadow: '0 0 6px #f59e0b',
-                                                                }} />
-                                                                <span style={{ color: '#f59e0b', fontWeight: 500, fontSize: '13px' }}>
-                                                                    {stats.orange} warning
-                                                                </span>
-                                                            </div>
-                                                        )}
-                                                        {stats.green > 0 && (
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                <span style={{
-                                                                    width: '8px',
-                                                                    height: '8px',
-                                                                    borderRadius: '50%',
-                                                                    backgroundColor: '#22c55e',
-                                                                    boxShadow: '0 0 6px #22c55e',
-                                                                }} />
-                                                                <span style={{ color: '#22c55e', fontWeight: 500, fontSize: '13px' }}>
-                                                                    {stats.green} healthy
-                                                                </span>
-                                                            </div>
-                                                        )}
-                                                        {stats.unknown > 0 && (
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                <span style={{
-                                                                    width: '8px',
-                                                                    height: '8px',
-                                                                    borderRadius: '50%',
-                                                                    backgroundColor: '#6b7280',
-                                                                }} />
-                                                                <span style={{ color: '#6b7280', fontWeight: 500, fontSize: '13px' }}>
-                                                                    {stats.unknown} unknown
-                                                                </span>
-                                                            </div>
-                                                        )}
-                                                        {stats.outdated > 0 && (
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                <span style={{ fontSize: '12px' }}>⚠️</span>
-                                                                <span style={{ color: '#f59e0b', fontWeight: 500, fontSize: '13px' }}>
-                                                                    {stats.outdated} outdated
-                                                                </span>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })()}
                                         
                                     <div style={styles.canisterList}>
                                         {neuronManagers.map((manager) => {
