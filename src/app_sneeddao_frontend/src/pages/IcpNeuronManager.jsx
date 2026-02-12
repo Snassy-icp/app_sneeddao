@@ -4158,12 +4158,11 @@ function IcpNeuronManager() {
                                         </label>
                                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                             <input
-                                                type="number"
+                                                type="text"
+                                                inputMode="decimal"
                                                 value={topUpAmount}
                                                 onChange={(e) => setTopUpAmount(e.target.value)}
                                                 placeholder="0.0"
-                                                step="0.01"
-                                                min="0"
                                                 disabled={toppingUp}
                                                 style={inputStyle}
                                             />
@@ -4362,9 +4361,8 @@ function IcpNeuronManager() {
                                                 Amount ({withdrawTokenSymbol})
                                             </label>
                                             <input
-                                                type="number"
-                                                min="0"
-                                                step="any"
+                                                type="text"
+                                                inputMode="decimal"
                                                 value={withdrawAmount}
                                                 onChange={(e) => setWithdrawAmount(e.target.value)}
                                                 style={inputStyle}
@@ -5223,18 +5221,16 @@ function IcpNeuronManager() {
                                                 </label>
                                                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                                                     <input
-                                                        type="number"
-                                                        min="1"
-                                                        max="365"
+                                                        type="text"
+                                                        inputMode="numeric"
                                                         defaultValue={intervalDays}
                                                         style={{ ...inputStyle, width: '80px' }}
                                                         id={`chore-interval-${chore.choreId}`}
                                                     />
                                                     <span style={{ fontSize: '0.8rem', color: theme.colors.secondaryText }}>to</span>
                                                     <input
-                                                        type="number"
-                                                        min=""
-                                                        max="365"
+                                                        type="text"
+                                                        inputMode="numeric"
                                                         defaultValue={maxIntervalDays || ''}
                                                         placeholder="exact"
                                                         style={{ ...inputStyle, width: '80px' }}
@@ -5292,7 +5288,7 @@ function IcpNeuronManager() {
                                                     </button>
                                                 </div>
                                                 <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: theme.colors.mutedText }}>
-                                                    Set a max to randomize the interval. Leave max blank for exact scheduling.
+                                                    Set a max to randomize the interval — useful for trading bots where unpredictable timing makes your trades harder to front-run. Leave max blank for exact scheduling.
                                                 </p>
                                                 {chore.choreId === 'confirm-following' && (
                                                 <p style={{ margin: '6px 0 0', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
@@ -5332,9 +5328,8 @@ function IcpNeuronManager() {
                                                     </label>
                                                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                                         <input
-                                                            type="number"
-                                                            min="0"
-                                                            step="0.01"
+                                                            type="text"
+                                                            inputMode="decimal"
                                                             placeholder="No minimum"
                                                             defaultValue={cmThresholdE8s !== null ? Number(cmThresholdE8s) / 1e8 : ''}
                                                             style={{ ...inputStyle, width: '140px' }}
@@ -6323,9 +6318,8 @@ function IcpNeuronManager() {
                                                 Amount to Stake (ICP)
                                             </label>
                                             <input
-                                                type="number"
-                                                min="1"
-                                                step="0.01"
+                                                type="text"
+                                                inputMode="decimal"
                                                 value={stakeAmount}
                                                 onChange={(e) => setStakeAmount(e.target.value)}
                                                 style={inputStyle}
@@ -6337,9 +6331,8 @@ function IcpNeuronManager() {
                                                 Dissolve Delay (days)
                                             </label>
                                             <input
-                                                type="number"
-                                                min="183"
-                                                max="2922"
+                                                type="text"
+                                                inputMode="numeric"
                                                 value={stakeDissolveDelay}
                                                 onChange={(e) => setStakeDissolveDelay(e.target.value)}
                                                 style={inputStyle}
@@ -6651,9 +6644,8 @@ function IcpNeuronManager() {
                                                         Days to Add
                                                     </label>
                                                     <input
-                                                        type="number"
-                                                        min="1"
-                                                        max="2922"
+                                                        type="text"
+                                                        inputMode="numeric"
                                                         value={dissolveDelay}
                                                         onChange={(e) => setDissolveDelay(e.target.value)}
                                                         style={inputStyle}
@@ -6826,9 +6818,8 @@ function IcpNeuronManager() {
                                                         Amount (ICP)
                                                     </label>
                                                     <input
-                                                        type="number"
-                                                        min="0.0001"
-                                                        step="0.01"
+                                                        type="text"
+                                                        inputMode="decimal"
                                                         value={increaseStakeAmount}
                                                         onChange={(e) => setIncreaseStakeAmount(e.target.value)}
                                                         style={inputStyle}
@@ -6975,9 +6966,8 @@ function IcpNeuronManager() {
                                                 Percentage of Maturity
                                             </label>
                                             <input
-                                                type="number"
-                                                min="1"
-                                                max="100"
+                                                type="text"
+                                                inputMode="numeric"
                                                 value={maturityPercentage}
                                                 onChange={(e) => setMaturityPercentage(e.target.value)}
                                                 style={{ ...inputStyle, maxWidth: '150px' }}
@@ -7482,9 +7472,8 @@ function IcpNeuronManager() {
                                                             Amount (ICP) - leave empty to disburse all
                                                         </label>
                                                         <input
-                                                            type="number"
-                                                            min="0"
-                                                            step="0.01"
+                                                            type="text"
+                                                            inputMode="decimal"
                                                             value={disburseAmount}
                                                             onChange={(e) => setDisburseAmount(e.target.value)}
                                                             style={inputStyle}
@@ -7551,9 +7540,8 @@ function IcpNeuronManager() {
                                                         Amount for New Neuron (ICP)
                                                     </label>
                                                     <input
-                                                        type="number"
-                                                        min="1"
-                                                        step="0.01"
+                                                        type="text"
+                                                        inputMode="decimal"
                                                         value={splitAmount}
                                                         onChange={(e) => setSplitAmount(e.target.value)}
                                                         style={inputStyle}

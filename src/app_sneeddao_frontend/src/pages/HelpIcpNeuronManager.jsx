@@ -614,12 +614,19 @@ function HelpIcpNeuronManager() {
                             <FaClock size={14} color={icpPrimary} />
                             Interval Randomization
                         </h4>
-                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                        <p style={styles.paragraph}>
                             Each chore's interval can optionally be set as a <strong style={styles.strong}>range</strong> (e.g. 
                             "every 5 to 10 days"). When a range is set, the bot picks a random time within 
-                            the range each time it reschedules. This is useful for bots where perfectly regular 
-                            scheduling is undesirable — for example, a trading bot that should vary the timing of its actions. 
-                            Leave the max field blank for exact, predictable scheduling.
+                            the range each time it reschedules.
+                        </p>
+                        <p style={{ ...styles.paragraph, marginBottom: 0 }}>
+                            This feature is primarily designed for bots like <strong style={styles.strong}>trading bots</strong>, where 
+                            executing actions at perfectly predictable intervals can make your strategy easier to 
+                            front-run or exploit. By randomizing the timing, your trades become harder for other 
+                            actors to anticipate, giving you better execution and reducing the risk of being 
+                            targeted by MEV-style strategies. For chores where timing precision doesn't matter 
+                            (like staking or maturity collection), you can leave the max field blank for exact, 
+                            predictable scheduling.
                         </p>
                     </div>
 
