@@ -332,7 +332,12 @@ function IcpNeuronManager() {
     const [choreError, setChoreError] = useState('');
     const [choreSuccess, setChoreSuccess] = useState('');
     const [savingChore, setSavingChore] = useState(false);
-    const [choreActiveTab, setChoreActiveTab] = useState('confirm-following');
+    const [choreActiveTab, setChoreActiveTab] = useState('confirm-following'); // typeId tab
+    const [choreActiveInstance, setChoreActiveInstance] = useState(null); // instanceId sub-tab (null = first/only)
+    const [creatingInstance, setCreatingInstance] = useState(false);
+    const [newInstanceLabel, setNewInstanceLabel] = useState('');
+    const [renamingInstance, setRenamingInstance] = useState(null); // instanceId being renamed
+    const [renameLabel, setRenameLabel] = useState('');
     // Collect-Maturity chore-specific settings
     const [cmThresholdE8s, setCmThresholdE8s] = useState(null); // null = no threshold
     const [cmDestination, setCmDestination] = useState(null);   // null = bot's own account
@@ -4847,35 +4852,179 @@ function IcpNeuronManager() {
                                 </div>
                             )}
 
-                            {/* Sub-tabs for each chore */}
-                            {choreStatuses.length > 0 && (
+                            {/* Sub-tabs for each chore type (grouped by typeId) */}
+                            {choreStatuses.length > 0 && (() => {
+                                // Group chore instances by type
+                                const choreTypeMap = {};
+                                const choreTypeOrder = [];
+                                choreStatuses.forEach(chore => {
+                                    const tid = chore.choreTypeId || chore.choreId;
+                                    if (!choreTypeMap[tid]) {
+                                        choreTypeMap[tid] = { typeId: tid, typeName: chore.choreName, typeDesc: chore.choreDescription, instances: [] };
+                                        choreTypeOrder.push(tid);
+                                    }
+                                    choreTypeMap[tid].instances.push(chore);
+                                });
+                                // Ensure active tab is valid
+                                const activeTypeId = choreTypeMap[choreActiveTab] ? choreActiveTab : choreTypeOrder[0];
+                                const activeType = choreTypeMap[activeTypeId];
+                                const instances = activeType?.instances || [];
+                                // Determine active instance
+                                const activeInstanceId = choreActiveInstance && instances.find(i => i.choreId === choreActiveInstance)
+                                    ? choreActiveInstance
+                                    : instances[0]?.choreId;
+                                const activeChore = instances.find(i => i.choreId === activeInstanceId);
+                                const hasMultiple = instances.length > 1;
+
+                                return (
                             <>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', marginBottom: '12px', gap: '0' }}>
-                                {choreStatuses.map(chore => {
-                                    const choreSummary = getChoreSummaryLamp(chore);
+                            {/* Type-level tabs */}
+                            <div style={{ display: 'flex', flexWrap: 'wrap', marginBottom: hasMultiple ? '0' : '12px', gap: '0' }}>
+                                {choreTypeOrder.map(tid => {
+                                    const type = choreTypeMap[tid];
+                                    // Summary lamp: worst of all instances of this type
+                                    const typeWorstLamp = type.instances.reduce((worst, inst) => {
+                                        const lamp = getChoreSummaryLamp(inst);
+                                        const priority = { error: 4, warning: 3, running: 2, ok: 1, off: 0 };
+                                        return (priority[lamp] || 0) > (priority[worst] || 0) ? lamp : worst;
+                                    }, 'off');
+                                    const count = type.instances.length;
                                     return (
                                         <button
-                                            key={chore.choreId}
+                                            key={tid}
                                             style={{
-                                                ...tabStyle(choreActiveTab === chore.choreId),
+                                                ...tabStyle(activeTypeId === tid),
                                                 fontSize: '0.8rem',
                                                 padding: '0.45rem 0.8rem',
                                                 display: 'inline-flex',
                                                 alignItems: 'center',
                                                 gap: '6px',
                                             }}
-                                            onClick={() => setChoreActiveTab(chore.choreId)}
+                                            onClick={() => { setChoreActiveTab(tid); setChoreActiveInstance(null); }}
                                         >
-                                            <StatusLamp state={choreSummary} size={8} label={getSummaryLabel(choreSummary, chore.choreName)} />
-                                            {chore.choreName}
+                                            <StatusLamp state={typeWorstLamp} size={8} label={getSummaryLabel(typeWorstLamp, type.typeName)} />
+                                            {type.typeName}{count > 1 ? ` (${count})` : ''}
                                         </button>
                                     );
                                 })}
                             </div>
 
-                            {/* Render the active chore's panel */}
-                            {choreStatuses.map(chore => {
-                                if (chore.choreId !== choreActiveTab) return null;
+                            {/* Instance sub-tabs (only when type has multiple instances) */}
+                            {hasMultiple && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', marginBottom: '12px', gap: '0', paddingLeft: '8px', borderLeft: `2px solid ${neuronPrimary}30` }}>
+                                {instances.map(inst => {
+                                    const instLamp = getChoreSummaryLamp(inst);
+                                    return (
+                                        <button
+                                            key={inst.choreId}
+                                            style={{
+                                                ...tabStyle(activeInstanceId === inst.choreId),
+                                                fontSize: '0.75rem',
+                                                padding: '0.35rem 0.7rem',
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '5px',
+                                            }}
+                                            onClick={() => setChoreActiveInstance(inst.choreId)}
+                                        >
+                                            <StatusLamp state={instLamp} size={7} />
+                                            {inst.instanceLabel || inst.choreName}
+                                        </button>
+                                    );
+                                })}
+                                {/* + button to add instance */}
+                                <button
+                                    style={{
+                                        ...tabStyle(false),
+                                        fontSize: '0.75rem',
+                                        padding: '0.35rem 0.7rem',
+                                        color: neuronPrimary,
+                                        fontWeight: '700',
+                                    }}
+                                    onClick={() => { setCreatingInstance(true); setNewInstanceLabel(''); }}
+                                    title="Add another instance of this chore"
+                                >
+                                    +
+                                </button>
+                            </div>
+                            )}
+
+                            {/* Single-instance type: show + button inline if it's a multi-capable type */}
+                            {!hasMultiple && activeTypeId === 'distribute-funds' && (
+                            <div style={{ marginBottom: '8px' }}>
+                                <button
+                                    style={{
+                                        ...buttonStyle,
+                                        fontSize: '0.75rem',
+                                        background: `${neuronPrimary}10`,
+                                        color: neuronPrimary,
+                                        border: `1px solid ${neuronPrimary}25`,
+                                        padding: '4px 10px',
+                                    }}
+                                    onClick={() => { setCreatingInstance(true); setNewInstanceLabel(''); }}
+                                >
+                                    + Add another {activeType?.typeName}
+                                </button>
+                            </div>
+                            )}
+
+                            {/* Create instance dialog */}
+                            {creatingInstance && (
+                            <div style={{ ...cardStyle, background: `${neuronPrimary}08`, border: `1px solid ${neuronPrimary}25`, marginBottom: '12px' }}>
+                                <div style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '8px' }}>
+                                    New {activeType?.typeName} Instance
+                                </div>
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                    <input
+                                        type="text"
+                                        value={newInstanceLabel}
+                                        onChange={e => setNewInstanceLabel(e.target.value)}
+                                        placeholder="Instance name (e.g., ETH Distribution)"
+                                        style={{ ...inputStyle, flex: 1, minWidth: '180px' }}
+                                        autoFocus
+                                    />
+                                    <button
+                                        style={{ ...buttonStyle, background: neuronPrimary, color: '#fff', border: 'none', opacity: !newInstanceLabel.trim() || savingChore ? 0.5 : 1 }}
+                                        disabled={!newInstanceLabel.trim() || savingChore}
+                                        onClick={async () => {
+                                            setSavingChore(true);
+                                            setChoreError('');
+                                            try {
+                                                const agent = getAgent();
+                                                if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                                                    await agent.fetchRootKey();
+                                                }
+                                                const manager = createManagerActor(canisterId, { agent });
+                                                const instId = activeTypeId + '-' + Date.now().toString(36);
+                                                const ok = await manager.createChoreInstance(activeTypeId, instId, newInstanceLabel.trim());
+                                                if (ok) {
+                                                    setChoreSuccess(`Created "${newInstanceLabel.trim()}"`);
+                                                    setCreatingInstance(false);
+                                                    setChoreActiveInstance(instId);
+                                                    await loadChoreData();
+                                                } else {
+                                                    setChoreError('Failed to create instance.');
+                                                }
+                                            } catch (err) {
+                                                setChoreError('Error creating instance: ' + err.message);
+                                            } finally { setSavingChore(false); }
+                                        }}
+                                    >
+                                        Create
+                                    </button>
+                                    <button
+                                        style={{ ...buttonStyle, background: 'transparent', color: theme.colors.mutedText, border: `1px solid ${theme.colors.border}` }}
+                                        onClick={() => setCreatingInstance(false)}
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+                            )}
+
+                            {/* Render the active chore instance's panel */}
+                            {activeChore && (() => {
+                                const chore = activeChore;
                                 const configEntry = choreConfigs.find(([id]) => id === chore.choreId);
                                 const config = configEntry ? configEntry[1] : null;
 
@@ -6039,11 +6188,79 @@ function IcpNeuronManager() {
                                             )}
                                         </div>
                                         )}
+
+                                        {/* Instance management: rename / delete (for multi-instance types or non-default instances) */}
+                                        {hasMultiple && chore.choreId !== (chore.choreTypeId || chore.choreId) && (
+                                        <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: `1px solid ${theme.colors.border}`, display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                            {renamingInstance === chore.choreId ? (
+                                                <>
+                                                <input
+                                                    type="text"
+                                                    value={renameLabel}
+                                                    onChange={e => setRenameLabel(e.target.value)}
+                                                    style={{ ...inputStyle, flex: 1, minWidth: '140px', fontSize: '0.8rem' }}
+                                                    autoFocus
+                                                />
+                                                <button
+                                                    style={{ ...buttonStyle, fontSize: '0.75rem', background: `${neuronPrimary}10`, color: neuronPrimary, border: `1px solid ${neuronPrimary}25`, opacity: !renameLabel.trim() || savingChore ? 0.5 : 1 }}
+                                                    disabled={!renameLabel.trim() || savingChore}
+                                                    onClick={async () => {
+                                                        setSavingChore(true);
+                                                        try {
+                                                            const agent = getAgent();
+                                                            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') await agent.fetchRootKey();
+                                                            const manager = createManagerActor(canisterId, { agent });
+                                                            await manager.renameChoreInstance(chore.choreId, renameLabel.trim());
+                                                            setRenamingInstance(null);
+                                                            setChoreSuccess('Instance renamed.');
+                                                            await loadChoreData();
+                                                        } catch (err) { setChoreError('Rename failed: ' + err.message); }
+                                                        finally { setSavingChore(false); }
+                                                    }}
+                                                >Save</button>
+                                                <button
+                                                    style={{ ...buttonStyle, fontSize: '0.75rem', background: 'transparent', color: theme.colors.mutedText, border: `1px solid ${theme.colors.border}` }}
+                                                    onClick={() => setRenamingInstance(null)}
+                                                >Cancel</button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                <button
+                                                    style={{ ...buttonStyle, fontSize: '0.75rem', background: 'transparent', color: theme.colors.secondaryText, border: `1px solid ${theme.colors.border}` }}
+                                                    onClick={() => { setRenamingInstance(chore.choreId); setRenameLabel(chore.instanceLabel || chore.choreName); }}
+                                                >Rename</button>
+                                                {!chore.enabled && (
+                                                <button
+                                                    style={{ ...buttonStyle, fontSize: '0.75rem', background: `${theme.colors.error || '#ef4444'}10`, color: theme.colors.error || '#ef4444', border: `1px solid ${theme.colors.error || '#ef4444'}25` }}
+                                                    disabled={savingChore}
+                                                    onClick={async () => {
+                                                        if (!window.confirm(`Delete instance "${chore.instanceLabel || chore.choreName}"?`)) return;
+                                                        setSavingChore(true);
+                                                        try {
+                                                            const agent = getAgent();
+                                                            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') await agent.fetchRootKey();
+                                                            const manager = createManagerActor(canisterId, { agent });
+                                                            const ok = await manager.deleteChoreInstance(chore.choreId);
+                                                            if (ok) {
+                                                                setChoreSuccess('Instance deleted.');
+                                                                setChoreActiveInstance(null);
+                                                                await loadChoreData();
+                                                            } else { setChoreError('Failed to delete instance. Make sure it is stopped first.'); }
+                                                        } catch (err) { setChoreError('Delete failed: ' + err.message); }
+                                                        finally { setSavingChore(false); }
+                                                    }}
+                                                >Delete</button>
+                                                )}
+                                                </>
+                                            )}
+                                        </div>
+                                        )}
                                     </div>
                                 );
-                            })}
+                            })()}
                             </>
-                            )}
+                                );
+                            })()}
 
                             {choreStatuses.length === 0 && !loadingChores && (
                                 <div style={{
