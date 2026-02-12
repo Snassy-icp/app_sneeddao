@@ -334,6 +334,38 @@ function IcpNeuronManager() {
     const [savingChore, setSavingChore] = useState(false);
     const [choreActiveTab, setChoreActiveTab] = useState('confirm-following'); // typeId tab
     const [choreActiveInstance, setChoreActiveInstance] = useState(null); // instanceId sub-tab (null = first/only)
+    // Ticking clock for imminent chore countdowns (updates every second when needed)
+    const [choreTickNow, setChoreTickNow] = useState(Date.now());
+    const choreTickRef = useRef(null);
+    useEffect(() => {
+        // Check if any enabled chore is within 5 minutes of firing
+        const IMMINENT_MS = 5 * 60 * 1000;
+        const now = Date.now();
+        const anyImminent = choreStatuses.some(c => {
+            if (!c.enabled || !c.nextScheduledRunAt?.length) return false;
+            const ms = Number(c.nextScheduledRunAt[0]) / 1_000_000;
+            const diff = ms - now;
+            return diff > 0 && diff < IMMINENT_MS;
+        });
+        // Also tick if any chore is currently running
+        const anyRunning = choreStatuses.some(c => c.enabled && !('Idle' in c.conductorStatus));
+        if (anyImminent || anyRunning) {
+            if (!choreTickRef.current) {
+                choreTickRef.current = setInterval(() => setChoreTickNow(Date.now()), 1000);
+            }
+        } else {
+            if (choreTickRef.current) {
+                clearInterval(choreTickRef.current);
+                choreTickRef.current = null;
+            }
+        }
+        return () => {
+            if (choreTickRef.current) {
+                clearInterval(choreTickRef.current);
+                choreTickRef.current = null;
+            }
+        };
+    }, [choreStatuses]);
     const [creatingInstance, setCreatingInstance] = useState(false);
     const [newInstanceLabel, setNewInstanceLabel] = useState('');
     const [renamingInstance, setRenamingInstance] = useState(null); // instanceId being renamed
@@ -4886,8 +4918,9 @@ function IcpNeuronManager() {
 
                             {/* Upcoming chore schedule overview */}
                             {choreStatuses.length > 0 && (() => {
-                                // Collect all scheduled chores with a future nextScheduledRunAt
-                                const nowMs = Date.now();
+                                // Use ticking clock for imminent countdowns
+                                const nowMs = choreTickNow;
+                                const IMMINENT_THRESHOLD = 5 * 60 * 1000; // 5 minutes
                                 const upcoming = choreStatuses
                                     .filter(c => c.enabled && c.nextScheduledRunAt?.length > 0)
                                     .map(c => {
@@ -4906,7 +4939,14 @@ function IcpNeuronManager() {
                                 const formatRelative = (ms) => {
                                     const diff = ms - nowMs;
                                     if (diff < 0) return 'overdue';
-                                    if (diff < 60_000) return 'in <1 min';
+                                    // Show ticking seconds when imminent
+                                    if (diff < IMMINENT_THRESHOLD) {
+                                        const totalSec = Math.floor(diff / 1000);
+                                        if (totalSec < 60) return `in ${totalSec}s`;
+                                        const min = Math.floor(totalSec / 60);
+                                        const sec = totalSec % 60;
+                                        return `in ${min}m ${String(sec).padStart(2, '0')}s`;
+                                    }
                                     if (diff < 3600_000) return `in ${Math.round(diff / 60_000)} min`;
                                     if (diff < 86400_000) {
                                         const hrs = Math.floor(diff / 3600_000);
