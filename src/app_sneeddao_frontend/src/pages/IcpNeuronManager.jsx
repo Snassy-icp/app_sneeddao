@@ -6336,6 +6336,8 @@ function IcpNeuronManager() {
                             )}
                             </>
                             )}
+                        </div>
+                        )}
 
                                 </div>
                             )}
