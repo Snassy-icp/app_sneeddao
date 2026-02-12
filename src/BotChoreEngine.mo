@@ -4,7 +4,9 @@ import Array "mo:base/Array";
 import Buffer "mo:base/Buffer";
 import Int "mo:base/Int";
 import Nat "mo:base/Nat";
+import Bool "mo:base/Bool";
 import Error "mo:base/Error";
+import Debug "mo:base/Debug";
 
 import BotChoreTypes "BotChoreTypes";
 
@@ -604,7 +606,17 @@ module {
         public func setNextScheduledRun<system>(choreId: Text, timestampNanos: Int) {
             let config = getConfigOrDefault(choreId);
             if (not config.enabled) {
-                return; // Can only set next run on an enabled chore (stopped chores don't have schedules)
+                Debug.trap("setNextScheduledRun: chore '" # choreId # "' is not enabled (enabled=" # Bool.toText(config.enabled) # ", paused=" # Bool.toText(config.paused) # ")");
+            };
+
+            // Verify the state entry exists before attempting update
+            let states = stateAccessor.getStates();
+            var stateFound = false;
+            for ((id, _s) in states.vals()) {
+                if (id == choreId) { stateFound := true };
+            };
+            if (not stateFound) {
+                Debug.trap("setNextScheduledRun: no runtime state entry found for choreId '" # choreId # "'");
             };
 
             // Cancel existing scheduler timer

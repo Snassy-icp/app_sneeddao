@@ -5196,10 +5196,36 @@ function IcpNeuronManager() {
                                                                         if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') await agent.fetchRootKey();
                                                                         const manager = createManagerActor(canisterId, { agent });
                                                                         await manager.setChoreNextRun(chore.choreId, tsNanos);
+                                                                        // Optimistically update the displayed time immediately,
+                                                                        // then verify with a background refresh.
+                                                                        setChoreStatuses(prev => prev.map(s =>
+                                                                            s.choreId === chore.choreId
+                                                                                ? { ...s, nextScheduledRunAt: [tsNanos] }
+                                                                                : s
+                                                                        ));
                                                                         setChoreSuccess('Next run time updated.');
                                                                         const el = document.getElementById(`next-run-picker-${chore.choreId}`);
                                                                         if (el) el.style.display = 'none';
-                                                                        await loadChoreData();
+                                                                        // Verify: re-fetch after a short delay and warn if mismatch
+                                                                        setTimeout(async () => {
+                                                                            try {
+                                                                                const vAgent = getAgent();
+                                                                                if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') await vAgent.fetchRootKey();
+                                                                                const vManager = createManagerActor(canisterId, { agent: vAgent });
+                                                                                const statuses = await vManager.getChoreStatuses();
+                                                                                const saved = statuses.find(s => s.choreId === chore.choreId);
+                                                                                if (saved) {
+                                                                                    const savedNs = saved.nextScheduledRunAt?.length > 0 ? saved.nextScheduledRunAt[0] : null;
+                                                                                    if (savedNs == null || (savedNs !== tsNanos && BigInt(savedNs) !== tsNanos)) {
+                                                                                        console.warn('setChoreNextRun verification: expected', tsNanos.toString(), 'got', savedNs?.toString());
+                                                                                        setChoreError('Warning: the backend may not have saved the new time (expected ' + tsNanos.toString() + ', got ' + (savedNs?.toString() || 'null') + '). Try upgrading the canister to the latest version.');
+                                                                                    }
+                                                                                }
+                                                                                setChoreStatuses(statuses);
+                                                                            } catch (e) {
+                                                                                console.warn('Verification fetch failed:', e);
+                                                                            }
+                                                                        }, 2500);
                                                                     } catch (err) {
                                                                         setChoreError('Failed to set next run: ' + err.message);
                                                                     } finally {
