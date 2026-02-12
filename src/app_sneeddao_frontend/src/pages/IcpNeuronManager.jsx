@@ -5166,7 +5166,9 @@ function IcpNeuronManager() {
                                                                 defaultValue={(() => {
                                                                     const ns = chore.nextScheduledRunAt?.length > 0 ? Number(chore.nextScheduledRunAt[0]) : Date.now() * 1_000_000;
                                                                     const d = new Date(ns / 1_000_000);
-                                                                    return d.toISOString().slice(0, 16);
+                                                                    // Use local time components (datetime-local inputs are timezone-unaware)
+                                                                    const pad = (n) => String(n).padStart(2, '0');
+                                                                    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
                                                                 })()}
                                                             />
                                                             <button

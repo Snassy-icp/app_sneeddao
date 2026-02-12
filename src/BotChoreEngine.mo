@@ -597,12 +597,14 @@ module {
         };
 
         /// Set the next scheduled run time for a chore. Reschedules the scheduler timer.
-        /// The chore must be enabled and not paused. The timestamp is in nanoseconds.
+        /// The chore must be enabled. For paused chores, the time is stored but the
+        /// scheduler is not started (it will be armed when the chore is resumed).
+        /// The timestamp is in nanoseconds.
         /// Use this to offset chore schedules (e.g., two weekly chores running on opposite weeks).
         public func setNextScheduledRun<system>(choreId: Text, timestampNanos: Int) {
             let config = getConfigOrDefault(choreId);
-            if (not config.enabled or config.paused) {
-                return; // Can only set next run on an active chore
+            if (not config.enabled) {
+                return; // Can only set next run on an enabled chore (stopped chores don't have schedules)
             };
 
             // Cancel existing scheduler timer
@@ -617,8 +619,11 @@ module {
                 { s with nextScheduledRunAt = ?timestampNanos; schedulerTimerId = null }
             });
 
-            // Restart the scheduler (it will read nextScheduledRunAt and set timer accordingly)
-            startScheduler<system>(choreId);
+            // Restart the scheduler only if not paused
+            // Paused chores preserve nextScheduledRunAt for when they are resumed
+            if (not config.paused) {
+                startScheduler<system>(choreId);
+            };
         };
 
         /// Stop all chore instances (full stop — disable + clear schedules).
