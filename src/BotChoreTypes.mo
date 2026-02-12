@@ -151,13 +151,14 @@ module {
     // CHORE DEFINITION (registered by bot)
     // ============================================
 
-    /// Definition of a chore, provided by the bot at registration time.
+    /// Definition of a chore type, provided by the bot at registration time.
     /// The `conduct` callback is a closure — transient, re-registered on every canister start.
+    /// Multiple instances of the same type can be created (e.g., multiple trade chores).
     ///
     /// To start tasks, the conductor calls engine.setPendingTask(choreId, taskId, taskFn)
-    /// before returning. No createTask callback is needed.
+    /// before returning (choreId is the instance ID). No createTask callback is needed.
     public type ChoreDefinition = {
-        /// Unique identifier for this chore (e.g., "refresh-voting-power").
+        /// Unique identifier for this chore type (e.g., "distribute-funds").
         id: Text;
         /// Human-readable name (e.g., "Refresh Voting Power").
         name: Text;
@@ -201,11 +202,13 @@ module {
         #Running;   // A task is actively executing
     };
 
-    /// Complete status snapshot of a chore (for admin display).
+    /// Complete status snapshot of a chore instance (for admin display).
     public type ChoreStatus = {
-        choreId: Text;
-        choreName: Text;
-        choreDescription: Text;
+        choreId: Text;          // Instance ID (unique per instance)
+        choreTypeId: Text;      // Type ID (references ChoreDefinition.id — same for all instances of a type)
+        choreName: Text;        // Type name (from ChoreDefinition)
+        choreDescription: Text; // Type description (from ChoreDefinition)
+        instanceLabel: Text;    // Instance label (user-facing, e.g., "ETH Trade #1")
         enabled: Bool;
         paused: Bool;
         intervalSeconds: Nat;
@@ -242,6 +245,21 @@ module {
     };
 
     // ============================================
+    // MULTI-INSTANCE SUPPORT
+    // ============================================
+
+    /// Information about a chore instance. Each instance references a chore type
+    /// (by typeId) and has a user-facing label. Multiple instances of the same type
+    /// can coexist (e.g., multiple "trade" chores with different configs).
+    ///
+    /// For single-instance chores (the common case), the instanceId equals the typeId
+    /// and the label equals the type name.
+    public type ChoreInstanceInfo = {
+        typeId: Text;           // References ChoreDefinition.id
+        instanceLabel: Text;    // User-facing name for this instance (e.g., "ETH Trade #1")
+    };
+
+    // ============================================
     // STATE ACCESSOR (bridge to bot's stable vars)
     // ============================================
 
@@ -252,6 +270,8 @@ module {
         setConfigs: ([(Text, ChoreConfig)]) -> ();
         getStates: () -> [(Text, ChoreRuntimeState)];
         setStates: ([(Text, ChoreRuntimeState)]) -> ();
+        getInstances: () -> [(Text, ChoreInstanceInfo)];
+        setInstances: ([(Text, ChoreInstanceInfo)]) -> ();
     };
 
 };

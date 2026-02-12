@@ -49,6 +49,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // Bot Chores: stable state for the chore system
     var choreConfigs: [(Text, BotChoreTypes.ChoreConfig)] = [];
     var choreStates: [(Text, BotChoreTypes.ChoreRuntimeState)] = [];
+    var choreInstances: [(Text, BotChoreTypes.ChoreInstanceInfo)] = [];
 
     // Collect-Maturity chore settings (chore-specific, stable)
     var collectMaturityThresholdE8s: ?Nat64 = null;  // null = collect any amount; otherwise min maturity e8s
@@ -175,6 +176,8 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         setConfigs = func(c: [(Text, BotChoreTypes.ChoreConfig)]): () { choreConfigs := c };
         getStates = func(): [(Text, BotChoreTypes.ChoreRuntimeState)] { choreStates };
         setStates = func(s: [(Text, BotChoreTypes.ChoreRuntimeState)]): () { choreStates := s };
+        getInstances = func(): [(Text, BotChoreTypes.ChoreInstanceInfo)] { choreInstances };
+        setInstances = func(i: [(Text, BotChoreTypes.ChoreInstanceInfo)]): () { choreInstances := i };
     });
 
     // Mutable state for chore closures (transient, reset on upgrade)
@@ -194,14 +197,20 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         permEngine.assertPermission(caller, permissionId, hotkeyPermissions)
     };
 
-    // Map a chore ID to its per-chore manage permission ID
-    func choreManagePermission(choreId: Text): Nat {
-        switch (choreId) {
+    // Map a chore instance ID to its per-type manage permission ID.
+    // Resolves instanceId -> typeId -> permission.
+    func choreManagePermission(instanceId: Text): Nat {
+        // Look up typeId from instance registry
+        let typeId = switch (choreEngine.getInstance(instanceId)) {
+            case (?info) { info.typeId };
+            case null { instanceId }; // Fallback: assume instanceId = typeId
+        };
+        switch (typeId) {
             case ("confirm-following") { T.NeuronPermission.ManageConfirmFollowing };
             case ("refresh-stake") { T.NeuronPermission.ManageRefreshStake };
             case ("collect-maturity") { T.NeuronPermission.ManageCollectMaturity };
             case ("distribute-funds") { T.NeuronPermission.ManageDistributeFunds };
-            case (_) { Debug.trap("Unknown chore: " # choreId) };
+            case (_) { Debug.trap("Unknown chore type: " # typeId) };
         }
     };
 
@@ -1396,6 +1405,43 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         assertPermission(caller, T.NeuronPermission.ManageCollectMaturity);
         assertPermission(caller, T.NeuronPermission.ManageDistributeFunds);
         choreEngine.stopAllChores();
+    };
+
+    // --- Chore Instance Management ---
+
+    // Create a new chore instance of the given type
+    public shared ({ caller }) func createChoreInstance(typeId: Text, instanceId: Text, instanceLabel: Text): async Bool {
+        assertPermission(caller, choreManagePermission(typeId));
+        choreEngine.createInstance(typeId, instanceId, instanceLabel)
+    };
+
+    // Delete a chore instance (must be stopped first)
+    public shared ({ caller }) func deleteChoreInstance(instanceId: Text): async Bool {
+        // Look up the instance to find its typeId for permission check
+        switch (choreEngine.getInstance(instanceId)) {
+            case (?info) {
+                assertPermission(caller, choreManagePermission(info.typeId));
+                choreEngine.deleteInstance(instanceId)
+            };
+            case null { false };
+        };
+    };
+
+    // Rename a chore instance's label
+    public shared ({ caller }) func renameChoreInstance(instanceId: Text, newLabel: Text): async Bool {
+        switch (choreEngine.getInstance(instanceId)) {
+            case (?info) {
+                assertPermission(caller, choreManagePermission(info.typeId));
+                choreEngine.renameInstance(instanceId, newLabel)
+            };
+            case null { false };
+        };
+    };
+
+    // List all chore instances, optionally filtered by typeId
+    public shared query ({ caller }) func listChoreInstances(typeIdFilter: ?Text): async [(Text, BotChoreTypes.ChoreInstanceInfo)] {
+        assertPermission(caller, T.NeuronPermission.ViewChores);
+        choreEngine.listInstances(typeIdFilter)
     };
 
     // --- Collect-Maturity chore settings ---

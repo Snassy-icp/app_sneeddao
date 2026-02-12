@@ -221,13 +221,28 @@ type TaskAction = {
 };
 ```
 
-### 4.4 ChoreStatus (Query Result)
+### 4.4 ChoreInstanceInfo (Multi-Instance Support, Stable)
+
+```motoko
+type ChoreInstanceInfo = {
+    typeId: Text;   // References ChoreDefinition.id
+    label: Text;    // User-facing name (e.g., "ETH Trade #1")
+};
+```
+
+The engine supports **multiple instances of the same chore type**. Each instance has a unique `instanceId` (used throughout as the `choreId`), a `typeId` referencing its `ChoreDefinition`, and a `label` for display. For single-instance chores, the `instanceId` equals the `typeId` and the `label` equals the type name.
+
+Instances are stored in a stable map: `[(Text, ChoreInstanceInfo)]` where the key is the `instanceId`.
+
+### 4.5 ChoreStatus (Query Result)
 
 ```motoko
 type ChoreStatus = {
-    choreId: Text;
-    choreName: Text;
-    choreDescription: Text;
+    choreId: Text;          // Instance ID
+    choreTypeId: Text;      // Type ID (from ChoreDefinition)
+    choreName: Text;        // Type name (from ChoreDefinition)
+    choreDescription: Text; // Type description
+    instanceLabel: Text;    // Instance label (user-facing)
     enabled: Bool;
     paused: Bool;
     intervalSeconds: Nat;
@@ -259,20 +274,21 @@ type ChoreStatus = {
 };
 ```
 
-### 4.5 ChoreDefinition (Registered by Bot)
+### 4.6 ChoreDefinition (Registered by Bot)
 
 ```motoko
 type ChoreDefinition = {
-    id: Text;
+    id: Text;                       // Type ID (e.g., "distribute-funds")
     name: Text;
     description: Text;
     defaultIntervalSeconds: Nat;
-    defaultTaskTimeoutSeconds: Nat;     // Default: 300 (5 minutes)
+    defaultMaxIntervalSeconds: ?Nat;
+    defaultTaskTimeoutSeconds: Nat;  // Default: 300 (5 minutes)
     conduct: (ConductorContext) -> async ConductorAction;
 };
 ```
 
-Note: No `createTask` field. Tasks are started by the conductor calling `engine.setPendingTask(choreId, taskId, taskFn)` before returning.
+Note: No `createTask` field. Tasks are started by the conductor calling `engine.setPendingTask(choreId, taskId, taskFn)` before returning. The `choreId` in the conductor context is the **instance ID**, so the conductor can use it to look up instance-specific configuration.
 
 ---
 
@@ -287,10 +303,29 @@ type StateAccessor = {
     setConfigs: ([(Text, ChoreConfig)]) -> ();
     getStates: () -> [(Text, ChoreRuntimeState)];
     setStates: ([(Text, ChoreRuntimeState)]) -> ();
+    getInstances: () -> [(Text, ChoreInstanceInfo)];
+    setInstances: ([(Text, ChoreInstanceInfo)]) -> ();
 };
 
 let engine = BotChoreEngine.Engine(stateAccessor);
+
+// Option A: Single-instance (backward compatible) — registers type + auto-creates one instance
 engine.registerChore(myChoreDefinition);
+
+// Option B: Multi-instance — register type template, then create instances dynamically
+engine.registerChoreType(myChoreDefinition);
+engine.createInstance("trade", "trade-1", "ETH Trade");
+engine.createInstance("trade", "trade-2", "BTC Trade");
+```
+
+### 5.1.1 Instance Management
+
+```motoko
+engine.createInstance(typeId, instanceId, label) : Bool  // Create a new instance
+engine.deleteInstance(instanceId) : Bool                  // Delete (must be stopped)
+engine.renameInstance(instanceId, newLabel) : Bool        // Rename label
+engine.listInstances(?typeId) : [(Text, ChoreInstanceInfo)]  // List instances
+engine.getInstance(instanceId) : ?ChoreInstanceInfo      // Get instance info
 ```
 
 ### 5.2 Task Management (called by conductor callbacks)
@@ -472,11 +507,17 @@ Each bot exposes these canister methods (with permission checks):
 // Queries
 getChoreStatuses() : async [ChoreStatus]
 getChoreStatus(choreId: Text) : async ?ChoreStatus
+listChoreInstances(typeIdFilter: ?Text) : async [(Text, ChoreInstanceInfo)]
 
-// Admin controls
+// Instance management (multi-instance support)
+createChoreInstance(typeId: Text, instanceId: Text, label: Text) : async Bool
+deleteChoreInstance(instanceId: Text) : async Bool
+renameChoreInstance(instanceId: Text, newLabel: Text) : async Bool
+
+// Admin controls (choreId = instanceId)
 setChoreEnabled(choreId: Text, enabled: Bool) : async ()
 setChoreInterval(choreId: Text, seconds: Nat) : async ()
-setChoreMaxInterval(choreId: Text, seconds: ?Nat) : async ()  // Set optional max interval for randomization
+setChoreMaxInterval(choreId: Text, seconds: ?Nat) : async ()
 setChoreTaskTimeout(choreId: Text, seconds: Nat) : async ()
 triggerChore(choreId: Text) : async ()
 stopChore(choreId: Text) : async ()
@@ -497,28 +538,29 @@ Controllers always have full access.
 ## 10. Implementation Plan
 
 ### Phase 1: Core Types (`BotChoreTypes.mo`)
-- Define all shared types: `ChoreConfig`, `ChoreRuntimeState`, `ConductorContext`, `ConductorAction`, `TaskAction`, `ChoreStatus`, `ChoreDefinition`, `StateAccessor`.
+- Define all shared types: `ChoreConfig`, `ChoreRuntimeState`, `ChoreInstanceInfo`, `ConductorContext`, `ConductorAction`, `TaskAction`, `ChoreStatus`, `ChoreDefinition`, `StateAccessor`.
 - Provide `emptyRuntimeState()` helper.
 
 ### Phase 2: Engine (`BotChoreEngine.mo`)
 - Implement the `Engine` class with:
-  - Chore registration
+  - Chore type registration (`registerChoreType`) and backward-compat wrapper (`registerChore`)
+  - Instance management (`createInstance`, `deleteInstance`, `renameInstance`, `listInstances`)
   - `setPendingTask` method for conductor → engine task handoff
   - Scheduler timer management
   - Conductor timer loop with polling pattern and stop-flag checks
   - Task timer loop with stop-flag checks (engine wraps task for infrastructure)
   - Task timeout detection
-  - State persistence through accessor
-  - `resumeTimers` for upgrade resilience
+  - State persistence through accessor (configs, states, instances)
+  - `resumeTimers` for upgrade resilience (iterates over instances, not definitions)
   - All admin control and query methods
 
 ### Phase 3: ICP Staking Bot Integration
 - Add `#ManageChores` and `#ViewChores` permissions to `Types.mo`.
-- Add stable vars `choreConfigs` and `choreStates` to the actor.
-- Instantiate the engine (`transient let`).
-- Register the first chore.
+- Add stable vars `choreConfigs`, `choreStates`, and `choreInstances` to the actor.
+- Instantiate the engine (`transient let`) with full `StateAccessor` including instance accessors.
+- Register chores using `registerChore` (backward-compat single-instance mode).
 - Call `resumeTimers` in body and `postupgrade`.
-- Expose admin API methods.
+- Expose admin API methods, including instance management endpoints.
 
 ### Phase 4: First Chore — Refresh Voting Power
 - **Scheduler**: Weekly (604,800 seconds).

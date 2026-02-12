@@ -5015,7 +5015,7 @@ function IcpNeuronManager() {
                                         </div>
 
                                         {/* Controls Card */}
-                                        {(canManageChore(chore.choreId) || (chore.choreId === 'collect-maturity' && hasPermission('ConfigureCollectMaturity')) || (chore.choreId === 'distribute-funds' && hasPermission('ConfigureDistribution'))) && (
+                                        {(canManageChore(chore.choreId) || ((chore.choreTypeId || chore.choreId) === 'collect-maturity' && hasPermission('ConfigureCollectMaturity')) || ((chore.choreTypeId || chore.choreId) === 'distribute-funds' && hasPermission('ConfigureDistribution'))) && (
                                         <div style={cardStyle}>
                                             <h3 style={{ color: theme.colors.primaryText, margin: '0 0 12px 0', fontSize: '0.95rem', fontWeight: '600' }}>
                                                 Controls
@@ -5290,22 +5290,22 @@ function IcpNeuronManager() {
                                                 <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: theme.colors.mutedText }}>
                                                     Set a max to randomize the interval — useful for trading bots where unpredictable timing makes your trades harder to front-run. Leave max blank for exact scheduling.
                                                 </p>
-                                                {chore.choreId === 'confirm-following' && (
+                                                {(chore.choreTypeId || chore.choreId) === 'confirm-following' && (
                                                 <p style={{ margin: '6px 0 0', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
                                                     NNS requires following confirmation at least every 6 months. We recommend 30 days or less.
                                                 </p>
                                                 )}
-                                                {chore.choreId === 'collect-maturity' && (
+                                                {(chore.choreTypeId || chore.choreId) === 'collect-maturity' && (
                                                 <p style={{ margin: '6px 0 0', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
                                                     How often to check and collect maturity from all managed neurons.
                                                 </p>
                                                 )}
-                                                {chore.choreId === 'refresh-stake' && (
+                                                {(chore.choreTypeId || chore.choreId) === 'refresh-stake' && (
                                                 <p style={{ margin: '6px 0 0', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
                                                     How often to refresh stake on all managed neurons to pick up any deposited ICP.
                                                 </p>
                                                 )}
-                                                {chore.choreId === 'distribute-funds' && (
+                                                {(chore.choreTypeId || chore.choreId) === 'distribute-funds' && (
                                                 <p style={{ margin: '6px 0 0', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
                                                     How often to check distribution lists and distribute funds when thresholds are met.
                                                 </p>
@@ -5315,7 +5315,7 @@ function IcpNeuronManager() {
                                             )}
 
                                             {/* Collect-Maturity specific settings */}
-                                            {chore.choreId === 'collect-maturity' && hasPermission('ConfigureCollectMaturity') && (
+                                            {(chore.choreTypeId || chore.choreId) === 'collect-maturity' && hasPermission('ConfigureCollectMaturity') && (
                                             <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: `1px solid ${theme.colors.border}` }}>
                                                 <h4 style={{ color: theme.colors.primaryText, margin: '0 0 12px 0', fontSize: '0.9rem', fontWeight: '600' }}>
                                                     Collection Settings
@@ -5486,7 +5486,7 @@ function IcpNeuronManager() {
                                             )}
 
                                             {/* Distribute-Funds specific settings: Distribution Lists */}
-                                            {chore.choreId === 'distribute-funds' && hasPermission('ConfigureDistribution') && (
+                                            {(chore.choreTypeId || chore.choreId) === 'distribute-funds' && hasPermission('ConfigureDistribution') && (
                                             <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: `1px solid ${theme.colors.border}` }}>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                                                     <h4 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '0.9rem', fontWeight: '600' }}>

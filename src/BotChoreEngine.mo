@@ -42,49 +42,193 @@ module {
         // INTERNAL STATE (transient)
         // ============================================
 
-        /// Registered chore definitions (re-registered on each canister start).
+        /// Registered chore type definitions, keyed by typeId.
+        /// Re-registered on each canister start (conduct closures don't survive upgrades).
         var definitions = Buffer.Buffer<BotChoreTypes.ChoreDefinition>(4);
 
-        /// Pending tasks set by conductor callbacks, keyed by choreId.
+        /// Pending tasks set by conductor callbacks, keyed by choreId (instanceId).
         /// The conductor calls setPendingTask() before returning, and the engine
         /// picks up the pending task after the await and starts it.
         /// Array of (choreId, taskId, taskFn) tuples.
         var pendingTasks: [(Text, Text, () -> async BotChoreTypes.TaskAction)] = [];
 
         // ============================================
-        // REGISTRATION
+        // TYPE REGISTRATION
         // ============================================
 
-        /// Register a chore definition. Call this on every canister start
+        /// Register a chore type definition. Call this on every canister start
         /// (the conduct function is a closure that doesn't survive upgrades).
-        /// If no config exists for this chore, creates one with defaults.
+        /// This only registers the type template — use createInstance() to create
+        /// runnable instances, or use registerChore() for backward compatibility
+        /// (which auto-creates a single instance with instanceId = typeId).
+        public func registerChoreType(def: BotChoreTypes.ChoreDefinition) {
+            // Replace existing definition if re-registered (happens on every canister start)
+            var replaced = false;
+            let size = definitions.size();
+            var i = 0;
+            while (i < size) {
+                if (definitions.get(i).id == def.id) {
+                    definitions.put(i, def);
+                    replaced := true;
+                };
+                i += 1;
+            };
+            if (not replaced) {
+                definitions.add(def);
+            };
+        };
+
+        /// Backward-compatible registration: registers a chore type AND auto-creates
+        /// a single instance with instanceId = typeId and label = name.
+        /// This is the simple path for bots that only need one instance per type.
         public func registerChore(def: BotChoreTypes.ChoreDefinition) {
-            definitions.add(def);
+            registerChoreType(def);
+            // Auto-create a default instance if one doesn't exist for this type
+            ignore createInstance(def.id, def.id, def.name);
+        };
+
+        // ============================================
+        // INSTANCE MANAGEMENT
+        // ============================================
+
+        /// Create a new chore instance of the given type.
+        /// Returns true if created, false if instanceId already exists or typeId unknown.
+        public func createInstance(typeId: Text, instanceId: Text, instanceLabel: Text): Bool {
+            // Verify the type exists
+            switch (findDefinitionByTypeId(typeId)) {
+                case null { return false };
+                case (_) {};
+            };
+
+            // Check if instance already exists
+            let instances = stateAccessor.getInstances();
+            switch (Array.find<(Text, BotChoreTypes.ChoreInstanceInfo)>(
+                instances, func((id, _)) { id == instanceId }
+            )) {
+                case (?_) { return false }; // Already exists
+                case null {};
+            };
+
+            // Create instance registry entry
+            let info: BotChoreTypes.ChoreInstanceInfo = { typeId = typeId; instanceLabel = instanceLabel };
+            stateAccessor.setInstances(Array.append(instances, [(instanceId, info)]));
 
             // Initialize config if not present
             let configs = stateAccessor.getConfigs();
             let configExists = Array.find<(Text, BotChoreTypes.ChoreConfig)>(
-                configs, func((id, _)) { id == def.id }
+                configs, func((id, _)) { id == instanceId }
             );
             if (configExists == null) {
-                let newConfig: BotChoreTypes.ChoreConfig = {
-                    enabled = false; // Stopped by default — admin must start
-                    paused = false;
-                    intervalSeconds = def.defaultIntervalSeconds;
-                    maxIntervalSeconds = def.defaultMaxIntervalSeconds;
-                    taskTimeoutSeconds = def.defaultTaskTimeoutSeconds;
+                switch (findDefinitionByTypeId(typeId)) {
+                    case (?def) {
+                        let newConfig: BotChoreTypes.ChoreConfig = {
+                            enabled = false;
+                            paused = false;
+                            intervalSeconds = def.defaultIntervalSeconds;
+                            maxIntervalSeconds = def.defaultMaxIntervalSeconds;
+                            taskTimeoutSeconds = def.defaultTaskTimeoutSeconds;
+                        };
+                        stateAccessor.setConfigs(Array.append(configs, [(instanceId, newConfig)]));
+                    };
+                    case null {};
                 };
-                stateAccessor.setConfigs(Array.append(configs, [(def.id, newConfig)]));
             };
 
             // Initialize runtime state if not present
             let states = stateAccessor.getStates();
             let stateExists = Array.find<(Text, BotChoreTypes.ChoreRuntimeState)>(
-                states, func((id, _)) { id == def.id }
+                states, func((id, _)) { id == instanceId }
             );
             if (stateExists == null) {
-                stateAccessor.setStates(Array.append(states, [(def.id, BotChoreTypes.emptyRuntimeState())]));
+                stateAccessor.setStates(Array.append(states, [(instanceId, BotChoreTypes.emptyRuntimeState())]));
             };
+
+            true
+        };
+
+        /// Delete a chore instance. Must be stopped first (enabled=false).
+        /// Returns true if deleted, false if not found or still running.
+        public func deleteInstance(instanceId: Text): Bool {
+            // Look up instance
+            let instances = stateAccessor.getInstances();
+            let instance = Array.find<(Text, BotChoreTypes.ChoreInstanceInfo)>(
+                instances, func((id, _)) { id == instanceId }
+            );
+            switch (instance) {
+                case null { return false }; // Not found
+                case (?_) {};
+            };
+
+            // Ensure chore is stopped
+            let config = getConfigOrDefault(instanceId);
+            if (config.enabled) return false; // Must stop first
+
+            // Remove from instances
+            stateAccessor.setInstances(
+                Array.filter<(Text, BotChoreTypes.ChoreInstanceInfo)>(
+                    instances, func((id, _)) { id != instanceId }
+                )
+            );
+
+            // Remove config
+            stateAccessor.setConfigs(
+                Array.filter<(Text, BotChoreTypes.ChoreConfig)>(
+                    stateAccessor.getConfigs(), func((id, _)) { id != instanceId }
+                )
+            );
+
+            // Remove runtime state
+            stateAccessor.setStates(
+                Array.filter<(Text, BotChoreTypes.ChoreRuntimeState)>(
+                    stateAccessor.getStates(), func((id, _)) { id != instanceId }
+                )
+            );
+
+            true
+        };
+
+        /// Rename a chore instance's label.
+        /// Returns true if renamed, false if not found.
+        public func renameInstance(instanceId: Text, newLabel: Text): Bool {
+            let instances = stateAccessor.getInstances();
+            var found = false;
+            let updated = Array.map<(Text, BotChoreTypes.ChoreInstanceInfo), (Text, BotChoreTypes.ChoreInstanceInfo)>(
+                instances,
+                func((id, info)) {
+                    if (id == instanceId) {
+                        found := true;
+                        (id, { info with instanceLabel = newLabel })
+                    } else {
+                        (id, info)
+                    }
+                }
+            );
+            if (found) {
+                stateAccessor.setInstances(updated);
+            };
+            found
+        };
+
+        /// List all instances, optionally filtered by typeId.
+        public func listInstances(typeIdFilter: ?Text): [(Text, BotChoreTypes.ChoreInstanceInfo)] {
+            let instances = stateAccessor.getInstances();
+            switch (typeIdFilter) {
+                case null { instances };
+                case (?tid) {
+                    Array.filter<(Text, BotChoreTypes.ChoreInstanceInfo)>(
+                        instances, func((_, info)) { info.typeId == tid }
+                    )
+                };
+            }
+        };
+
+        /// Get the instance info for a specific instance.
+        public func getInstance(instanceId: Text): ?BotChoreTypes.ChoreInstanceInfo {
+            let instances = stateAccessor.getInstances();
+            for ((id, info) in instances.vals()) {
+                if (id == instanceId) return ?info;
+            };
+            null
         };
 
         // ============================================
@@ -128,8 +272,8 @@ module {
         /// - Restarts schedulers for enabled chores.
         /// - Restarts conductors that were active when the canister was stopped.
         public func resumeTimers<system>() {
-            for (def in definitions.vals()) {
-                let choreId = def.id;
+            let instances = stateAccessor.getInstances();
+            for ((choreId, _info) in instances.vals()) {
 
                 // Clear stale timer IDs from previous canister lifetime
                 updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
@@ -421,11 +565,11 @@ module {
             scheduleConductorTick<system>(choreId, 0);
         };
 
-        /// Stop all chores (full stop — disable + clear schedules).
+        /// Stop all chore instances (full stop — disable + clear schedules).
         public func stopAllChores() {
-            let states = stateAccessor.getStates();
-            for ((choreId, _state) in states.vals()) {
-                stop(choreId);
+            let instances = stateAccessor.getInstances();
+            for ((instanceId, _info) in instances.vals()) {
+                stop(instanceId);
             };
         };
 
@@ -433,26 +577,34 @@ module {
         // QUERIES
         // ============================================
 
-        /// Get the full status of a specific chore.
-        public func getStatus(choreId: Text): ?BotChoreTypes.ChoreStatus {
-            let def = findDefinition(choreId);
+        /// Get the full status of a specific chore instance.
+        public func getStatus(instanceId: Text): ?BotChoreTypes.ChoreStatus {
+            let def = findDefinition(instanceId);
             switch (def) {
                 case null { null };
                 case (?d) {
-                    let config = getConfigOrDefault(choreId);
-                    let state = getStateOrDefault(choreId);
-                    ?buildStatus(d, config, state)
+                    let config = getConfigOrDefault(instanceId);
+                    let state = getStateOrDefault(instanceId);
+                    let info = getInstance(instanceId);
+                    let iLabel = switch (info) { case (?i) { i.instanceLabel }; case null { d.name } };
+                    ?buildStatus(instanceId, d, config, state, iLabel)
                 };
             };
         };
 
-        /// Get the full status of all registered chores.
+        /// Get the full status of all chore instances.
         public func getAllStatuses(): [BotChoreTypes.ChoreStatus] {
-            let result = Buffer.Buffer<BotChoreTypes.ChoreStatus>(definitions.size());
-            for (def in definitions.vals()) {
-                let config = getConfigOrDefault(def.id);
-                let state = getStateOrDefault(def.id);
-                result.add(buildStatus(def, config, state));
+            let instances = stateAccessor.getInstances();
+            let result = Buffer.Buffer<BotChoreTypes.ChoreStatus>(instances.size());
+            for ((instanceId, info) in instances.vals()) {
+                switch (findDefinitionByTypeId(info.typeId)) {
+                    case (?def) {
+                        let config = getConfigOrDefault(instanceId);
+                        let state = getStateOrDefault(instanceId);
+                        result.add(buildStatus(instanceId, def, config, state, info.instanceLabel));
+                    };
+                    case null {}; // Type not registered (shouldn't happen)
+                };
             };
             Buffer.toArray(result)
         };
@@ -882,12 +1034,26 @@ module {
         // INTERNAL: State helpers
         // ============================================
 
-        /// Find a registered chore definition by ID.
-        func findDefinition(choreId: Text): ?BotChoreTypes.ChoreDefinition {
+        /// Find a chore type definition by type ID.
+        func findDefinitionByTypeId(typeId: Text): ?BotChoreTypes.ChoreDefinition {
             for (def in definitions.vals()) {
-                if (def.id == choreId) return ?def;
+                if (def.id == typeId) return ?def;
             };
             null
+        };
+
+        /// Find the chore type definition for an instance ID.
+        /// Resolves instanceId -> typeId -> definition.
+        func findDefinition(instanceId: Text): ?BotChoreTypes.ChoreDefinition {
+            // Look up instance to get its typeId
+            let instances = stateAccessor.getInstances();
+            for ((id, info) in instances.vals()) {
+                if (id == instanceId) {
+                    return findDefinitionByTypeId(info.typeId);
+                };
+            };
+            // Fallback: try direct match (for backward compat during transition)
+            findDefinitionByTypeId(instanceId)
         };
 
         /// Get config for a chore, or a default if not found.
@@ -990,11 +1156,13 @@ module {
         // INTERNAL: Status builder
         // ============================================
 
-        /// Build a ChoreStatus from definition, config, and runtime state.
+        /// Build a ChoreStatus from instance ID, definition, config, runtime state, and instance label.
         func buildStatus(
+            instanceId: Text,
             def: BotChoreTypes.ChoreDefinition,
             config: BotChoreTypes.ChoreConfig,
-            state: BotChoreTypes.ChoreRuntimeState
+            state: BotChoreTypes.ChoreRuntimeState,
+            iLabel: Text
         ): BotChoreTypes.ChoreStatus {
             let schedulerStatus: BotChoreTypes.SchedulerStatus = switch (state.schedulerTimerId) {
                 case (?_) { #Scheduled };
@@ -1016,9 +1184,11 @@ module {
             };
 
             {
-                choreId = def.id;
+                choreId = instanceId;
+                choreTypeId = def.id;
                 choreName = def.name;
                 choreDescription = def.description;
+                instanceLabel = iLabel;
                 enabled = config.enabled;
                 paused = config.paused;
                 intervalSeconds = config.intervalSeconds;
