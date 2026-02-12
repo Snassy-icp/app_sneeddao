@@ -5060,9 +5060,20 @@ function IcpNeuronManager() {
                                 const configEntry = choreConfigs.find(([id]) => id === chore.choreId);
                                 const config = configEntry ? configEntry[1] : null;
 
-                                // Format interval for display
-                                const intervalDays = config ? Math.round(Number(config.intervalSeconds) / 86400) : 0;
-                                const maxIntervalDays = config?.maxIntervalSeconds?.[0] != null ? Math.round(Number(config.maxIntervalSeconds[0]) / 86400) : null;
+                                // Format interval for display — supports minutes, hours, and days
+                                const intervalSeconds = config ? Number(config.intervalSeconds) : 0;
+                                const maxIntervalSeconds = config?.maxIntervalSeconds?.[0] != null ? Number(config.maxIntervalSeconds[0]) : null;
+                                const formatIntervalDisplay = (secs) => {
+                                    if (secs <= 0) return '0';
+                                    if (secs < 3600) return `${Math.round(secs / 60)} min`;
+                                    if (secs < 86400) {
+                                        const h = secs / 3600;
+                                        return Number.isInteger(h) ? `${h} hr` : `${h.toFixed(1)} hr`;
+                                    }
+                                    const d = secs / 86400;
+                                    return Number.isInteger(d) ? `${d} days` : `${d.toFixed(1)} days`;
+                                };
+                                // (intervalDays/maxIntervalDays removed — interval section now works in seconds with unit selection)
 
                                 // Lamp states for each timer level
                                 const schedulerLamp = getSchedulerLampState(chore);
@@ -5137,9 +5148,9 @@ function IcpNeuronManager() {
                                                 <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
                                                     <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Interval</div>
                                                     <div style={{ fontSize: '0.9rem', color: theme.colors.primaryText, fontWeight: '500' }}>
-                                                        {maxIntervalDays && maxIntervalDays > intervalDays
-                                                            ? `${intervalDays}–${maxIntervalDays} days`
-                                                            : `${intervalDays} days`}
+                                                        {maxIntervalSeconds && maxIntervalSeconds > intervalSeconds
+                                                            ? `${formatIntervalDisplay(intervalSeconds)}–${formatIntervalDisplay(maxIntervalSeconds)}`
+                                                            : formatIntervalDisplay(intervalSeconds)}
                                                     </div>
                                                 </div>
                                                 <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
@@ -5458,20 +5469,7 @@ function IcpNeuronManager() {
                                                 </button>
                                                 )}
 
-                                                {/* Refresh Status */}
-                                                <button
-                                                    style={{
-                                                        ...buttonStyle,
-                                                        background: 'transparent',
-                                                        color: theme.colors.secondaryText,
-                                                        border: `1px solid ${theme.colors.border}`,
-                                                        opacity: savingChore ? 0.6 : 1,
-                                                    }}
-                                                    disabled={savingChore}
-                                                    onClick={() => loadChoreData()}
-                                                >
-                                                    Refresh
-                                                </button>
+                                                {/* Refresh button removed — auto-refresh handles status updates */}
                                             </div>
 
                                             {/* Schedule Start panel — shown when user clicks dropdown arrow on Start button */}
@@ -5546,29 +5544,47 @@ function IcpNeuronManager() {
                                             )}
 
                                             {/* Interval Setting */}
+                                            {(() => {
+                                                // Determine the best unit for the current interval
+                                                const bestUnit = (secs) => {
+                                                    if (secs <= 0) return { value: 0, unit: 'minutes' };
+                                                    if (secs % 86400 === 0 && secs >= 86400) return { value: secs / 86400, unit: 'days' };
+                                                    if (secs % 3600 === 0 && secs >= 3600) return { value: secs / 3600, unit: 'hours' };
+                                                    return { value: Math.round(secs / 60), unit: 'minutes' };
+                                                };
+                                                const currentBest = bestUnit(intervalSeconds);
+                                                const unitMultipliers = { minutes: 60, hours: 3600, days: 86400 };
+                                                const hasRange = maxIntervalSeconds != null && maxIntervalSeconds > intervalSeconds;
+
+                                                return (
                                             <div style={{ marginTop: '8px' }}>
                                                 <label style={{ fontSize: '0.8rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '6px' }}>
-                                                    Run every (days):
+                                                    Frequency:
                                                 </label>
                                                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                    <span style={{ fontSize: '0.8rem', color: theme.colors.secondaryText }}>Every</span>
                                                     <input
                                                         type="text"
                                                         inputMode="numeric"
-                                                        defaultValue={intervalDays}
-                                                        style={{ ...inputStyle, width: '80px' }}
+                                                        defaultValue={currentBest.value}
+                                                        style={{ ...inputStyle, width: '70px' }}
                                                         id={`chore-interval-${chore.choreId}`}
                                                     />
-                                                    <span style={{ fontSize: '0.8rem', color: theme.colors.secondaryText }}>to</span>
-                                                    <input
-                                                        type="text"
-                                                        inputMode="numeric"
-                                                        defaultValue={maxIntervalDays || ''}
-                                                        placeholder="exact"
-                                                        style={{ ...inputStyle, width: '80px' }}
-                                                        id={`chore-max-interval-${chore.choreId}`}
-                                                        title="Optional max interval for randomized scheduling. Leave blank for exact interval."
-                                                    />
-                                                    <span style={{ fontSize: '0.7rem', color: theme.colors.secondaryText }}>days</span>
+                                                    <select
+                                                        id={`chore-interval-unit-${chore.choreId}`}
+                                                        defaultValue={currentBest.unit}
+                                                        style={{
+                                                            ...inputStyle,
+                                                            width: 'auto',
+                                                            padding: '4px 8px',
+                                                            cursor: 'pointer',
+                                                            appearance: 'auto',
+                                                        }}
+                                                    >
+                                                        <option value="minutes">minutes</option>
+                                                        <option value="hours">hours</option>
+                                                        <option value="days">days</option>
+                                                    </select>
                                                     <button
                                                         style={{
                                                             ...buttonStyle,
@@ -5579,18 +5595,38 @@ function IcpNeuronManager() {
                                                         }}
                                                         disabled={savingChore}
                                                         onClick={async () => {
-                                                            const minInput = document.getElementById(`chore-interval-${chore.choreId}`);
-                                                            const maxInput = document.getElementById(`chore-max-interval-${chore.choreId}`);
-                                                            const minDays = parseInt(minInput?.value);
-                                                            const maxDaysRaw = maxInput?.value?.trim();
-                                                            const maxDays = maxDaysRaw ? parseInt(maxDaysRaw) : null;
-                                                            if (!minDays || minDays < 1 || minDays > 365) {
-                                                                setChoreError('Interval must be between 1 and 365 days.');
+                                                            const valInput = document.getElementById(`chore-interval-${chore.choreId}`);
+                                                            const unitSelect = document.getElementById(`chore-interval-unit-${chore.choreId}`);
+                                                            const val = parseFloat(valInput?.value);
+                                                            const unit = unitSelect?.value || 'days';
+                                                            const multiplier = unitMultipliers[unit] || 86400;
+                                                            const totalSeconds = Math.round(val * multiplier);
+                                                            if (!val || val <= 0 || totalSeconds < 60) {
+                                                                setChoreError('Interval must be at least 1 minute.');
                                                                 return;
                                                             }
-                                                            if (maxDays !== null && (maxDays < minDays || maxDays > 365)) {
-                                                                setChoreError(`Max interval must be between ${minDays} and 365 days, or leave blank for exact interval.`);
+                                                            if (totalSeconds > 365 * 86400) {
+                                                                setChoreError('Interval cannot exceed 365 days.');
                                                                 return;
+                                                            }
+                                                            // Also handle the optional max interval if the range section is open
+                                                            const maxInput = document.getElementById(`chore-max-interval-${chore.choreId}`);
+                                                            const maxUnitSelect = document.getElementById(`chore-max-interval-unit-${chore.choreId}`);
+                                                            let maxSeconds = null;
+                                                            if (maxInput && maxUnitSelect) {
+                                                                const maxVal = parseFloat(maxInput.value?.trim());
+                                                                if (maxVal && maxVal > 0) {
+                                                                    const maxMult = unitMultipliers[maxUnitSelect.value] || 86400;
+                                                                    maxSeconds = Math.round(maxVal * maxMult);
+                                                                    if (maxSeconds <= totalSeconds) {
+                                                                        setChoreError('Max interval must be greater than the base interval.');
+                                                                        return;
+                                                                    }
+                                                                    if (maxSeconds > 365 * 86400) {
+                                                                        setChoreError('Max interval cannot exceed 365 days.');
+                                                                        return;
+                                                                    }
+                                                                }
                                                             }
                                                             setSavingChore(true);
                                                             setChoreError('');
@@ -5601,11 +5637,11 @@ function IcpNeuronManager() {
                                                                     await agent.fetchRootKey();
                                                                 }
                                                                 const manager = createManagerActor(canisterId, { agent });
-                                                                await manager.setChoreInterval(chore.choreId, BigInt(minDays * 86400));
-                                                                await manager.setChoreMaxInterval(chore.choreId, maxDays !== null ? [BigInt(maxDays * 86400)] : []);
-                                                                const msg = maxDays !== null && maxDays > minDays
-                                                                    ? `Interval updated to ${minDays}–${maxDays} days (randomized).`
-                                                                    : `Interval updated to ${minDays} days.`;
+                                                                await manager.setChoreInterval(chore.choreId, BigInt(totalSeconds));
+                                                                await manager.setChoreMaxInterval(chore.choreId, maxSeconds !== null ? [BigInt(maxSeconds)] : []);
+                                                                const msg = maxSeconds !== null
+                                                                    ? `Interval updated to ${formatIntervalDisplay(totalSeconds)}–${formatIntervalDisplay(maxSeconds)} (randomized).`
+                                                                    : `Interval updated to ${formatIntervalDisplay(totalSeconds)}.`;
                                                                 setChoreSuccess(msg);
                                                                 await loadChoreData();
                                                             } catch (err) {
@@ -5618,9 +5654,63 @@ function IcpNeuronManager() {
                                                         Save
                                                     </button>
                                                 </div>
-                                                <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: theme.colors.mutedText }}>
-                                                    Set a max to randomize the interval — useful for trading bots where unpredictable timing makes your trades harder to front-run. Leave max blank for exact scheduling.
-                                                </p>
+
+                                                {/* Randomized range — collapsed by default, toggle to expand */}
+                                                <div style={{ marginTop: '6px' }}>
+                                                    <button
+                                                        style={{
+                                                            background: 'none',
+                                                            border: 'none',
+                                                            padding: 0,
+                                                            fontSize: '0.7rem',
+                                                            color: theme.colors.mutedText,
+                                                            cursor: 'pointer',
+                                                            textDecoration: 'underline',
+                                                            textDecorationStyle: 'dotted',
+                                                        }}
+                                                        onClick={() => {
+                                                            const el = document.getElementById(`chore-range-panel-${chore.choreId}`);
+                                                            if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+                                                        }}
+                                                    >
+                                                        {hasRange ? `Randomized range active (up to ${formatIntervalDisplay(maxIntervalSeconds)}) — edit` : 'Randomize interval...'}
+                                                    </button>
+                                                    <div
+                                                        id={`chore-range-panel-${chore.choreId}`}
+                                                        style={{ display: hasRange ? 'flex' : 'none', marginTop: '6px', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}
+                                                    >
+                                                        <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>Max:</span>
+                                                        <input
+                                                            type="text"
+                                                            inputMode="numeric"
+                                                            defaultValue={maxIntervalSeconds != null ? bestUnit(maxIntervalSeconds).value : ''}
+                                                            placeholder="none"
+                                                            style={{ ...inputStyle, width: '70px', fontSize: '0.8rem' }}
+                                                            id={`chore-max-interval-${chore.choreId}`}
+                                                            title="Optional max interval for randomized scheduling. Clear to use exact interval."
+                                                        />
+                                                        <select
+                                                            id={`chore-max-interval-unit-${chore.choreId}`}
+                                                            defaultValue={maxIntervalSeconds != null ? bestUnit(maxIntervalSeconds).unit : currentBest.unit}
+                                                            style={{
+                                                                ...inputStyle,
+                                                                width: 'auto',
+                                                                padding: '4px 8px',
+                                                                fontSize: '0.8rem',
+                                                                cursor: 'pointer',
+                                                                appearance: 'auto',
+                                                            }}
+                                                        >
+                                                            <option value="minutes">minutes</option>
+                                                            <option value="hours">hours</option>
+                                                            <option value="days">days</option>
+                                                        </select>
+                                                        <span style={{ fontSize: '0.65rem', color: theme.colors.mutedText }}>
+                                                            (clear to disable)
+                                                        </span>
+                                                    </div>
+                                                </div>
+
                                                 {(chore.choreTypeId || chore.choreId) === 'confirm-following' && (
                                                 <p style={{ margin: '6px 0 0', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
                                                     NNS requires following confirmation at least every 6 months. We recommend 30 days or less.
@@ -5642,6 +5732,8 @@ function IcpNeuronManager() {
                                                 </p>
                                                 )}
                                             </div>
+                                                );
+                                            })()}
                                             </>
                                             )}
 
