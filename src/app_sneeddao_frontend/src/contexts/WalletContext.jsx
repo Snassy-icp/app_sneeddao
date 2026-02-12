@@ -1956,15 +1956,28 @@ export const WalletProvider = ({ children }) => {
                 const choreStatuses = await manager.getChoreStatuses();
                 if (choreStatuses && choreStatuses.length > 0) {
                     setManagerChoreStatuses(prev => {
-                        // Skip update if nothing changed (shallow check on status fields)
+                        // Skip update if nothing changed (compare key scalar fields)
                         const prevStatuses = prev[canisterIdStr];
                         if (prevStatuses && prevStatuses.length === choreStatuses.length) {
                             const changed = choreStatuses.some((cs, i) => {
                                 const ps = prevStatuses[i];
-                                return JSON.stringify(cs.conductorStatus) !== JSON.stringify(ps.conductorStatus)
-                                    || JSON.stringify(cs.schedulerStatus) !== JSON.stringify(ps.schedulerStatus)
-                                    || JSON.stringify(cs.nextScheduledRunAt) !== JSON.stringify(ps.nextScheduledRunAt)
-                                    || JSON.stringify(cs.lastRunAt) !== JSON.stringify(ps.lastRunAt);
+                                // Compare conductor status variant key (e.g. "Idle", "Running", etc.)
+                                const csCondKey = Object.keys(cs.conductorStatus || {})[0];
+                                const psCondKey = Object.keys(ps.conductorStatus || {})[0];
+                                if (csCondKey !== psCondKey) return true;
+                                // Compare scheduler status variant key
+                                const csSchedKey = Object.keys(cs.schedulerStatus || {})[0];
+                                const psSchedKey = Object.keys(ps.schedulerStatus || {})[0];
+                                if (csSchedKey !== psSchedKey) return true;
+                                // Compare next scheduled run timestamp
+                                const csNext = cs.nextScheduledRunAt?.[0]?.toString() ?? '';
+                                const psNext = ps.nextScheduledRunAt?.[0]?.toString() ?? '';
+                                if (csNext !== psNext) return true;
+                                // Compare last run timestamp
+                                const csLast = cs.lastRunAt?.[0]?.toString() ?? '';
+                                const psLast = ps.lastRunAt?.[0]?.toString() ?? '';
+                                if (csLast !== psLast) return true;
+                                return false;
                             });
                             if (!changed) return prev;
                         }
