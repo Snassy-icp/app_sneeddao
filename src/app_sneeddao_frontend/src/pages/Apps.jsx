@@ -3447,14 +3447,19 @@ export default function AppsPage() {
         );
     };
 
-    // Computed: outdated neuron managers (controllers only) for upgrade banner
+    // Computed: outdated neuron managers (controllers only, with known wasm) for upgrade banner
+    // Only includes bots whose wasm hash matches a known official version, to prevent
+    // accidentally offering to upgrade non-staking-bot canisters in the list
     const outdatedManagersForBanner = React.useMemo(() => {
         if (!latestOfficialVersion || neuronManagers.length === 0) return [];
         return neuronManagers.filter(m => {
             if (!m.version || !isVersionOutdated(m.version)) return false;
-            return m.isController === true;
+            if (m.isController !== true) return false;
+            // Only include bots whose wasm hash matches a known official version
+            if (!m.moduleHash) return false;
+            return isKnownNeuronManagerHash(m.moduleHash) !== null;
         });
-    }, [neuronManagers, latestOfficialVersion, isVersionOutdated]);
+    }, [neuronManagers, latestOfficialVersion, isVersionOutdated, isKnownNeuronManagerHash]);
 
     // Computed: low-cycles canisters for top-up banner
     // Includes non-controller canisters since top-up is permissionless (CMC notify_top_up)

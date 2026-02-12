@@ -405,6 +405,9 @@ export const WalletProvider = ({ children }) => {
     // Controller status for neuron managers - shared between quick wallet and /wallet page
     const [neuronManagerIsController, setNeuronManagerIsController] = useState({}); // canisterId -> boolean
     
+    // Module hash for neuron managers - shared for outdated detection (ensures we only upgrade known staking bots)
+    const [neuronManagerModuleHash, setNeuronManagerModuleHash] = useState({}); // canisterId -> hex string or null
+    
     // Tracked Canisters (wallet canisters) - shared between quick wallet and /wallet page
     const [trackedCanisters, setTrackedCanisters] = useState([]); // Array of canister ID strings
     const [trackedCanistersLoading, setTrackedCanistersLoading] = useState(false);
@@ -1951,6 +1954,13 @@ export const WalletProvider = ({ children }) => {
         return compareVersions(version, latestOfficialVersion) < 0;
     }, [latestOfficialVersion, compareVersions]);
 
+    // Check if a module hash matches any known official neuron manager version
+    const isKnownNeuronManagerHash = useCallback((moduleHash) => {
+        if (!moduleHash || officialVersions.length === 0) return null;
+        const hashLower = moduleHash.toLowerCase();
+        return officialVersions.find(v => v.wasmHash.toLowerCase() === hashLower) || null;
+    }, [officialVersions]);
+
     const fetchOfficialVersions = useCallback(async () => {
         if (!identity) return;
         try {
@@ -1988,15 +1998,21 @@ export const WalletProvider = ({ children }) => {
         }
     }, [hasFetchedManagers, identity, officialVersions.length, fetchOfficialVersions]);
 
-    // Computed: list of outdated managers (only ones we are controller of)
+    // Computed: list of outdated managers (only ones we are controller of AND whose wasm matches a known official version)
+    // This prevents accidentally offering to upgrade non-staking-bot canisters that happen to be in the list
     const outdatedManagers = React.useMemo(() => {
         if (!latestOfficialVersion || neuronManagers.length === 0) return [];
         return neuronManagers.filter(m => {
             if (!m.version || !isVersionOutdated(m.version)) return false;
             const cid = typeof m.canisterId === 'string' ? m.canisterId : m.canisterId?.toText?.() || m.canisterId?.toString?.() || '';
-            return neuronManagerIsController[cid] === true;
+            if (neuronManagerIsController[cid] !== true) return false;
+            // Only include bots whose wasm hash matches a known official version
+            // This ensures we don't offer to bulk-upgrade canisters with unknown wasm
+            const moduleHash = neuronManagerModuleHash[cid];
+            if (!moduleHash) return false; // No hash available — skip (can't verify)
+            return isKnownNeuronManagerHash(moduleHash) !== null;
         });
-    }, [neuronManagers, latestOfficialVersion, isVersionOutdated, neuronManagerIsController]);
+    }, [neuronManagers, latestOfficialVersion, isVersionOutdated, neuronManagerIsController, neuronManagerModuleHash, isKnownNeuronManagerHash]);
 
     // Computed: list of canisters (managers + tracked + app manager) that are below their critical cycle level
     // Includes canisters we're not controller of, since topping up cycles is permissionless (CMC notify_top_up)
@@ -2125,6 +2141,7 @@ export const WalletProvider = ({ children }) => {
             
             const controllerMap = {};
             const cyclesMap = {};
+            const moduleHashMap = {};
             for (const manager of neuronManagers) {
                 // Safely convert canisterId to string
                 let canisterId = '';
@@ -2153,13 +2170,16 @@ export const WalletProvider = ({ children }) => {
                     const status = await mgmtActor.canister_status({ canister_id: canisterIdPrincipal });
                     controllerMap[canisterId] = true;
                     cyclesMap[canisterId] = Number(status.cycles);
+                    moduleHashMap[canisterId] = status.module_hash[0] ? uint8ArrayToHex(status.module_hash[0]) : null;
                 } catch (err) {
                     // Not a controller
                     controllerMap[canisterId] = false;
+                    moduleHashMap[canisterId] = null;
                 }
             }
             setNeuronManagerIsController(controllerMap);
             setNeuronManagerCycles(prev => ({ ...prev, ...cyclesMap }));
+            setNeuronManagerModuleHash(prev => ({ ...prev, ...moduleHashMap }));
         } catch (err) {
             console.warn('[WalletContext] Error fetching manager controller status:', err);
         }
@@ -2387,6 +2407,7 @@ export const WalletProvider = ({ children }) => {
             setManagerNeurons({});
             setManagerNeuronsTotal(0);
             setNeuronManagerIsController({});
+            setNeuronManagerModuleHash({});
             setTrackedCanisters([]);
             setTrackedCanisterIsController({});
             setAppManagerCanisters([]);
@@ -2747,6 +2768,8 @@ export const WalletProvider = ({ children }) => {
             refreshTrackedCanisters,
             // Controller status - shared between quick wallet and /wallet page
             neuronManagerIsController,
+            neuronManagerModuleHash,
+            isKnownNeuronManagerHash,
             trackedCanisterIsController,
             // Cycles data - shared for low-cycles notifications
             neuronManagerCycles,

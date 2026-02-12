@@ -3733,29 +3733,54 @@ function IcpNeuronManager() {
                                             border: `1px solid ${theme.colors.warning || '#f59e0b'}40`,
                                         }}>
                                             <div style={{ 
-                                                color: theme.colors.warning || '#f59e0b', 
+                                                color: isUnverifiedWasm ? (theme.colors.error || '#ef4444') : (theme.colors.warning || '#f59e0b'), 
                                                 fontWeight: '600',
                                                 fontSize: '13px',
                                                 marginBottom: '6px'
                                             }}>
-                                                {hasVersionMismatch ? '⚠️ Version Mismatch' : '⚠️ Unknown WASM Version'}
+                                                {hasVersionMismatch ? '⚠️ Version Mismatch' : '⚠️ Unknown WASM — Proceed With Care'}
                                             </div>
                                             <div style={{ 
                                                 color: theme.colors.mutedText, 
                                                 fontSize: '12px',
-                                                marginBottom: '12px'
+                                                marginBottom: isUnverifiedWasm ? '8px' : '12px'
                                             }}>
                                                 {hasVersionMismatch 
                                                     ? `The WASM hash matches official v${Number(matchedOfficialVersion.major)}.${Number(matchedOfficialVersion.minor)}.${Number(matchedOfficialVersion.patch)}, but the canister reports v${managerInfo.version}. You can install the latest official version (v${Number(latestOfficialVersion.major)}.${Number(latestOfficialVersion.minor)}.${Number(latestOfficialVersion.patch)}).`
-                                                    : `This canister is running an unverified WASM module. You can install the latest official version (v${Number(latestOfficialVersion.major)}.${Number(latestOfficialVersion.minor)}.${Number(latestOfficialVersion.patch)}).`
+                                                    : `This canister is running an unverified WASM module that does not match any known ICP Staking Bot version. This canister may not be an ICP Staking Bot. Upgrading it with the staking bot WASM could break or destroy the canister. Only proceed if you are sure this canister is an ICP Staking Bot.`
                                                 }
                                             </div>
+                                            {isUnverifiedWasm && (
+                                                <div style={{
+                                                    padding: '8px 10px',
+                                                    background: `${theme.colors.error || '#ef4444'}15`,
+                                                    borderRadius: '4px',
+                                                    border: `1px solid ${theme.colors.error || '#ef4444'}30`,
+                                                    color: theme.colors.error || '#ef4444',
+                                                    fontSize: '11px',
+                                                    fontWeight: '500',
+                                                    marginBottom: '12px',
+                                                    lineHeight: '1.4',
+                                                }}>
+                                                    Module hash: {canisterStatus.moduleHash}
+                                                    <br />
+                                                    This hash does not match any known official ICP Staking Bot WASM. If this canister is not a staking bot, upgrading it will replace its code.
+                                                </div>
+                                            )}
                                             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                                                 <button
-                                                    onClick={() => handleUpgrade(latestOfficialVersion, 'upgrade')}
+                                                    onClick={() => {
+                                                        if (isUnverifiedWasm) {
+                                                            if (window.confirm('⚠️ This canister has an unknown WASM and may not be an ICP Staking Bot. Upgrading it with the staking bot WASM could break or destroy this canister. Are you sure you want to proceed?')) {
+                                                                handleUpgrade(latestOfficialVersion, 'upgrade');
+                                                            }
+                                                        } else {
+                                                            handleUpgrade(latestOfficialVersion, 'upgrade');
+                                                        }
+                                                    }}
                                                     disabled={upgrading}
                                                     style={{
-                                                        background: theme.colors.accent,
+                                                        background: isUnverifiedWasm ? (theme.colors.warning || '#f59e0b') : theme.colors.accent,
                                                         color: '#fff',
                                                         border: 'none',
                                                         borderRadius: '6px',
@@ -3765,7 +3790,7 @@ function IcpNeuronManager() {
                                                         cursor: upgrading ? 'wait' : 'pointer',
                                                         opacity: upgrading ? 0.7 : 1,
                                                     }}
-                                                    title="Upgrade keeps canister state"
+                                                    title={isUnverifiedWasm ? "⚠️ Unknown WASM — upgrade with caution" : "Upgrade keeps canister state"}
                                                 >
                                                     {upgrading && upgradeMode === 'upgrade' ? '⏳ Upgrading...' : '⬆️ Upgrade'}
                                                 </button>
@@ -3792,16 +3817,22 @@ function IcpNeuronManager() {
                                                     {upgrading && upgradeMode === 'reinstall' ? '⏳ Reinstalling...' : '🔄 Reinstall'}
                                                 </button>
                                             </div>
-                                            {latestOfficialVersion.sourceUrl && (
-                                                <div style={{ marginTop: '10px', fontSize: '11px' }}>
-                                                    <a 
-                                                        href={latestOfficialVersion.sourceUrl}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        style={{ color: theme.colors.accent }}
-                                                    >
-                                                        View source code →
-                                                    </a>
+                                            {latestOfficialVersion && (
+                                                <div style={{ marginTop: '10px', fontSize: '11px', color: theme.colors.mutedText }}>
+                                                    Target: ICP Staking Bot v{Number(latestOfficialVersion.major)}.{Number(latestOfficialVersion.minor)}.{Number(latestOfficialVersion.patch)}
+                                                    {latestOfficialVersion.sourceUrl && (
+                                                        <>
+                                                            {' — '}
+                                                            <a 
+                                                                href={latestOfficialVersion.sourceUrl}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                style={{ color: theme.colors.accent }}
+                                                            >
+                                                                View source code →
+                                                            </a>
+                                                        </>
+                                                    )}
                                                 </div>
                                             )}
                                             {upgradeError && (
