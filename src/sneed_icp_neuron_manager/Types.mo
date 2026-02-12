@@ -829,6 +829,7 @@ module {
         // --- Shared base permissions (see BotkeyTypes.BasePermission for IDs) ---
         #FullPermissions;         // Grants all permissions, including future unknown ones
         #ManagePermissions;       // Add/remove botkey principals and their permissions
+        #ViewChores;              // View bot chore statuses and configurations
         // --- ICP Staking Bot permissions (IDs 100+) ---
         #ConfigureDissolveState;  // Start/stop dissolving, set dissolve delay
         #Vote;                    // Vote on proposals, refresh voting power
@@ -853,7 +854,6 @@ module {
         #ManageDistributeFunds;   // Start/pause/resume/stop/trigger + set interval for distribute-funds chore
         #ConfigureCollectMaturity; // Set collect-maturity threshold and destination account
         #ConfigureDistribution;   // Add/update/remove distribution lists
-        #ViewChores;              // View bot chore statuses and configurations
     };
 
     // Numeric IDs for permission types (for stable storage).
@@ -867,6 +867,7 @@ module {
         // Shared base permissions (re-exported for convenience, IDs match BotkeyTypes.BasePermission)
         public let FullPermissions: Nat = BotkeyTypes.BasePermission.FullPermissions;     // 0
         public let ManagePermissions: Nat = BotkeyTypes.BasePermission.ManagePermissions;  // 1
+        public let ViewChores: Nat = BotkeyTypes.BasePermission.ViewChores;               // 2
         // ICP Staking Bot permissions (range 100–199)
         public let ConfigureDissolveState: Nat = 100;
         public let Vote: Nat = 101;
@@ -891,7 +892,6 @@ module {
         public let ManageDistributeFunds: Nat = 120;
         public let ConfigureCollectMaturity: Nat = 121;
         public let ConfigureDistribution: Nat = 122;
-        public let ViewChores: Nat = 123;
     };
 
     // Info about a botkey principal and their permissions (for API responses)

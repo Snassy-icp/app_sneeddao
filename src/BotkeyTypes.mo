@@ -20,6 +20,7 @@ import Principal "mo:base/Principal";
 /// Currently allocated shared permission IDs:
 ///   0 = FullPermissions (grants all permissions, including future unknown ones)
 ///   1 = ManagePermissions (add/remove botkey principals and their permissions)
+///   2 = ViewChores (view bot chore statuses and configurations)
 module {
 
     /// Reserved numeric IDs for shared base permissions (range 0–99).
@@ -27,6 +28,7 @@ module {
     public module BasePermission {
         public let FullPermissions: Nat = 0;
         public let ManagePermissions: Nat = 1;
+        public let ViewChores: Nat = 2;
     };
 
     /// Info about a botkey principal and their permissions (for API responses).

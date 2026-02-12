@@ -104,6 +104,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         // Shared base permissions (range 0–99)
         (0,   #FullPermissions),
         (1,   #ManagePermissions),
+        (2,   #ViewChores),
         // ICP Staking Bot permissions (range 100–199)
         (100, #ConfigureDissolveState),
         (101, #Vote),
@@ -128,7 +129,6 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         (120, #ManageDistributeFunds),
         (121, #ConfigureCollectMaturity),
         (122, #ConfigureDistribution),
-        (123, #ViewChores),
     ];
 
     // Variant-to-ID conversion (shared base + ICP Staking Bot permissions)
@@ -137,6 +137,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             // Shared base permissions (range 0–99)
             case (#FullPermissions) { 0 };
             case (#ManagePermissions) { 1 };
+            case (#ViewChores) { 2 };
             // ICP Staking Bot permissions (range 100–199)
             case (#ConfigureDissolveState) { 100 };
             case (#Vote) { 101 };
@@ -161,7 +162,6 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             case (#ManageDistributeFunds) { 120 };
             case (#ConfigureCollectMaturity) { 121 };
             case (#ConfigureDistribution) { 122 };
-            case (#ViewChores) { 123 };
         }
     };
 
@@ -171,6 +171,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             // Shared base permissions (range 0–99)
             case (0)   { ?#FullPermissions };
             case (1)   { ?#ManagePermissions };
+            case (2)   { ?#ViewChores };
             // ICP Staking Bot permissions (range 100–199)
             case (100) { ?#ConfigureDissolveState };
             case (101) { ?#Vote };
@@ -195,7 +196,6 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             case (120) { ?#ManageDistributeFunds };
             case (121) { ?#ConfigureCollectMaturity };
             case (122) { ?#ConfigureDistribution };
-            case (123) { ?#ViewChores };
             case (_)   { null };
         }
     };
