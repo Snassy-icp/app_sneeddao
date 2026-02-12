@@ -4884,6 +4884,117 @@ function IcpNeuronManager() {
                                 </div>
                             )}
 
+                            {/* Upcoming chore schedule overview */}
+                            {choreStatuses.length > 0 && (() => {
+                                // Collect all scheduled chores with a future nextScheduledRunAt
+                                const nowMs = Date.now();
+                                const upcoming = choreStatuses
+                                    .filter(c => c.enabled && c.nextScheduledRunAt?.length > 0)
+                                    .map(c => {
+                                        const ns = Number(c.nextScheduledRunAt[0]);
+                                        const ms = ns / 1_000_000;
+                                        const isRunning = !('Idle' in c.conductorStatus);
+                                        return { ...c, _ms: ms, _isRunning: isRunning };
+                                    })
+                                    .sort((a, b) => {
+                                        // Running chores first, then by time
+                                        if (a._isRunning !== b._isRunning) return a._isRunning ? -1 : 1;
+                                        return a._ms - b._ms;
+                                    });
+                                if (upcoming.length === 0) return null;
+
+                                const formatRelative = (ms) => {
+                                    const diff = ms - nowMs;
+                                    if (diff < 0) return 'overdue';
+                                    if (diff < 60_000) return 'in <1 min';
+                                    if (diff < 3600_000) return `in ${Math.round(diff / 60_000)} min`;
+                                    if (diff < 86400_000) {
+                                        const hrs = Math.floor(diff / 3600_000);
+                                        const mins = Math.round((diff % 3600_000) / 60_000);
+                                        return mins > 0 ? `in ${hrs}h ${mins}m` : `in ${hrs}h`;
+                                    }
+                                    const days = Math.floor(diff / 86400_000);
+                                    const hrs = Math.round((diff % 86400_000) / 3600_000);
+                                    return hrs > 0 ? `in ${days}d ${hrs}h` : `in ${days}d`;
+                                };
+
+                                const label = (c) => {
+                                    // Use instanceLabel if it differs from choreName, otherwise just choreName
+                                    if (c.instanceLabel && c.instanceLabel !== c.choreName && c.instanceLabel !== c.choreId) {
+                                        return `${c.choreName} — ${c.instanceLabel}`;
+                                    }
+                                    return c.choreName;
+                                };
+
+                                return (
+                                    <div style={{
+                                        display: 'flex',
+                                        flexWrap: 'wrap',
+                                        gap: '8px 16px',
+                                        padding: '10px 14px',
+                                        marginBottom: '12px',
+                                        background: theme.colors.primaryBg,
+                                        borderRadius: '8px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        fontSize: '0.75rem',
+                                        color: theme.colors.secondaryText,
+                                        alignItems: 'center',
+                                    }}>
+                                        <span style={{ fontWeight: '600', color: theme.colors.primaryText, fontSize: '0.75rem', marginRight: '2px' }}>
+                                            Schedule
+                                        </span>
+                                        {upcoming.map(c => {
+                                            const isPast = c._ms <= nowMs;
+                                            const relTime = c._isRunning ? 'running' : formatRelative(c._ms);
+                                            const dotColor = c._isRunning
+                                                ? (theme.colors.success || '#22c55e')
+                                                : c.paused
+                                                    ? (theme.colors.warning || '#f59e0b')
+                                                    : isPast
+                                                        ? (theme.colors.error || '#ef4444')
+                                                        : (theme.colors.accent || '#3b82f6');
+                                            return (
+                                                <span
+                                                    key={c.choreId}
+                                                    style={{
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '5px',
+                                                        cursor: 'pointer',
+                                                        padding: '2px 0',
+                                                    }}
+                                                    title={`${label(c)}\n${c._isRunning ? 'Currently running' : new Date(c._ms).toLocaleString()}${c.paused ? ' (paused)' : ''}`}
+                                                    onClick={() => {
+                                                        setChoreActiveTab(c.choreTypeId || c.choreId);
+                                                        setChoreActiveInstance(c.choreId);
+                                                    }}
+                                                >
+                                                    <span style={{
+                                                        width: '6px', height: '6px', borderRadius: '50%',
+                                                        background: dotColor,
+                                                        flexShrink: 0,
+                                                        ...(c._isRunning ? { animation: 'pulse 1.5s ease-in-out infinite' } : {}),
+                                                    }} />
+                                                    <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
+                                                        {label(c)}
+                                                    </span>
+                                                    <span style={{
+                                                        color: c._isRunning
+                                                            ? (theme.colors.success || '#22c55e')
+                                                            : isPast
+                                                                ? (theme.colors.error || '#ef4444')
+                                                                : theme.colors.mutedText,
+                                                        fontStyle: c._isRunning ? 'italic' : 'normal',
+                                                    }}>
+                                                        {relTime}
+                                                    </span>
+                                                </span>
+                                            );
+                                        })}
+                                    </div>
+                                );
+                            })()}
+
                             {/* Sub-tabs for each chore type (grouped by typeId) */}
                             {choreStatuses.length > 0 && (() => {
                                 // Group chore instances by type
