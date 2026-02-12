@@ -820,11 +820,16 @@ module {
     // HOTKEY PERMISSION TYPES
     // ============================================
 
-    // Permission types for ICP neuron management botkeys
-    // Inspired by SNS NeuronPermissionType but tailored for ICP neurons
+    // Permission types for ICP neuron management botkeys.
+    // Inspired by SNS NeuronPermissionType but tailored for ICP neurons.
+    //
+    // The variant type includes both shared base permissions (declared in BotkeyTypes)
+    // and bot-specific permissions for the ICP Staking Bot.
     public type NeuronPermissionType = {
+        // --- Shared base permissions (see BotkeyTypes.BasePermission for IDs) ---
         #FullPermissions;         // Grants all permissions, including future unknown ones
         #ManagePermissions;       // Add/remove botkey principals and their permissions
+        // --- ICP Staking Bot permissions (IDs 100+) ---
         #ConfigureDissolveState;  // Start/stop dissolving, set dissolve delay
         #Vote;                    // Vote on proposals, refresh voting power
         #MakeProposal;            // Submit NNS proposals using a neuron
@@ -851,40 +856,42 @@ module {
         #ViewChores;              // View bot chore statuses and configurations
     };
 
-    // Numeric IDs for permission types (for stable storage)
+    // Numeric IDs for permission types (for stable storage).
     // These IDs are the canonical representation stored in stable memory.
     // The variant type above is only used in the public API.
     // New permissions can be added with new IDs without migration.
-    // IDs 0 and 1 are reserved base permissions (see BotkeyTypes.BasePermission).
-    // Bot-specific permissions start at ID 2.
+    //
+    // Shared base permissions use IDs 0–99 (see BotkeyTypes.BasePermission).
+    // ICP Staking Bot permissions use the reserved range 100–199.
     public module NeuronPermission {
-        // Base permissions (re-exported for convenience, IDs match BotkeyTypes.BasePermission)
+        // Shared base permissions (re-exported for convenience, IDs match BotkeyTypes.BasePermission)
         public let FullPermissions: Nat = BotkeyTypes.BasePermission.FullPermissions;     // 0
         public let ManagePermissions: Nat = BotkeyTypes.BasePermission.ManagePermissions;  // 1
-        public let ConfigureDissolveState: Nat = 2;
-        public let Vote: Nat = 3;
-        public let MakeProposal: Nat = 4;
-        public let Disburse: Nat = 5;
-        public let Split: Nat = 6;
-        public let MergeMaturity: Nat = 7;
-        public let DisburseMaturity: Nat = 8;
-        public let StakeMaturity: Nat = 9;
-        public let ManageFollowees: Nat = 10;
-        public let Spawn: Nat = 11;
-        public let ManageNeuronHotkeys: Nat = 12;
-        public let StakeNeuron: Nat = 13;
-        public let MergeNeurons: Nat = 14;
-        public let AutoStakeMaturity: Nat = 15;
-        public let ManageVisibility: Nat = 16;
-        public let WithdrawFunds: Nat = 17;
-        public let ViewNeuron: Nat = 18;
-        public let ManageConfirmFollowing: Nat = 19;
-        public let ManageRefreshStake: Nat = 20;
-        public let ManageCollectMaturity: Nat = 21;
-        public let ManageDistributeFunds: Nat = 22;
-        public let ConfigureCollectMaturity: Nat = 23;
-        public let ConfigureDistribution: Nat = 24;
-        public let ViewChores: Nat = 25;
+        // ICP Staking Bot permissions (range 100–199)
+        public let ConfigureDissolveState: Nat = 100;
+        public let Vote: Nat = 101;
+        public let MakeProposal: Nat = 102;
+        public let Disburse: Nat = 103;
+        public let Split: Nat = 104;
+        public let MergeMaturity: Nat = 105;
+        public let DisburseMaturity: Nat = 106;
+        public let StakeMaturity: Nat = 107;
+        public let ManageFollowees: Nat = 108;
+        public let Spawn: Nat = 109;
+        public let ManageNeuronHotkeys: Nat = 110;
+        public let StakeNeuron: Nat = 111;
+        public let MergeNeurons: Nat = 112;
+        public let AutoStakeMaturity: Nat = 113;
+        public let ManageVisibility: Nat = 114;
+        public let WithdrawFunds: Nat = 115;
+        public let ViewNeuron: Nat = 116;
+        public let ManageConfirmFollowing: Nat = 117;
+        public let ManageRefreshStake: Nat = 118;
+        public let ManageCollectMaturity: Nat = 119;
+        public let ManageDistributeFunds: Nat = 120;
+        public let ConfigureCollectMaturity: Nat = 121;
+        public let ConfigureDistribution: Nat = 122;
+        public let ViewChores: Nat = 123;
     };
 
     // Info about a botkey principal and their permissions (for API responses)

@@ -9,13 +9,20 @@ import Principal "mo:base/Principal";
 /// #FullPermissions and #ManagePermissions from this base. Bot-specific permissions
 /// are added to the bot's own variant type.
 ///
-/// Permission IDs 0 and 1 are reserved:
+/// === Permission ID Ranges ===
+/// Each bot type has a reserved range of numeric permission IDs.
+/// Shared (base) permissions that apply to all bots use IDs 0–99.
+/// Bot-specific permissions use their own reserved range:
+///   - Shared/base:      0–99
+///   - ICP Staking Bot: 100–199
+///   - (future bots):   200–299, 300–399, etc.
+///
+/// Currently allocated shared permission IDs:
 ///   0 = FullPermissions (grants all permissions, including future unknown ones)
 ///   1 = ManagePermissions (add/remove botkey principals and their permissions)
-/// Bot-specific permissions start at ID 2.
 module {
 
-    /// Reserved numeric IDs for base permissions.
+    /// Reserved numeric IDs for shared base permissions (range 0–99).
     /// All bots must use these IDs for the base permissions.
     public module BasePermission {
         public let FullPermissions: Nat = 0;

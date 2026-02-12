@@ -99,99 +99,104 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // PERMISSION SYSTEM (using reusable BotkeyPermissions engine)
     // ============================================
 
-    // Bot-specific permission map: all permission types and their numeric IDs.
-    // IDs 0 and 1 are reserved base permissions; bot-specific start at 2.
+    // Full permission map: shared base permissions (0–99) + ICP Staking Bot permissions (100–199).
     transient let PERMISSION_MAP: [(Nat, T.NeuronPermissionType)] = [
-        (0,  #FullPermissions),
-        (1,  #ManagePermissions),
-        (2,  #ConfigureDissolveState),
-        (3,  #Vote),
-        (4,  #MakeProposal),
-        (5,  #Disburse),
-        (6,  #Split),
-        (7,  #MergeMaturity),
-        (8,  #DisburseMaturity),
-        (9,  #StakeMaturity),
-        (10, #ManageFollowees),
-        (11, #Spawn),
-        (12, #ManageNeuronHotkeys),
-        (13, #StakeNeuron),
-        (14, #MergeNeurons),
-        (15, #AutoStakeMaturity),
-        (16, #ManageVisibility),
-        (17, #WithdrawFunds),
-        (18, #ViewNeuron),
-        (19, #ManageConfirmFollowing),
-        (20, #ManageRefreshStake),
-        (21, #ManageCollectMaturity),
-        (22, #ManageDistributeFunds),
-        (23, #ConfigureCollectMaturity),
-        (24, #ConfigureDistribution),
-        (25, #ViewChores),
+        // Shared base permissions (range 0–99)
+        (0,   #FullPermissions),
+        (1,   #ManagePermissions),
+        // ICP Staking Bot permissions (range 100–199)
+        (100, #ConfigureDissolveState),
+        (101, #Vote),
+        (102, #MakeProposal),
+        (103, #Disburse),
+        (104, #Split),
+        (105, #MergeMaturity),
+        (106, #DisburseMaturity),
+        (107, #StakeMaturity),
+        (108, #ManageFollowees),
+        (109, #Spawn),
+        (110, #ManageNeuronHotkeys),
+        (111, #StakeNeuron),
+        (112, #MergeNeurons),
+        (113, #AutoStakeMaturity),
+        (114, #ManageVisibility),
+        (115, #WithdrawFunds),
+        (116, #ViewNeuron),
+        (117, #ManageConfirmFollowing),
+        (118, #ManageRefreshStake),
+        (119, #ManageCollectMaturity),
+        (120, #ManageDistributeFunds),
+        (121, #ConfigureCollectMaturity),
+        (122, #ConfigureDistribution),
+        (123, #ViewChores),
     ];
 
-    // Bot-specific variant-to-ID conversion
+    // Variant-to-ID conversion (shared base + ICP Staking Bot permissions)
     func permissionVariantToId(perm: T.NeuronPermissionType): Nat {
         switch (perm) {
+            // Shared base permissions (range 0–99)
             case (#FullPermissions) { 0 };
             case (#ManagePermissions) { 1 };
-            case (#ConfigureDissolveState) { 2 };
-            case (#Vote) { 3 };
-            case (#MakeProposal) { 4 };
-            case (#Disburse) { 5 };
-            case (#Split) { 6 };
-            case (#MergeMaturity) { 7 };
-            case (#DisburseMaturity) { 8 };
-            case (#StakeMaturity) { 9 };
-            case (#ManageFollowees) { 10 };
-            case (#Spawn) { 11 };
-            case (#ManageNeuronHotkeys) { 12 };
-            case (#StakeNeuron) { 13 };
-            case (#MergeNeurons) { 14 };
-            case (#AutoStakeMaturity) { 15 };
-            case (#ManageVisibility) { 16 };
-            case (#WithdrawFunds) { 17 };
-            case (#ViewNeuron) { 18 };
-            case (#ManageConfirmFollowing) { 19 };
-            case (#ManageRefreshStake) { 20 };
-            case (#ManageCollectMaturity) { 21 };
-            case (#ManageDistributeFunds) { 22 };
-            case (#ConfigureCollectMaturity) { 23 };
-            case (#ConfigureDistribution) { 24 };
-            case (#ViewChores) { 25 };
+            // ICP Staking Bot permissions (range 100–199)
+            case (#ConfigureDissolveState) { 100 };
+            case (#Vote) { 101 };
+            case (#MakeProposal) { 102 };
+            case (#Disburse) { 103 };
+            case (#Split) { 104 };
+            case (#MergeMaturity) { 105 };
+            case (#DisburseMaturity) { 106 };
+            case (#StakeMaturity) { 107 };
+            case (#ManageFollowees) { 108 };
+            case (#Spawn) { 109 };
+            case (#ManageNeuronHotkeys) { 110 };
+            case (#StakeNeuron) { 111 };
+            case (#MergeNeurons) { 112 };
+            case (#AutoStakeMaturity) { 113 };
+            case (#ManageVisibility) { 114 };
+            case (#WithdrawFunds) { 115 };
+            case (#ViewNeuron) { 116 };
+            case (#ManageConfirmFollowing) { 117 };
+            case (#ManageRefreshStake) { 118 };
+            case (#ManageCollectMaturity) { 119 };
+            case (#ManageDistributeFunds) { 120 };
+            case (#ConfigureCollectMaturity) { 121 };
+            case (#ConfigureDistribution) { 122 };
+            case (#ViewChores) { 123 };
         }
     };
 
-    // Bot-specific ID-to-variant conversion
+    // ID-to-variant conversion (shared base + ICP Staking Bot permissions)
     func permissionIdToVariant(id: Nat): ?T.NeuronPermissionType {
         switch (id) {
-            case (0)  { ?#FullPermissions };
-            case (1)  { ?#ManagePermissions };
-            case (2)  { ?#ConfigureDissolveState };
-            case (3)  { ?#Vote };
-            case (4)  { ?#MakeProposal };
-            case (5)  { ?#Disburse };
-            case (6)  { ?#Split };
-            case (7)  { ?#MergeMaturity };
-            case (8)  { ?#DisburseMaturity };
-            case (9)  { ?#StakeMaturity };
-            case (10) { ?#ManageFollowees };
-            case (11) { ?#Spawn };
-            case (12) { ?#ManageNeuronHotkeys };
-            case (13) { ?#StakeNeuron };
-            case (14) { ?#MergeNeurons };
-            case (15) { ?#AutoStakeMaturity };
-            case (16) { ?#ManageVisibility };
-            case (17) { ?#WithdrawFunds };
-            case (18) { ?#ViewNeuron };
-            case (19) { ?#ManageConfirmFollowing };
-            case (20) { ?#ManageRefreshStake };
-            case (21) { ?#ManageCollectMaturity };
-            case (22) { ?#ManageDistributeFunds };
-            case (23) { ?#ConfigureCollectMaturity };
-            case (24) { ?#ConfigureDistribution };
-            case (25) { ?#ViewChores };
-            case (_)  { null };
+            // Shared base permissions (range 0–99)
+            case (0)   { ?#FullPermissions };
+            case (1)   { ?#ManagePermissions };
+            // ICP Staking Bot permissions (range 100–199)
+            case (100) { ?#ConfigureDissolveState };
+            case (101) { ?#Vote };
+            case (102) { ?#MakeProposal };
+            case (103) { ?#Disburse };
+            case (104) { ?#Split };
+            case (105) { ?#MergeMaturity };
+            case (106) { ?#DisburseMaturity };
+            case (107) { ?#StakeMaturity };
+            case (108) { ?#ManageFollowees };
+            case (109) { ?#Spawn };
+            case (110) { ?#ManageNeuronHotkeys };
+            case (111) { ?#StakeNeuron };
+            case (112) { ?#MergeNeurons };
+            case (113) { ?#AutoStakeMaturity };
+            case (114) { ?#ManageVisibility };
+            case (115) { ?#WithdrawFunds };
+            case (116) { ?#ViewNeuron };
+            case (117) { ?#ManageConfirmFollowing };
+            case (118) { ?#ManageRefreshStake };
+            case (119) { ?#ManageCollectMaturity };
+            case (120) { ?#ManageDistributeFunds };
+            case (121) { ?#ConfigureCollectMaturity };
+            case (122) { ?#ConfigureDistribution };
+            case (123) { ?#ViewChores };
+            case (_)   { null };
         }
     };
 
