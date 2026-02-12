@@ -1940,6 +1940,107 @@ export const WalletProvider = ({ children }) => {
         return () => window.removeEventListener('neuronManagersRefresh', handleRefresh);
     }, [refreshNeuronManagers]);
     
+    // --- Lightweight chore-status-only refresh (no neuron data) ---
+    const refreshChoreStatuses = useCallback(async () => {
+        if (!identity || !isAuthenticated || neuronManagers.length === 0) return;
+        
+        const agent = new HttpAgent({ identity, host: (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') ? 'http://localhost:4943' : 'https://ic0.app' });
+        if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+            await agent.fetchRootKey().catch(() => {});
+        }
+        
+        await Promise.all(neuronManagers.map(async ({ canisterId }) => {
+            const canisterIdStr = typeof canisterId === 'string' ? canisterId : canisterId.toString();
+            try {
+                const manager = createManagerActor(canisterIdStr, { agent });
+                const choreStatuses = await manager.getChoreStatuses();
+                if (choreStatuses && choreStatuses.length > 0) {
+                    setManagerChoreStatuses(prev => {
+                        // Skip update if nothing changed (shallow check on status fields)
+                        const prevStatuses = prev[canisterIdStr];
+                        if (prevStatuses && prevStatuses.length === choreStatuses.length) {
+                            const changed = choreStatuses.some((cs, i) => {
+                                const ps = prevStatuses[i];
+                                return JSON.stringify(cs.conductorStatus) !== JSON.stringify(ps.conductorStatus)
+                                    || JSON.stringify(cs.schedulerStatus) !== JSON.stringify(ps.schedulerStatus)
+                                    || JSON.stringify(cs.nextScheduledRunAt) !== JSON.stringify(ps.nextScheduledRunAt)
+                                    || JSON.stringify(cs.lastRunAt) !== JSON.stringify(ps.lastRunAt);
+                            });
+                            if (!changed) return prev;
+                        }
+                        return { ...prev, [canisterIdStr]: choreStatuses };
+                    });
+                }
+            } catch (_) {
+                // Chore API not available or canister unreachable — ignore
+            }
+        }));
+    }, [identity, isAuthenticated, neuronManagers]);
+    
+    // --- Smart auto-refresh timer for chore statuses ---
+    // Keeps status lamps up-to-date across the app (Wallet, quick wallet, etc.)
+    // without requiring a full neuron data reload.
+    const choreAutoRefreshTimerRef = useRef(null);
+    
+    useEffect(() => {
+        const clearTimer = () => {
+            if (choreAutoRefreshTimerRef.current) {
+                clearTimeout(choreAutoRefreshTimerRef.current);
+                choreAutoRefreshTimerRef.current = null;
+            }
+        };
+        
+        // Only run when we have managers with chore data
+        const allStatuses = Object.values(managerChoreStatuses).flat();
+        if (!isAuthenticated || allStatuses.length === 0) {
+            clearTimer();
+            return clearTimer;
+        }
+        
+        // Determine if any conductor is currently active
+        const anyActive = allStatuses.some(
+            chore => !('Idle' in chore.conductorStatus)
+        );
+        
+        let delayMs;
+        
+        if (anyActive) {
+            // A chore is actively running — poll quickly to catch completion
+            delayMs = 8_000;
+        } else {
+            // No conductor active — find the soonest nextScheduledRunAt
+            let soonestMs = Infinity;
+            for (const chore of allStatuses) {
+                if (chore.nextScheduledRunAt && chore.nextScheduledRunAt.length > 0) {
+                    const nextMs = Number(chore.nextScheduledRunAt[0]) / 1_000_000;
+                    if (nextMs > 0 && nextMs < soonestMs) {
+                        soonestMs = nextMs;
+                    }
+                }
+            }
+            
+            const nowMs = Date.now();
+            if (soonestMs !== Infinity && soonestMs > nowMs) {
+                // Wake up shortly after the next chore is due to fire
+                // Cap at 90 seconds so we don't sleep indefinitely
+                delayMs = Math.min(soonestMs - nowMs + 5_000, 90_000);
+            } else if (soonestMs !== Infinity && soonestMs <= nowMs) {
+                // A chore is already overdue — check soon to pick up the run
+                delayMs = 10_000;
+            } else {
+                // Fallback: lazy background check every 90 seconds
+                delayMs = 90_000;
+            }
+        }
+        
+        clearTimer();
+        choreAutoRefreshTimerRef.current = setTimeout(() => {
+            refreshChoreStatuses();
+        }, delayMs);
+        
+        return clearTimer;
+    }, [isAuthenticated, managerChoreStatuses, refreshChoreStatuses]);
+    
     // --- Official versions (for outdated bot detection) ---
     const compareVersions = useCallback((a, b) => {
         const aMajor = Number(a.major), aMinor = Number(a.minor), aPatch = Number(a.patch);
@@ -2752,6 +2853,7 @@ export const WalletProvider = ({ children }) => {
             managerNeurons,
             managerNeuronsTotal,
             managerChoreStatuses,
+            refreshChoreStatuses,
             officialVersions,
             latestOfficialVersion,
             outdatedManagers,

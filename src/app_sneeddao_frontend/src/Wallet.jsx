@@ -472,6 +472,7 @@ function Wallet() {
         setRefreshingTokens: setContextRefreshingTokens,
         // Chore statuses from context (shared with quick wallet)
         managerChoreStatuses: contextManagerChoreStatuses,
+        refreshChoreStatuses: contextRefreshChoreStatuses,
         // Official versions and outdated bot detection (shared)
         officialVersions: contextOfficialVersions,
         latestOfficialVersion: contextLatestOfficialVersion,
@@ -2025,17 +2026,10 @@ function Wallet() {
                 default: break;
             }
 
-            // Refresh chore statuses for this manager
-            try {
-                const choreStatuses = await manager.getChoreStatuses();
-                if (contextManagerChoreStatuses) {
-                    // Update via the context-level setter isn't directly available,
-                    // so we refetch manager data which includes chore statuses
-                    if (contextFetchManagerNeuronsData) {
-                        await contextFetchManagerNeuronsData(canisterId);
-                    }
-                }
-            } catch (_) { /* ignore */ }
+            // Refresh chore statuses after a short delay (give the canister time to start the run)
+            if (contextRefreshChoreStatuses) {
+                setTimeout(() => contextRefreshChoreStatuses(), 2000);
+            }
         } catch (err) {
             console.error(`Chore action ${action} failed for ${choreId}:`, err);
         } finally {

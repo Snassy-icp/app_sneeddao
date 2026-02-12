@@ -1378,8 +1378,12 @@ function IcpNeuronManager() {
                 // Wake up shortly after the next chore is due to fire
                 // Cap at 60 seconds so we don't sleep for days
                 delayMs = Math.min(soonestMs - nowMs + 3_000, 60_000);
+            } else if (soonestMs !== Infinity && soonestMs <= nowMs) {
+                // A chore is overdue — its run should be starting any moment.
+                // Poll quickly so the status transitions from "overdue" to "running".
+                delayMs = 8_000;
             } else {
-                // Fallback: lazy background check every 60 seconds
+                // No scheduled runs at all — lazy background check every 60 seconds
                 delayMs = 60_000;
             }
         }
