@@ -376,6 +376,37 @@ module {
             });
         };
 
+        /// Schedule-start a chore: enable it and arm the scheduler at a specific future time,
+        /// but do NOT run the conductor immediately. When the timer fires, the chore runs and
+        /// reschedules itself with its normal interval from that point on.
+        /// Use this when the user wants to start a chore but defer the first run.
+        public func scheduleStart<system>(choreId: Text, timestampNanos: Int) {
+            // Set enabled=true, paused=false
+            updateConfig(choreId, func(c: BotChoreTypes.ChoreConfig): BotChoreTypes.ChoreConfig {
+                { c with enabled = true; paused = false }
+            });
+
+            // Clear any stop request
+            updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
+                { s with stopRequested = false }
+            });
+
+            // Cancel existing scheduler timer if any
+            let state = getStateOrDefault(choreId);
+            switch (state.schedulerTimerId) {
+                case (?tid) { Timer.cancelTimer(tid) };
+                case null {};
+            };
+
+            // Set the next scheduled run to the user-provided time
+            updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
+                { s with nextScheduledRunAt = ?timestampNanos; schedulerTimerId = null }
+            });
+
+            // Arm the scheduler (will compute delay from nextScheduledRunAt)
+            startScheduler<system>(choreId);
+        };
+
         /// Pause a running chore: suspend the schedule but preserve nextScheduledRunAt.
         /// Stops conductor/task if currently active. Transitions Running → Paused.
         public func pause(choreId: Text) {

@@ -1392,6 +1392,12 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         choreEngine.start<system>(choreId);
     };
 
+    // Schedule-start a chore: enable it and schedule the first run at a specific time, without running immediately
+    public shared ({ caller }) func scheduleStartChore(choreId: Text, timestampNanos: Int): async () {
+        assertPermission(caller, choreManagePermission(choreId));
+        choreEngine.scheduleStart<system>(choreId, timestampNanos);
+    };
+
     // Pause a running chore: suspend schedule but preserve next-run time (Running → Paused)
     public shared ({ caller }) func pauseChore(choreId: Text): async () {
         assertPermission(caller, choreManagePermission(choreId));

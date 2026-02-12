@@ -378,14 +378,15 @@ function IcpNeuronManager() {
     }, [isController, userPermissions]);
 
     // Map choreId to its per-chore manage permission key
-    const choreManagePerm = useCallback((choreId) => {
-        switch (choreId) {
-            case 'confirm-following': return 'ManageConfirmFollowing';
-            case 'refresh-stake': return 'ManageRefreshStake';
-            case 'collect-maturity': return 'ManageCollectMaturity';
-            case 'distribute-funds': return 'ManageDistributeFunds';
-            default: return null;
-        }
+    const choreManagePerm = useCallback((choreIdOrTypeId) => {
+        // For multi-instance chores, the choreId may be like "distribute-funds-m1abc",
+        // so we also check if it starts with a known type prefix.
+        const id = choreIdOrTypeId || '';
+        if (id === 'confirm-following' || id.startsWith('confirm-following-')) return 'ManageConfirmFollowing';
+        if (id === 'refresh-stake' || id.startsWith('refresh-stake-')) return 'ManageRefreshStake';
+        if (id === 'collect-maturity' || id.startsWith('collect-maturity-')) return 'ManageCollectMaturity';
+        if (id === 'distribute-funds' || id.startsWith('distribute-funds-')) return 'ManageDistributeFunds';
+        return null;
     }, []);
 
     // Check if user can manage a specific chore
@@ -5223,39 +5224,63 @@ function IcpNeuronManager() {
                                             {canManageChore(chore.choreId) && (
                                             <>
                                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
-                                                {/* Start — shown when Stopped */}
+                                                {/* Start (split button) — shown when Stopped */}
                                                 {isStopped && (
-                                                <button
-                                                    style={{
-                                                        ...buttonStyle,
-                                                        background: `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
-                                                        color: '#fff',
-                                                        border: 'none',
-                                                        opacity: savingChore ? 0.6 : 1,
-                                                    }}
-                                                    disabled={savingChore}
-                                                    onClick={async () => {
-                                                        setSavingChore(true);
-                                                        setChoreError('');
-                                                        setChoreSuccess('');
-                                                        try {
-                                                            const agent = getAgent();
-                                                            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                                                                await agent.fetchRootKey();
+                                                <div style={{ display: 'inline-flex', position: 'relative' }}>
+                                                    <button
+                                                        style={{
+                                                            ...buttonStyle,
+                                                            background: `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
+                                                            color: '#fff',
+                                                            border: 'none',
+                                                            borderRadius: '8px 0 0 8px',
+                                                            opacity: savingChore ? 0.6 : 1,
+                                                        }}
+                                                        disabled={savingChore}
+                                                        onClick={async () => {
+                                                            setSavingChore(true);
+                                                            setChoreError('');
+                                                            setChoreSuccess('');
+                                                            try {
+                                                                const agent = getAgent();
+                                                                if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                                                                    await agent.fetchRootKey();
+                                                                }
+                                                                const manager = createManagerActor(canisterId, { agent });
+                                                                await manager.startChore(chore.choreId);
+                                                                setChoreSuccess('Chore started! Running now and scheduled for next interval.');
+                                                                setTimeout(() => loadChoreData(), 2000);
+                                                            } catch (err) {
+                                                                setChoreError('Failed to start: ' + err.message);
+                                                            } finally {
+                                                                setSavingChore(false);
                                                             }
-                                                            const manager = createManagerActor(canisterId, { agent });
-                                                            await manager.startChore(chore.choreId);
-                                                            setChoreSuccess('Chore started! Running now and scheduled for next interval.');
-                                                            setTimeout(() => loadChoreData(), 2000);
-                                                        } catch (err) {
-                                                            setChoreError('Failed to start: ' + err.message);
-                                                        } finally {
-                                                            setSavingChore(false);
-                                                        }
-                                                    }}
-                                                >
-                                                    Start
-                                                </button>
+                                                        }}
+                                                    >
+                                                        Start
+                                                    </button>
+                                                    <button
+                                                        style={{
+                                                            ...buttonStyle,
+                                                            background: `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
+                                                            color: '#fff',
+                                                            border: 'none',
+                                                            borderLeft: '1px solid rgba(255,255,255,0.3)',
+                                                            borderRadius: '0 8px 8px 0',
+                                                            padding: '0.4rem 0.45rem',
+                                                            minWidth: 'unset',
+                                                            opacity: savingChore ? 0.6 : 1,
+                                                        }}
+                                                        disabled={savingChore}
+                                                        title="Schedule start at a specific time"
+                                                        onClick={() => {
+                                                            const el = document.getElementById(`schedule-start-panel-${chore.choreId}`);
+                                                            if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+                                                        }}
+                                                    >
+                                                        <span style={{ fontSize: '0.6rem' }}>&#9660;</span>
+                                                    </button>
+                                                </div>
                                                 )}
 
                                                 {/* Pause — shown when Running (enabled, not paused) */}
@@ -5363,8 +5388,8 @@ function IcpNeuronManager() {
                                                 </button>
                                                 )}
 
-                                                {/* Run Now — available when enabled and conductor not active */}
-                                                {isEnabled && !isRunning && (
+                                                {/* Run Once (when stopped) / Run Now (when enabled+idle) — available when conductor not active */}
+                                                {!isRunning && (
                                                 <button
                                                     style={{
                                                         ...buttonStyle,
@@ -5385,7 +5410,9 @@ function IcpNeuronManager() {
                                                             }
                                                             const manager = createManagerActor(canisterId, { agent });
                                                             await manager.triggerChore(chore.choreId);
-                                                            setChoreSuccess('Chore triggered manually. It will start running shortly.');
+                                                            setChoreSuccess(isStopped
+                                                                ? 'Chore triggered once. It will run without enabling the schedule.'
+                                                                : 'Chore triggered manually. It will start running shortly.');
                                                             setTimeout(() => loadChoreData(), 2000);
                                                         } catch (err) {
                                                             setChoreError('Failed to trigger: ' + err.message);
@@ -5394,7 +5421,7 @@ function IcpNeuronManager() {
                                                         }
                                                     }}
                                                 >
-                                                    Run Now
+                                                    {isStopped ? 'Run Once' : 'Run Now'}
                                                 </button>
                                                 )}
 
@@ -5413,6 +5440,77 @@ function IcpNeuronManager() {
                                                     Refresh
                                                 </button>
                                             </div>
+
+                                            {/* Schedule Start panel — shown when user clicks dropdown arrow on Start button */}
+                                            {isStopped && (
+                                            <div id={`schedule-start-panel-${chore.choreId}`} style={{ display: 'none', marginTop: '8px', padding: '10px', background: `${neuronPrimary}06`, border: `1px solid ${neuronPrimary}20`, borderRadius: '8px', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                <span style={{ fontSize: '0.8rem', color: theme.colors.secondaryText, marginRight: '4px' }}>Schedule first run at:</span>
+                                                <input
+                                                    type="datetime-local"
+                                                    id={`schedule-start-input-${chore.choreId}`}
+                                                    style={{
+                                                        ...inputStyle,
+                                                        fontSize: '0.8rem',
+                                                        padding: '0.35rem 0.5rem',
+                                                        width: 'auto',
+                                                    }}
+                                                />
+                                                <button
+                                                    style={{
+                                                        ...buttonStyle,
+                                                        background: `linear-gradient(135deg, ${neuronPrimary}, ${neuronSecondary})`,
+                                                        color: '#fff',
+                                                        border: 'none',
+                                                        fontSize: '0.8rem',
+                                                        opacity: savingChore ? 0.6 : 1,
+                                                    }}
+                                                    disabled={savingChore}
+                                                    onClick={async () => {
+                                                        const input = document.getElementById(`schedule-start-input-${chore.choreId}`);
+                                                        if (!input?.value) { setChoreError('Please select a date and time.'); return; }
+                                                        const selectedTime = new Date(input.value).getTime();
+                                                        if (selectedTime <= Date.now()) { setChoreError('Scheduled time must be in the future.'); return; }
+                                                        const tsNanos = BigInt(selectedTime) * 1_000_000n;
+                                                        setSavingChore(true);
+                                                        setChoreError('');
+                                                        setChoreSuccess('');
+                                                        try {
+                                                            const agent = getAgent();
+                                                            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                                                                await agent.fetchRootKey();
+                                                            }
+                                                            const manager = createManagerActor(canisterId, { agent });
+                                                            await manager.scheduleStartChore(chore.choreId, tsNanos);
+                                                            setChoreSuccess('Chore scheduled! First run at ' + new Date(selectedTime).toLocaleString());
+                                                            const el = document.getElementById(`schedule-start-panel-${chore.choreId}`);
+                                                            if (el) el.style.display = 'none';
+                                                            setTimeout(() => loadChoreData(), 2000);
+                                                        } catch (err) {
+                                                            setChoreError('Failed to schedule start: ' + err.message);
+                                                        } finally {
+                                                            setSavingChore(false);
+                                                        }
+                                                    }}
+                                                >
+                                                    Confirm
+                                                </button>
+                                                <button
+                                                    style={{
+                                                        ...buttonStyle,
+                                                        background: 'transparent',
+                                                        color: theme.colors.secondaryText,
+                                                        border: `1px solid ${theme.colors.border}`,
+                                                        fontSize: '0.8rem',
+                                                    }}
+                                                    onClick={() => {
+                                                        const el = document.getElementById(`schedule-start-panel-${chore.choreId}`);
+                                                        if (el) el.style.display = 'none';
+                                                    }}
+                                                >
+                                                    Cancel
+                                                </button>
+                                            </div>
+                                            )}
 
                                             {/* Interval Setting */}
                                             <div style={{ marginTop: '8px' }}>

@@ -362,10 +362,12 @@ Chores have three states: **Stopped**, **Running**, and **Paused**.
 | Action | From | To | Behavior |
 |--------|------|----|----------|
 | **Start** | Stopped | Running | Run the chore immediately AND schedule the next run at now + interval. |
+| **Schedule Start** | Stopped | Running | Enable the chore and schedule the first run at a user-specified future time, without running immediately. After the first run, it reschedules normally. |
 | **Pause** | Running | Paused | Suspend schedule (cancel scheduler timer) but preserve `nextScheduledRunAt`. Stops conductor/task if active. |
 | **Resume** | Paused | Running | Re-activate preserved schedule. If `nextScheduledRunAt` has already passed, run immediately. |
 | **Stop** | Running/Paused | Stopped | Cancel everything, clear schedule (`nextScheduledRunAt = null`). Full reset. |
-| **Run Now** | Running/Paused | (same) | Manual one-off trigger. Does not affect the schedule. Only available when conductor is not already active. |
+| **Run Now** | Running (idle) | (same) | Manual one-off trigger when the chore is enabled but the conductor is idle. Does not affect the schedule. |
+| **Run Once** | Stopped | (same) | Fire the conductor once without enabling the recurring schedule. The chore stays Stopped. Only available when conductor is not already active. |
 
 The `paused` flag is stored in `ChoreConfig` alongside `enabled`:
 - `enabled=false, paused=false` → **Stopped**
@@ -373,14 +375,15 @@ The `paused` flag is stored in `ChoreConfig` alongside `enabled`:
 - `enabled=true, paused=true` → **Paused**
 
 ```motoko
-engine.start<system>(choreId)               // Start: run now + schedule next (Stopped → Running)
-engine.pause(choreId)                        // Pause: suspend schedule, preserve nextScheduledRunAt
-engine.resume<system>(choreId)               // Resume: re-activate schedule (Paused → Running)
-engine.stop(choreId)                         // Stop: cancel all, clear schedule (→ Stopped)
-engine.trigger<system>(choreId)              // Manual one-off trigger (does not change state)
-engine.setInterval(choreId, 604800)          // Change schedule interval (seconds)
-engine.setTaskTimeout(choreId, 300)          // Change task timeout (seconds)
-engine.stopAllChores()                       // Stop all chores
+engine.start<system>(choreId)                          // Start: run now + schedule next (Stopped → Running)
+engine.scheduleStart<system>(choreId, timestampNanos)  // Schedule Start: enable + arm scheduler at given time (Stopped → Running)
+engine.pause(choreId)                                  // Pause: suspend schedule, preserve nextScheduledRunAt
+engine.resume<system>(choreId)                         // Resume: re-activate schedule (Paused → Running)
+engine.stop(choreId)                                   // Stop: cancel all, clear schedule (→ Stopped)
+engine.trigger<system>(choreId)                        // Run Now / Run Once: manual one-off trigger (does not change enabled/schedule)
+engine.setInterval(choreId, 604800)                    // Change schedule interval (seconds)
+engine.setTaskTimeout(choreId, 300)                    // Change task timeout (seconds)
+engine.stopAllChores()                                 // Stop all chores
 ```
 
 ### 5.5 Status Queries
@@ -515,13 +518,17 @@ deleteChoreInstance(instanceId: Text) : async Bool
 renameChoreInstance(instanceId: Text, newLabel: Text) : async Bool
 
 // Admin controls (choreId = instanceId)
-setChoreEnabled(choreId: Text, enabled: Bool) : async ()
+startChore(choreId: Text) : async ()                                  // Start: run immediately + schedule next
+scheduleStartChore(choreId: Text, timestampNanos: Int) : async ()     // Schedule Start: enable + first run at given time
+pauseChore(choreId: Text) : async ()                                  // Pause: suspend schedule
+resumeChore(choreId: Text) : async ()                                 // Resume: re-activate schedule
+stopChore(choreId: Text) : async ()                                   // Stop: cancel all, clear schedule
+stopAllChores() : async ()                                            // Stop all chore instances
+triggerChore(choreId: Text) : async ()                                // Run Now / Run Once: manual trigger
 setChoreInterval(choreId: Text, seconds: Nat) : async ()
 setChoreMaxInterval(choreId: Text, seconds: ?Nat) : async ()
 setChoreTaskTimeout(choreId: Text, seconds: Nat) : async ()
-triggerChore(choreId: Text) : async ()
-stopChore(choreId: Text) : async ()
-stopAllChores() : async ()
+setChoreNextRun(choreId: Text, timestampNanos: Int) : async ()        // Set exact next scheduled run time
 ```
 
 ### 9.3 Permissions
