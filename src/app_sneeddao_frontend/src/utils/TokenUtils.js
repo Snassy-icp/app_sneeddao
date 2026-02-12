@@ -114,7 +114,7 @@ const get_token_conversion_rate = async (tokenCanisterId, decimals = null) => {
         const usdPrice = await priceService.getTokenUSDPrice(tokenCanisterId, decimals);
         return usdPrice;
     } catch (error) {
-        console.warn(`Unable to fetch USD price for token ${tokenCanisterId}:`, error);
+        console.debug(`No USD price for ${tokenCanisterId}: ${error.message}`);
         return 0;
     }
 };
@@ -135,7 +135,7 @@ const get_token_icp_rate = async (tokenCanisterId, decimals = null) => {
         const icpPrice = await priceService.getTokenICPPrice(tokenCanisterId, decimals);
         return icpPrice;
     } catch (error) {
-        console.warn(`Unable to fetch ICP price for token ${tokenCanisterId}:`, error);
+        console.debug(`No ICP price for ${tokenCanisterId}: ${error.message}`);
         return 0;
     }
 };

@@ -20,13 +20,32 @@ const ICPSWAP_FACTORY_CANISTER = '4mmnk-kiaaa-aaaag-qbllq-cai';
 const ICP_DECIMALS = 8;
 const USDC_DECIMALS = 6;
 
+// Fee tiers to try when discovering pools (0.3%, 1%, 0.05%)
+const FEE_TIERS = [BigInt(3000), BigInt(10000), BigInt(500)];
+
 // Cache TTLs
 const CACHE_TTL_MS = 60 * 1000; // 1 minute for ICP/USD price
 const TOKEN_PRICE_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes for token prices
+const NEGATIVE_POOL_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes for "no pool" results
 
 // Cache keys for localStorage persistence
 const POOL_CACHE_KEY = 'icpswap_pools';
 const TOKEN_PRICE_CACHE_KEY = 'icpswap_token_prices';
+
+/**
+ * Extract a human-readable message from an ICPSwap Candid Error variant.
+ * The Error type is: { CommonError: null } | { InternalError: string }
+ *                   | { UnsupportedToken: string } | { InsufficientFunds: null }
+ */
+function formatCandidError(err) {
+    if (!err) return 'Unknown error';
+    if (typeof err === 'string') return err;
+    if (err.InternalError) return `InternalError: ${err.InternalError}`;
+    if (err.UnsupportedToken) return `UnsupportedToken: ${err.UnsupportedToken}`;
+    if ('CommonError' in err) return 'CommonError (pool may not exist)';
+    if ('InsufficientFunds' in err) return 'InsufficientFunds';
+    return JSON.stringify(err);
+}
 
 class PriceService {
     constructor() {
@@ -181,8 +200,8 @@ class PriceService {
         try {
             // Get pool metadata from ICP/USDC pool
             const response = await this.poolActor.metadata();
-            if (!response.ok || response.err) {
-                throw new Error(response.err?.message || 'Failed to fetch ICP/USD pool metadata');
+            if ('err' in response || !response.ok) {
+                throw new Error(`Failed to fetch ICP/USD pool metadata: ${formatCandidError(response.err)}`);
             }
 
             const metadata = response.ok;
@@ -223,7 +242,10 @@ class PriceService {
     }
 
     /**
-     * Get pool for a token/ICP pair
+     * Get pool for a token/ICP pair.
+     * Tries multiple fee tiers (3000, 10000, 500) and caches negative results
+     * to avoid hammering the factory for tokens with no ICP pool.
+     *
      * @param {string} tokenCanisterId - Token canister ID
      * @returns {Promise<Object>} Pool data
      */
@@ -233,67 +255,92 @@ class PriceService {
         // Generate cache key
         const cacheKey = `icp-${tokenCanisterId}`;
 
-        // Check cache first
+        // Check positive cache first
         const cached = this.poolCache.get(cacheKey);
         if (cached) {
-            return cached.pool;
-        }
-
-        try {
-            // Create token objects
-            const icpToken = { address: ICP_CANISTER_ID, standard: 'ICRC1' };
-            const otherToken = { address: tokenCanisterId, standard: 'ICRC1' };
-
-            // Sort tokens to match ICPSwap's ordering (lexicographical)
-            const [token0, token1] = icpToken.address.toLowerCase() < otherToken.address.toLowerCase()
-                ? [icpToken, otherToken]
-                : [otherToken, icpToken];
-
-            // Get pool from factory
-            const response = await this.factoryActor.getPool({
-                token0,
-                token1,
-                fee: BigInt(3000), // Default 0.3% fee
-            });
-
-            if ('err' in response || !response.ok) {
-                throw new Error(response.err?.message || 'Failed to fetch pool data');
-            }
-
-            const poolData = response.ok;
-
-            // Normalize the canisterId
-            let normalizedCanisterId;
-            if (typeof poolData.canisterId === 'string') {
-                normalizedCanisterId = poolData.canisterId;
-            } else if (poolData.canisterId && typeof poolData.canisterId.toText === 'function') {
-                normalizedCanisterId = poolData.canisterId.toText();
-            } else if (poolData.canisterId && poolData.canisterId._isPrincipal) {
-                normalizedCanisterId = Principal.from(poolData.canisterId).toText();
+            // Negative cache entry — pool doesn't exist, skip re-fetch
+            if (cached.pool === null) {
+                if (Date.now() - cached.timestamp < NEGATIVE_POOL_CACHE_TTL_MS) {
+                    throw new Error(`No ICPSwap pool found for ${tokenCanisterId} (cached)`);
+                }
+                // Negative cache expired, try again below
+                this.poolCache.delete(cacheKey);
             } else {
-                normalizedCanisterId = String(poolData.canisterId);
+                return cached.pool;
             }
-
-            // Create the normalized pool data
-            const pool = {
-                ...poolData,
-                canisterId: normalizedCanisterId
-            };
-
-            // Cache the result
-            this.poolCache.set(cacheKey, {
-                pool,
-                timestamp: Date.now()
-            });
-
-            // Persist to localStorage
-            this.savePoolCache();
-
-            return pool;
-        } catch (error) {
-            console.error('Error fetching ICPSwap pool:', error);
-            throw error;
         }
+
+        // Create token objects
+        const icpToken = { address: ICP_CANISTER_ID, standard: 'ICRC1' };
+        const otherToken = { address: tokenCanisterId, standard: 'ICRC1' };
+
+        // Sort tokens to match ICPSwap's ordering (lexicographical)
+        const [token0, token1] = icpToken.address.toLowerCase() < otherToken.address.toLowerCase()
+            ? [icpToken, otherToken]
+            : [otherToken, icpToken];
+
+        // Try each fee tier until we find a pool
+        let lastError = null;
+        for (const fee of FEE_TIERS) {
+            try {
+                const response = await this.factoryActor.getPool({
+                    token0,
+                    token1,
+                    fee,
+                });
+
+                if ('err' in response || !response.ok) {
+                    lastError = formatCandidError(response.err);
+                    continue; // Try next fee tier
+                }
+
+                const poolData = response.ok;
+
+                // Normalize the canisterId
+                let normalizedCanisterId;
+                if (typeof poolData.canisterId === 'string') {
+                    normalizedCanisterId = poolData.canisterId;
+                } else if (poolData.canisterId && typeof poolData.canisterId.toText === 'function') {
+                    normalizedCanisterId = poolData.canisterId.toText();
+                } else if (poolData.canisterId && poolData.canisterId._isPrincipal) {
+                    normalizedCanisterId = Principal.from(poolData.canisterId).toText();
+                } else {
+                    normalizedCanisterId = String(poolData.canisterId);
+                }
+
+                // Create the normalized pool data
+                const pool = {
+                    ...poolData,
+                    canisterId: normalizedCanisterId
+                };
+
+                // Cache the positive result
+                this.poolCache.set(cacheKey, {
+                    pool,
+                    timestamp: Date.now()
+                });
+
+                // Persist to localStorage
+                this.savePoolCache();
+
+                return pool;
+            } catch (error) {
+                lastError = error.message || String(error);
+                // Network/agent errors — don't try more fee tiers, fail fast
+                if (!String(lastError).includes('CommonError') && !String(lastError).includes('pool')) {
+                    break;
+                }
+            }
+        }
+
+        // No pool found at any fee tier — cache the negative result
+        this.poolCache.set(cacheKey, {
+            pool: null,
+            timestamp: Date.now()
+        });
+        this.savePoolCache();
+
+        throw new Error(`No ICPSwap pool found for ${tokenCanisterId} (tried fee tiers: ${FEE_TIERS.join(', ')}). Last error: ${lastError}`);
     }
 
     /**
@@ -328,8 +375,8 @@ class PriceService {
 
             // Get pool metadata
             const response = await poolActor.metadata();
-            if (!response.ok || response.err) {
-                throw new Error(response.err?.message || 'Failed to fetch pool metadata');
+            if ('err' in response || !response.ok) {
+                throw new Error(`Failed to fetch pool metadata: ${formatCandidError(response.err)}`);
             }
 
             const metadata = response.ok;
@@ -361,10 +408,9 @@ class PriceService {
 
             return price;
         } catch (error) {
-            console.error(`Error fetching token ICP price for ${tokenCanisterId}:`, error);
             // Return cached price if available, even if expired
             if (cached) {
-                console.warn(`Using expired token price cache for ${tokenCanisterId} due to error`);
+                console.debug(`Using expired token price cache for ${tokenCanisterId} (${error.message})`);
                 return cached.price;
             }
             throw error;
@@ -378,18 +424,13 @@ class PriceService {
      * @returns {Promise<number>} Token price in USD
      */
     async getTokenUSDPrice(tokenCanisterId, tokenDecimals = null) {
-        try {
-            // Get both prices in parallel since they use independent caches
-            const [tokenICPPrice, icpUSDPrice] = await Promise.all([
-                this.getTokenICPPrice(tokenCanisterId, tokenDecimals),
-                this.getICPUSDPrice()
-            ]);
+        // Get both prices in parallel since they use independent caches
+        const [tokenICPPrice, icpUSDPrice] = await Promise.all([
+            this.getTokenICPPrice(tokenCanisterId, tokenDecimals),
+            this.getICPUSDPrice()
+        ]);
 
-            return tokenICPPrice * icpUSDPrice;
-        } catch (error) {
-            console.error(`Error calculating token USD price for ${tokenCanisterId}:`, error);
-            throw error;
-        }
+        return tokenICPPrice * icpUSDPrice;
     }
 
     /**
