@@ -565,6 +565,31 @@ module {
             scheduleConductorTick<system>(choreId, 0);
         };
 
+        /// Set the next scheduled run time for a chore. Reschedules the scheduler timer.
+        /// The chore must be enabled and not paused. The timestamp is in nanoseconds.
+        /// Use this to offset chore schedules (e.g., two weekly chores running on opposite weeks).
+        public func setNextScheduledRun<system>(choreId: Text, timestampNanos: Int) {
+            let config = getConfigOrDefault(choreId);
+            if (not config.enabled or config.paused) {
+                return; // Can only set next run on an active chore
+            };
+
+            // Cancel existing scheduler timer
+            let state = getStateOrDefault(choreId);
+            switch (state.schedulerTimerId) {
+                case (?tid) { Timer.cancelTimer(tid) };
+                case null {};
+            };
+
+            // Set the new next scheduled run time
+            updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
+                { s with nextScheduledRunAt = ?timestampNanos; schedulerTimerId = null }
+            });
+
+            // Restart the scheduler (it will read nextScheduledRunAt and set timer accordingly)
+            startScheduler<system>(choreId);
+        };
+
         /// Stop all chore instances (full stop — disable + clear schedules).
         public func stopAllChores() {
             let instances = stateAccessor.getInstances();

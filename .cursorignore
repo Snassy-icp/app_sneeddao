@@ -1,0 +1,16 @@
+# Build artifacts and dependencies - exclude from Cursor AI indexing
+node_modules/
+.dfx/
+target/
+dist/
+.mops/
+releases/
+
+# Generated files
+**/declarations/
+
+# Lock files
+**/package-lock.json
+
+# Scratch/temp files
+spec/scratch*

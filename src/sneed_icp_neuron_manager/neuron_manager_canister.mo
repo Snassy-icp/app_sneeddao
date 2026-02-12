@@ -51,13 +51,49 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     var choreStates: [(Text, BotChoreTypes.ChoreRuntimeState)] = [];
     var choreInstances: [(Text, BotChoreTypes.ChoreInstanceInfo)] = [];
 
-    // Collect-Maturity chore settings (chore-specific, stable)
-    var collectMaturityThresholdE8s: ?Nat64 = null;  // null = collect any amount; otherwise min maturity e8s
-    var collectMaturityDestination: ?T.Account = null; // null = bot's own account (no subaccount)
+    // Per-instance chore settings (keyed by instanceId)
+    // Collect-Maturity: threshold and destination per instance
+    var collectMaturitySettings: [(Text, { thresholdE8s: ?Nat64; destination: ?T.Account })] = [];
+    // Distribution: lists and next ID counter per instance
+    var distributionSettings: [(Text, { lists: [DistributionTypes.DistributionList]; nextListId: Nat })] = [];
 
-    // Distribution chore settings (stable)
-    var distributionLists: [DistributionTypes.DistributionList] = [];
-    var nextDistributionListId: Nat = 1;
+    // ============================================
+    // PER-INSTANCE SETTINGS HELPERS
+    // ============================================
+
+    func getCmSettings(instanceId: Text): { thresholdE8s: ?Nat64; destination: ?T.Account } {
+        for ((id, s) in collectMaturitySettings.vals()) {
+            if (id == instanceId) return s;
+        };
+        { thresholdE8s = null; destination = null }
+    };
+
+    func setCmSettings(instanceId: Text, s: { thresholdE8s: ?Nat64; destination: ?T.Account }) {
+        var found = false;
+        let updated = Array.map<(Text, { thresholdE8s: ?Nat64; destination: ?T.Account }), (Text, { thresholdE8s: ?Nat64; destination: ?T.Account })>(
+            collectMaturitySettings,
+            func((id, old)) { if (id == instanceId) { found := true; (id, s) } else { (id, old) } }
+        );
+        if (found) { collectMaturitySettings := updated }
+        else { collectMaturitySettings := Array.append(collectMaturitySettings, [(instanceId, s)]) };
+    };
+
+    func getDistSettings(instanceId: Text): { lists: [DistributionTypes.DistributionList]; nextListId: Nat } {
+        for ((id, s) in distributionSettings.vals()) {
+            if (id == instanceId) return s;
+        };
+        { lists = []; nextListId = 1 }
+    };
+
+    func setDistSettings(instanceId: Text, s: { lists: [DistributionTypes.DistributionList]; nextListId: Nat }) {
+        var found = false;
+        let updated = Array.map<(Text, { lists: [DistributionTypes.DistributionList]; nextListId: Nat }), (Text, { lists: [DistributionTypes.DistributionList]; nextListId: Nat })>(
+            distributionSettings,
+            func((id, old)) { if (id == instanceId) { found := true; (id, s) } else { (id, old) } }
+        );
+        if (found) { distributionSettings := updated }
+        else { distributionSettings := Array.append(distributionSettings, [(instanceId, s)]) };
+    };
 
     // ============================================
     // PERMISSION SYSTEM (using reusable BotkeyPermissions engine)
@@ -1392,6 +1428,12 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         choreEngine.trigger<system>(choreId);
     };
 
+    // Set the exact timestamp for the next scheduled run (nanoseconds since epoch)
+    public shared ({ caller }) func setChoreNextRun(choreId: Text, timestampNanos: Int): async () {
+        assertPermission(caller, choreManagePermission(choreId));
+        choreEngine.setNextScheduledRun<system>(choreId, timestampNanos);
+    };
+
     // Stop a chore completely: cancel everything, clear schedule (Running/Paused → Stopped)
     public shared ({ caller }) func stopChore(choreId: Text): async () {
         assertPermission(caller, choreManagePermission(choreId));
@@ -1444,45 +1486,44 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         choreEngine.listInstances(typeIdFilter)
     };
 
-    // --- Collect-Maturity chore settings ---
+    // --- Collect-Maturity chore settings (per-instance) ---
 
-    // Get collect-maturity settings
-    public shared query ({ caller }) func getCollectMaturitySettings(): async {
+    // Get collect-maturity settings for an instance
+    public shared query ({ caller }) func getCollectMaturitySettings(instanceId: Text): async {
         thresholdE8s: ?Nat64;
         destination: ?T.Account;
     } {
         assertPermission(caller, T.NeuronPermission.ViewChores);
-        {
-            thresholdE8s = collectMaturityThresholdE8s;
-            destination = collectMaturityDestination;
-        }
+        getCmSettings(instanceId)
     };
 
-    // Set collect-maturity threshold (null = collect any amount)
-    public shared ({ caller }) func setCollectMaturityThreshold(thresholdE8s: ?Nat64): async () {
+    // Set collect-maturity threshold for an instance (null = collect any amount)
+    public shared ({ caller }) func setCollectMaturityThreshold(instanceId: Text, thresholdE8s: ?Nat64): async () {
         assertPermission(caller, T.NeuronPermission.ConfigureCollectMaturity);
-        collectMaturityThresholdE8s := thresholdE8s;
+        let s = getCmSettings(instanceId);
+        setCmSettings(instanceId, { s with thresholdE8s = thresholdE8s });
     };
 
-    // Set collect-maturity destination (null = bot's own account)
-    public shared ({ caller }) func setCollectMaturityDestination(destination: ?T.Account): async () {
+    // Set collect-maturity destination for an instance (null = bot's own account)
+    public shared ({ caller }) func setCollectMaturityDestination(instanceId: Text, destination: ?T.Account): async () {
         assertPermission(caller, T.NeuronPermission.ConfigureCollectMaturity);
-        collectMaturityDestination := destination;
+        let s = getCmSettings(instanceId);
+        setCmSettings(instanceId, { s with destination = destination });
     };
 
-    // --- Distribution chore settings ---
+    // --- Distribution chore settings (per-instance) ---
 
-    // Get all distribution lists
-    public shared query ({ caller }) func getDistributionLists(): async [DistributionTypes.DistributionList] {
+    // Get distribution lists for an instance
+    public shared query ({ caller }) func getDistributionLists(instanceId: Text): async [DistributionTypes.DistributionList] {
         assertPermission(caller, T.NeuronPermission.ViewChores);
-        distributionLists
+        getDistSettings(instanceId).lists
     };
 
-    // Add a new distribution list, returns the assigned ID
-    public shared ({ caller }) func addDistributionList(input: DistributionTypes.DistributionListInput): async Nat {
+    // Add a new distribution list to an instance, returns the assigned ID
+    public shared ({ caller }) func addDistributionList(instanceId: Text, input: DistributionTypes.DistributionListInput): async Nat {
         assertPermission(caller, T.NeuronPermission.ConfigureDistribution);
-        let id = nextDistributionListId;
-        nextDistributionListId += 1;
+        let ds = getDistSettings(instanceId);
+        let id = ds.nextListId;
         let newList: DistributionTypes.DistributionList = {
             id = id;
             name = input.name;
@@ -1492,17 +1533,18 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             maxDistributionAmount = input.maxDistributionAmount;
             targets = input.targets;
         };
-        let buf = Buffer.fromArray<DistributionTypes.DistributionList>(distributionLists);
+        let buf = Buffer.fromArray<DistributionTypes.DistributionList>(ds.lists);
         buf.add(newList);
-        distributionLists := Buffer.toArray(buf);
+        setDistSettings(instanceId, { lists = Buffer.toArray(buf); nextListId = id + 1 });
         id
     };
 
-    // Update an existing distribution list by ID
-    public shared ({ caller }) func updateDistributionList(id: Nat, input: DistributionTypes.DistributionListInput): async () {
+    // Update an existing distribution list by ID within an instance
+    public shared ({ caller }) func updateDistributionList(instanceId: Text, id: Nat, input: DistributionTypes.DistributionListInput): async () {
         assertPermission(caller, T.NeuronPermission.ConfigureDistribution);
-        distributionLists := Array.map<DistributionTypes.DistributionList, DistributionTypes.DistributionList>(
-            distributionLists,
+        let ds = getDistSettings(instanceId);
+        let updatedLists = Array.map<DistributionTypes.DistributionList, DistributionTypes.DistributionList>(
+            ds.lists,
             func(list: DistributionTypes.DistributionList): DistributionTypes.DistributionList {
                 if (list.id == id) {
                     {
@@ -1517,15 +1559,18 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                 } else { list }
             }
         );
+        setDistSettings(instanceId, { ds with lists = updatedLists });
     };
 
-    // Remove a distribution list by ID
-    public shared ({ caller }) func removeDistributionList(id: Nat): async () {
+    // Remove a distribution list by ID within an instance
+    public shared ({ caller }) func removeDistributionList(instanceId: Text, id: Nat): async () {
         assertPermission(caller, T.NeuronPermission.ConfigureDistribution);
-        distributionLists := Array.filter<DistributionTypes.DistributionList>(
-            distributionLists,
+        let ds = getDistSettings(instanceId);
+        let filtered = Array.filter<DistributionTypes.DistributionList>(
+            ds.lists,
             func(list: DistributionTypes.DistributionList): Bool { list.id != id }
         );
+        setDistSettings(instanceId, { ds with lists = filtered });
     };
 
     // ============================================
@@ -1903,13 +1948,27 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         };
     };
 
-    // --- Collect Maturity chore transient state ---
-    transient var _cm_neurons: [T.NeuronId] = [];
-    transient var _cm_index: Nat = 0;
+    // --- Collect Maturity chore transient state (per-instance) ---
+    transient var _cm_state: [(Text, { neurons: [T.NeuronId]; index: Nat })] = [];
 
-    // Helper: create a task function that collects maturity for a specific neuron
-    func _cm_makeTaskFn(nid: T.NeuronId): () -> async BotChoreTypes.TaskAction {
+    func _cm_getState(instanceId: Text): { neurons: [T.NeuronId]; index: Nat } {
+        for ((id, s) in _cm_state.vals()) { if (id == instanceId) return s };
+        { neurons = []; index = 0 }
+    };
+
+    func _cm_setState(instanceId: Text, s: { neurons: [T.NeuronId]; index: Nat }) {
+        var found = false;
+        let updated = Array.map<(Text, { neurons: [T.NeuronId]; index: Nat }), (Text, { neurons: [T.NeuronId]; index: Nat })>(
+            _cm_state, func((id, old)) { if (id == instanceId) { found := true; (id, s) } else { (id, old) } }
+        );
+        if (found) { _cm_state := updated } else { _cm_state := Array.append(_cm_state, [(instanceId, s)]) };
+    };
+
+    // Helper: create a task function that collects maturity for a specific neuron (per-instance)
+    func _cm_makeTaskFn(instanceId: Text, nid: T.NeuronId): () -> async BotChoreTypes.TaskAction {
         func(): async BotChoreTypes.TaskAction {
+            let settings = getCmSettings(instanceId);
+
             // Get full neuron to check maturity
             let neuronResult = await governance.get_full_neuron(nid.id);
             let neuron = switch (neuronResult) {
@@ -1920,7 +1979,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             let maturityE8s = neuron.maturity_e8s_equivalent;
 
             // Check threshold
-            switch (collectMaturityThresholdE8s) {
+            switch (settings.thresholdE8s) {
                 case (?threshold) {
                     if (maturityE8s < threshold) {
                         return #Done; // Below threshold, skip
@@ -1935,7 +1994,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             };
 
             // Determine destination
-            let destAccount: ?T.Account = switch (collectMaturityDestination) {
+            let destAccount: ?T.Account = switch (settings.destination) {
                 case (?acct) { ?acct };
                 case null {
                     // Bot's own account (canister principal, no subaccount)
@@ -1965,22 +2024,35 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         }
     };
 
-    // Helper: start a collect-maturity task for the neuron at _cm_index
-    func _cm_startCurrentTask() {
-        if (_cm_index < _cm_neurons.size()) {
-            let nid = _cm_neurons[_cm_index];
-            let taskFn = _cm_makeTaskFn(nid);
+    // Helper: start a collect-maturity task for the current neuron in instance state
+    func _cm_startCurrentTask(instanceId: Text) {
+        let st = _cm_getState(instanceId);
+        if (st.index < st.neurons.size()) {
+            let nid = st.neurons[st.index];
+            let taskFn = _cm_makeTaskFn(instanceId, nid);
             choreEngine.setPendingTask(
-                "collect-maturity",
-                "collect-" # Nat.toText(_cm_index),
+                instanceId,
+                "collect-" # Nat.toText(st.index),
                 taskFn
             );
         };
     };
 
-    // --- Distribute Funds chore transient state ---
-    transient var _df_lists: [DistributionTypes.DistributionList] = [];
-    transient var _df_index: Nat = 0;
+    // --- Distribute Funds chore transient state (per-instance) ---
+    transient var _df_state: [(Text, { lists: [DistributionTypes.DistributionList]; index: Nat })] = [];
+
+    func _df_getState(instanceId: Text): { lists: [DistributionTypes.DistributionList]; index: Nat } {
+        for ((id, s) in _df_state.vals()) { if (id == instanceId) return s };
+        { lists = []; index = 0 }
+    };
+
+    func _df_setState(instanceId: Text, s: { lists: [DistributionTypes.DistributionList]; index: Nat }) {
+        var found = false;
+        let updated = Array.map<(Text, { lists: [DistributionTypes.DistributionList]; index: Nat }), (Text, { lists: [DistributionTypes.DistributionList]; index: Nat })>(
+            _df_state, func((id, old)) { if (id == instanceId) { found := true; (id, s) } else { (id, old) } }
+        );
+        if (found) { _df_state := updated } else { _df_state := Array.append(_df_state, [(instanceId, s)]) };
+    };
 
     // Helper: create a task function that distributes funds for a single distribution list
     func _df_makeTaskFn(list: DistributionTypes.DistributionList): () -> async BotChoreTypes.TaskAction {
@@ -2097,13 +2169,14 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         }
     };
 
-    // Helper: start a distribute-funds task for the list at _df_index
-    func _df_startCurrentTask() {
-        if (_df_index < _df_lists.size()) {
-            let list = _df_lists[_df_index];
+    // Helper: start a distribute-funds task for the current list in instance state
+    func _df_startCurrentTask(instanceId: Text) {
+        let st = _df_getState(instanceId);
+        if (st.index < st.lists.size()) {
+            let list = st.lists[st.index];
             let taskFn = _df_makeTaskFn(list);
             choreEngine.setPendingTask(
-                "distribute-funds",
+                instanceId,
                 "dist-" # Nat.toText(list.id),
                 taskFn
             );
@@ -2226,6 +2299,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             defaultMaxIntervalSeconds = null; // No randomization for collect maturity
             defaultTaskTimeoutSeconds = 300; // 5 minutes per neuron
             conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
+                let instanceId = ctx.choreId;
                 // If a task is still running, just poll again
                 if (ctx.isTaskRunning) {
                     return #ContinueIn(10);
@@ -2242,26 +2316,28 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                                 case null {};
                             };
                         };
-                        _cm_neurons := Buffer.toArray(neuronIds);
-                        _cm_index := 0;
+                        _cm_setState(instanceId, { neurons = Buffer.toArray(neuronIds); index = 0 });
 
-                        if (_cm_neurons.size() == 0) {
+                        let st = _cm_getState(instanceId);
+                        if (st.neurons.size() == 0) {
                             return #Done; // No neurons to process
                         };
 
                         // Start first task and poll
-                        _cm_startCurrentTask();
+                        _cm_startCurrentTask(instanceId);
                         return #ContinueIn(10);
                     };
                     case (?_lastResult) {
                         // Previous task completed — advance to next neuron
-                        _cm_index += 1;
-                        if (_cm_index >= _cm_neurons.size()) {
+                        let st = _cm_getState(instanceId);
+                        let nextIdx = st.index + 1;
+                        _cm_setState(instanceId, { st with index = nextIdx });
+                        if (nextIdx >= st.neurons.size()) {
                             return #Done; // All neurons processed
                         };
 
                         // Start next task and poll
-                        _cm_startCurrentTask();
+                        _cm_startCurrentTask(instanceId);
                         return #ContinueIn(10);
                     };
                 };
@@ -2277,6 +2353,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             defaultMaxIntervalSeconds = null; // No randomization for distribution
             defaultTaskTimeoutSeconds = 600; // 10 minutes per distribution list
             conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
+                let instanceId = ctx.choreId;
                 // If a task is still running, just poll again
                 if (ctx.isTaskRunning) {
                     return #ContinueIn(10);
@@ -2284,27 +2361,29 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
                 switch (ctx.lastCompletedTask) {
                     case null {
-                        // First invocation: snapshot current distribution lists
-                        _df_lists := distributionLists;
-                        _df_index := 0;
+                        // First invocation: snapshot distribution lists for this instance
+                        let ds = getDistSettings(instanceId);
+                        _df_setState(instanceId, { lists = ds.lists; index = 0 });
 
-                        if (_df_lists.size() == 0) {
+                        if (ds.lists.size() == 0) {
                             return #Done; // No distribution lists configured
                         };
 
                         // Start first task and poll
-                        _df_startCurrentTask();
+                        _df_startCurrentTask(instanceId);
                         return #ContinueIn(10);
                     };
                     case (?_lastResult) {
                         // Previous task completed — advance to next list
-                        _df_index += 1;
-                        if (_df_index >= _df_lists.size()) {
+                        let st = _df_getState(instanceId);
+                        let nextIdx = st.index + 1;
+                        _df_setState(instanceId, { st with index = nextIdx });
+                        if (nextIdx >= st.lists.size()) {
                             return #Done; // All lists processed
                         };
 
                         // Start next task and poll
-                        _df_startCurrentTask();
+                        _df_startCurrentTask(instanceId);
                         return #ContinueIn(10);
                     };
                 };

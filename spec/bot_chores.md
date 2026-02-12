@@ -766,15 +766,27 @@ The ICP Staking Bot (`sneed_icp_neuron_manager`) uses the Bot Chores framework t
   DistributionListInput = { /* same as DistributionList but without id */ };
   ```
 
-- **Stable Variables**:
-  - `distributionLists: [DistributionList]` — the configured distribution lists.
-  - `nextDistributionListId: Nat` — auto-incrementing ID counter.
+- **Stable Variables** (per-instance):
+  - `distributionSettings: [(Text, { lists: [DistributionList]; nextListId: Nat })]` — per-instance distribution lists keyed by instanceId.
+  - `collectMaturitySettings: [(Text, { thresholdE8s: ?Nat64; destination: ?Account })]` — per-instance collect-maturity settings keyed by instanceId.
 
-- **API Methods**:
-  - `getDistributionLists() -> [DistributionList]` (query, ViewChores)
-  - `addDistributionList(input: DistributionListInput) -> Nat` (ManageChores, returns assigned ID)
-  - `updateDistributionList(id: Nat, input: DistributionListInput)` (ManageChores)
-  - `removeDistributionList(id: Nat)` (ManageChores)
+- **API Methods** (all take instanceId as first param):
+  - `getDistributionLists(instanceId: Text) -> [DistributionList]` (query, ViewChores)
+  - `addDistributionList(instanceId: Text, input: DistributionListInput) -> Nat` (ConfigureDistribution)
+  - `updateDistributionList(instanceId: Text, id: Nat, input: DistributionListInput)` (ConfigureDistribution)
+  - `removeDistributionList(instanceId: Text, id: Nat)` (ConfigureDistribution)
+  - `getCollectMaturitySettings(instanceId: Text) -> { thresholdE8s: ?Nat64; destination: ?Account }` (query, ViewChores)
+  - `setCollectMaturityThreshold(instanceId: Text, thresholdE8s: ?Nat64)` (ConfigureCollectMaturity)
+  - `setCollectMaturityDestination(instanceId: Text, destination: ?Account)` (ConfigureCollectMaturity)
+
+- **Instance Management API**:
+  - `createChoreInstance(typeId: Text, instanceId: Text, instanceLabel: Text) -> Bool`
+  - `deleteChoreInstance(instanceId: Text) -> Bool`
+  - `renameChoreInstance(instanceId: Text, newLabel: Text) -> Bool`
+  - `listChoreInstances(typeIdFilter: ?Text) -> [(Text, ChoreInstanceInfo)]`
+
+- **Scheduling API**:
+  - `setChoreNextRun(choreId: Text, timestampNanos: Int)` — set the exact next scheduled run time for a chore instance.
 
 - **Frontend**: The "Distribute Funds" chore tab includes a full distribution list management interface:
   - View all lists with token, threshold, max amount, and target summary.
@@ -792,3 +804,23 @@ The ICP Staking Bot (`sneed_icp_neuron_manager`) uses the Bot Chores framework t
 | 1 | **Scheduler** | Universally understood — it schedules recurring events on a timetable. |
 | 2 | **Conductor** | Evokes orchestration — like a musical conductor directing an ensemble of tasks. Distinctive enough to avoid confusion with generic programming terms. |
 | 3 | **Task** | Clear and simple — the unit of actual work being performed. |
+
+---
+
+## Work Log: Per-Instance Chore Settings Migration
+
+### Verified Complete (backend):
+1. **Stable vars** — Global `collectMaturityThresholdE8s`, `collectMaturityDestination`, `distributionLists`, `nextDistributionListId` replaced with per-instance keyed maps: `collectMaturitySettings: [(Text, { thresholdE8s: ?Nat64; destination: ?T.Account })]` and `distributionSettings: [(Text, { lists: [DistributionList]; nextListId: Nat })]`.
+2. **Helpers** — `getCmSettings`/`setCmSettings`/`getDistSettings`/`setDistSettings` all take `instanceId` and do upsert logic.
+3. **API endpoints** — All collect-maturity and distribution APIs (`getCollectMaturitySettings`, `setCollectMaturityThreshold`, `setCollectMaturityDestination`, `getDistributionLists`, `addDistributionList`, `updateDistributionList`, `removeDistributionList`) accept `instanceId: Text` as first param.
+4. **Conductor callbacks** — Both collect-maturity and distribute-funds conductors use `let instanceId = ctx.choreId` and call per-instance helpers.
+5. **Transient state** — `_cm_state` and `_df_state` are per-instance `[(Text, {...})]` arrays with `_cm_getState`/`_cm_setState`/`_df_getState`/`_df_setState` helpers. `_cm_startCurrentTask(instanceId)` and `_df_startCurrentTask(instanceId)` both take instanceId and use `choreEngine.setPendingTask(instanceId, ...)`.
+
+### Verified Complete (engine + canister API):
+6. **setNextScheduledRun** — `BotChoreEngine.mo` has `setNextScheduledRun<system>(choreId, timestampNanos)` at line 571. Canister API has `setChoreNextRun(choreId, timestampNanos)` at line 1432. Both done.
+
+### Verified Complete (frontend):
+7. **Frontend multi-instance** — "+" button for `collect-maturity` and `distribute-funds` types both enabled. Instance create/delete/rename UI working.
+8. **Frontend API calls** — All collect-maturity and distribution API calls pass `chore.choreId` as instanceId. Settings are loaded per-instance into `cmSettingsMap` and `distListsMap`. Date/time picker for `setChoreNextRun` added inline next to "Next Scheduled Run" display.
+9. **Candid declarations** — `.did`, `.did.js`, `.did.d.ts` updated via `dfx generate` for all changed API signatures.
+10. **Spec** — Updated with per-instance settings pattern and `setNextScheduledRun` documentation.

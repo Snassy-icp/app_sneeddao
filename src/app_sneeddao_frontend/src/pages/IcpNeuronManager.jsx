@@ -338,13 +338,9 @@ function IcpNeuronManager() {
     const [newInstanceLabel, setNewInstanceLabel] = useState('');
     const [renamingInstance, setRenamingInstance] = useState(null); // instanceId being renamed
     const [renameLabel, setRenameLabel] = useState('');
-    // Collect-Maturity chore-specific settings
-    const [cmThresholdE8s, setCmThresholdE8s] = useState(null); // null = no threshold
-    const [cmDestination, setCmDestination] = useState(null);   // null = bot's own account
-    const [cmDestPrincipalInput, setCmDestPrincipalInput] = useState(''); // PrincipalInput value
-    const [cmDestSubaccount, setCmDestSubaccount] = useState(null); // Uint8Array|null
-    // Distribution chore settings
-    const [distributionLists, setDistributionLists] = useState([]);
+    // Per-instance chore-specific settings (keyed by instanceId)
+    const [cmSettingsMap, setCmSettingsMap] = useState({}); // { instanceId: { thresholdE8s, destination, principalInput, subaccount } }
+    const [distListsMap, setDistListsMap] = useState({}); // { instanceId: [DistributionList] }
     const [editingDistList, setEditingDistList] = useState(null); // working copy being edited
     const [editingDistListId, setEditingDistListId] = useState(null); // null = adding new, number = editing existing
     const [distTokenPrices, setDistTokenPrices] = useState({}); // { canisterId: usdPrice }
@@ -1230,29 +1226,32 @@ function IcpNeuronManager() {
             setChoreStatuses(statuses);
             setChoreConfigs(configs);
 
-            // Load chore-specific settings (best-effort, don't block on failure)
-            try {
-                const cmSettings = await manager.getCollectMaturitySettings();
-                setCmThresholdE8s(cmSettings.thresholdE8s.length > 0 ? cmSettings.thresholdE8s[0] : null);
-                const dest = cmSettings.destination.length > 0 ? cmSettings.destination[0] : null;
-                setCmDestination(dest);
-                if (dest) {
-                    setCmDestPrincipalInput(dest.owner.toString());
-                    const sub = dest.subaccount && dest.subaccount.length > 0 ? new Uint8Array(dest.subaccount[0]) : null;
-                    setCmDestSubaccount(sub && !sub.every(b => b === 0) ? sub : null);
-                } else {
-                    setCmDestPrincipalInput('');
-                    setCmDestSubaccount(null);
+            // Load per-instance chore-specific settings (best-effort)
+            const newCmMap = {};
+            const newDistMap = {};
+            for (const s of statuses) {
+                const tid = s.choreTypeId || s.choreId;
+                const iid = s.choreId;
+                try {
+                    if (tid === 'collect-maturity') {
+                        const cmSettings = await manager.getCollectMaturitySettings(iid);
+                        const dest = cmSettings.destination.length > 0 ? cmSettings.destination[0] : null;
+                        newCmMap[iid] = {
+                            thresholdE8s: cmSettings.thresholdE8s.length > 0 ? cmSettings.thresholdE8s[0] : null,
+                            destination: dest,
+                            principalInput: dest ? dest.owner.toString() : '',
+                            subaccount: dest?.subaccount?.length > 0 ? (new Uint8Array(dest.subaccount[0]).every(b => b === 0) ? null : new Uint8Array(dest.subaccount[0])) : null,
+                        };
+                    } else if (tid === 'distribute-funds') {
+                        const lists = await manager.getDistributionLists(iid);
+                        newDistMap[iid] = lists;
+                    }
+                } catch (e) {
+                    console.warn(`Could not load settings for ${iid}:`, e);
                 }
-            } catch (e) {
-                console.warn('Could not load collect-maturity settings:', e);
             }
-            try {
-                const lists = await manager.getDistributionLists();
-                setDistributionLists(lists);
-            } catch (e) {
-                console.warn('Could not load distribution lists:', e);
-            }
+            setCmSettingsMap(newCmMap);
+            setDistListsMap(newDistMap);
         } catch (err) {
             console.error('Error loading chore data:', err);
             if (!silent) {
@@ -1276,10 +1275,11 @@ function IcpNeuronManager() {
         fetchOfficialVersions();
     }, [isAuthenticated, identity, canisterId, fetchManagerData, fetchKnownNeurons, fetchCanisterStatus, fetchConversionRate, fetchOfficialVersions, loadChoreData]);
 
-    // Fetch USD prices for distribution list tokens
+    // Fetch USD prices for distribution list tokens (across all instances)
     useEffect(() => {
-        if (distributionLists.length === 0) return;
-        const uniqueTokens = [...new Set(distributionLists.map(l => l.tokenLedgerCanisterId?.toString?.() || l.tokenLedgerCanisterId))];
+        const allLists = Object.values(distListsMap).flat();
+        if (allLists.length === 0) return;
+        const uniqueTokens = [...new Set(allLists.map(l => l.tokenLedgerCanisterId?.toString?.() || l.tokenLedgerCanisterId))];
         uniqueTokens.forEach(async (cid) => {
             if (distTokenPrices[cid] !== undefined) return; // Already fetched or fetching
             try {
@@ -1290,7 +1290,7 @@ function IcpNeuronManager() {
                 setDistTokenPrices(prev => ({ ...prev, [cid]: null }));
             }
         });
-    }, [distributionLists, getTokenInfo]);
+    }, [distListsMap, getTokenInfo]);
 
     // Fetch chore data when switching to the chores tab
     useEffect(() => {
@@ -4950,7 +4950,7 @@ function IcpNeuronManager() {
                             )}
 
                             {/* Single-instance type: show + button inline if it's a multi-capable type */}
-                            {!hasMultiple && activeTypeId === 'distribute-funds' && (
+                            {!hasMultiple && ['distribute-funds', 'collect-maturity'].includes(activeTypeId) && (
                             <div style={{ marginBottom: '8px' }}>
                                 <button
                                     style={{
@@ -5112,7 +5112,58 @@ function IcpNeuronManager() {
                                                 </div>
                                                 <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
                                                     <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Next Scheduled Run</div>
-                                                    <div style={{ fontSize: '0.85rem', color: theme.colors.primaryText, fontWeight: '500' }}>{formatTime(chore.nextScheduledRunAt)}</div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                        <div style={{ fontSize: '0.85rem', color: theme.colors.primaryText, fontWeight: '500' }}>{formatTime(chore.nextScheduledRunAt)}</div>
+                                                        {chore.enabled && (
+                                                            <button
+                                                                style={{ background: 'none', border: `1px solid ${theme.colors.border}`, borderRadius: '4px', fontSize: '0.65rem', color: theme.colors.secondaryText, cursor: 'pointer', padding: '2px 6px' }}
+                                                                title="Set next scheduled run time"
+                                                                onClick={() => {
+                                                                    const el = document.getElementById(`next-run-picker-${chore.choreId}`);
+                                                                    if (el) { el.style.display = el.style.display === 'none' ? 'flex' : 'none'; }
+                                                                }}
+                                                            >Set</button>
+                                                        )}
+                                                    </div>
+                                                    {chore.enabled && (
+                                                        <div id={`next-run-picker-${chore.choreId}`} style={{ display: 'none', marginTop: '6px', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                            <input
+                                                                type="datetime-local"
+                                                                id={`next-run-input-${chore.choreId}`}
+                                                                style={{ ...inputStyle, fontSize: '0.75rem', width: '200px' }}
+                                                                defaultValue={(() => {
+                                                                    const ns = chore.nextScheduledRunAt?.length > 0 ? Number(chore.nextScheduledRunAt[0]) : Date.now() * 1_000_000;
+                                                                    const d = new Date(ns / 1_000_000);
+                                                                    return d.toISOString().slice(0, 16);
+                                                                })()}
+                                                            />
+                                                            <button
+                                                                style={{ ...buttonStyle, fontSize: '0.7rem', padding: '4px 10px', background: `${neuronPrimary}10`, color: neuronPrimary, border: `1px solid ${neuronPrimary}25` }}
+                                                                disabled={savingChore}
+                                                                onClick={async () => {
+                                                                    const input = document.getElementById(`next-run-input-${chore.choreId}`);
+                                                                    if (!input?.value) return;
+                                                                    const tsNanos = BigInt(new Date(input.value).getTime()) * 1_000_000n;
+                                                                    setSavingChore(true);
+                                                                    setChoreError('');
+                                                                    try {
+                                                                        const agent = getAgent();
+                                                                        if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') await agent.fetchRootKey();
+                                                                        const manager = createManagerActor(canisterId, { agent });
+                                                                        await manager.setChoreNextRun(chore.choreId, tsNanos);
+                                                                        setChoreSuccess('Next run time updated.');
+                                                                        const el = document.getElementById(`next-run-picker-${chore.choreId}`);
+                                                                        if (el) el.style.display = 'none';
+                                                                        await loadChoreData();
+                                                                    } catch (err) {
+                                                                        setChoreError('Failed to set next run: ' + err.message);
+                                                                    } finally {
+                                                                        setSavingChore(false);
+                                                                    }
+                                                                }}
+                                                            >Save</button>
+                                                        </div>
+                                                    )}
                                                 </div>
                                                 <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
                                                     <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Last Completed</div>
@@ -5463,8 +5514,14 @@ function IcpNeuronManager() {
                                             </>
                                             )}
 
-                                            {/* Collect-Maturity specific settings */}
-                                            {(chore.choreTypeId || chore.choreId) === 'collect-maturity' && hasPermission('ConfigureCollectMaturity') && (
+                                            {/* Collect-Maturity specific settings (per-instance) */}
+                                            {(chore.choreTypeId || chore.choreId) === 'collect-maturity' && hasPermission('ConfigureCollectMaturity') && (() => {
+                                                const cmS = cmSettingsMap[chore.choreId] || {};
+                                                const cmThreshold = cmS.thresholdE8s;
+                                                const cmDest = cmS.destination;
+                                                const cmPrincipal = cmS.principalInput || '';
+                                                const cmSub = cmS.subaccount;
+                                                return (
                                             <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: `1px solid ${theme.colors.border}` }}>
                                                 <h4 style={{ color: theme.colors.primaryText, margin: '0 0 12px 0', fontSize: '0.9rem', fontWeight: '600' }}>
                                                     Collection Settings
@@ -5480,9 +5537,9 @@ function IcpNeuronManager() {
                                                             type="text"
                                                             inputMode="decimal"
                                                             placeholder="No minimum"
-                                                            defaultValue={cmThresholdE8s !== null ? Number(cmThresholdE8s) / 1e8 : ''}
+                                                            defaultValue={cmThreshold != null ? Number(cmThreshold) / 1e8 : ''}
                                                             style={{ ...inputStyle, width: '140px' }}
-                                                            id="cm-threshold-input"
+                                                            id={`cm-threshold-input-${chore.choreId}`}
                                                         />
                                                         <button
                                                             style={{
@@ -5494,7 +5551,7 @@ function IcpNeuronManager() {
                                                             }}
                                                             disabled={savingChore}
                                                             onClick={async () => {
-                                                                const input = document.getElementById('cm-threshold-input');
+                                                                const input = document.getElementById(`cm-threshold-input-${chore.choreId}`);
                                                                 const val = input?.value?.trim();
                                                                 const thresholdOpt = (!val || val === '' || parseFloat(val) <= 0)
                                                                     ? []
@@ -5508,7 +5565,7 @@ function IcpNeuronManager() {
                                                                         await agent.fetchRootKey();
                                                                     }
                                                                     const manager = createManagerActor(canisterId, { agent });
-                                                                    await manager.setCollectMaturityThreshold(thresholdOpt);
+                                                                    await manager.setCollectMaturityThreshold(chore.choreId, thresholdOpt);
                                                                     setChoreSuccess(thresholdOpt.length > 0
                                                                         ? `Threshold set to ${parseFloat(val)} ICP.`
                                                                         : 'Threshold removed — will collect any amount.');
@@ -5524,8 +5581,8 @@ function IcpNeuronManager() {
                                                         </button>
                                                     </div>
                                                     <p style={{ margin: '4px 0 0', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
-                                                        {cmThresholdE8s !== null
-                                                            ? `Current: ${(Number(cmThresholdE8s) / 1e8).toFixed(4)} ICP`
+                                                        {cmThreshold != null
+                                                            ? `Current: ${(Number(cmThreshold) / 1e8).toFixed(4)} ICP`
                                                             : 'No minimum set — will collect any available maturity.'
                                                         }
                                                         {' '}Leave empty or 0 to collect whenever maturity is available.
@@ -5540,33 +5597,34 @@ function IcpNeuronManager() {
                                                     <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
                                                         <div style={{ flex: 1, minWidth: '220px', maxWidth: '360px' }}>
                                                             <PrincipalInput
-                                                                value={cmDestPrincipalInput}
+                                                                value={cmPrincipal}
                                                                 onChange={(val) => {
                                                                     // Check if user entered a long account string
+                                                                    let newPrincipal = val;
+                                                                    let newSub = cmSub;
                                                                     if (val && val.includes('-') && val.length > 30) {
                                                                         try {
                                                                             const decoded = decodeIcrcAccount(val);
                                                                             if (decoded && decoded.owner) {
-                                                                                setCmDestPrincipalInput(decoded.owner.toString());
+                                                                                newPrincipal = decoded.owner.toString();
                                                                                 const sub = decoded.subaccount ? new Uint8Array(decoded.subaccount) : null;
-                                                                                setCmDestSubaccount(sub && !sub.every(b => b === 0) ? sub : null);
-                                                                                return;
+                                                                                newSub = sub && !sub.every(b => b === 0) ? sub : null;
                                                                             }
                                                                         } catch (_) { /* not a valid encoded account, treat as principal */ }
                                                                     }
-                                                                    setCmDestPrincipalInput(val);
+                                                                    setCmSettingsMap(prev => ({ ...prev, [chore.choreId]: { ...prev[chore.choreId], principalInput: newPrincipal, subaccount: newSub } }));
                                                                 }}
                                                                 placeholder="Bot's own account (default)"
                                                                 inputStyle={{ fontFamily: 'monospace', fontSize: '0.75rem' }}
                                                             />
-                                                            {cmDestSubaccount && (
+                                                            {cmSub && (
                                                                 <div style={{ marginTop: '4px', display: 'flex', gap: '4px', alignItems: 'center', flexWrap: 'wrap' }}>
                                                                     <span style={{ fontSize: '0.7rem', color: theme.colors.mutedText }}>Subaccount:</span>
                                                                     <code style={{ fontSize: '0.65rem', color: theme.colors.secondaryText, background: `${theme.colors.border}40`, padding: '2px 6px', borderRadius: '4px', wordBreak: 'break-all' }}>
-                                                                        {Array.from(cmDestSubaccount).map(b => b.toString(16).padStart(2, '0')).join('')}
+                                                                        {Array.from(cmSub).map(b => b.toString(16).padStart(2, '0')).join('')}
                                                                     </code>
                                                                     <button
-                                                                        onClick={() => setCmDestSubaccount(null)}
+                                                                        onClick={() => setCmSettingsMap(prev => ({ ...prev, [chore.choreId]: { ...prev[chore.choreId], subaccount: null } }))}
                                                                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: theme.colors.mutedText, fontSize: '0.7rem', padding: '0 4px' }}
                                                                         title="Clear subaccount"
                                                                     >✕</button>
@@ -5584,7 +5642,7 @@ function IcpNeuronManager() {
                                                             }}
                                                             disabled={savingChore}
                                                             onClick={async () => {
-                                                                const principalStr = cmDestPrincipalInput?.trim();
+                                                                const principalStr = cmPrincipal?.trim();
                                                                 setSavingChore(true);
                                                                 setChoreError('');
                                                                 setChoreSuccess('');
@@ -5594,8 +5652,8 @@ function IcpNeuronManager() {
                                                                         const { Principal } = await import('@dfinity/principal');
                                                                         const owner = Principal.fromText(principalStr);
                                                                         let subaccount = [];
-                                                                        if (cmDestSubaccount && !cmDestSubaccount.every(b => b === 0)) {
-                                                                            subaccount = [cmDestSubaccount];
+                                                                        if (cmSub && !cmSub.every(b => b === 0)) {
+                                                                            subaccount = [cmSub];
                                                                         }
                                                                         destOpt = [{ owner, subaccount }];
                                                                     }
@@ -5604,7 +5662,7 @@ function IcpNeuronManager() {
                                                                         await agent.fetchRootKey();
                                                                     }
                                                                     const manager = createManagerActor(canisterId, { agent });
-                                                                    await manager.setCollectMaturityDestination(destOpt);
+                                                                    await manager.setCollectMaturityDestination(chore.choreId, destOpt);
                                                                     setChoreSuccess(destOpt.length > 0
                                                                         ? `Destination set to ${principalStr}.`
                                                                         : "Destination reset — maturity will be sent to the bot's own account.");
@@ -5620,10 +5678,10 @@ function IcpNeuronManager() {
                                                         </button>
                                                     </div>
                                                     <p style={{ margin: '4px 0 0', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
-                                                        {cmDestination
+                                                        {cmDest
                                                             ? (() => {
-                                                                const ownerStr = cmDestination.owner.toString();
-                                                                const hasSub = cmDestination.subaccount && cmDestination.subaccount.length > 0 && !new Uint8Array(cmDestination.subaccount[0]).every(b => b === 0);
+                                                                const ownerStr = cmDest.owner.toString();
+                                                                const hasSub = cmDest.subaccount && cmDest.subaccount.length > 0 && !new Uint8Array(cmDest.subaccount[0]).every(b => b === 0);
                                                                 return `Current: ${ownerStr}${hasSub ? ' (with subaccount)' : ''}`;
                                                             })()
                                                             : "Default: Bot's own account (canister principal, no subaccount)."
@@ -5632,14 +5690,17 @@ function IcpNeuronManager() {
                                                     </p>
                                                 </div>
                                             </div>
-                                            )}
+                                            );
+                                            })()}
 
-                                            {/* Distribute-Funds specific settings: Distribution Lists */}
-                                            {(chore.choreTypeId || chore.choreId) === 'distribute-funds' && hasPermission('ConfigureDistribution') && (
+                                            {/* Distribute-Funds specific settings: Distribution Lists (per-instance) */}
+                                            {(chore.choreTypeId || chore.choreId) === 'distribute-funds' && hasPermission('ConfigureDistribution') && (() => {
+                                                const distLists = distListsMap[chore.choreId] || [];
+                                                return (
                                             <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: `1px solid ${theme.colors.border}` }}>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                                                     <h4 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '0.9rem', fontWeight: '600' }}>
-                                                        Distribution Lists ({distributionLists.length})
+                                                        Distribution Lists ({distLists.length})
                                                     </h4>
                                                     <button
                                                         style={{
@@ -5667,14 +5728,14 @@ function IcpNeuronManager() {
                                                     </button>
                                                 </div>
 
-                                                {distributionLists.length === 0 && editingDistList === null && (
+                                                {distLists.length === 0 && editingDistList === null && (
                                                     <p style={{ fontSize: '0.8rem', color: theme.colors.secondaryText, fontStyle: 'italic' }}>
                                                         No distribution lists configured. Add one to start distributing funds.
                                                     </p>
                                                 )}
 
                                                 {/* Existing lists */}
-                                                {distributionLists.map((list) => {
+                                                {distLists.map((list) => {
                                                     const isEditing = editingDistListId === Number(list.id) && editingDistList !== null;
                                                     if (isEditing) return null;
 
@@ -5742,7 +5803,7 @@ function IcpNeuronManager() {
                                                                                 const agent = getAgent();
                                                                                 if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') await agent.fetchRootKey();
                                                                                 const manager = createManagerActor(canisterId, { agent });
-                                                                                await manager.removeDistributionList(BigInt(list.id));
+                                                                                await manager.removeDistributionList(chore.choreId, BigInt(list.id));
                                                                                 setChoreSuccess('Distribution list removed.');
                                                                                 await loadChoreData();
                                                                             } catch (err) {
@@ -6161,10 +6222,10 @@ function IcpNeuronManager() {
                                                                         const manager = createManagerActor(canisterId, { agent });
 
                                                                         if (editingDistListId !== null) {
-                                                                            await manager.updateDistributionList(BigInt(editingDistListId), input);
+                                                                            await manager.updateDistributionList(chore.choreId, BigInt(editingDistListId), input);
                                                                             setChoreSuccess(`Distribution list "${input.name}" updated.`);
                                                                         } else {
-                                                                            const newId = await manager.addDistributionList(input);
+                                                                            const newId = await manager.addDistributionList(chore.choreId, input);
                                                                             setChoreSuccess(`Distribution list "${input.name}" created (ID: ${Number(newId)}).`);
                                                                         }
                                                                         setEditingDistList(null);
@@ -6185,7 +6246,8 @@ function IcpNeuronManager() {
                                                     </div>
                                                 )}
                                             </div>
-                                            )}
+                                            );
+                                            })()}
                                         </div>
                                         )}
 
@@ -6259,7 +6321,7 @@ function IcpNeuronManager() {
                                 );
                             })()}
                             </>
-                                );
+                            );
                             })()}
 
                             {choreStatuses.length === 0 && !loadingChores && (
@@ -6274,8 +6336,6 @@ function IcpNeuronManager() {
                             )}
                             </>
                             )}
-                        </div>
-                        )}
 
                                 </div>
                             )}
