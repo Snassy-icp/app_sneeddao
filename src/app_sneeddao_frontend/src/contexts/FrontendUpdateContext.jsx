@@ -68,17 +68,26 @@ export function FrontendUpdateProvider({ children }) {
     }, [performRefresh]);
 
     const checkForUpdates = useCallback(async () => {
-        if (!isRunningOnCanister()) return;
+        if (!isRunningOnCanister()) {
+            console.log('[FrontendUpdate] Skipping check — not running on canister');
+            return;
+        }
 
+        console.log('[FrontendUpdate] Checking for updates...');
         const currentHash = await getFrontendCanisterModuleHash();
-        if (!currentHash) return;
+        if (!currentHash) {
+            console.warn('[FrontendUpdate] Could not get buildId from version.json — skipping check');
+            return;
+        }
 
         if (initialHashRef.current === null) {
             initialHashRef.current = currentHash;
+            console.log('[FrontendUpdate] Stored initial buildId:', currentHash);
             return;
         }
 
         if (currentHash !== initialHashRef.current) {
+            console.log('[FrontendUpdate] New version detected! old:', initialHashRef.current, 'new:', currentHash);
             setHasUpdateAvailable(true);
 
             if (checkIntervalRef.current) {
@@ -102,6 +111,8 @@ export function FrontendUpdateProvider({ children }) {
                     });
                 }, 1000);
             }
+        } else {
+            console.log('[FrontendUpdate] No change (buildId still:', currentHash + ')');
         }
     }, [performRefresh, settings.autoUpdateEnabled, settings.countdownSec]);
 
@@ -158,6 +169,8 @@ export function FrontendUpdateProvider({ children }) {
     useEffect(() => {
         if (!isRunningOnCanister()) return;
         if (hasUpdateAvailable) return;
+
+        console.log('[FrontendUpdate] Starting update checker, interval:', settings.checkIntervalSec, 'sec');
 
         const runCheck = () => {
             checkForUpdates();

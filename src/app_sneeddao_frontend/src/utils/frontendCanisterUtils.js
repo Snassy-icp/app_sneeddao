@@ -29,13 +29,17 @@ export const getFrontendCanisterModuleHash = async () => {
     try {
         const url = `${window.location.origin}/version.json?t=${Date.now()}`;
         const res = await fetch(url, { cache: 'no-store' });
-        if (!res.ok) return null;
+        if (!res.ok) {
+            console.warn('[FrontendUpdate] version.json fetch failed with status:', res.status, res.statusText);
+            return null;
+        }
         const data = await res.json();
         const buildId = data?.buildId;
         if (buildId) {
             console.log('[FrontendUpdate] Fetched version.json -> buildId:', buildId);
             return buildId;
         }
+        console.warn('[FrontendUpdate] version.json has no buildId field. Data:', JSON.stringify(data));
         return null;
     } catch (error) {
         console.warn('[FrontendUpdate] Failed to fetch version.json:', error);
