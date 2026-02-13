@@ -2019,7 +2019,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             let result = await refreshStakeInternal(nid);
             switch (result) {
                 case (#Ok) {
-                    logEngine.logDebug("chore:refresh-stake", "Refresh stake succeeded for neuron " # nidText, null, [("neuronId", nidText)]);
+                    logEngine.logInfo("chore:refresh-stake", "Refreshed stake for neuron " # nidText, null, [("neuronId", nidText), ("result", "success")]);
                     #Done
                 };
                 case (#Err(#GovernanceError(e))) {
@@ -2110,7 +2110,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                 };
             };
 
-            logEngine.logDebug("chore:confirm-following", "Neuron " # nidText # " done: " # Nat.toText(confirmedCount) # "/" # Nat.toText(numTopics) # " topics confirmed", null, [("neuronId", nidText), ("confirmed", Nat.toText(confirmedCount)), ("total", Nat.toText(numTopics))]);
+            logEngine.logInfo("chore:confirm-following", "Confirmed " # Nat.toText(confirmedCount) # "/" # Nat.toText(numTopics) # " topics for neuron " # nidText, null, [("neuronId", nidText), ("topicsConfirmed", Nat.toText(confirmedCount)), ("topicsTotal", Nat.toText(numTopics))]);
             #Done
         }
     };
@@ -2167,7 +2167,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             switch (settings.thresholdE8s) {
                 case (?threshold) {
                     if (maturityE8s < threshold) {
-                        logEngine.logDebug(src, "Neuron " # nidText # " below threshold (" # Nat64.toText(maturityE8s) # " < " # Nat64.toText(threshold) # " e8s), skipping", null, [("neuronId", nidText), ("maturity_e8s", Nat64.toText(maturityE8s)), ("threshold_e8s", Nat64.toText(threshold))]);
+                        logEngine.logInfo(src, "Neuron " # nidText # " maturity below threshold, skipping (" # Nat64.toText(maturityE8s) # " < " # Nat64.toText(threshold) # " e8s)", null, [("neuronId", nidText), ("maturity_e8s", Nat64.toText(maturityE8s)), ("threshold_e8s", Nat64.toText(threshold)), ("action", "skipped")]);
                         return #Done; // Below threshold, skip
                     };
                 };
@@ -2176,7 +2176,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
             // Nothing to collect
             if (maturityE8s == 0) {
-                logEngine.logDebug(src, "Neuron " # nidText # " has zero maturity, skipping", null, [("neuronId", nidText)]);
+                logEngine.logInfo(src, "Neuron " # nidText # " has zero maturity, skipping", null, [("neuronId", nidText), ("maturity_e8s", "0"), ("action", "skipped")]);
                 return #Done;
             };
 
@@ -2211,7 +2211,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                     return #Error("Failed to disburse maturity: " # e.error_message);
                 };
                 case (?#DisburseMaturity(_)) {
-                    logEngine.logDebug(src, "Maturity disbursed successfully for neuron " # nidText, null, [("neuronId", nidText), ("maturity_e8s", Nat64.toText(maturityE8s))]);
+                    logEngine.logInfo(src, "Collected " # Nat64.toText(maturityE8s) # " e8s maturity from neuron " # nidText # " to " # destText, null, [("neuronId", nidText), ("maturity_e8s", Nat64.toText(maturityE8s)), ("destination", destText), ("action", "disbursed")]);
                     #Done
                 };
                 case null { #Error("No response from governance") };
@@ -2285,7 +2285,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
             // Check threshold
             if (balance < list.thresholdAmount) {
-                logEngine.logDebug(src, "List '" # listName # "' below threshold (" # Nat.toText(balance) # " < " # Nat.toText(list.thresholdAmount) # "), skipping", null, [("list", listName), ("balance", Nat.toText(balance)), ("threshold", Nat.toText(list.thresholdAmount))]);
+                logEngine.logInfo(src, "List '" # listName # "' balance below threshold, skipping (" # Nat.toText(balance) # " < " # Nat.toText(list.thresholdAmount) # ")", null, [("list", listName), ("balance", Nat.toText(balance)), ("threshold", Nat.toText(list.thresholdAmount)), ("ledger", ledgerText), ("action", "skipped")]);
                 return #Done;
             };
 
@@ -2377,11 +2377,11 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                                 case (#CreatedInFuture(_)) { "CreatedInFuture" };
                                 case (#TooOld) { "TooOld" };
                             };
-                            logEngine.logTrace(src, "Transfer failed to " # targetText # ": " # errMsg, null, [("list", listName), ("target", targetText), ("error", errMsg)]);
+                            logEngine.logWarning(src, "Transfer failed to " # targetText # ": " # errMsg, null, [("list", listName), ("target", targetText), ("error", errMsg), ("amount", Nat.toText(amount)), ("ledger", ledgerText)]);
                             transferErrors.add("Target " # Nat.toText(i) # ": " # errMsg);
                         };
                         case (#Ok(blockIdx)) {
-                            logEngine.logTrace(src, "Transfer succeeded to " # targetText # " (" # Nat.toText(amount) # ", block " # Nat.toText(blockIdx) # ")", null, [("list", listName), ("target", targetText), ("amount", Nat.toText(amount)), ("block", Nat.toText(blockIdx))]);
+                            logEngine.logInfo(src, "Transferred " # Nat.toText(amount) # " to " # targetText # " (block " # Nat.toText(blockIdx) # ")", null, [("list", listName), ("target", targetText), ("amount", Nat.toText(amount)), ("block", Nat.toText(blockIdx)), ("ledger", ledgerText)]);
                             successCount += 1;
                         };
                     };
@@ -2389,7 +2389,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                 i += 1;
             };
 
-            logEngine.logDebug(src, "List '" # listName # "' done: " # Nat.toText(successCount) # " succeeded, " # Nat.toText(transferErrors.size()) # " failed", null, [("list", listName), ("succeeded", Nat.toText(successCount)), ("failed", Nat.toText(transferErrors.size()))]);
+            logEngine.logInfo(src, "Distributed " # Nat.toText(distributableNet) # " from list '" # listName # "': " # Nat.toText(successCount) # " succeeded, " # Nat.toText(transferErrors.size()) # " failed", null, [("list", listName), ("amountDistributed", Nat.toText(distributableNet)), ("succeeded", Nat.toText(successCount)), ("failed", Nat.toText(transferErrors.size())), ("ledger", ledgerText)]);
 
             if (transferErrors.size() > 0) {
                 return #Error("Distribution '" # listName # "' completed with " # Nat.toText(transferErrors.size()) # " error(s): " # Text.join("; ", transferErrors.vals()));
@@ -2445,7 +2445,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                         _cf_neurons := Buffer.toArray(neuronIds);
                         _cf_index := 0;
 
-                        logEngine.logDebug("chore:confirm-following", "Found " # Nat.toText(_cf_neurons.size()) # " neurons to confirm followees for", null, [("neuronCount", Nat.toText(_cf_neurons.size()))]);
+                        logEngine.logInfo("chore:confirm-following", "Starting: found " # Nat.toText(_cf_neurons.size()) # " neurons to confirm followees for", null, [("neuronCount", Nat.toText(_cf_neurons.size()))]);
 
                         if (_cf_neurons.size() == 0) {
                             return #Done; // No neurons to process
@@ -2458,10 +2458,10 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                     case (?lastResult) {
                         // Previous task completed — advance to next neuron
                         // (continue even if the last task failed — best effort for remaining neurons)
-                        logEngine.logTrace("chore:confirm-following", "Neuron " # Nat.toText(_cf_index) # "/" # Nat.toText(_cf_neurons.size()) # " task done (success=" # Bool.toText(lastResult.succeeded) # ")", null, [("index", Nat.toText(_cf_index)), ("total", Nat.toText(_cf_neurons.size())), ("succeeded", Bool.toText(lastResult.succeeded))]);
+                        logEngine.logTrace("chore:confirm-following", "Neuron " # Nat.toText(_cf_index) # "/" # Nat.toText(_cf_neurons.size()) # " task done (success=" # (if (lastResult.succeeded) "true" else "false") # ")", null, [("index", Nat.toText(_cf_index)), ("total", Nat.toText(_cf_neurons.size())), ("succeeded", if (lastResult.succeeded) "true" else "false")]);
                         _cf_index += 1;
                         if (_cf_index >= _cf_neurons.size()) {
-                            logEngine.logDebug("chore:confirm-following", "All " # Nat.toText(_cf_neurons.size()) # " neurons processed", null, [("neuronCount", Nat.toText(_cf_neurons.size()))]);
+                            logEngine.logInfo("chore:confirm-following", "Completed: all " # Nat.toText(_cf_neurons.size()) # " neurons processed", null, [("neuronCount", Nat.toText(_cf_neurons.size()))]);
                             return #Done; // All neurons processed
                         };
 
@@ -2501,7 +2501,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                         _rs_neurons := Buffer.toArray(neuronIds);
                         _rs_index := 0;
 
-                        logEngine.logDebug("chore:refresh-stake", "Found " # Nat.toText(_rs_neurons.size()) # " neurons to refresh stake for", null, [("neuronCount", Nat.toText(_rs_neurons.size()))]);
+                        logEngine.logInfo("chore:refresh-stake", "Starting: found " # Nat.toText(_rs_neurons.size()) # " neurons to refresh stake for", null, [("neuronCount", Nat.toText(_rs_neurons.size()))]);
 
                         if (_rs_neurons.size() == 0) {
                             return #Done; // No neurons to process
@@ -2513,10 +2513,10 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                     };
                     case (?lastResult) {
                         // Previous task completed — advance to next neuron
-                        logEngine.logTrace("chore:refresh-stake", "Neuron " # Nat.toText(_rs_index) # "/" # Nat.toText(_rs_neurons.size()) # " task done (success=" # Bool.toText(lastResult.succeeded) # ")", null, [("index", Nat.toText(_rs_index)), ("total", Nat.toText(_rs_neurons.size())), ("succeeded", Bool.toText(lastResult.succeeded))]);
+                        logEngine.logTrace("chore:refresh-stake", "Neuron " # Nat.toText(_rs_index) # "/" # Nat.toText(_rs_neurons.size()) # " task done (success=" # (if (lastResult.succeeded) "true" else "false") # ")", null, [("index", Nat.toText(_rs_index)), ("total", Nat.toText(_rs_neurons.size())), ("succeeded", if (lastResult.succeeded) "true" else "false")]);
                         _rs_index += 1;
                         if (_rs_index >= _rs_neurons.size()) {
-                            logEngine.logDebug("chore:refresh-stake", "All " # Nat.toText(_rs_neurons.size()) # " neurons processed", null, [("neuronCount", Nat.toText(_rs_neurons.size()))]);
+                            logEngine.logInfo("chore:refresh-stake", "Completed: all " # Nat.toText(_rs_neurons.size()) # " neurons processed", null, [("neuronCount", Nat.toText(_rs_neurons.size()))]);
                             return #Done; // All neurons processed
                         };
 
@@ -2558,7 +2558,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                         _cm_setState(instanceId, { neurons = Buffer.toArray(neuronIds); index = 0 });
 
                         let st = _cm_getState(instanceId);
-                        logEngine.logDebug(src, "Found " # Nat.toText(st.neurons.size()) # " neurons to collect maturity from", null, [("neuronCount", Nat.toText(st.neurons.size()))]);
+                        logEngine.logInfo(src, "Starting: found " # Nat.toText(st.neurons.size()) # " neurons to collect maturity from", null, [("neuronCount", Nat.toText(st.neurons.size()))]);
 
                         if (st.neurons.size() == 0) {
                             return #Done; // No neurons to process
@@ -2571,11 +2571,11 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                     case (?lastResult) {
                         // Previous task completed — advance to next neuron
                         let st = _cm_getState(instanceId);
-                        logEngine.logTrace(src, "Neuron " # Nat.toText(st.index) # "/" # Nat.toText(st.neurons.size()) # " task done (success=" # Bool.toText(lastResult.succeeded) # ")", null, [("index", Nat.toText(st.index)), ("total", Nat.toText(st.neurons.size())), ("succeeded", Bool.toText(lastResult.succeeded))]);
+                        logEngine.logTrace(src, "Neuron " # Nat.toText(st.index) # "/" # Nat.toText(st.neurons.size()) # " task done (success=" # (if (lastResult.succeeded) "true" else "false") # ")", null, [("index", Nat.toText(st.index)), ("total", Nat.toText(st.neurons.size())), ("succeeded", if (lastResult.succeeded) "true" else "false")]);
                         let nextIdx = st.index + 1;
                         _cm_setState(instanceId, { st with index = nextIdx });
                         if (nextIdx >= st.neurons.size()) {
-                            logEngine.logDebug(src, "All " # Nat.toText(st.neurons.size()) # " neurons processed", null, [("neuronCount", Nat.toText(st.neurons.size()))]);
+                            logEngine.logInfo(src, "Completed: all " # Nat.toText(st.neurons.size()) # " neurons processed", null, [("neuronCount", Nat.toText(st.neurons.size()))]);
                             return #Done; // All neurons processed
                         };
 
@@ -2609,7 +2609,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                         let ds = getDistSettings(instanceId);
                         _df_setState(instanceId, { lists = ds.lists; index = 0 });
 
-                        logEngine.logDebug(src, "Found " # Nat.toText(ds.lists.size()) # " distribution list(s) to process", null, [("listCount", Nat.toText(ds.lists.size()))]);
+                        logEngine.logInfo(src, "Starting: found " # Nat.toText(ds.lists.size()) # " distribution list(s) to process", null, [("listCount", Nat.toText(ds.lists.size()))]);
 
                         if (ds.lists.size() == 0) {
                             return #Done; // No distribution lists configured
@@ -2622,11 +2622,11 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
                     case (?lastResult) {
                         // Previous task completed — advance to next list
                         let st = _df_getState(instanceId);
-                        logEngine.logTrace(src, "List " # Nat.toText(st.index) # "/" # Nat.toText(st.lists.size()) # " task done (success=" # Bool.toText(lastResult.succeeded) # ")", null, [("index", Nat.toText(st.index)), ("total", Nat.toText(st.lists.size())), ("succeeded", Bool.toText(lastResult.succeeded))]);
+                        logEngine.logTrace(src, "List " # Nat.toText(st.index) # "/" # Nat.toText(st.lists.size()) # " task done (success=" # (if (lastResult.succeeded) "true" else "false") # ")", null, [("index", Nat.toText(st.index)), ("total", Nat.toText(st.lists.size())), ("succeeded", if (lastResult.succeeded) "true" else "false")]);
                         let nextIdx = st.index + 1;
                         _df_setState(instanceId, { st with index = nextIdx });
                         if (nextIdx >= st.lists.size()) {
-                            logEngine.logDebug(src, "All " # Nat.toText(st.lists.size()) # " distribution lists processed", null, [("listCount", Nat.toText(st.lists.size()))]);
+                            logEngine.logInfo(src, "Completed: all " # Nat.toText(st.lists.size()) # " distribution lists processed", null, [("listCount", Nat.toText(st.lists.size()))]);
                             return #Done; // All lists processed
                         };
 
