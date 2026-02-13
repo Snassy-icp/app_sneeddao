@@ -332,9 +332,13 @@ function IcpNeuronManager() {
     const [logError, setLogError] = useState('');
     const [logSuccess, setLogSuccess] = useState('');
     const [logFilter, setLogFilter] = useState({
-        minLevel: [], // empty = all
-        source: [],   // empty = all
-        limit: [50n],
+        minLevel: [],   // [] = None (all levels), [{ Info: null }] = Some(#Info)
+        source: [],     // [] = None (all sources), ["api"] = Some("api")
+        caller: [],     // [] = None
+        fromTime: [],   // [] = None
+        toTime: [],     // [] = None
+        startId: [],    // [] = None
+        limit: [50n],   // [50n] = Some(50)
     });
     const [logHasMore, setLogHasMore] = useState(false);
     const [logTotalMatching, setLogTotalMatching] = useState(0);
