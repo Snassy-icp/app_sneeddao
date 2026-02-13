@@ -60,6 +60,7 @@ module {
         notify_votable_proposals: Bool;
         notify_outdated_bots: Bool;
         notify_low_cycles: Bool;
+        notify_bot_chores: Bool;
         notify_updates: Bool;
     };
 
@@ -87,6 +88,7 @@ module {
         notify_votable_proposals: ?Bool;
         notify_outdated_bots: ?Bool;
         notify_low_cycles: ?Bool;
+        notify_bot_chores: ?Bool;
         notify_updates: ?Bool;
     };
 

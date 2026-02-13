@@ -55,6 +55,7 @@ export const setMySettings = async (identity, updates) => {
             notify_votable_proposals: toOptional(updates.notify_votable_proposals),
             notify_outdated_bots: toOptional(updates.notify_outdated_bots),
             notify_low_cycles: toOptional(updates.notify_low_cycles),
+            notify_bot_chores: toOptional(updates.notify_bot_chores),
             notify_updates: toOptional(updates.notify_updates),
         };
         return await actor.set_my_settings(payload);

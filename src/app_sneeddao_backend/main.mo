@@ -138,6 +138,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   stable var stable_user_setting_notify_votable_proposals : [(Principal, Bool)] = [];
   stable var stable_user_setting_notify_outdated_bots : [(Principal, Bool)] = [];
   stable var stable_user_setting_notify_low_cycles : [(Principal, Bool)] = [];
+  stable var stable_user_setting_notify_bot_chores : [(Principal, Bool)] = [];
   stable var stable_user_setting_notify_updates : [(Principal, Bool)] = [];
 
   // Stable storage for neuron names and nicknames
@@ -258,6 +259,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   transient let default_notify_votable_proposals : Bool = true;
   transient let default_notify_outdated_bots : Bool = true;
   transient let default_notify_low_cycles : Bool = true;
+  transient let default_notify_bot_chores : Bool = true;
   transient let default_notify_updates : Bool = true;
 
   // Runtime storage for user settings
@@ -283,6 +285,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   transient var user_setting_notify_votable_proposals : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
   transient var user_setting_notify_outdated_bots : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
   transient var user_setting_notify_low_cycles : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
+  transient var user_setting_notify_bot_chores : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
   transient var user_setting_notify_updates : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
 
   // Add after other runtime variables
@@ -489,6 +492,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         case (?value) value;
         case null default_notify_low_cycles;
       };
+      notify_bot_chores = switch (user_setting_notify_bot_chores.get(user)) {
+        case (?value) value;
+        case null default_notify_bot_chores;
+      };
       notify_updates = switch (user_setting_notify_updates.get(user)) {
         case (?value) value;
         case null default_notify_updates;
@@ -585,6 +592,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       case (?value) { user_setting_notify_low_cycles.put(user, value) };
       case null {};
     };
+    switch (update.notify_bot_chores) {
+      case (?value) { user_setting_notify_bot_chores.put(user, value) };
+      case null {};
+    };
     switch (update.notify_updates) {
       case (?value) { user_setting_notify_updates.put(user, value) };
       case null {};
@@ -617,6 +628,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         notify_votable_proposals = default_notify_votable_proposals;
         notify_outdated_bots = default_notify_outdated_bots;
         notify_low_cycles = default_notify_low_cycles;
+        notify_bot_chores = default_notify_bot_chores;
         notify_updates = default_notify_updates;
       };
     };
@@ -3337,6 +3349,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     stable_user_setting_notify_votable_proposals := Iter.toArray(user_setting_notify_votable_proposals.entries());
     stable_user_setting_notify_outdated_bots := Iter.toArray(user_setting_notify_outdated_bots.entries());
     stable_user_setting_notify_low_cycles := Iter.toArray(user_setting_notify_low_cycles.entries());
+    stable_user_setting_notify_bot_chores := Iter.toArray(user_setting_notify_bot_chores.entries());
     stable_user_setting_notify_updates := Iter.toArray(user_setting_notify_updates.entries());
   };
 
@@ -3559,6 +3572,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         user_setting_notify_low_cycles.put(user, value);
       };
       stable_user_setting_notify_low_cycles := [];
+      for ((user, value) in stable_user_setting_notify_bot_chores.vals()) {
+        user_setting_notify_bot_chores.put(user, value);
+      };
+      stable_user_setting_notify_bot_chores := [];
       for ((user, value) in stable_user_setting_notify_updates.vals()) {
         user_setting_notify_updates.put(user, value);
       };

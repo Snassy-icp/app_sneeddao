@@ -227,6 +227,7 @@ export default function Me() {
         notify_votable_proposals: true,
         notify_outdated_bots: true,
         notify_low_cycles: true,
+        notify_bot_chores: true,
         notify_updates: true,
     };
 
@@ -284,6 +285,7 @@ export default function Me() {
             notify_votable_proposals: readBool('notifyVotableProposals', defaultUserSettings.notify_votable_proposals),
             notify_outdated_bots: readBool('notifyOutdatedBots', defaultUserSettings.notify_outdated_bots),
             notify_low_cycles: readBool('notifyLowCycles', defaultUserSettings.notify_low_cycles),
+            notify_bot_chores: readBool('notifyBotChores', defaultUserSettings.notify_bot_chores),
             notify_updates: readBool('notifyUpdates', defaultUserSettings.notify_updates),
         };
     };
@@ -316,6 +318,7 @@ export default function Me() {
             && (settings.notify_votable_proposals ?? defaultUserSettings.notify_votable_proposals) === defaultUserSettings.notify_votable_proposals
             && (settings.notify_outdated_bots ?? defaultUserSettings.notify_outdated_bots) === defaultUserSettings.notify_outdated_bots
             && (settings.notify_low_cycles ?? defaultUserSettings.notify_low_cycles) === defaultUserSettings.notify_low_cycles
+            && (settings.notify_bot_chores ?? defaultUserSettings.notify_bot_chores) === defaultUserSettings.notify_bot_chores
             && (settings.notify_updates ?? defaultUserSettings.notify_updates) === defaultUserSettings.notify_updates
         );
     };
@@ -453,6 +456,11 @@ export default function Me() {
         localStorage.setItem('notifyLowCycles', JSON.stringify(notifyLowCyclesValue));
         window.dispatchEvent(new CustomEvent('notifySettingChanged', { detail: { key: 'notifyLowCycles', value: notifyLowCyclesValue } }));
 
+        const notifyBotChoresValue = settings.notify_bot_chores ?? true;
+        setNotifyBotChores(notifyBotChoresValue);
+        localStorage.setItem('notifyBotChores', JSON.stringify(notifyBotChoresValue));
+        window.dispatchEvent(new CustomEvent('notifySettingChanged', { detail: { key: 'notifyBotChores', value: notifyBotChoresValue } }));
+
         const notifyUpdatesValue = settings.notify_updates ?? true;
         setNotifyUpdates(notifyUpdatesValue);
         localStorage.setItem('notifyUpdates', JSON.stringify(notifyUpdatesValue));
@@ -521,6 +529,9 @@ export default function Me() {
     });
     const [notifyLowCycles, setNotifyLowCycles] = useState(() => {
         try { const s = localStorage.getItem('notifyLowCycles'); return s !== null ? JSON.parse(s) : true; } catch { return true; }
+    });
+    const [notifyBotChores, setNotifyBotChores] = useState(() => {
+        try { const s = localStorage.getItem('notifyBotChores'); return s !== null ? JSON.parse(s) : true; } catch { return true; }
     });
     const [notifyUpdates, setNotifyUpdates] = useState(() => {
         try { const s = localStorage.getItem('notifyUpdates'); return s !== null ? JSON.parse(s) : true; } catch { return true; }
@@ -2567,6 +2578,23 @@ export default function Me() {
                                                 localStorage.setItem('notifyLowCycles', JSON.stringify(newValue));
                                                 window.dispatchEvent(new CustomEvent('notifySettingChanged', { detail: { key: 'notifyLowCycles', value: newValue } }));
                                                 updateBackendSettings({ notify_low_cycles: newValue });
+                                            }}
+                                        />
+                                    </SettingItem>
+
+                                    <SettingItem
+                                        title="Bot Chore Health"
+                                        description="Show notifications when staking bot chores need attention or have errors"
+                                        theme={theme}
+                                    >
+                                        <ToggleSwitch
+                                            checked={notifyBotChores}
+                                            onChange={(e) => {
+                                                const newValue = e.target.checked;
+                                                setNotifyBotChores(newValue);
+                                                localStorage.setItem('notifyBotChores', JSON.stringify(newValue));
+                                                window.dispatchEvent(new CustomEvent('notifySettingChanged', { detail: { key: 'notifyBotChores', value: newValue } }));
+                                                updateBackendSettings({ notify_bot_chores: newValue });
                                             }}
                                         />
                                     </SettingItem>

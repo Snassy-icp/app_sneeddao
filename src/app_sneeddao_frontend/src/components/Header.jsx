@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars, FaComments, FaUnlock, FaCrown, FaGift, FaBrain, FaKey, FaHandPaper, FaBell, FaEnvelope, FaCoins, FaSync, FaVoteYea, FaCloudDownloadAlt, FaBolt } from 'react-icons/fa';
+import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars, FaComments, FaUnlock, FaCrown, FaGift, FaBrain, FaKey, FaHandPaper, FaBell, FaEnvelope, FaCoins, FaSync, FaVoteYea, FaCloudDownloadAlt, FaBolt, FaExclamationTriangle } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { headerStyles } from '../styles/HeaderStyles';
@@ -25,6 +25,7 @@ import { HttpAgent } from '@dfinity/agent';
 import { useFrontendUpdate } from '../contexts/FrontendUpdateContext';
 import { useOutdatedBotsNotification } from '../hooks/useOutdatedBotsNotification';
 import { useLowCyclesNotification } from '../hooks/useLowCyclesNotification';
+import { useBotChoreNotification } from '../hooks/useBotChoreNotification';
 import UpgradeBotsDialog from './UpgradeBotsDialog';
 import TopUpCyclesDialog from './TopUpCyclesDialog';
 
@@ -114,6 +115,11 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         openDialog: openTopUpDialog,
         closeDialog: closeTopUpDialog,
     } = useLowCyclesNotification();
+    const {
+        unhealthyCount: choreUnhealthyCount,
+        worstState: choreWorstState,
+        color: choreColor,
+    } = useBotChoreNotification();
     const frontendUpdate = useFrontendUpdate();
     const hasUpdateAvailable = frontendUpdate?.hasUpdateAvailable ?? false;
     const countdownSeconds = frontendUpdate?.countdownSeconds ?? 0;
@@ -151,6 +157,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const [notifyVotableProposalsSetting, setNotifyVotableProposalsSetting] = useState(() => readNotifySetting('notifyVotableProposals'));
     const [notifyOutdatedBotsSetting, setNotifyOutdatedBotsSetting] = useState(() => readNotifySetting('notifyOutdatedBots'));
     const [notifyLowCyclesSetting, setNotifyLowCyclesSetting] = useState(() => readNotifySetting('notifyLowCycles'));
+    const [notifyBotChoresSetting, setNotifyBotChoresSetting] = useState(() => readNotifySetting('notifyBotChores'));
     const [notifyUpdatesSetting, setNotifyUpdatesSetting] = useState(() => readNotifySetting('notifyUpdates'));
     const [expandQuickLinksOnDesktop, setExpandQuickLinksOnDesktop] = useState(() => {
         try {
@@ -246,6 +253,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 notifyVotableProposals: setNotifyVotableProposalsSetting,
                 notifyOutdatedBots: setNotifyOutdatedBotsSetting,
                 notifyLowCycles: setNotifyLowCyclesSetting,
+                notifyBotChores: setNotifyBotChoresSetting,
                 notifyUpdates: setNotifyUpdatesSetting,
             };
             const setter = notifyStorageMap[e.key];
@@ -275,6 +283,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             notifyVotableProposals: setNotifyVotableProposalsSetting,
             notifyOutdatedBots: setNotifyOutdatedBotsSetting,
             notifyLowCycles: setNotifyLowCyclesSetting,
+            notifyBotChores: setNotifyBotChoresSetting,
             notifyUpdates: setNotifyUpdatesSetting,
         };
 
@@ -1663,7 +1672,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             )}
 
             {/* Notifications Row: Shows when there are notifications or update available */}
-            {!isHeaderCollapsed && ((hasUpdateAvailable && notifyUpdatesSetting) || (showHeaderNotificationsSetting && isAuthenticated && ((notifyRepliesSetting && newReplyCount > 0) || (notifyTipsSetting && newTipCount > 0) || (notifyMessagesSetting && newMessageCount > 0) || (notifyCollectiblesSetting && collectiblesCount > 0) || (notifyVotableProposalsSetting && votableCount > 0) || (notifyOutdatedBotsSetting && outdatedCount > 0) || (notifyLowCyclesSetting && lowCyclesCount > 0)))) && (
+            {!isHeaderCollapsed && ((hasUpdateAvailable && notifyUpdatesSetting) || (showHeaderNotificationsSetting && isAuthenticated && ((notifyRepliesSetting && newReplyCount > 0) || (notifyTipsSetting && newTipCount > 0) || (notifyMessagesSetting && newMessageCount > 0) || (notifyCollectiblesSetting && collectiblesCount > 0) || (notifyVotableProposalsSetting && votableCount > 0) || (notifyOutdatedBotsSetting && outdatedCount > 0) || (notifyLowCyclesSetting && lowCyclesCount > 0) || (notifyBotChoresSetting && choreUnhealthyCount > 0)))) && (
                 <div style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
@@ -1945,6 +1954,38 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                             >
                                 <FaBrain size={10} />
                                 <span>{outdatedCount}</span>
+                            </div>
+                        )}
+
+                        {/* Bot Chore Health */}
+                        {notifyBotChoresSetting && choreUnhealthyCount > 0 && (
+                            <div 
+                                onClick={() => navigate('/icp_neuron_manager')}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    padding: '3px 8px',
+                                    background: `linear-gradient(135deg, ${choreColor}33, ${choreColor}1a)`,
+                                    border: `1px solid ${choreColor}4d`,
+                                    borderRadius: '12px',
+                                    cursor: 'pointer',
+                                    fontSize: '11px',
+                                    fontWeight: '600',
+                                    color: choreColor,
+                                    transition: 'all 0.2s ease',
+                                    whiteSpace: 'nowrap',
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(-1px)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                }}
+                                title={`${choreUnhealthyCount} bot${choreUnhealthyCount !== 1 ? 's' : ''} ${choreWorstState === 'error' ? 'with chore errors' : 'needing chore attention'}`}
+                            >
+                                <FaExclamationTriangle size={10} />
+                                <span>{choreUnhealthyCount}</span>
                             </div>
                         )}
                 </div>
