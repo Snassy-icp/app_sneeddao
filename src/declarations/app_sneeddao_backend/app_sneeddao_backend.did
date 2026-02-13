@@ -19,6 +19,7 @@ type UserSettingsUpdate =
    neuron_color_coding: opt bool;
    neuron_manager_cycle_threshold_orange: opt nat;
    neuron_manager_cycle_threshold_red: opt nat;
+   notify_bot_chores: opt bool;
    notify_collectibles: opt bool;
    notify_low_cycles: opt bool;
    notify_messages: opt bool;
@@ -45,6 +46,7 @@ type UserSettings =
    neuron_color_coding: bool;
    neuron_manager_cycle_threshold_orange: nat;
    neuron_manager_cycle_threshold_red: nat;
+   notify_bot_chores: bool;
    notify_collectibles: bool;
    notify_low_cycles: bool;
    notify_messages: bool;
