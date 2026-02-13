@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { useWalletOptional } from '../contexts/WalletContext';
 import {
     getAllChoresSummaryLamp,
@@ -15,6 +15,10 @@ import {
 export function useBotChoreNotification() {
     const walletContext = useWalletOptional();
     const managerChoreStatuses = walletContext?.managerChoreStatuses || {};
+
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const openDialog = useCallback(() => setIsDialogOpen(true), []);
+    const closeDialog = useCallback(() => setIsDialogOpen(false), []);
 
     const { unhealthyCount, worstState, unhealthyManagers } = useMemo(() => {
         const entries = Object.entries(managerChoreStatuses);
@@ -49,5 +53,8 @@ export function useBotChoreNotification() {
         worstState,
         unhealthyManagers,
         color,
+        isDialogOpen,
+        openDialog,
+        closeDialog,
     };
 }

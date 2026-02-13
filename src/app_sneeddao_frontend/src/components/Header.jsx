@@ -27,6 +27,7 @@ import { useOutdatedBotsNotification } from '../hooks/useOutdatedBotsNotificatio
 import { useLowCyclesNotification } from '../hooks/useLowCyclesNotification';
 import { useBotChoreNotification } from '../hooks/useBotChoreNotification';
 import UpgradeBotsDialog from './UpgradeBotsDialog';
+import BotChoreHealthDialog from './BotChoreHealthDialog';
 import TopUpCyclesDialog from './TopUpCyclesDialog';
 
 function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
@@ -118,7 +119,11 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const {
         unhealthyCount: choreUnhealthyCount,
         worstState: choreWorstState,
+        unhealthyManagers: choreUnhealthyManagers,
         color: choreColor,
+        isDialogOpen: isChoreDialogOpen,
+        openDialog: openChoreDialog,
+        closeDialog: closeChoreDialog,
     } = useBotChoreNotification();
     const frontendUpdate = useFrontendUpdate();
     const hasUpdateAvailable = frontendUpdate?.hasUpdateAvailable ?? false;
@@ -1960,7 +1965,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         {/* Bot Chore Health */}
                         {notifyBotChoresSetting && choreUnhealthyCount > 0 && (
                             <div 
-                                onClick={() => navigate('/icp_neuron_manager')}
+                                onClick={openChoreDialog}
                                 style={{
                                     display: 'flex',
                                     alignItems: 'center',
@@ -2001,6 +2006,13 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     // Trigger refresh of manager data
                     window.dispatchEvent(new Event('neuronManagersRefresh'));
                 }}
+            />
+
+            {/* Bot Chore Health Dialog (from header notification) */}
+            <BotChoreHealthDialog
+                isOpen={isChoreDialogOpen}
+                onClose={closeChoreDialog}
+                unhealthyManagers={choreUnhealthyManagers}
             />
 
             {/* Top Up Cycles Dialog (from header notification) */}

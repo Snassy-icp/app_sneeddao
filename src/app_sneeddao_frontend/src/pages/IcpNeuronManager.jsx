@@ -1307,10 +1307,21 @@ function IcpNeuronManager() {
             setCmSettingsMap(newCmMap);
             setDistListsMap(newDistMap);
         } catch (err) {
-            console.error('Error loading chore data:', err);
-            if (!silent) {
-                setChoreStatuses([]);
-                setChoreConfigs([]);
+            // Detect older canister versions that don't support chores API
+            const errMsg = err?.message || String(err);
+            const isMethodNotFound = errMsg.includes('has no query method') || errMsg.includes('method not found');
+            if (isMethodNotFound) {
+                // Silently ignore — chores not available on this canister version
+                if (!silent) {
+                    setChoreStatuses([]);
+                    setChoreConfigs([]);
+                }
+            } else {
+                console.error('Error loading chore data:', err);
+                if (!silent) {
+                    setChoreStatuses([]);
+                    setChoreConfigs([]);
+                }
             }
         } finally {
             if (!silent) setLoadingChores(false);
