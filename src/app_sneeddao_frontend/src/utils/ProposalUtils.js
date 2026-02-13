@@ -39,8 +39,12 @@ export const isProposalAcceptingVotes = (proposalData, currentTimeSeconds = null
         }
         
         // Also check for SNS format (current_deadline_timestamp_seconds in wait_for_quiet_state)
-        if (proposalData.wait_for_quiet_state?.current_deadline_timestamp_seconds !== undefined) {
-            const deadline = BigInt(proposalData.wait_for_quiet_state.current_deadline_timestamp_seconds);
+        // In Candid JS, opt types are arrays: [] for None, [value] for Some
+        const wfqs = Array.isArray(proposalData.wait_for_quiet_state)
+            ? proposalData.wait_for_quiet_state[0]
+            : proposalData.wait_for_quiet_state;
+        if (wfqs?.current_deadline_timestamp_seconds !== undefined) {
+            const deadline = BigInt(wfqs.current_deadline_timestamp_seconds);
             return now < deadline;
         }
         

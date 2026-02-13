@@ -58,13 +58,18 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
     const [wasmCache, setWasmCache] = useState(null); // Cache fetched WASM to avoid re-downloading
     const abortRef = useRef(false);
 
+    // Count bots with unknown WASM hash (might not be staking bots)
+    const unknownHashCount = outdatedManagers.filter(m => !m.hasKnownHash).length;
+    const hasUnknownHash = unknownHashCount > 0;
+
     // Initialize selection when outdatedManagers change
+    // Bots with unknown hash are NOT selected by default (safety precaution)
     useEffect(() => {
         if (isOpen && outdatedManagers.length > 0) {
             const newSelected = {};
             outdatedManagers.forEach(m => {
                 const id = typeof m.canisterId === 'string' ? m.canisterId : m.canisterId?.toText?.() || m.canisterId?.toString?.() || '';
-                newSelected[id] = true;
+                newSelected[id] = m.hasKnownHash !== false; // Default OFF for unknown hash
             });
             setSelected(newSelected);
             setUpgradeStatus({});
@@ -100,6 +105,20 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
 
     const handleUpgradeAll = useCallback(async () => {
         if (!identity || !latestVersion || !latestVersion.wasmUrl || selectedIds.length === 0) return;
+
+        // Safety check: warn if any selected bots have unknown WASM
+        const unknownSelected = outdatedManagers.filter(m => {
+            const id = typeof m.canisterId === 'string' ? m.canisterId : m.canisterId?.toText?.() || m.canisterId?.toString?.() || '';
+            return selectedIds.includes(id) && m.hasKnownHash === false;
+        });
+        if (unknownSelected.length > 0) {
+            const confirmed = window.confirm(
+                `⚠️ WARNING: ${unknownSelected.length} selected canister${unknownSelected.length !== 1 ? 's have' : ' has'} an unknown WASM and may not be ${unknownSelected.length !== 1 ? '' : 'an '}ICP Staking Bot${unknownSelected.length !== 1 ? 's' : ''}.\n\n` +
+                `Upgrading ${unknownSelected.length !== 1 ? 'them' : 'it'} with ICP Staking Bot firmware could break ${unknownSelected.length !== 1 ? 'those canisters' : 'that canister'}.\n\n` +
+                `Are you sure you want to proceed?`
+            );
+            if (!confirmed) return;
+        }
 
         setIsUpgrading(true);
         abortRef.current = false;
@@ -176,7 +195,7 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
             setIsUpgrading(false);
             if (onUpgradeComplete) onUpgradeComplete();
         }
-    }, [identity, latestVersion, selectedIds, wasmCache, onUpgradeComplete]);
+    }, [identity, latestVersion, selectedIds, wasmCache, onUpgradeComplete, outdatedManagers]);
 
     const handleClose = () => {
         if (isUpgrading) {
@@ -271,6 +290,31 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
                         </div>
                     ) : (
                         <>
+                            {/* Warning banner for bots with unknown WASM */}
+                            {hasUnknownHash && (
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'flex-start',
+                                    gap: '8px',
+                                    padding: '10px 12px',
+                                    borderRadius: '10px',
+                                    background: 'rgba(245, 158, 11, 0.1)',
+                                    border: '1px solid rgba(245, 158, 11, 0.3)',
+                                    marginBottom: '12px',
+                                    fontSize: '12px',
+                                    color: '#f59e0b',
+                                    lineHeight: '1.4',
+                                }}>
+                                    <FaExclamationTriangle size={14} style={{ flexShrink: 0, marginTop: '1px' }} />
+                                    <div>
+                                        <strong>{unknownHashCount} canister{unknownHashCount !== 1 ? 's' : ''}</strong> {unknownHashCount !== 1 ? 'have' : 'has'} an unknown WASM
+                                        and may not {unknownHashCount !== 1 ? 'be' : 'be a'} ICP Staking Bot{unknownHashCount !== 1 ? 's' : ''}.
+                                        Upgrading {unknownHashCount !== 1 ? 'them' : 'it'} with ICP Staking Bot firmware could break {unknownHashCount !== 1 ? 'those canisters' : 'that canister'}.
+                                        {unknownHashCount !== 1 ? ' They are' : ' It is'} deselected by default — only select if you are sure.
+                                    </div>
+                                </div>
+                            )}
+
                             <div style={{
                                 display: 'flex',
                                 alignItems: 'center',
@@ -370,7 +414,7 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
                                                     }}
                                                 />
                                             </div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', flexWrap: 'wrap' }}>
                                                 <span style={{
                                                     fontSize: '11px',
                                                     color: '#f59e0b',
@@ -386,6 +430,23 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
                                                 }}>
                                                     v{versionStr(latestVersion)}
                                                 </span>
+                                                {manager.hasKnownHash === false && (
+                                                    <span style={{
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '3px',
+                                                        fontSize: '10px',
+                                                        color: '#f59e0b',
+                                                        fontWeight: '600',
+                                                        background: 'rgba(245, 158, 11, 0.1)',
+                                                        border: '1px solid rgba(245, 158, 11, 0.25)',
+                                                        borderRadius: '8px',
+                                                        padding: '1px 6px',
+                                                    }}>
+                                                        <FaExclamationTriangle size={8} />
+                                                        Unknown WASM
+                                                    </span>
+                                                )}
                                             </div>
                                             {error && (
                                                 <div style={{

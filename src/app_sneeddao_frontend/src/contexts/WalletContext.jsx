@@ -2112,20 +2112,22 @@ export const WalletProvider = ({ children }) => {
         }
     }, [hasFetchedManagers, identity, officialVersions.length, fetchOfficialVersions]);
 
-    // Computed: list of outdated managers (only ones we are controller of AND whose wasm matches a known official version)
-    // This prevents accidentally offering to upgrade non-staking-bot canisters that happen to be in the list
+    // Computed: list of outdated managers (only ones we are controller of)
+    // Each entry is enriched with hasKnownHash so the upgrade dialog can warn for unknown WASM
     const outdatedManagers = React.useMemo(() => {
         if (!latestOfficialVersion || neuronManagers.length === 0) return [];
-        return neuronManagers.filter(m => {
-            if (!m.version || !isVersionOutdated(m.version)) return false;
-            const cid = typeof m.canisterId === 'string' ? m.canisterId : m.canisterId?.toText?.() || m.canisterId?.toString?.() || '';
-            if (neuronManagerIsController[cid] !== true) return false;
-            // Only include bots whose wasm hash matches a known official version
-            // This ensures we don't offer to bulk-upgrade canisters with unknown wasm
-            const moduleHash = neuronManagerModuleHash[cid];
-            if (!moduleHash) return false; // No hash available — skip (can't verify)
-            return isKnownNeuronManagerHash(moduleHash) !== null;
-        });
+        return neuronManagers
+            .filter(m => {
+                if (!m.version || !isVersionOutdated(m.version)) return false;
+                const cid = typeof m.canisterId === 'string' ? m.canisterId : m.canisterId?.toText?.() || m.canisterId?.toString?.() || '';
+                return neuronManagerIsController[cid] === true;
+            })
+            .map(m => {
+                const cid = typeof m.canisterId === 'string' ? m.canisterId : m.canisterId?.toText?.() || m.canisterId?.toString?.() || '';
+                const moduleHash = neuronManagerModuleHash[cid];
+                const knownVersion = moduleHash ? isKnownNeuronManagerHash(moduleHash) : null;
+                return { ...m, hasKnownHash: !!knownVersion, moduleHash: moduleHash || null };
+            });
     }, [neuronManagers, latestOfficialVersion, isVersionOutdated, neuronManagerIsController, neuronManagerModuleHash, isKnownNeuronManagerHash]);
 
     // Computed: list of canisters (managers + tracked + app manager) that are below their critical cycle level
