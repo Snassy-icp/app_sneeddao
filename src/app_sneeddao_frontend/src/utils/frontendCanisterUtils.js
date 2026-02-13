@@ -28,7 +28,7 @@ export const getFrontendCanisterId = () => {
 export const getFrontendCanisterModuleHash = async () => {
     try {
         const url = `${window.location.origin}/version.json?t=${Date.now()}`;
-        const res = await fetch(url);
+        const res = await fetch(url, { cache: 'no-store' });
         if (!res.ok) return null;
         const data = await res.json();
         const buildId = data?.buildId;

@@ -4,6 +4,14 @@
         "ignore": false
     },
     {
+        // version.json changes on each deploy and is polled by the frontend
+        // update checker. It must never be cached by boundary nodes or browsers.
+        "match": "version.json",
+        "headers": {
+            "Cache-Control": "no-cache, no-store, must-revalidate"
+        }
+    },
+    {
         "match": "**/*",
         "headers": {
             // Security: The Content Security Policy (CSP) given below aims at working with many apps rather than providing maximal security.
