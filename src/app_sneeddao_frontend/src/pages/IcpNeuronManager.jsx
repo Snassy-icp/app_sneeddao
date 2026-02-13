@@ -6990,7 +6990,7 @@ function IcpNeuronManager() {
                                             fontSize: '0.8rem', cursor: 'pointer',
                                         }}
                                     >
-                                        {[25, 50, 100, 200, 500].map(n => (
+                                        {[10, 25, 50, 100, 200, 500].map(n => (
                                             <option key={n} value={n}>{n}</option>
                                         ))}
                                     </select>
