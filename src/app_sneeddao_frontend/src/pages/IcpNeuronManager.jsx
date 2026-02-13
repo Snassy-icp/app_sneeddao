@@ -5152,7 +5152,7 @@ function IcpNeuronManager() {
                                     // Summary lamp: worst of all instances of this type
                                     const typeWorstLamp = type.instances.reduce((worst, inst) => {
                                         const lamp = getChoreSummaryLamp(inst);
-                                        const priority = { error: 4, warning: 3, running: 2, ok: 1, off: 0 };
+                                        const priority = { error: 4, warn: 3, active: 2, ok: 1, off: 0 };
                                         return (priority[lamp] || 0) > (priority[worst] || 0) ? lamp : worst;
                                     }, 'off');
                                     const count = type.instances.length;
