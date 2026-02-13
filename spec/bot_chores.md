@@ -831,3 +831,125 @@ The ICP Staking Bot (`sneed_icp_neuron_manager`) uses the Bot Chores framework t
 8. **Frontend API calls** — All collect-maturity and distribution API calls pass `chore.choreId` as instanceId. Settings are loaded per-instance into `cmSettingsMap` and `distListsMap`. Date/time picker for `setChoreNextRun` added inline next to "Next Scheduled Run" display.
 9. **Candid declarations** — `.did`, `.did.js`, `.did.d.ts` updated via `dfx generate` for all changed API signatures.
 10. **Spec** — Updated with per-instance settings pattern and `setNextScheduledRun` documentation.
+
+---
+
+## Botlog — Specification & Implementation Plan
+
+### Overview
+
+**Botlog** provides comprehensive activity logging for bot canisters. Every action — user-driven API calls and automated chore activity — is recorded with structured data that can be queried and filtered. The system is reusable across all bot products, following the same shared-module pattern as Botkeys and Bot Chores.
+
+### Architecture
+
+```
+src/
+  BotLogTypes.mo           # Shared types (LogLevel, LogEntry, LogFilter, etc.)
+  BotLogEngine.mo          # Shared engine (Buffer-based, callback pattern)
+  BotkeyTypes.mo           # BasePermission gains ViewLogs (3), ManageLogs (4)
+  sneed_icp_neuron_manager/
+    Types.mo               # #ViewLogs, #ManageLogs added to NeuronPermissionType
+    neuron_manager_canister.mo  # Engine integrated, 4 API endpoints, all functions instrumented
+```
+
+### Log Levels
+
+| Numeric | Variant    | Description |
+|---------|-----------|-------------|
+| 0       | `#Off`    | Logging disabled |
+| 1       | `#Error`  | Only errors |
+| 2       | `#Warning`| Errors + warnings |
+| 3       | `#Info`   | Normal operations (**default**) |
+| 4       | `#Debug`  | Detailed diagnostics |
+| 5       | `#Trace`  | Everything |
+
+Two independent uses:
+- **Write-side**: `logLevel` setting controls what the bot actually records.
+- **Read-side**: query filter `minLevel` controls what a viewer sees from recorded entries.
+
+### Log Entry
+
+```motoko
+type LogEntry = {
+    id: Nat;              // Sequential, monotonically increasing, never reused
+    timestamp: Int;       // Time.now() nanoseconds
+    level: LogLevel;      // #Error | #Warning | #Info | #Debug | #Trace
+    source: Text;         // Component: "api", "chore:refresh-stake", "system", "permissions"
+    message: Text;        // Human-readable description
+    caller: ?Principal;   // Who triggered it (null for system/chore)
+    tags: [(Text, Text)]; // Structured key-value pairs for bot-specific data
+};
+```
+
+**Tags** provide semi-structured bot-specific data. Generic enough to display as a formatted key-value table without knowing the keys; parseable and actionable when you know them.
+
+Examples for the staking bot:
+- `[("neuronId", "12345"), ("amount_e8s", "100000000")]`
+- `[("error", "Insufficient balance"), ("required", "200000000")]`
+- `[("topic", "4"), ("followees", "111,222,333")]`
+
+### Permissions (shared range 0–99)
+
+| ID | Permission      | Description |
+|----|----------------|-------------|
+| 3  | `ViewLogs`     | Read log entries and configuration |
+| 4  | `ManageLogs`   | Set log level, clear logs |
+
+### Engine Design
+
+Follows the BotChoreEngine callback pattern. The engine maintains an internal `Buffer<LogEntry>` for efficient operations, populated from persistent state on construction. Each `add()` appends to the buffer, trims if over `maxEntries`, and syncs back via callback.
+
+Configuration: `maxEntries = 10,000` (compile-time constant).
+
+### Query/Filter
+
+```motoko
+type LogFilter = {
+    minLevel: ?LogLevel;   // minimum severity (null = all)
+    source: ?Text;         // prefix match (e.g. "chore" matches "chore:refresh-stake")
+    caller: ?Principal;    // exact match
+    fromTime: ?Int;        // entries >= this timestamp
+    toTime: ?Int;          // entries <= this timestamp
+    startId: ?Nat;         // entries with id >= this (forward pagination)
+    limit: ?Nat;           // max results (default 100)
+};
+
+type LogResult = {
+    entries: [LogEntry];
+    totalMatching: Nat;
+    hasMore: Bool;
+};
+```
+
+### Canister API
+
+| Method | Type | Permission | Description |
+|--------|------|-----------|-------------|
+| `getLogs(filter)` | query | ViewLogs | Query entries with filtering and pagination |
+| `getLogConfig()` | query | ViewLogs | Current log level, entry count, etc. |
+| `setLogLevel(level)` | update | ManageLogs | Change the write-side log level |
+| `clearLogs()` | update | ManageLogs | Remove all entries (nextId continues) |
+
+### Source Naming Convention
+
+| Source | Usage |
+|--------|-------|
+| `"api"` | User-initiated API calls (mutations) |
+| `"permissions"` | Botkey/permission management |
+| `"chore:<choreId>"` | Automated chore activity |
+| `"system"` | Canister lifecycle (init, upgrade) |
+| `"log"` | Log management actions (setLogLevel, clearLogs) |
+
+### Implementation Progress
+
+**Completed (backend):**
+1. **BotLogTypes.mo** — Shared types created: `LogLevel`, `LogEntry`, `LogFilter`, `LogResult`, `LogConfig`, `EngineConfig`, plus `logLevelToNat`/`natToLogLevel` conversion helpers.
+2. **BotLogEngine.mo** — Shared engine created: `Engine` class with Buffer-based storage, callback pattern, `add`/`logInfo`/`logError`/etc. convenience methods, `query` with filtering, `getConfig`, `setLogLevel`, `clear`, `size`.
+3. **Permissions** — `ViewLogs` (3) and `ManageLogs` (4) added to `BotkeyTypes.BasePermission`, `NeuronPermissionType` variant, `NeuronPermission` module, `PERMISSION_MAP`, `permissionVariantToId`, `permissionIdToVariant`.
+4. **Canister integration** — Persistent vars (`botLogEntries`, `botLogNextId`, `botLogLevel`), engine instantiation, 4 API endpoints (`getLogs`, `getLogConfig`, `setLogLevel`, `clearLogs`) added.
+5. **Instrumentation** — All ~50 public shared functions instrumented with `logEngine.logInfo`/`logWarning`/`logError` calls covering neuron creation, stake management, dissolve, disburse/withdraw, maturity, voting/proposals, following, hotkey management, visibility, permission management, escrow, split/merge, chore admin, distribution config, collect-maturity config, and log management.
+
+**Pending:**
+- Frontend UI for viewing/filtering logs.
+- Chore conductor logging (logging from within chore conduct callbacks).
+- Candid declarations update (`dfx generate`).

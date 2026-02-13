@@ -17,6 +17,8 @@ import T "Types";
 import BotkeyPermissions "../BotkeyPermissions";
 import BotChoreTypes "../BotChoreTypes";
 import BotChoreEngine "../BotChoreEngine";
+import BotLogTypes "../BotLogTypes";
+import BotLogEngine "../BotLogEngine";
 import DistributionTypes "../DistributionTypes";
 
 // This is the actual canister that gets deployed for each user
@@ -56,6 +58,11 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     var collectMaturitySettings: [(Text, { thresholdE8s: ?Nat64; destination: ?T.Account })] = [];
     // Distribution: lists and next ID counter per instance
     var distributionSettings: [(Text, { lists: [DistributionTypes.DistributionList]; nextListId: Nat })] = [];
+
+    // Bot Log: persistent state for the logging system
+    var botLogEntries: [BotLogTypes.LogEntry] = [];
+    var botLogNextId: Nat = 0;
+    var botLogLevel: Nat = 3; // Info (default)
 
     // ============================================
     // PER-INSTANCE SETTINGS HELPERS
@@ -105,6 +112,8 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         (0,   #FullPermissions),
         (1,   #ManagePermissions),
         (2,   #ViewChores),
+        (3,   #ViewLogs),
+        (4,   #ManageLogs),
         // ICP Staking Bot permissions (range 100–199)
         (100, #ConfigureDissolveState),
         (101, #Vote),
@@ -138,6 +147,8 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             case (#FullPermissions) { 0 };
             case (#ManagePermissions) { 1 };
             case (#ViewChores) { 2 };
+            case (#ViewLogs) { 3 };
+            case (#ManageLogs) { 4 };
             // ICP Staking Bot permissions (range 100–199)
             case (#ConfigureDissolveState) { 100 };
             case (#Vote) { 101 };
@@ -172,6 +183,8 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             case (0)   { ?#FullPermissions };
             case (1)   { ?#ManagePermissions };
             case (2)   { ?#ViewChores };
+            case (3)   { ?#ViewLogs };
+            case (4)   { ?#ManageLogs };
             // ICP Staking Bot permissions (range 100–199)
             case (100) { ?#ConfigureDissolveState };
             case (101) { ?#Vote };
@@ -205,6 +218,23 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         permissionMap = PERMISSION_MAP;
         variantToId = permissionVariantToId;
         idToVariant = permissionIdToVariant;
+    });
+
+    // ============================================
+    // BOT LOG SYSTEM
+    // ============================================
+
+    transient let LOG_MAX_ENTRIES: Nat = 10_000;
+
+    // Instantiate the log engine (transient — re-created on each canister start)
+    transient let logEngine = BotLogEngine.Engine({
+        getEntries = func(): [BotLogTypes.LogEntry] { botLogEntries };
+        setEntries = func(e: [BotLogTypes.LogEntry]): () { botLogEntries := e };
+        getNextId = func(): Nat { botLogNextId };
+        setNextId = func(n: Nat): () { botLogNextId := n };
+        getLogLevel = func(): Nat { botLogLevel };
+        setLogLevel = func(n: Nat): () { botLogLevel := n };
+        maxEntries = LOG_MAX_ENTRIES;
     });
 
     // ============================================
@@ -410,6 +440,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         dissolve_delay_seconds: Nat64
     ): async T.StakeNeuronResult {
         assertPermission(caller, T.NeuronPermission.StakeNeuron);
+        logEngine.logInfo("api", "claimNeuronFromDeposit", ?caller, [("memo", Nat64.toText(memo)), ("dissolveDelay", Nat64.toText(dissolve_delay_seconds))]);
         
         let selfPrincipal = Principal.fromActor(this);
 
@@ -423,9 +454,11 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         
         switch (claimResult.result) {
             case null {
+                logEngine.logError("api", "claimNeuronFromDeposit: no result from claim", ?caller, [("memo", Nat64.toText(memo))]);
                 return #Err(#GovernanceError({ error_message = "No result from claim - no ICP deposited?"; error_type = 0 }));
             };
             case (?#Error(e)) {
+                logEngine.logError("api", "claimNeuronFromDeposit: governance error", ?caller, [("error", e.error_message)]);
                 return #Err(#GovernanceError(e));
             };
             case (?#NeuronId(nid)) {
@@ -458,10 +491,12 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // User sends ICP to the neuron account (from getNeuronAccount), then calls this
     public shared ({ caller }) func refreshStakeFromDeposit(neuronId: T.NeuronId): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.StakeNeuron);
+        logEngine.logInfo("api", "refreshStakeFromDeposit", ?caller, [("neuronId", Nat64.toText(neuronId.id))]);
         
         // Verify this canister controls the neuron
         let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
+            logEngine.logWarning("api", "refreshStakeFromDeposit: neuron not controlled", ?caller, [("neuronId", Nat64.toText(neuronId.id))]);
             return #Err(#NoNeuron);
         };
         
@@ -475,6 +510,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         dissolve_delay_seconds: Nat64
     ): async T.StakeNeuronResult {
         assertPermission(caller, T.NeuronPermission.StakeNeuron);
+        logEngine.logInfo("api", "stakeNeuron", ?caller, [("amount_e8s", Nat64.toText(amount_e8s)), ("dissolveDelay", Nat64.toText(dissolve_delay_seconds))]);
         
         // Note: We don't validate dissolve delay here - let NNS governance enforce the limits
         // This way if they change min/max, we don't need to upgrade all canisters
@@ -633,6 +669,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     public shared ({ caller }) func increaseStake(neuronId: T.NeuronId, amount_e8s: Nat64): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.StakeNeuron);
+        logEngine.logInfo("api", "increaseStake", ?caller, [("neuronId", Nat64.toText(neuronId.id)), ("amount_e8s", Nat64.toText(amount_e8s))]);
         
         // Verify this canister controls the neuron and get its account
         let neuronResult = await governance.get_full_neuron(neuronId.id);
@@ -693,6 +730,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     public shared ({ caller }) func refreshStake(neuronId: T.NeuronId): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.StakeNeuron);
+        logEngine.logInfo("api", "refreshStake", ?caller, [("neuronId", Nat64.toText(neuronId.id))]);
         
         // Verify this canister controls the neuron
         let hasControl = await hasNeuronInternal(neuronId);
@@ -737,6 +775,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     public shared ({ caller }) func setDissolveDelay(neuronId: T.NeuronId, additionalSeconds: Nat32): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.ConfigureDissolveState);
+        logEngine.logInfo("api", "setDissolveDelay", ?caller, [("neuronId", Nat64.toText(neuronId.id)), ("additionalSeconds", Nat32.toText(additionalSeconds))]);
         
         let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
@@ -749,6 +788,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     public shared ({ caller }) func startDissolving(neuronId: T.NeuronId): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.ConfigureDissolveState);
+        logEngine.logInfo("api", "startDissolving", ?caller, [("neuronId", Nat64.toText(neuronId.id))]);
         
         let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
@@ -759,6 +799,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     public shared ({ caller }) func stopDissolving(neuronId: T.NeuronId): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.ConfigureDissolveState);
+        logEngine.logInfo("api", "stopDissolving", ?caller, [("neuronId", Nat64.toText(neuronId.id))]);
         
         let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
@@ -777,6 +818,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         to_account: ?T.AccountIdentifier
     ): async T.DisburseResult {
         assertPermission(caller, T.NeuronPermission.Disburse);
+        logEngine.logInfo("api", "disburse", ?caller, [("neuronId", Nat64.toText(neuronId.id))]);
         
         let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
@@ -810,6 +852,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         to_account: T.Account
     ): async T.DisburseResult {
         assertPermission(caller, T.NeuronPermission.WithdrawFunds);
+        logEngine.logInfo("api", "withdrawIcp", ?caller, [("amount_e8s", Nat64.toText(amount_e8s))]);
         
         let balance = await getBalanceInternal();
         let required = Nat64.toNat(amount_e8s + T.ICP_FEE);
@@ -841,6 +884,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         to_account: T.Account
     ): async T.DisburseResult {
         assertPermission(caller, T.NeuronPermission.WithdrawFunds);
+        logEngine.logInfo("api", "withdrawToken", ?caller, [("ledger", Principal.toText(ledger_canister_id)), ("amount", Nat.toText(amount))]);
         
         // Create actor for the specified ledger
         let tokenLedger: T.LedgerActor = actor(Principal.toText(ledger_canister_id));
@@ -894,6 +938,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         newController: ?Principal
     ): async T.SpawnResult {
         assertPermission(caller, T.NeuronPermission.Spawn);
+        logEngine.logInfo("api", "spawnMaturity", ?caller, [("neuronId", Nat64.toText(neuronId.id)), ("percentage", Nat32.toText(percentage))]);
         
         let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
@@ -930,6 +975,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     public shared ({ caller }) func stakeMaturity(neuronId: T.NeuronId, percentage: Nat32): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.StakeMaturity);
+        logEngine.logInfo("api", "stakeMaturity", ?caller, [("neuronId", Nat64.toText(neuronId.id)), ("percentage", Nat32.toText(percentage))]);
         
         let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
@@ -954,6 +1000,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     public shared ({ caller }) func mergeMaturity(neuronId: T.NeuronId, percentage: Nat32): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.MergeMaturity);
+        logEngine.logInfo("api", "mergeMaturity", ?caller, [("neuronId", Nat64.toText(neuronId.id)), ("percentage", Nat32.toText(percentage))]);
         
         let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
@@ -982,6 +1029,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         to_account: ?T.Account
     ): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.DisburseMaturity);
+        logEngine.logInfo("api", "disburseMaturity", ?caller, [("neuronId", Nat64.toText(neuronId.id)), ("percentage", Nat32.toText(percentage))]);
         
         let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
@@ -1009,6 +1057,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     public shared ({ caller }) func setAutoStakeMaturity(neuronId: T.NeuronId, enabled: Bool): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.AutoStakeMaturity);
+        logEngine.logInfo("api", "setAutoStakeMaturity", ?caller, [("neuronId", Nat64.toText(neuronId.id)), ("enabled", if (enabled) "true" else "false")]);
         
         let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
@@ -1025,6 +1074,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     public shared ({ caller }) func vote(neuronId: T.NeuronId, proposal_id: Nat64, voteValue: Int32): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.Vote);
+        logEngine.logInfo("api", "vote", ?caller, [("neuronId", Nat64.toText(neuronId.id)), ("proposalId", Nat64.toText(proposal_id)), ("vote", Int32.toText(voteValue))]);
         
         let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
@@ -1059,6 +1109,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         proposal: T.Proposal
     ): async T.MakeProposalResult {
         assertPermission(caller, T.NeuronPermission.MakeProposal);
+        logEngine.logInfo("api", "makeProposal", ?caller, [("neuronId", Nat64.toText(neuronId.id))]);
         
         let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
@@ -1087,6 +1138,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         followees: [T.NeuronId]
     ): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.ManageFollowees);
+        logEngine.logInfo("api", "setFollowing", ?caller, [("neuronId", Nat64.toText(neuronId.id)), ("topic", Int32.toText(topic))]);
         
         let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
@@ -1114,6 +1166,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     public shared ({ caller }) func refreshVotingPower(neuronId: T.NeuronId): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.Vote);
+        logEngine.logInfo("api", "refreshVotingPower", ?caller, [("neuronId", Nat64.toText(neuronId.id))]);
         
         let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
@@ -1139,6 +1192,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // Confirm all following settings (re-applies current followees to keep neuron active)
     public shared ({ caller }) func confirmFollowing(neuronId: T.NeuronId): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.ManageFollowees);
+        logEngine.logInfo("api", "confirmFollowing", ?caller, [("neuronId", Nat64.toText(neuronId.id))]);
         
         let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
@@ -1182,6 +1236,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     public shared ({ caller }) func addHotKey(neuronId: T.NeuronId, hotkey: Principal): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.ManageNeuronHotkeys);
+        logEngine.logInfo("api", "addHotKey", ?caller, [("neuronId", Nat64.toText(neuronId.id)), ("hotkey", Principal.toText(hotkey))]);
         
         let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
@@ -1192,6 +1247,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     public shared ({ caller }) func removeHotKey(neuronId: T.NeuronId, hotkey: Principal): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.ManageNeuronHotkeys);
+        logEngine.logInfo("api", "removeHotKey", ?caller, [("neuronId", Nat64.toText(neuronId.id)), ("hotkey", Principal.toText(hotkey))]);
         
         let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
@@ -1203,6 +1259,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // Set neuron visibility (0 = private, 1 = public)
     public shared ({ caller }) func setVisibility(neuronId: T.NeuronId, visibility: Int32): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.ManageVisibility);
+        logEngine.logInfo("api", "setVisibility", ?caller, [("neuronId", Nat64.toText(neuronId.id)), ("visibility", Int32.toText(visibility))]);
         
         let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
@@ -1221,6 +1278,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         permissions: [T.NeuronPermissionType]
     ): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.ManagePermissions);
+        logEngine.logInfo("permissions", "addHotkeyPermissions", ?caller, [("principal", Principal.toText(hotkeyPrincipal))]);
 
         if (Principal.isAnonymous(hotkeyPrincipal)) {
             return #Err(#InvalidOperation("Cannot add anonymous principal as hotkey"));
@@ -1237,6 +1295,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         permissions: [T.NeuronPermissionType]
     ): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.ManagePermissions);
+        logEngine.logInfo("permissions", "removeHotkeyPermissions", ?caller, [("principal", Principal.toText(hotkeyPrincipal))]);
 
         hotkeyPermissions := permEngine.removePermissions(hotkeyPrincipal, permissions, hotkeyPermissions);
         #Ok
@@ -1247,6 +1306,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         hotkeyPrincipal: Principal
     ): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.ManagePermissions);
+        logEngine.logInfo("permissions", "removeHotkeyPrincipal", ?caller, [("principal", Principal.toText(hotkeyPrincipal))]);
 
         hotkeyPermissions := permEngine.removePrincipal(hotkeyPrincipal, hotkeyPermissions);
         #Ok
@@ -1284,6 +1344,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // This is used by Sneedex to backup botkeys before clearing them during escrow.
     public shared ({ caller }) func getBotkeySnapshot() : async [(Principal, [Nat])] {
         assert(Principal.isController(caller));
+        logEngine.logInfo("permissions", "getBotkeySnapshot", ?caller, []);
         hotkeyPermissions
     };
 
@@ -1291,6 +1352,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // Used by Sneedex to restore botkeys when an escrowed canister is reclaimed by the seller.
     public shared ({ caller }) func restoreBotkeySnapshot(data : [(Principal, [Nat])]) : async () {
         assert(Principal.isController(caller));
+        logEngine.logInfo("permissions", "restoreBotkeySnapshot", ?caller, []);
         hotkeyPermissions := data;
     };
 
@@ -1298,7 +1360,41 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // Used by Sneedex to clear botkeys when escrowing a canister.
     public shared ({ caller }) func clearBotkeys() : async () {
         assert(Principal.isController(caller));
+        logEngine.logInfo("permissions", "clearBotkeys", ?caller, []);
         hotkeyPermissions := [];
+    };
+
+    // ============================================
+    // BOT LOG API
+    // ============================================
+
+    // Query log entries with filtering and pagination
+    public shared query ({ caller }) func getLogs(filter: BotLogTypes.LogFilter): async BotLogTypes.LogResult {
+        assertPermission(caller, T.NeuronPermission.ViewLogs);
+        logEngine.getLogs(filter)
+    };
+
+    // Get current log configuration
+    public shared query ({ caller }) func getLogConfig(): async BotLogTypes.LogConfig {
+        assertPermission(caller, T.NeuronPermission.ViewLogs);
+        logEngine.getConfig()
+    };
+
+    // Set the minimum log level (write-side threshold)
+    public shared ({ caller }) func setLogLevel(level: BotLogTypes.LogLevel): async () {
+        assertPermission(caller, T.NeuronPermission.ManageLogs);
+        logEngine.logInfo("log", "setLogLevel", ?caller, [("newLevel", switch (level) {
+            case (#Off) { "Off" }; case (#Error) { "Error" }; case (#Warning) { "Warning" };
+            case (#Info) { "Info" }; case (#Debug) { "Debug" }; case (#Trace) { "Trace" };
+        })]);
+        logEngine.setLogLevel(level);
+    };
+
+    // Clear all log entries
+    public shared ({ caller }) func clearLogs(): async () {
+        assertPermission(caller, T.NeuronPermission.ManageLogs);
+        logEngine.logInfo("log", "clearLogs", ?caller, []);
+        logEngine.clear();
     };
 
     // ============================================
@@ -1307,6 +1403,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     public shared ({ caller }) func splitNeuron(neuronId: T.NeuronId, amount_e8s: Nat64): async T.SplitResult {
         assertPermission(caller, T.NeuronPermission.Split);
+        logEngine.logInfo("api", "splitNeuron", ?caller, [("neuronId", Nat64.toText(neuronId.id)), ("amount_e8s", Nat64.toText(amount_e8s))]);
         
         let hasControl = await hasNeuronInternal(neuronId);
         if (not hasControl) {
@@ -1339,6 +1436,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
 
     public shared ({ caller }) func mergeNeurons(targetNeuronId: T.NeuronId, sourceNeuronId: T.NeuronId): async T.OperationResult {
         assertPermission(caller, T.NeuronPermission.MergeNeurons);
+        logEngine.logInfo("api", "mergeNeurons", ?caller, [("targetNeuronId", Nat64.toText(targetNeuronId.id)), ("sourceNeuronId", Nat64.toText(sourceNeuronId.id))]);
         
         // Verify both neurons are controlled by this canister
         let hasTargetControl = await hasNeuronInternal(targetNeuronId);
@@ -1394,60 +1492,70 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // Start a chore: run immediately + schedule next run (Stopped → Running)
     public shared ({ caller }) func startChore(choreId: Text): async () {
         assertPermission(caller, choreManagePermission(choreId));
+        logEngine.logInfo("api", "startChore", ?caller, [("choreId", choreId)]);
         choreEngine.start<system>(choreId);
     };
 
     // Schedule-start a chore: enable it and schedule the first run at a specific time, without running immediately
     public shared ({ caller }) func scheduleStartChore(choreId: Text, timestampNanos: Int): async () {
         assertPermission(caller, choreManagePermission(choreId));
+        logEngine.logInfo("api", "scheduleStartChore", ?caller, [("choreId", choreId)]);
         choreEngine.scheduleStart<system>(choreId, timestampNanos);
     };
 
     // Pause a running chore: suspend schedule but preserve next-run time (Running → Paused)
     public shared ({ caller }) func pauseChore(choreId: Text): async () {
         assertPermission(caller, choreManagePermission(choreId));
+        logEngine.logInfo("api", "pauseChore", ?caller, [("choreId", choreId)]);
         choreEngine.pause(choreId);
     };
 
     // Resume a paused chore: re-activate preserved schedule (Paused → Running)
     public shared ({ caller }) func resumeChore(choreId: Text): async () {
         assertPermission(caller, choreManagePermission(choreId));
+        logEngine.logInfo("api", "resumeChore", ?caller, [("choreId", choreId)]);
         choreEngine.resume<system>(choreId);
     };
 
     // Change the schedule interval for a chore (in seconds)
     public shared ({ caller }) func setChoreInterval(choreId: Text, seconds: Nat): async () {
         assertPermission(caller, choreManagePermission(choreId));
+        logEngine.logInfo("api", "setChoreInterval", ?caller, [("choreId", choreId), ("seconds", Nat.toText(seconds))]);
         choreEngine.setInterval(choreId, seconds);
     };
 
     // Change the max interval for randomized scheduling (in seconds), or null to disable
     public shared ({ caller }) func setChoreMaxInterval(choreId: Text, seconds: ?Nat): async () {
         assertPermission(caller, choreManagePermission(choreId));
+        logEngine.logInfo("api", "setChoreMaxInterval", ?caller, [("choreId", choreId)]);
         choreEngine.setMaxInterval(choreId, seconds);
     };
 
     // Change the task timeout for a chore (in seconds)
     public shared ({ caller }) func setChoreTaskTimeout(choreId: Text, seconds: Nat): async () {
         assertPermission(caller, choreManagePermission(choreId));
+        logEngine.logInfo("api", "setChoreTaskTimeout", ?caller, [("choreId", choreId), ("seconds", Nat.toText(seconds))]);
         choreEngine.setTaskTimeout(choreId, seconds);
     };
 
     // Force-run a chore immediately (regardless of schedule)
     public shared ({ caller }) func triggerChore(choreId: Text): async () {
         assertPermission(caller, choreManagePermission(choreId));
+        logEngine.logInfo("api", "triggerChore", ?caller, [("choreId", choreId)]);
         choreEngine.trigger<system>(choreId);
     };
 
     // Set the exact timestamp for the next scheduled run (nanoseconds since epoch)
     public shared ({ caller }) func setChoreNextRun(choreId: Text, timestampNanos: Int): async () {
         assertPermission(caller, choreManagePermission(choreId));
+        logEngine.logInfo("api", "setChoreNextRun", ?caller, [("choreId", choreId)]);
         choreEngine.setNextScheduledRun<system>(choreId, timestampNanos);
     };
 
     // Stop a chore completely: cancel everything, clear schedule (Running/Paused → Stopped)
     public shared ({ caller }) func stopChore(choreId: Text): async () {
         assertPermission(caller, choreManagePermission(choreId));
+        logEngine.logInfo("api", "stopChore", ?caller, [("choreId", choreId)]);
         choreEngine.stop(choreId);
     };
 
@@ -1457,6 +1565,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         assertPermission(caller, T.NeuronPermission.ManageRefreshStake);
         assertPermission(caller, T.NeuronPermission.ManageCollectMaturity);
         assertPermission(caller, T.NeuronPermission.ManageDistributeFunds);
+        logEngine.logInfo("api", "stopAllChores", ?caller, []);
         choreEngine.stopAllChores();
     };
 
@@ -1465,6 +1574,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // Create a new chore instance of the given type
     public shared ({ caller }) func createChoreInstance(typeId: Text, instanceId: Text, instanceLabel: Text): async Bool {
         assertPermission(caller, choreManagePermission(typeId));
+        logEngine.logInfo("api", "createChoreInstance", ?caller, [("typeId", typeId), ("instanceId", instanceId), ("label", instanceLabel)]);
         choreEngine.createInstance(typeId, instanceId, instanceLabel)
     };
 
@@ -1474,6 +1584,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         switch (choreEngine.getInstance(instanceId)) {
             case (?info) {
                 assertPermission(caller, choreManagePermission(info.typeId));
+                logEngine.logInfo("api", "deleteChoreInstance", ?caller, [("instanceId", instanceId)]);
                 choreEngine.deleteInstance(instanceId)
             };
             case null { false };
@@ -1485,6 +1596,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         switch (choreEngine.getInstance(instanceId)) {
             case (?info) {
                 assertPermission(caller, choreManagePermission(info.typeId));
+                logEngine.logInfo("api", "renameChoreInstance", ?caller, [("instanceId", instanceId), ("newLabel", newLabel)]);
                 choreEngine.renameInstance(instanceId, newLabel)
             };
             case null { false };
@@ -1511,6 +1623,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // Set collect-maturity threshold for an instance (null = collect any amount)
     public shared ({ caller }) func setCollectMaturityThreshold(instanceId: Text, thresholdE8s: ?Nat64): async () {
         assertPermission(caller, T.NeuronPermission.ConfigureCollectMaturity);
+        logEngine.logInfo("api", "setCollectMaturityThreshold", ?caller, [("instanceId", instanceId)]);
         let s = getCmSettings(instanceId);
         setCmSettings(instanceId, { s with thresholdE8s = thresholdE8s });
     };
@@ -1518,6 +1631,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // Set collect-maturity destination for an instance (null = bot's own account)
     public shared ({ caller }) func setCollectMaturityDestination(instanceId: Text, destination: ?T.Account): async () {
         assertPermission(caller, T.NeuronPermission.ConfigureCollectMaturity);
+        logEngine.logInfo("api", "setCollectMaturityDestination", ?caller, [("instanceId", instanceId)]);
         let s = getCmSettings(instanceId);
         setCmSettings(instanceId, { s with destination = destination });
     };
@@ -1533,6 +1647,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // Add a new distribution list to an instance, returns the assigned ID
     public shared ({ caller }) func addDistributionList(instanceId: Text, input: DistributionTypes.DistributionListInput): async Nat {
         assertPermission(caller, T.NeuronPermission.ConfigureDistribution);
+        logEngine.logInfo("api", "addDistributionList", ?caller, [("instanceId", instanceId), ("name", input.name)]);
         let ds = getDistSettings(instanceId);
         let id = ds.nextListId;
         let newList: DistributionTypes.DistributionList = {
@@ -1553,6 +1668,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // Update an existing distribution list by ID within an instance
     public shared ({ caller }) func updateDistributionList(instanceId: Text, id: Nat, input: DistributionTypes.DistributionListInput): async () {
         assertPermission(caller, T.NeuronPermission.ConfigureDistribution);
+        logEngine.logInfo("api", "updateDistributionList", ?caller, [("instanceId", instanceId), ("listId", Nat.toText(id))]);
         let ds = getDistSettings(instanceId);
         let updatedLists = Array.map<DistributionTypes.DistributionList, DistributionTypes.DistributionList>(
             ds.lists,
@@ -1576,6 +1692,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // Remove a distribution list by ID within an instance
     public shared ({ caller }) func removeDistributionList(instanceId: Text, id: Nat): async () {
         assertPermission(caller, T.NeuronPermission.ConfigureDistribution);
+        logEngine.logInfo("api", "removeDistributionList", ?caller, [("instanceId", instanceId), ("listId", Nat.toText(id))]);
         let ds = getDistSettings(instanceId);
         let filtered = Array.filter<DistributionTypes.DistributionList>(
             ds.lists,

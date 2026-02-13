@@ -830,6 +830,8 @@ module {
         #FullPermissions;         // Grants all permissions, including future unknown ones
         #ManagePermissions;       // Add/remove botkey principals and their permissions
         #ViewChores;              // View bot chore statuses and configurations
+        #ViewLogs;                // Read log entries and configuration
+        #ManageLogs;              // Set log level, clear logs
         // --- ICP Staking Bot permissions (IDs 100+) ---
         #ConfigureDissolveState;  // Start/stop dissolving, set dissolve delay
         #Vote;                    // Vote on proposals, refresh voting power
@@ -868,6 +870,8 @@ module {
         public let FullPermissions: Nat = BotkeyTypes.BasePermission.FullPermissions;     // 0
         public let ManagePermissions: Nat = BotkeyTypes.BasePermission.ManagePermissions;  // 1
         public let ViewChores: Nat = BotkeyTypes.BasePermission.ViewChores;               // 2
+        public let ViewLogs: Nat = BotkeyTypes.BasePermission.ViewLogs;                   // 3
+        public let ManageLogs: Nat = BotkeyTypes.BasePermission.ManageLogs;               // 4
         // ICP Staking Bot permissions (range 100–199)
         public let ConfigureDissolveState: Nat = 100;
         public let Vote: Nat = 101;
