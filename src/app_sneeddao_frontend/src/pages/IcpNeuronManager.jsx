@@ -325,6 +325,23 @@ function IcpNeuronManager() {
     const [editPermissions, setEditPermissions] = useState({});
     const [confirmRemoveHotkey, setConfirmRemoveHotkey] = useState(null);
 
+    // Bot Log state
+    const [logEntries, setLogEntries] = useState([]);
+    const [logConfig, setLogConfig] = useState(null);
+    const [loadingLogs, setLoadingLogs] = useState(false);
+    const [logError, setLogError] = useState('');
+    const [logSuccess, setLogSuccess] = useState('');
+    const [logFilter, setLogFilter] = useState({
+        minLevel: [], // empty = all
+        source: [],   // empty = all
+        limit: [50n],
+    });
+    const [logHasMore, setLogHasMore] = useState(false);
+    const [logTotalMatching, setLogTotalMatching] = useState(0);
+    const [savingLogConfig, setSavingLogConfig] = useState(false);
+    const [logAutoRefresh, setLogAutoRefresh] = useState(false);
+    const logAutoRefreshRef = useRef(null);
+
     // Bot Chores state
     const [choreStatuses, setChoreStatuses] = useState([]);
     const [choreConfigs, setChoreConfigs] = useState([]);
@@ -1331,6 +1348,49 @@ function IcpNeuronManager() {
             loadChoreData();
         }
     }, [canisterActiveTab, canisterSectionExpanded, loadChoreData]);
+
+    // Load bot log entries and config
+    const loadLogData = useCallback(async (filterOverride, silent = false) => {
+        if (!canisterId) return;
+        if (!silent) { setLoadingLogs(true); setLogError(''); }
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const manager = createManagerActor(canisterId, { agent });
+            const f = filterOverride || logFilter;
+            const [result, config] = await Promise.all([
+                manager.getLogs(f),
+                manager.getLogConfig(),
+            ]);
+            setLogEntries(result.entries);
+            setLogHasMore(result.hasMore);
+            setLogTotalMatching(Number(result.totalMatching));
+            setLogConfig(config);
+        } catch (err) {
+            console.error('Error loading log data:', err);
+            if (!silent) setLogError('Failed to load logs: ' + (err.message || String(err)));
+        } finally {
+            if (!silent) setLoadingLogs(false);
+        }
+    }, [canisterId, getAgent, logFilter]);
+
+    // Fetch log data when switching to the log tab
+    useEffect(() => {
+        if (canisterActiveTab === 'log' && canisterSectionExpanded) {
+            loadLogData();
+        }
+    }, [canisterActiveTab, canisterSectionExpanded, loadLogData]);
+
+    // Log auto-refresh (every 5 seconds when enabled)
+    useEffect(() => {
+        if (logAutoRefreshRef.current) { clearInterval(logAutoRefreshRef.current); logAutoRefreshRef.current = null; }
+        if (logAutoRefresh && canisterActiveTab === 'log') {
+            logAutoRefreshRef.current = setInterval(() => loadLogData(undefined, true), 5000);
+        }
+        return () => { if (logAutoRefreshRef.current) { clearInterval(logAutoRefreshRef.current); logAutoRefreshRef.current = null; } };
+    }, [logAutoRefresh, canisterActiveTab, loadLogData]);
 
     // --- Smart auto-refresh for chore statuses ---
     // Each time choreStatuses changes, this effect decides when to fetch next.
@@ -3465,6 +3525,11 @@ function IcpNeuronManager() {
                                             />
                                         )}
                                         Chores
+                                    </button>
+                                    )}
+                                    {hasPermission('ViewLogs') && (
+                                    <button style={tabStyle(canisterActiveTab === 'log')} onClick={() => setCanisterActiveTab('log')}>
+                                        Log
                                     </button>
                                     )}
                                 </div>
@@ -6736,6 +6801,336 @@ function IcpNeuronManager() {
                                     fontSize: '0.85rem',
                                 }}>
                                     No chores available. This bot version may not support automated chores yet.
+                                </div>
+                            )}
+                            </>
+                            )}
+                        </div>
+                        )}
+
+                        {/* Log Tab */}
+                        {canisterActiveTab === 'log' && (
+                        <div>
+                            {loadingLogs ? (
+                                <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.secondaryText }}>
+                                    Loading log data...
+                                </div>
+                            ) : (
+                            <>
+                            {/* Log explanation */}
+                            <div style={{
+                                ...cardStyle,
+                                background: `linear-gradient(135deg, ${neuronPrimary}08, ${neuronSecondary}05)`,
+                                border: `1px solid ${neuronPrimary}20`,
+                            }}>
+                                <p style={{ margin: 0, fontSize: '0.85rem', color: theme.colors.secondaryText, lineHeight: '1.5' }}>
+                                    Bot Log records all activity — API calls, chore actions, permission changes, and errors.
+                                    {logConfig && ` Currently storing ${Number(logConfig.entryCount)} of ${Number(logConfig.maxEntries)} max entries at `}
+                                    {logConfig && <strong>{Object.keys(logConfig.logLevel)[0]}</strong>}
+                                    {logConfig && ' level.'}
+                                </p>
+                            </div>
+
+                            {logError && (
+                                <div style={{ ...cardStyle, background: `${theme.colors.error}15`, border: `1px solid ${theme.colors.error}30`, color: theme.colors.error, fontSize: '0.85rem' }}>
+                                    {logError}
+                                </div>
+                            )}
+                            {logSuccess && (
+                                <div style={{ ...cardStyle, background: `${theme.colors.success || '#22c55e'}15`, border: `1px solid ${theme.colors.success || '#22c55e'}30`, color: theme.colors.success || '#22c55e', fontSize: '0.85rem' }}>
+                                    {logSuccess}
+                                </div>
+                            )}
+
+                            {/* Toolbar: filters + config */}
+                            <div style={{ ...cardStyle, padding: '0.75rem 1rem' }}>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
+                                    {/* Level filter */}
+                                    <span style={{ fontSize: '0.8rem', color: theme.colors.mutedText }}>Level:</span>
+                                    {['Error', 'Warning', 'Info', 'Debug', 'Trace'].map(lvl => {
+                                        const levelColors = { Error: '#ef4444', Warning: '#f59e0b', Info: '#3b82f6', Debug: '#8b5cf6', Trace: '#6b7280' };
+                                        const isActive = logFilter.minLevel.length > 0 && Object.keys(logFilter.minLevel[0])[0] === lvl;
+                                        return (
+                                            <button
+                                                key={lvl}
+                                                onClick={() => {
+                                                    const newFilter = {
+                                                        ...logFilter,
+                                                        minLevel: isActive ? [] : [{ [lvl]: null }],
+                                                        startId: [],
+                                                    };
+                                                    setLogFilter(newFilter);
+                                                    loadLogData(newFilter);
+                                                }}
+                                                style={{
+                                                    padding: '2px 10px',
+                                                    borderRadius: '12px',
+                                                    border: `1px solid ${isActive ? levelColors[lvl] : theme.colors.border}`,
+                                                    background: isActive ? `${levelColors[lvl]}20` : 'transparent',
+                                                    color: isActive ? levelColors[lvl] : theme.colors.secondaryText,
+                                                    fontSize: '0.75rem',
+                                                    fontWeight: isActive ? '600' : '400',
+                                                    cursor: 'pointer',
+                                                    transition: 'all 0.15s',
+                                                }}
+                                            >
+                                                {lvl}
+                                            </button>
+                                        );
+                                    })}
+
+                                    <div style={{ flex: 1 }} />
+
+                                    {/* Source filter */}
+                                    <span style={{ fontSize: '0.8rem', color: theme.colors.mutedText }}>Source:</span>
+                                    {['api', 'permissions', 'chore', 'system', 'log'].map(src => {
+                                        const isActive = logFilter.source.length > 0 && logFilter.source[0] === src;
+                                        return (
+                                            <button
+                                                key={src}
+                                                onClick={() => {
+                                                    const newFilter = {
+                                                        ...logFilter,
+                                                        source: isActive ? [] : [src],
+                                                        startId: [],
+                                                    };
+                                                    setLogFilter(newFilter);
+                                                    loadLogData(newFilter);
+                                                }}
+                                                style={{
+                                                    padding: '2px 10px',
+                                                    borderRadius: '12px',
+                                                    border: `1px solid ${isActive ? neuronPrimary : theme.colors.border}`,
+                                                    background: isActive ? `${neuronPrimary}20` : 'transparent',
+                                                    color: isActive ? neuronPrimary : theme.colors.secondaryText,
+                                                    fontSize: '0.75rem',
+                                                    fontWeight: isActive ? '600' : '400',
+                                                    cursor: 'pointer',
+                                                    transition: 'all 0.15s',
+                                                }}
+                                            >
+                                                {src}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Second row: actions */}
+                                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                                    <button
+                                        onClick={() => loadLogData()}
+                                        style={{
+                                            padding: '4px 12px', borderRadius: '8px', border: `1px solid ${theme.colors.border}`,
+                                            background: 'transparent', color: theme.colors.primaryText, fontSize: '0.8rem', cursor: 'pointer',
+                                        }}
+                                    >
+                                        Refresh
+                                    </button>
+                                    <label style={{ fontSize: '0.8rem', color: theme.colors.secondaryText, display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={logAutoRefresh}
+                                            onChange={e => setLogAutoRefresh(e.target.checked)}
+                                            style={{ cursor: 'pointer' }}
+                                        />
+                                        Auto-refresh
+                                    </label>
+
+                                    <div style={{ flex: 1 }} />
+
+                                    {/* Log level config (ManageLogs permission) */}
+                                    {hasPermission('ManageLogs') && logConfig && (
+                                    <>
+                                        <span style={{ fontSize: '0.8rem', color: theme.colors.mutedText }}>Write level:</span>
+                                        <select
+                                            value={Object.keys(logConfig.logLevel)[0]}
+                                            onChange={async (e) => {
+                                                const lvl = e.target.value;
+                                                setSavingLogConfig(true);
+                                                setLogSuccess('');
+                                                try {
+                                                    const agent = getAgent();
+                                                    if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') await agent.fetchRootKey();
+                                                    const manager = createManagerActor(canisterId, { agent });
+                                                    await manager.setLogLevel({ [lvl]: null });
+                                                    setLogSuccess(`Log level set to ${lvl}`);
+                                                    setTimeout(() => setLogSuccess(''), 3000);
+                                                    loadLogData(undefined, true);
+                                                } catch (err) {
+                                                    setLogError('Failed to set log level: ' + (err.message || String(err)));
+                                                } finally {
+                                                    setSavingLogConfig(false);
+                                                }
+                                            }}
+                                            disabled={savingLogConfig}
+                                            style={{
+                                                padding: '3px 8px', borderRadius: '6px', border: `1px solid ${theme.colors.border}`,
+                                                background: theme.colors.cardBackground || theme.colors.background, color: theme.colors.primaryText,
+                                                fontSize: '0.8rem', cursor: 'pointer',
+                                            }}
+                                        >
+                                            {['Off', 'Error', 'Warning', 'Info', 'Debug', 'Trace'].map(l => (
+                                                <option key={l} value={l}>{l}</option>
+                                            ))}
+                                        </select>
+
+                                        <button
+                                            onClick={async () => {
+                                                if (!window.confirm('Clear all log entries? This cannot be undone.')) return;
+                                                setSavingLogConfig(true);
+                                                try {
+                                                    const agent = getAgent();
+                                                    if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') await agent.fetchRootKey();
+                                                    const manager = createManagerActor(canisterId, { agent });
+                                                    await manager.clearLogs();
+                                                    setLogSuccess('Logs cleared');
+                                                    setTimeout(() => setLogSuccess(''), 3000);
+                                                    loadLogData();
+                                                } catch (err) {
+                                                    setLogError('Failed to clear logs: ' + (err.message || String(err)));
+                                                } finally {
+                                                    setSavingLogConfig(false);
+                                                }
+                                            }}
+                                            disabled={savingLogConfig}
+                                            style={{
+                                                padding: '4px 12px', borderRadius: '8px',
+                                                border: `1px solid ${theme.colors.error || '#ef4444'}40`,
+                                                background: `${theme.colors.error || '#ef4444'}10`,
+                                                color: theme.colors.error || '#ef4444',
+                                                fontSize: '0.8rem', cursor: 'pointer',
+                                            }}
+                                        >
+                                            Clear Logs
+                                        </button>
+                                    </>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Log entries */}
+                            {logEntries.length > 0 ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                {logEntries.slice().reverse().map(entry => {
+                                    const levelKey = Object.keys(entry.level)[0];
+                                    const levelColors = { Error: '#ef4444', Warning: '#f59e0b', Info: '#3b82f6', Debug: '#8b5cf6', Trace: '#6b7280' };
+                                    const levelColor = levelColors[levelKey] || '#6b7280';
+                                    const ts = new Date(Number(entry.timestamp) / 1_000_000);
+                                    const timeStr = ts.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+                                    return (
+                                        <div key={Number(entry.id)} style={{
+                                            display: 'flex', flexDirection: 'column', gap: '2px',
+                                            padding: '8px 12px',
+                                            background: theme.colors.cardBackground || theme.colors.background,
+                                            borderLeft: `3px solid ${levelColor}`,
+                                            borderRadius: '4px',
+                                            fontSize: '0.8rem',
+                                        }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                                {/* Level badge */}
+                                                <span style={{
+                                                    padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: '600',
+                                                    background: `${levelColor}20`, color: levelColor, minWidth: '48px', textAlign: 'center',
+                                                }}>
+                                                    {levelKey.toUpperCase()}
+                                                </span>
+                                                {/* Source */}
+                                                <span style={{
+                                                    padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem',
+                                                    background: `${neuronPrimary}15`, color: neuronPrimary,
+                                                }}>
+                                                    {entry.source}
+                                                </span>
+                                                {/* Message */}
+                                                <span style={{ color: theme.colors.primaryText, flex: 1 }}>
+                                                    {entry.message}
+                                                </span>
+                                                {/* Timestamp */}
+                                                <span style={{ color: theme.colors.mutedText, fontSize: '0.7rem', whiteSpace: 'nowrap' }}>
+                                                    {timeStr}
+                                                </span>
+                                                {/* Entry ID */}
+                                                <span style={{ color: theme.colors.mutedText, fontSize: '0.65rem', opacity: 0.6 }}>
+                                                    #{Number(entry.id)}
+                                                </span>
+                                            </div>
+                                            {/* Tags */}
+                                            {entry.tags.length > 0 && (
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginLeft: '56px' }}>
+                                                    {entry.tags.map(([k, v], i) => (
+                                                        <span key={i} style={{
+                                                            padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem',
+                                                            background: `${theme.colors.border}60`, color: theme.colors.secondaryText,
+                                                        }}>
+                                                            <span style={{ opacity: 0.7 }}>{k}:</span> {v}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            {/* Caller */}
+                                            {entry.caller.length > 0 && (
+                                                <div style={{ marginLeft: '56px', fontSize: '0.7rem', color: theme.colors.mutedText }}>
+                                                    caller: <PrincipalDisplay principal={entry.caller[0].toString()} displayInfo={getPrincipalDisplayInfoFromContext(entry.caller[0].toString(), principalNames, principalNicknames)} showCopyButton={false} isAuthenticated={isAuthenticated} />
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            ) : (
+                                <div style={{
+                                    ...cardStyle,
+                                    textAlign: 'center',
+                                    color: theme.colors.secondaryText,
+                                    fontSize: '0.85rem',
+                                }}>
+                                    No log entries found{logFilter.minLevel.length > 0 || logFilter.source.length > 0 ? ' matching the current filters' : ''}.
+                                </div>
+                            )}
+
+                            {/* Pagination */}
+                            {(logHasMore || (logFilter.startId && logFilter.startId.length > 0)) && (
+                            <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '8px' }}>
+                                {logFilter.startId && logFilter.startId.length > 0 && (
+                                    <button
+                                        onClick={() => {
+                                            const newFilter = { ...logFilter, startId: [] };
+                                            setLogFilter(newFilter);
+                                            loadLogData(newFilter);
+                                        }}
+                                        style={{
+                                            padding: '6px 16px', borderRadius: '8px', border: `1px solid ${theme.colors.border}`,
+                                            background: 'transparent', color: theme.colors.primaryText, fontSize: '0.8rem', cursor: 'pointer',
+                                        }}
+                                    >
+                                        Newest
+                                    </button>
+                                )}
+                                {logHasMore && logEntries.length > 0 && (
+                                    <button
+                                        onClick={() => {
+                                            const lastEntry = logEntries[logEntries.length - 1];
+                                            const newFilter = { ...logFilter, startId: [BigInt(Number(lastEntry.id) + 1)] };
+                                            setLogFilter(newFilter);
+                                            loadLogData(newFilter);
+                                        }}
+                                        style={{
+                                            padding: '6px 16px', borderRadius: '8px', border: `1px solid ${theme.colors.border}`,
+                                            background: 'transparent', color: theme.colors.primaryText, fontSize: '0.8rem', cursor: 'pointer',
+                                        }}
+                                    >
+                                        Older ({logTotalMatching - logEntries.length} more)
+                                    </button>
+                                )}
+                            </div>
+                            )}
+
+                            {/* Footer stats */}
+                            {logConfig && (
+                                <div style={{ textAlign: 'center', padding: '8px', fontSize: '0.7rem', color: theme.colors.mutedText }}>
+                                    Showing {logEntries.length} of {logTotalMatching} matching entries
+                                    {' '} — {Number(logConfig.entryCount)} total stored — Next ID: {Number(logConfig.nextId)}
                                 </div>
                             )}
                             </>
