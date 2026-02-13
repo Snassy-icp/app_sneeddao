@@ -6813,9 +6813,19 @@ function IcpNeuronManager() {
                         )}
 
                         {/* Log Tab */}
-                        {canisterActiveTab === 'log' && (
+                        {canisterActiveTab === 'log' && (() => {
+                            const LOG_LEVELS = ['Error', 'Warning', 'Info', 'Debug', 'Trace'];
+                            const LOG_LEVEL_COLORS = { Error: '#ef4444', Warning: '#f59e0b', Info: '#3b82f6', Debug: '#8b5cf6', Trace: '#6b7280' };
+                            const LOG_LEVEL_ORDER = { Error: 1, Warning: 2, Info: 3, Debug: 4, Trace: 5 };
+                            const selectedLevelKey = logFilter.minLevel.length > 0 ? Object.keys(logFilter.minLevel[0])[0] : null;
+                            const selectedLevelNum = selectedLevelKey ? LOG_LEVEL_ORDER[selectedLevelKey] : null;
+                            // Current page number for display (based on startId)
+                            const pageSize = Number(logFilter.limit.length > 0 ? logFilter.limit[0] : 50n);
+                            const isFirstPage = logFilter.startId.length === 0;
+
+                            return (
                         <div>
-                            {loadingLogs ? (
+                            {loadingLogs && !logEntries.length ? (
                                 <div style={{ textAlign: 'center', padding: '2rem', color: theme.colors.secondaryText }}>
                                     Loading log data...
                                 </div>
@@ -6829,9 +6839,7 @@ function IcpNeuronManager() {
                             }}>
                                 <p style={{ margin: 0, fontSize: '0.85rem', color: theme.colors.secondaryText, lineHeight: '1.5' }}>
                                     Bot Log records all activity — API calls, chore actions, permission changes, and errors.
-                                    {logConfig && ` Currently storing ${Number(logConfig.entryCount)} of ${Number(logConfig.maxEntries)} max entries at `}
-                                    {logConfig && <strong>{Object.keys(logConfig.logLevel)[0]}</strong>}
-                                    {logConfig && ' level.'}
+                                    {logConfig && <> Currently storing <strong>{Number(logConfig.entryCount).toLocaleString()}</strong> of {Number(logConfig.maxEntries).toLocaleString()} max entries at <strong>{Object.keys(logConfig.logLevel)[0]}</strong> write level.</>}
                                 </p>
                             </div>
 
@@ -6848,19 +6856,24 @@ function IcpNeuronManager() {
 
                             {/* Toolbar: filters + config */}
                             <div style={{ ...cardStyle, padding: '0.75rem 1rem' }}>
+                                {/* Row 1: Level filter + Source filter */}
                                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
-                                    {/* Level filter */}
-                                    <span style={{ fontSize: '0.8rem', color: theme.colors.mutedText }}>Level:</span>
-                                    {['Error', 'Warning', 'Info', 'Debug', 'Trace'].map(lvl => {
-                                        const levelColors = { Error: '#ef4444', Warning: '#f59e0b', Info: '#3b82f6', Debug: '#8b5cf6', Trace: '#6b7280' };
-                                        const isActive = logFilter.minLevel.length > 0 && Object.keys(logFilter.minLevel[0])[0] === lvl;
+                                    {/* Level filter — cumulative: selecting Warning shows Error + Warning */}
+                                    <span style={{ fontSize: '0.8rem', color: theme.colors.mutedText }}>Show:</span>
+                                    {LOG_LEVELS.map(lvl => {
+                                        const lvlNum = LOG_LEVEL_ORDER[lvl];
+                                        // "included" means this level is at-or-above the selected threshold
+                                        const isIncluded = selectedLevelNum !== null && lvlNum <= selectedLevelNum;
+                                        const isThreshold = selectedLevelKey === lvl;
+                                        const color = LOG_LEVEL_COLORS[lvl];
                                         return (
                                             <button
                                                 key={lvl}
                                                 onClick={() => {
+                                                    // Click the current threshold to deselect (show all)
                                                     const newFilter = {
                                                         ...logFilter,
-                                                        minLevel: isActive ? [] : [{ [lvl]: null }],
+                                                        minLevel: isThreshold ? [] : [{ [lvl]: null }],
                                                         startId: [],
                                                     };
                                                     setLogFilter(newFilter);
@@ -6869,21 +6882,39 @@ function IcpNeuronManager() {
                                                 style={{
                                                     padding: '2px 10px',
                                                     borderRadius: '12px',
-                                                    border: `1px solid ${isActive ? levelColors[lvl] : theme.colors.border}`,
-                                                    background: isActive ? `${levelColors[lvl]}20` : 'transparent',
-                                                    color: isActive ? levelColors[lvl] : theme.colors.secondaryText,
+                                                    border: `1px solid ${isIncluded ? color : theme.colors.border}`,
+                                                    background: isThreshold ? `${color}30` : isIncluded ? `${color}15` : 'transparent',
+                                                    color: isIncluded ? color : theme.colors.secondaryText,
                                                     fontSize: '0.75rem',
-                                                    fontWeight: isActive ? '600' : '400',
+                                                    fontWeight: isIncluded ? '600' : '400',
                                                     cursor: 'pointer',
                                                     transition: 'all 0.15s',
+                                                    opacity: selectedLevelNum !== null && !isIncluded ? 0.4 : 1,
                                                 }}
+                                                title={`Show ${lvl} and above (more severe)`}
                                             >
-                                                {lvl}
+                                                {lvl}{isThreshold ? '+' : ''}
                                             </button>
                                         );
                                     })}
+                                    {selectedLevelKey && (
+                                        <button
+                                            onClick={() => {
+                                                const newFilter = { ...logFilter, minLevel: [], startId: [] };
+                                                setLogFilter(newFilter);
+                                                loadLogData(newFilter);
+                                            }}
+                                            style={{
+                                                padding: '2px 8px', borderRadius: '12px', border: `1px solid ${theme.colors.border}`,
+                                                background: 'transparent', color: theme.colors.mutedText, fontSize: '0.7rem', cursor: 'pointer',
+                                            }}
+                                            title="Show all levels"
+                                        >
+                                            All
+                                        </button>
+                                    )}
 
-                                    <div style={{ flex: 1 }} />
+                                    <div style={{ width: '1px', height: '16px', background: theme.colors.border, margin: '0 4px' }} />
 
                                     {/* Source filter */}
                                     <span style={{ fontSize: '0.8rem', color: theme.colors.mutedText }}>Source:</span>
@@ -6919,16 +6950,18 @@ function IcpNeuronManager() {
                                     })}
                                 </div>
 
-                                {/* Second row: actions */}
+                                {/* Row 2: actions + page size + config */}
                                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
                                     <button
                                         onClick={() => loadLogData()}
+                                        disabled={loadingLogs}
                                         style={{
                                             padding: '4px 12px', borderRadius: '8px', border: `1px solid ${theme.colors.border}`,
                                             background: 'transparent', color: theme.colors.primaryText, fontSize: '0.8rem', cursor: 'pointer',
+                                            opacity: loadingLogs ? 0.5 : 1,
                                         }}
                                     >
-                                        Refresh
+                                        {loadingLogs ? 'Loading...' : 'Refresh'}
                                     </button>
                                     <label style={{ fontSize: '0.8rem', color: theme.colors.secondaryText, display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
                                         <input
@@ -6940,9 +6973,31 @@ function IcpNeuronManager() {
                                         Auto-refresh
                                     </label>
 
+                                    <div style={{ width: '1px', height: '16px', background: theme.colors.border, margin: '0 2px' }} />
+
+                                    {/* Page size */}
+                                    <span style={{ fontSize: '0.8rem', color: theme.colors.mutedText }}>Per page:</span>
+                                    <select
+                                        value={pageSize}
+                                        onChange={(e) => {
+                                            const newFilter = { ...logFilter, limit: [BigInt(e.target.value)], startId: [] };
+                                            setLogFilter(newFilter);
+                                            loadLogData(newFilter);
+                                        }}
+                                        style={{
+                                            padding: '3px 6px', borderRadius: '6px', border: `1px solid ${theme.colors.border}`,
+                                            background: theme.colors.cardBackground || theme.colors.background, color: theme.colors.primaryText,
+                                            fontSize: '0.8rem', cursor: 'pointer',
+                                        }}
+                                    >
+                                        {[25, 50, 100, 200, 500].map(n => (
+                                            <option key={n} value={n}>{n}</option>
+                                        ))}
+                                    </select>
+
                                     <div style={{ flex: 1 }} />
 
-                                    {/* Log level config (ManageLogs permission) */}
+                                    {/* Log management (ManageLogs permission) */}
                                     {hasPermission('ManageLogs') && logConfig && (
                                     <>
                                         <span style={{ fontSize: '0.8rem', color: theme.colors.mutedText }}>Write level:</span>
@@ -6975,6 +7030,40 @@ function IcpNeuronManager() {
                                         >
                                             {['Off', 'Error', 'Warning', 'Info', 'Debug', 'Trace'].map(l => (
                                                 <option key={l} value={l}>{l}</option>
+                                            ))}
+                                        </select>
+
+                                        {/* Max entries */}
+                                        <span style={{ fontSize: '0.8rem', color: theme.colors.mutedText }}>Max entries:</span>
+                                        <select
+                                            value={Number(logConfig.maxEntries)}
+                                            onChange={async (e) => {
+                                                const n = parseInt(e.target.value);
+                                                if (!window.confirm(`Set max log entries to ${n.toLocaleString()}? ${Number(logConfig.entryCount) > n ? `This will immediately trim ${Number(logConfig.entryCount) - n} oldest entries.` : ''}`)) return;
+                                                setSavingLogConfig(true);
+                                                try {
+                                                    const agent = getAgent();
+                                                    if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') await agent.fetchRootKey();
+                                                    const manager = createManagerActor(canisterId, { agent });
+                                                    await manager.setMaxLogEntries(BigInt(n));
+                                                    setLogSuccess(`Max entries set to ${n.toLocaleString()}`);
+                                                    setTimeout(() => setLogSuccess(''), 3000);
+                                                    loadLogData(undefined, true);
+                                                } catch (err) {
+                                                    setLogError('Failed to set max entries: ' + (err.message || String(err)));
+                                                } finally {
+                                                    setSavingLogConfig(false);
+                                                }
+                                            }}
+                                            disabled={savingLogConfig}
+                                            style={{
+                                                padding: '3px 8px', borderRadius: '6px', border: `1px solid ${theme.colors.border}`,
+                                                background: theme.colors.cardBackground || theme.colors.background, color: theme.colors.primaryText,
+                                                fontSize: '0.8rem', cursor: 'pointer',
+                                            }}
+                                        >
+                                            {[1000, 2500, 5000, 10000, 25000, 50000].map(n => (
+                                                <option key={n} value={n}>{n.toLocaleString()}</option>
                                             ))}
                                         </select>
 
@@ -7012,13 +7101,12 @@ function IcpNeuronManager() {
                                 </div>
                             </div>
 
-                            {/* Log entries */}
+                            {/* Log entries — displayed newest first */}
                             {logEntries.length > 0 ? (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                 {logEntries.slice().reverse().map(entry => {
                                     const levelKey = Object.keys(entry.level)[0];
-                                    const levelColors = { Error: '#ef4444', Warning: '#f59e0b', Info: '#3b82f6', Debug: '#8b5cf6', Trace: '#6b7280' };
-                                    const levelColor = levelColors[levelKey] || '#6b7280';
+                                    const levelColor = LOG_LEVEL_COLORS[levelKey] || '#6b7280';
                                     const ts = new Date(Number(entry.timestamp) / 1_000_000);
                                     const timeStr = ts.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
@@ -7089,14 +7177,13 @@ function IcpNeuronManager() {
                                     color: theme.colors.secondaryText,
                                     fontSize: '0.85rem',
                                 }}>
-                                    No log entries found{logFilter.minLevel.length > 0 || logFilter.source.length > 0 ? ' matching the current filters' : ''}.
+                                    No log entries found{selectedLevelKey || logFilter.source.length > 0 ? ' matching the current filters' : ''}.
                                 </div>
                             )}
 
                             {/* Pagination */}
-                            {(logHasMore || (logFilter.startId && logFilter.startId.length > 0)) && (
-                            <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '8px' }}>
-                                {logFilter.startId && logFilter.startId.length > 0 && (
+                            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', marginTop: '10px', flexWrap: 'wrap' }}>
+                                {!isFirstPage && (
                                     <button
                                         onClick={() => {
                                             const newFilter = { ...logFilter, startId: [] };
@@ -7104,43 +7191,47 @@ function IcpNeuronManager() {
                                             loadLogData(newFilter);
                                         }}
                                         style={{
-                                            padding: '6px 16px', borderRadius: '8px', border: `1px solid ${theme.colors.border}`,
+                                            padding: '6px 14px', borderRadius: '8px', border: `1px solid ${theme.colors.border}`,
                                             background: 'transparent', color: theme.colors.primaryText, fontSize: '0.8rem', cursor: 'pointer',
                                         }}
                                     >
-                                        Newest
+                                        &laquo; Newest
                                     </button>
                                 )}
                                 {logHasMore && logEntries.length > 0 && (
                                     <button
                                         onClick={() => {
+                                            // Backend returns ascending order; last entry has highest ID in this page.
+                                            // To go to the NEXT page (older entries), we'd need entries AFTER this page.
+                                            // But since backend paginates forward by ID, we use the last entry's id + 1.
                                             const lastEntry = logEntries[logEntries.length - 1];
                                             const newFilter = { ...logFilter, startId: [BigInt(Number(lastEntry.id) + 1)] };
                                             setLogFilter(newFilter);
                                             loadLogData(newFilter);
                                         }}
                                         style={{
-                                            padding: '6px 16px', borderRadius: '8px', border: `1px solid ${theme.colors.border}`,
+                                            padding: '6px 14px', borderRadius: '8px', border: `1px solid ${theme.colors.border}`,
                                             background: 'transparent', color: theme.colors.primaryText, fontSize: '0.8rem', cursor: 'pointer',
                                         }}
                                     >
-                                        Older ({logTotalMatching - logEntries.length} more)
+                                        Older &raquo;
                                     </button>
                                 )}
                             </div>
-                            )}
 
                             {/* Footer stats */}
                             {logConfig && (
                                 <div style={{ textAlign: 'center', padding: '8px', fontSize: '0.7rem', color: theme.colors.mutedText }}>
-                                    Showing {logEntries.length} of {logTotalMatching} matching entries
-                                    {' '} — {Number(logConfig.entryCount)} total stored — Next ID: {Number(logConfig.nextId)}
+                                    Showing {logEntries.length} of {logTotalMatching.toLocaleString()} matching
+                                    {' '}&middot; {Number(logConfig.entryCount).toLocaleString()} total stored
+                                    {' '}&middot; Max: {Number(logConfig.maxEntries).toLocaleString()}
                                 </div>
                             )}
                             </>
                             )}
                         </div>
-                        )}
+                            );
+                        })()}
 
                                 </div>
                             )}

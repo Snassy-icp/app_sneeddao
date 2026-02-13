@@ -63,6 +63,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     var botLogEntries: [BotLogTypes.LogEntry] = [];
     var botLogNextId: Nat = 0;
     var botLogLevel: Nat = 3; // Info (default)
+    var botLogMaxEntries: Nat = 10_000;
 
     // ============================================
     // PER-INSTANCE SETTINGS HELPERS
@@ -224,8 +225,6 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     // BOT LOG SYSTEM
     // ============================================
 
-    transient let LOG_MAX_ENTRIES: Nat = 10_000;
-
     // Instantiate the log engine (transient — re-created on each canister start)
     transient let logEngine = BotLogEngine.Engine({
         getEntries = func(): [BotLogTypes.LogEntry] { botLogEntries };
@@ -234,7 +233,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         setNextId = func(n: Nat): () { botLogNextId := n };
         getLogLevel = func(): Nat { botLogLevel };
         setLogLevel = func(n: Nat): () { botLogLevel := n };
-        maxEntries = LOG_MAX_ENTRIES;
+        maxEntries = botLogMaxEntries;
     });
 
     // ============================================
@@ -1388,6 +1387,14 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             case (#Info) { "Info" }; case (#Debug) { "Debug" }; case (#Trace) { "Trace" };
         })]);
         logEngine.setLogLevel(level);
+    };
+
+    // Set the maximum number of log entries to retain
+    public shared ({ caller }) func setMaxLogEntries(maxEntries: Nat): async () {
+        assertPermission(caller, T.NeuronPermission.ManageLogs);
+        logEngine.logInfo("log", "setMaxLogEntries", ?caller, [("maxEntries", Nat.toText(maxEntries))]);
+        botLogMaxEntries := maxEntries;
+        logEngine.setMaxEntries(maxEntries);
     };
 
     // Clear all log entries

@@ -30,7 +30,7 @@ module {
         let setEntries = config.setEntries;
         let setNextId = config.setNextId;
         let setLogLevelNat = config.setLogLevel;
-        let maxEntries = config.maxEntries;
+        var maxEntries = config.maxEntries;
 
         // Internal buffer for efficient operations (transient, rebuilt from persistent state on init)
         var buf: Buffer.Buffer<BotLogTypes.LogEntry> = do {
@@ -72,10 +72,12 @@ module {
             minLvl: Nat,
             filter: BotLogTypes.LogFilter
         ): Bool {
-            // Level filter
+            // Level filter — levels: Error=1, Warning=2, Info=3, Debug=4, Trace=5
+            // minLvl acts as a severity ceiling: show entries at this level or MORE severe (lower number).
+            // E.g. minLvl=2 (Warning) shows Error(1) + Warning(2), hides Info(3)+Debug(4)+Trace(5).
             let entryLvl = BotLogTypes.logLevelToNat(entry.level);
             if (entryLvl == 0) return false; // #Off entries should never exist, but skip if so
-            if (minLvl > 0 and entryLvl < minLvl) return false;
+            if (minLvl > 0 and entryLvl > minLvl) return false;
 
             // Source prefix filter
             switch (filter.source) {
@@ -225,6 +227,14 @@ module {
         public func setLogLevel(level: BotLogTypes.LogLevel) {
             currentLevel := BotLogTypes.logLevelToNat(level);
             setLogLevelNat(currentLevel);
+        };
+
+        /// Set the maximum number of entries to retain.
+        /// Immediately trims if the current count exceeds the new limit.
+        public func setMaxEntries(n: Nat) {
+            maxEntries := n;
+            trimIfNeeded();
+            sync();
         };
 
         /// Clear all log entries. The nextId continues to increase (entry IDs are never reused).
