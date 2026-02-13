@@ -55,6 +55,18 @@ module {
         var pendingTasks: [(Text, Text, () -> async BotChoreTypes.TaskAction)] = [];
 
         // ============================================
+        // LOGGING HELPER
+        // ============================================
+
+        /// Emit a log entry via the StateAccessor callback (if provided).
+        func emitLog(level: BotChoreTypes.ChoreLogLevel, choreId: Text, message: Text, tags: [(Text, Text)]) {
+            switch (stateAccessor.log) {
+                case (?logFn) { logFn(level, "chore:" # choreId, message, tags) };
+                case null {};
+            };
+        };
+
+        // ============================================
         // TYPE REGISTRATION
         // ============================================
 
@@ -856,6 +868,11 @@ module {
                         };
                     };
 
+                    // Log run start on first invocation
+                    if (freshState.conductorInvocationCount == 0) {
+                        emitLog(#Info, choreId, "Run started", [("choreName", d.name)]);
+                    };
+
                     // Increment invocation count
                     updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
                         { s with conductorInvocationCount = s.conductorInvocationCount + 1 }
@@ -876,6 +893,7 @@ module {
                         let pending = consumePendingTask(choreId);
                         switch (pending) {
                             case (?(taskId, taskFn)) {
+                                emitLog(#Info, choreId, "Task started: " # taskId, [("taskId", taskId)]);
                                 // Mark task as started in state
                                 updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
                                     {
@@ -954,6 +972,11 @@ module {
                             case (?id) { id };
                             case null { "unknown" };
                         };
+                        emitLog(#Warning, choreId, "Task timed out: " # taskId # " (after " # Nat.toText(elapsedSeconds) # "s)", [
+                            ("taskId", taskId),
+                            ("elapsedSeconds", Nat.toText(elapsedSeconds)),
+                            ("timeoutSeconds", Nat.toText(config.taskTimeoutSeconds)),
+                        ]);
                         updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
                             {
                                 s with
@@ -975,6 +998,11 @@ module {
 
         /// Mark conductor as successfully completed.
         func markConductorDone(choreId: Text) {
+            let state = getStateOrDefault(choreId);
+            emitLog(#Info, choreId, "Run completed successfully", [
+                ("totalRuns", Nat.toText(state.totalRunCount + 1)),
+                ("totalSuccess", Nat.toText(state.totalSuccessCount + 1)),
+            ]);
             updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
                 {
                     s with
@@ -989,6 +1017,12 @@ module {
 
         /// Mark conductor as failed.
         func markConductorError(choreId: Text, msg: Text) {
+            let state = getStateOrDefault(choreId);
+            emitLog(#Error, choreId, "Run failed: " # msg, [
+                ("totalRuns", Nat.toText(state.totalRunCount + 1)),
+                ("totalFailures", Nat.toText(state.totalFailureCount + 1)),
+                ("error", msg),
+            ]);
             updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
                 {
                     s with
@@ -1088,6 +1122,13 @@ module {
             let taskId = switch (state.currentTaskId) {
                 case (?id) { id };
                 case null { "unknown" };
+            };
+
+            if (succeeded) {
+                emitLog(#Info, choreId, "Task completed: " # taskId, [("taskId", taskId), ("result", "success")]);
+            } else {
+                let errMsg = switch (error) { case (?e) { e }; case null { "Unknown error" } };
+                emitLog(#Error, choreId, "Task failed: " # taskId # " — " # errMsg, [("taskId", taskId), ("result", "failure"), ("error", errMsg)]);
             };
 
             updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {

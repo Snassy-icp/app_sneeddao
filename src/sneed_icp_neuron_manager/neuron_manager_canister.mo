@@ -248,6 +248,13 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         setStates = func(s: [(Text, BotChoreTypes.ChoreRuntimeState)]): () { choreStates := s };
         getInstances = func(): [(Text, BotChoreTypes.ChoreInstanceInfo)] { choreInstances };
         setInstances = func(i: [(Text, BotChoreTypes.ChoreInstanceInfo)]): () { choreInstances := i };
+        log = ?(func(level: BotChoreTypes.ChoreLogLevel, source: Text, message: Text, tags: [(Text, Text)]): () {
+            switch (level) {
+                case (#Info) { logEngine.logInfo(source, message, null, tags) };
+                case (#Warning) { logEngine.logWarning(source, message, null, tags) };
+                case (#Error) { logEngine.logError(source, message, null, tags) };
+            };
+        });
     });
 
     // Mutable state for chore closures (transient, reset on upgrade)

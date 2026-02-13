@@ -263,6 +263,9 @@ module {
     // STATE ACCESSOR (bridge to bot's stable vars)
     // ============================================
 
+    /// Log level for the chore engine log callback.
+    public type ChoreLogLevel = { #Info; #Warning; #Error };
+
     /// Interface for the engine to read/write the bot's stable chore state.
     /// The bot provides getter/setter functions that close over its stable vars.
     public type StateAccessor = {
@@ -272,6 +275,10 @@ module {
         setStates: ([(Text, ChoreRuntimeState)]) -> ();
         getInstances: () -> [(Text, ChoreInstanceInfo)];
         setInstances: ([(Text, ChoreInstanceInfo)]) -> ();
+        /// Optional log callback. Called by the engine at key lifecycle points.
+        /// Arguments: (level, source, message, tags).
+        /// source is "chore:<choreId>" (e.g. "chore:confirm-following").
+        log: ?((ChoreLogLevel, Text, Text, [(Text, Text)]) -> ());
     };
 
 };
