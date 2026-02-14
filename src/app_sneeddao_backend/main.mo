@@ -131,6 +131,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   stable var stable_user_setting_frontend_update_check_interval_sec : [(Principal, Nat)] = [];
   stable var stable_user_setting_frontend_update_countdown_sec : [(Principal, Nat)] = [];
   stable var stable_user_setting_swap_slippage_tolerance : [(Principal, Float)] = [];
+  stable var stable_user_setting_always_show_remove_token : [(Principal, Bool)] = [];
   // Per-notification-type visibility settings
   stable var stable_user_setting_notify_replies : [(Principal, Bool)] = [];
   stable var stable_user_setting_notify_tips : [(Principal, Bool)] = [];
@@ -254,6 +255,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   transient let default_frontend_update_check_interval_sec : Nat = 600;
   transient let default_frontend_update_countdown_sec : Nat = 300;
   transient let default_swap_slippage_tolerance : Float = 0.01;
+  transient let default_always_show_remove_token : Bool = false;
   transient let default_notify_replies : Bool = true;
   transient let default_notify_tips : Bool = true;
   transient let default_notify_messages : Bool = true;
@@ -281,6 +283,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   transient var user_setting_frontend_update_check_interval_sec : HashMap.HashMap<Principal, Nat> = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
   transient var user_setting_frontend_update_countdown_sec : HashMap.HashMap<Principal, Nat> = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
   transient var user_setting_swap_slippage_tolerance : HashMap.HashMap<Principal, Float> = HashMap.HashMap<Principal, Float>(100, Principal.equal, Principal.hash);
+  transient var user_setting_always_show_remove_token : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
   transient var user_setting_notify_replies : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
   transient var user_setting_notify_tips : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
   transient var user_setting_notify_messages : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
@@ -471,6 +474,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         case (?value) value;
         case null default_swap_slippage_tolerance;
       };
+      always_show_remove_token = switch (user_setting_always_show_remove_token.get(user)) {
+        case (?value) value;
+        case null default_always_show_remove_token;
+      };
       notify_replies = switch (user_setting_notify_replies.get(user)) {
         case (?value) value;
         case null default_notify_replies;
@@ -575,6 +582,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       case (?value) { user_setting_swap_slippage_tolerance.put(user, value) };
       case null {};
     };
+    switch (update.always_show_remove_token) {
+      case (?value) { user_setting_always_show_remove_token.put(user, value) };
+      case null {};
+    };
     switch (update.notify_replies) {
       case (?value) { user_setting_notify_replies.put(user, value) };
       case null {};
@@ -633,6 +644,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         frontend_update_check_interval_sec = default_frontend_update_check_interval_sec;
         frontend_update_countdown_sec = default_frontend_update_countdown_sec;
         swap_slippage_tolerance = default_swap_slippage_tolerance;
+        always_show_remove_token = default_always_show_remove_token;
         notify_replies = default_notify_replies;
         notify_tips = default_notify_tips;
         notify_messages = default_notify_messages;
@@ -3355,6 +3367,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     stable_user_setting_frontend_update_check_interval_sec := Iter.toArray(user_setting_frontend_update_check_interval_sec.entries());
     stable_user_setting_frontend_update_countdown_sec := Iter.toArray(user_setting_frontend_update_countdown_sec.entries());
     stable_user_setting_swap_slippage_tolerance := Iter.toArray(user_setting_swap_slippage_tolerance.entries());
+    stable_user_setting_always_show_remove_token := Iter.toArray(user_setting_always_show_remove_token.entries());
     stable_user_setting_notify_replies := Iter.toArray(user_setting_notify_replies.entries());
     stable_user_setting_notify_tips := Iter.toArray(user_setting_notify_tips.entries());
     stable_user_setting_notify_messages := Iter.toArray(user_setting_notify_messages.entries());
@@ -3561,6 +3574,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         user_setting_swap_slippage_tolerance.put(user, value);
       };
       stable_user_setting_swap_slippage_tolerance := [];
+      for ((user, value) in stable_user_setting_always_show_remove_token.vals()) {
+        user_setting_always_show_remove_token.put(user, value);
+      };
+      stable_user_setting_always_show_remove_token := [];
       for ((user, value) in stable_user_setting_notify_replies.vals()) {
         user_setting_notify_replies.put(user, value);
       };

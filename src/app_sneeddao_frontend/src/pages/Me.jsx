@@ -221,6 +221,7 @@ export default function Me() {
         frontend_update_check_interval_sec: 600,
         frontend_update_countdown_sec: 300,
         swap_slippage_tolerance: 0.01,
+        always_show_remove_token: false,
         notify_replies: true,
         notify_tips: true,
         notify_messages: true,
@@ -280,6 +281,7 @@ export default function Me() {
             frontend_update_check_interval_sec: readNat('frontendUpdateCheckIntervalSec', defaultUserSettings.frontend_update_check_interval_sec),
             frontend_update_countdown_sec: readNat('frontendUpdateCountdownSec', defaultUserSettings.frontend_update_countdown_sec),
             swap_slippage_tolerance: readFloat('swapSlippageTolerance', defaultUserSettings.swap_slippage_tolerance),
+            always_show_remove_token: readBool('alwaysShowRemoveToken', defaultUserSettings.always_show_remove_token),
             notify_replies: readBool('notifyReplies', defaultUserSettings.notify_replies),
             notify_tips: readBool('notifyTips', defaultUserSettings.notify_tips),
             notify_messages: readBool('notifyMessages', defaultUserSettings.notify_messages),
@@ -314,6 +316,7 @@ export default function Me() {
             && toNumber(settings.frontend_update_check_interval_sec ?? defaultUserSettings.frontend_update_check_interval_sec) === defaultUserSettings.frontend_update_check_interval_sec
             && toNumber(settings.frontend_update_countdown_sec ?? defaultUserSettings.frontend_update_countdown_sec) === defaultUserSettings.frontend_update_countdown_sec
             && toNumber(settings.swap_slippage_tolerance ?? defaultUserSettings.swap_slippage_tolerance) === defaultUserSettings.swap_slippage_tolerance
+            && (settings.always_show_remove_token ?? defaultUserSettings.always_show_remove_token) === defaultUserSettings.always_show_remove_token
             && (settings.notify_replies ?? defaultUserSettings.notify_replies) === defaultUserSettings.notify_replies
             && (settings.notify_tips ?? defaultUserSettings.notify_tips) === defaultUserSettings.notify_tips
             && (settings.notify_messages ?? defaultUserSettings.notify_messages) === defaultUserSettings.notify_messages
@@ -428,6 +431,11 @@ export default function Me() {
         setSwapSlippageTolerance(slippageValue);
         localStorage.setItem('swapSlippageTolerance', slippageValue.toString());
         window.dispatchEvent(new CustomEvent('swapSlippageToleranceChanged', { detail: slippageValue }));
+
+        const alwaysShowRemoveTokenValue = settings.always_show_remove_token ?? false;
+        setAlwaysShowRemoveToken(alwaysShowRemoveTokenValue);
+        localStorage.setItem('alwaysShowRemoveToken', JSON.stringify(alwaysShowRemoveTokenValue));
+        window.dispatchEvent(new CustomEvent('alwaysShowRemoveTokenChanged', { detail: alwaysShowRemoveTokenValue }));
 
         // Per-notification-type settings
         const notifyRepliesValue = settings.notify_replies ?? true;
@@ -609,6 +617,16 @@ export default function Me() {
             }
         } catch (error) {}
         return 0.01;
+    });
+
+    // Always show remove button on tokens (even when balance is not 0)
+    const [alwaysShowRemoveToken, setAlwaysShowRemoveToken] = useState(() => {
+        try {
+            const saved = localStorage.getItem('alwaysShowRemoveToken');
+            return saved !== null ? JSON.parse(saved) : false;
+        } catch (error) {
+            return false;
+        }
     });
 
     const [canisterManagerSettingsExpanded, setCanisterManagerSettingsExpanded] = useState(false);
@@ -2312,6 +2330,23 @@ export default function Me() {
                                                 setParticleEffectsEnabled(newValue);
                                                 localStorage.setItem('particleEffectsEnabled', JSON.stringify(newValue));
                                                 updateBackendSettings({ particle_effects_enabled: newValue });
+                                            }}
+                                        />
+                                    </SettingItem>
+
+                                    <SettingItem
+                                        title="Always show remove button on tokens"
+                                        description="Show the remove button on wallet tokens even when they have a non-zero balance. By default, the remove button only appears for tokens with a zero balance."
+                                        theme={theme}
+                                    >
+                                        <ToggleSwitch
+                                            checked={alwaysShowRemoveToken}
+                                            onChange={(e) => {
+                                                const newValue = e.target.checked;
+                                                setAlwaysShowRemoveToken(newValue);
+                                                localStorage.setItem('alwaysShowRemoveToken', JSON.stringify(newValue));
+                                                window.dispatchEvent(new CustomEvent('alwaysShowRemoveTokenChanged', { detail: newValue }));
+                                                updateBackendSettings({ always_show_remove_token: newValue });
                                             }}
                                         />
                                     </SettingItem>

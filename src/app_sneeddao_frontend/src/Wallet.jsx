@@ -653,6 +653,14 @@ function Wallet() {
             return true; // Default to expanded
         }
     });
+    const [alwaysShowRemoveToken, setAlwaysShowRemoveToken] = useState(() => {
+        try {
+            const saved = localStorage.getItem('alwaysShowRemoveToken');
+            return saved !== null ? JSON.parse(saved) : false;
+        } catch (error) {
+            return false;
+        }
+    });
     const [collectiblesThreshold, setCollectiblesThreshold] = useState(() => {
         try {
             const saved = localStorage.getItem('collectiblesThreshold');
@@ -816,6 +824,15 @@ function Wallet() {
         };
         window.addEventListener('collectiblesThresholdChanged', handleThresholdChange);
         return () => window.removeEventListener('collectiblesThresholdChanged', handleThresholdChange);
+    }, []);
+
+    // Listen for always show remove token changes from settings
+    useEffect(() => {
+        const handleChange = (e) => {
+            setAlwaysShowRemoveToken(e.detail);
+        };
+        window.addEventListener('alwaysShowRemoveTokenChanged', handleChange);
+        return () => window.removeEventListener('alwaysShowRemoveTokenChanged', handleChange);
     }, []);
 
     // Save neuronManagersExpanded state to localStorage
@@ -4919,14 +4936,30 @@ function Wallet() {
                         subaccount: [] 
                     });
                     
-                    // If balance > 0, register this token and immediately add to wallet
+                    // If balance > 0, register this token and immediately show a placeholder
                     if (BigInt(balance) > 0n) {
                         console.log(`[Scan] Found balance on ${ledgerId}: ${balance}`);
                         await backendActor.register_ledger_canister_id(Principal.fromText(ledgerId));
                         newLedgers.push(ledgerId);
                         foundCount++;
-                        // Register to wallet immediately so it appears during the scan
-                        fetchBalancesAndLocks(Principal.fromText(ledgerId));
+                        // Add a loading placeholder to the wallet immediately
+                        setTokens(prevTokens => {
+                            if (prevTokens.some(t => normalizeId(t.ledger_canister_id) === ledgerId)) return prevTokens;
+                            return [...prevTokens, {
+                                ledger_canister_id: Principal.fromText(ledgerId),
+                                symbol: '...',
+                                decimals: 8,
+                                fee: 0n,
+                                logo: '',
+                                balance: BigInt(balance),
+                                balance_backend: 0n,
+                                locked: 0n,
+                                available: BigInt(balance),
+                                available_backend: 0n,
+                                conversion_rate: 0,
+                                loading: true
+                            }];
+                        });
                     }
                 } catch (err) {
                     // Skip ledgers that fail (might be unavailable)
@@ -4952,8 +4985,13 @@ function Wallet() {
 
             await Promise.all(workers);
             
+            // After scan completes, fetch full token details sequentially
+            // (avoids race conditions from concurrent fetchBalancesAndLocks calls)
             if (newLedgers.length > 0) {
-                console.log(`[Scan] Found ${newLedgers.length} new tokens with balance`);
+                console.log(`[Scan] Found ${newLedgers.length} new tokens with balance, loading details...`);
+                for (const ledgerId of newLedgers) {
+                    await fetchBalancesAndLocks(Principal.fromText(ledgerId));
+                }
             }
             
         } catch (error) {
@@ -6055,6 +6093,7 @@ function Wallet() {
                                 openWrapModal={openWrapModal}
                                 openUnwrapModal={openUnwrapModal}
                                 handleUnregisterToken={handleUnregisterToken}
+                                alwaysShowRemoveToken={alwaysShowRemoveToken}
                                 rewardDetailsLoading={rewardDetailsLoading}
                                 handleClaimRewards={handleClaimRewards}
                                 handleWithdrawFromBackend={handleWithdrawFromBackend}

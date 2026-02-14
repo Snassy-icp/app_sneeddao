@@ -84,7 +84,7 @@ const LockCountdown = ({ expiry }) => {
     );
 };
 
-const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, defaultExpanded = false, defaultLocksExpanded = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, rewardDetailsLoading, handleClaimRewards, handleWithdrawFromBackend, handleDepositToBackend, handleRefreshToken, refreshPhase = null, isRefreshing: isRefreshingLegacy = false, isSnsToken = false, onNeuronTotalsChange, onNeuronsLoaded, openTransferTokenLockModal, onOpenDetailModal }) => {
+const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, defaultExpanded = false, defaultLocksExpanded = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, alwaysShowRemoveToken = false, rewardDetailsLoading, handleClaimRewards, handleWithdrawFromBackend, handleDepositToBackend, handleRefreshToken, refreshPhase = null, isRefreshing: isRefreshingLegacy = false, isSnsToken = false, onNeuronTotalsChange, onNeuronsLoaded, openTransferTokenLockModal, onOpenDetailModal }) => {
     // Support both new refreshPhase prop and legacy isRefreshing boolean
     const isRefreshing = refreshPhase !== null || isRefreshingLegacy;
     const refreshClass = refreshPhase === 'balance' ? 'refreshing-balance' : (refreshPhase === 'full' || isRefreshingLegacy) ? 'refreshing-full' : '';
@@ -1658,7 +1658,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                         </button>
                     )}
 
-                    {token.available + BigInt(token.locked) + rewardAmountOrZero(token) === 0n && (
+                    {(alwaysShowRemoveToken || token.available + BigInt(token.locked) + rewardAmountOrZero(token) === 0n) && (
                         <button 
                             onClick={() => handleUnregisterToken(token.ledger_canister_id)}
                             style={{

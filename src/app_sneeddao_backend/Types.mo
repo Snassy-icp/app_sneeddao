@@ -53,6 +53,7 @@ module {
         frontend_update_check_interval_sec: Nat;
         frontend_update_countdown_sec: Nat;
         swap_slippage_tolerance: Float;
+        always_show_remove_token: Bool;
         // Per-notification-type visibility settings
         notify_replies: Bool;
         notify_tips: Bool;
@@ -82,6 +83,7 @@ module {
         frontend_update_check_interval_sec: ?Nat;
         frontend_update_countdown_sec: ?Nat;
         swap_slippage_tolerance: ?Float;
+        always_show_remove_token: ?Bool;
         // Per-notification-type visibility settings
         notify_replies: ?Bool;
         notify_tips: ?Bool;

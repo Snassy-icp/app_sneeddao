@@ -9,6 +9,7 @@ type WhitelistedToken =
  };
 type UserSettingsUpdate = 
  record {
+   always_show_remove_token: opt bool;
    canister_manager_cycle_threshold_orange: opt nat;
    canister_manager_cycle_threshold_red: opt nat;
    collectibles_threshold: opt float64;
@@ -37,6 +38,7 @@ type UserSettingsUpdate =
  };
 type UserSettings = 
  record {
+   always_show_remove_token: bool;
    canister_manager_cycle_threshold_orange: nat;
    canister_manager_cycle_threshold_red: nat;
    collectibles_threshold: float64;
