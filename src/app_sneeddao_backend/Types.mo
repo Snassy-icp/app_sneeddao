@@ -29,6 +29,17 @@ module {
     public type PrincipalCanisterGroupsMap = HashMap.HashMap<Principal, CanisterGroupsRoot>;
     public type StablePrincipalCanisterGroups = [(Principal, CanisterGroupsRoot)];
 
+    // Wallet Layout - user's preferred ordering for wallet sections
+    public type WalletLayout = {
+        tokens: [Principal];        // Ordered ledger canister IDs
+        positions: [Principal];     // Ordered swap canister IDs
+        apps: [Principal];          // Ordered tracked canister IDs
+        staking_bots: [Principal];  // Ordered neuron manager canister IDs
+    };
+
+    public type PrincipalWalletLayoutMap = HashMap.HashMap<Principal, WalletLayout>;
+    public type StablePrincipalWalletLayout = [(Principal, WalletLayout)];
+
     public type State = object {
         principal_swap_canisters: PrincipalSwapCanisterMap;
         principal_ledger_canisters: PrincipalLedgerCanisterMap;

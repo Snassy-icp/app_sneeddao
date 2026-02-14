@@ -56,6 +56,9 @@ import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
 import { useNaming } from './NamingContext';
 import { useWhitelistTokens } from './contexts/WhitelistTokensContext';
 import { useWallet } from './contexts/WalletContext';
+import { useWalletLayout } from './contexts/WalletLayoutContext';
+import { DndProvider, useDrag, useDrop } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, computeAccountId, isSnsCanisterType, SnsPill, getCanisterTypeIcon } from './utils/PrincipalUtils';
 import { getCyclesColor, formatCyclesCompact, formatMemory, getNeuronManagerSettings, getCanisterManagerSettings } from './utils/NeuronManagerSettings';
 import StatusLamp, {
@@ -432,6 +435,58 @@ const showDebug = false;
 const known_icrc1_ledgers = {};
 var summed_locks = {};
 
+// Drag-and-drop wrapper for token cards in the wallet
+const DRAG_TYPE_TOKEN = 'WALLET_TOKEN';
+
+const DraggableTokenCard = ({ ledgerId, onDrop, children }) => {
+    const ref = React.useRef(null);
+
+    const [{ isDragging }, drag] = useDrag(() => ({
+        type: DRAG_TYPE_TOKEN,
+        item: { ledgerId },
+        collect: (monitor) => ({
+            isDragging: monitor.isDragging(),
+        }),
+    }), [ledgerId]);
+
+    const [{ isOver }, drop] = useDrop(() => ({
+        accept: DRAG_TYPE_TOKEN,
+        hover: (item) => {
+            if (item.ledgerId !== ledgerId) {
+                onDrop(item.ledgerId, ledgerId);
+                // Update the dragged item's ID reference for subsequent hovers
+                item.ledgerId = item.ledgerId; // keep original for the drop handler
+            }
+        },
+        collect: (monitor) => ({
+            isOver: monitor.isOver({ shallow: true }),
+        }),
+    }), [ledgerId, onDrop]);
+
+    drag(drop(ref));
+
+    return (
+        <div ref={ref} style={{ 
+            opacity: isDragging ? 0.4 : 1, 
+            cursor: 'grab',
+            transition: 'opacity 0.15s ease',
+            position: 'relative',
+        }}>
+            {isOver && <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                height: '3px',
+                background: 'linear-gradient(90deg, #10b981, #3b82f6)',
+                borderRadius: '2px',
+                zIndex: 10,
+            }} />}
+            {children}
+        </div>
+    );
+};
+
 function Wallet() {
     const { identity, isAuthenticated, logout } = useAuth();
     const { theme } = useTheme();
@@ -483,6 +538,7 @@ function Wallet() {
         setTrackedCanisterCycles: contextSetTrackedCanisterCycles,
         lowCyclesCanisters: contextLowCyclesCanisters,
     } = useWallet();
+    const walletLayoutCtx = useWalletLayout();
     const navigate = useNavigate();
     
     // Compute account ID for the logged-in user
@@ -834,6 +890,50 @@ function Wallet() {
         window.addEventListener('alwaysShowRemoveTokenChanged', handleChange);
         return () => window.removeEventListener('alwaysShowRemoveTokenChanged', handleChange);
     }, []);
+
+    // Sync loaded tokens into the wallet layout (append any new ones)
+    useEffect(() => {
+        if (!walletLayoutCtx?.ensureManyInSection || !tokens || tokens.length === 0) return;
+        const tokenIds = tokens
+            .map(t => normalizeId(t.ledger_canister_id))
+            .filter(Boolean);
+        if (tokenIds.length > 0) {
+            walletLayoutCtx.ensureManyInSection('tokens', tokenIds);
+        }
+    }, [tokens, walletLayoutCtx?.ensureManyInSection]);
+
+    // Sync loaded LP positions into the wallet layout
+    useEffect(() => {
+        if (!walletLayoutCtx?.ensureManyInSection || !liquidityPositions || liquidityPositions.length === 0) return;
+        const positionIds = liquidityPositions
+            .map(p => normalizeId(p.swapCanisterId))
+            .filter(Boolean);
+        if (positionIds.length > 0) {
+            walletLayoutCtx.ensureManyInSection('positions', positionIds);
+        }
+    }, [liquidityPositions, walletLayoutCtx?.ensureManyInSection]);
+
+    // Sync loaded neuron managers (ICP Staking Bots) into the wallet layout
+    useEffect(() => {
+        if (!walletLayoutCtx?.ensureManyInSection || !neuronManagers || neuronManagers.length === 0) return;
+        const managerIds = neuronManagers
+            .map(m => normalizeId(m.canisterId))
+            .filter(Boolean);
+        if (managerIds.length > 0) {
+            walletLayoutCtx.ensureManyInSection('staking_bots', managerIds);
+        }
+    }, [neuronManagers, walletLayoutCtx?.ensureManyInSection]);
+
+    // Sync tracked canisters (Apps) into the wallet layout
+    useEffect(() => {
+        if (!walletLayoutCtx?.ensureManyInSection || !trackedCanisters || trackedCanisters.length === 0) return;
+        const canisterIds = trackedCanisters
+            .map(c => typeof c === 'string' ? c : c.toString())
+            .filter(Boolean);
+        if (canisterIds.length > 0) {
+            walletLayoutCtx.ensureManyInSection('apps', canisterIds);
+        }
+    }, [trackedCanisters, walletLayoutCtx?.ensureManyInSection]);
 
     // Save neuronManagersExpanded state to localStorage
     useEffect(() => {
@@ -5272,7 +5372,18 @@ function Wallet() {
         }
     });
 
+    // Drag-and-drop handler for reordering token cards
+    const handleTokenDrop = useCallback((dragLedgerId, hoverLedgerId) => {
+        if (!walletLayoutCtx?.layout || dragLedgerId === hoverLedgerId) return;
+        const section = walletLayoutCtx.layout.tokens || [];
+        const dragIndex = section.indexOf(dragLedgerId);
+        const hoverIndex = section.indexOf(hoverLedgerId);
+        if (dragIndex < 0 || hoverIndex < 0) return;
+        walletLayoutCtx.reorderSection('tokens', dragIndex, hoverIndex);
+    }, [walletLayoutCtx]);
+
     return (
+        <DndProvider backend={HTML5Backend}>
         <div 
             className='page-container'
             style={{
@@ -6050,7 +6161,10 @@ function Wallet() {
                         </div>
                     </div>
                     <div className="card-grid">
-                    {tokens
+                    {(walletLayoutCtx?.sortByLayout
+                        ? walletLayoutCtx.sortByLayout('tokens', tokens, t => normalizeId(t.ledger_canister_id))
+                        : tokens
+                    )
                         .filter(token => {
                             // If hideDust is enabled, filter by USD value
                             if (hideDust) {
@@ -6082,40 +6196,41 @@ function Wallet() {
                         const isSns = snsTokens.has(ledgerId);
                         
                         return (
-                            <TokenCard
-                                key={index}
-                                token={token}
-                                locks={locks}
-                                lockDetailsLoading={lockDetailsLoading}
-                                showDebug={showDebug}
-                                openSendModal={openSendModal}
-                                openLockModal={openLockModal}
-                                openWrapModal={openWrapModal}
-                                openUnwrapModal={openUnwrapModal}
-                                handleUnregisterToken={handleUnregisterToken}
-                                alwaysShowRemoveToken={alwaysShowRemoveToken}
-                                rewardDetailsLoading={rewardDetailsLoading}
-                                handleClaimRewards={handleClaimRewards}
-                                handleWithdrawFromBackend={handleWithdrawFromBackend}
-                                handleDepositToBackend={handleDepositToBackend}
-                                handleRefreshToken={handleRefreshToken}
-                                refreshPhase={refreshingTokens.get(ledgerId) || null}
-                                isSnsToken={isSns}
-                                onNeuronTotalsChange={(breakdown) => {
-                                    setNeuronTotals(prev => ({
-                                        ...prev,
-                                        [ledgerId]: breakdown
-                                    }));
-                                }}
-                                onNeuronsLoaded={(neurons) => {
-                                    setSnsNeuronsByToken(prev => ({
-                                        ...prev,
-                                        [ledgerId]: neurons
-                                    }));
-                                }}
-                                openTransferTokenLockModal={openTransferTokenLockModal}
-                                onOpenDetailModal={openTokenDetailModal}
-                            />
+                            <DraggableTokenCard key={ledgerId || index} ledgerId={ledgerId} onDrop={handleTokenDrop}>
+                                <TokenCard
+                                    token={token}
+                                    locks={locks}
+                                    lockDetailsLoading={lockDetailsLoading}
+                                    showDebug={showDebug}
+                                    openSendModal={openSendModal}
+                                    openLockModal={openLockModal}
+                                    openWrapModal={openWrapModal}
+                                    openUnwrapModal={openUnwrapModal}
+                                    handleUnregisterToken={handleUnregisterToken}
+                                    alwaysShowRemoveToken={alwaysShowRemoveToken}
+                                    rewardDetailsLoading={rewardDetailsLoading}
+                                    handleClaimRewards={handleClaimRewards}
+                                    handleWithdrawFromBackend={handleWithdrawFromBackend}
+                                    handleDepositToBackend={handleDepositToBackend}
+                                    handleRefreshToken={handleRefreshToken}
+                                    refreshPhase={refreshingTokens.get(ledgerId) || null}
+                                    isSnsToken={isSns}
+                                    onNeuronTotalsChange={(breakdown) => {
+                                        setNeuronTotals(prev => ({
+                                            ...prev,
+                                            [ledgerId]: breakdown
+                                        }));
+                                    }}
+                                    onNeuronsLoaded={(neurons) => {
+                                        setSnsNeuronsByToken(prev => ({
+                                            ...prev,
+                                            [ledgerId]: neurons
+                                        }));
+                                    }}
+                                    openTransferTokenLockModal={openTransferTokenLockModal}
+                                    onOpenDetailModal={openTokenDetailModal}
+                                />
+                            </DraggableTokenCard>
                         );
                     })}
                     {showTokensSpinner ? (
@@ -6198,7 +6313,10 @@ function Wallet() {
                         </div>
                     </div>
                     <div className="card-grid">                
-                    {liquidityPositions.map((position, index) => {
+                    {(walletLayoutCtx?.sortByLayout
+                        ? walletLayoutCtx.sortByLayout('positions', liquidityPositions, p => normalizeId(p.swapCanisterId))
+                        : liquidityPositions
+                    ).map((position, index) => {
                         const normalizedSwapId = normalizeId(position.swapCanisterId);
                         return (
                         position.positions.length < 1 
@@ -6488,7 +6606,10 @@ function Wallet() {
                         ) : (
                             <>
                             <div className="card-grid">
-                                {neuronManagers.map((manager) => {
+                                {(walletLayoutCtx?.sortByLayout
+                                    ? walletLayoutCtx.sortByLayout('staking_bots', neuronManagers, m => normalizeId(m.canisterId))
+                                    : neuronManagers
+                                ).map((manager) => {
                                     const canisterId = normalizeId(manager.canisterId);
                                     const neuronCount = neuronManagerCounts[canisterId];
                                     const isExpanded = expandedManagerCards[canisterId];
@@ -7901,7 +8022,10 @@ function Wallet() {
                             </div>
                         ) : (
                             <div className="card-grid">
-                                {trackedCanisters.map((canisterId) => {
+                                {(walletLayoutCtx?.sortByLayout
+                                    ? walletLayoutCtx.sortByLayout('apps', trackedCanisters, c => typeof c === 'string' ? c : c.toString())
+                                    : trackedCanisters
+                                ).map((canisterId) => {
                                     const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames, verifiedNames, principalCanisterTypes);
                                     const isConfirming = confirmRemoveTrackedCanister === canisterId;
                                     const isRemoving = removingTrackedCanister === canisterId;
@@ -10019,6 +10143,7 @@ function Wallet() {
                 />
             </div>
         </div>
+        </DndProvider>
     );
 }
 

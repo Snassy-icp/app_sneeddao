@@ -35,6 +35,8 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   type CanisterGroup = T.CanisterGroup;
   type CanisterGroupsRoot = T.CanisterGroupsRoot;
   type StablePrincipalCanisterGroups = T.StablePrincipalCanisterGroups;
+  type WalletLayout = T.WalletLayout;
+  type StablePrincipalWalletLayout = T.StablePrincipalWalletLayout;
   type SwapRunnerTokenMetadata = T.SwapRunnerTokenMetadata;
   type NeuronId = T.NeuronId;
   type NeuronName = T.NeuronName;
@@ -110,6 +112,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   stable var stable_principal_ledger_canisters : StablePrincipalLedgerCanisters = [];
   stable var stable_principal_tracked_canisters : StablePrincipalTrackedCanisters = [];
   stable var stable_principal_canister_groups : StablePrincipalCanisterGroups = [];
+  stable var stable_principal_wallet_layouts : StablePrincipalWalletLayout = [];
   stable var stable_whitelisted_tokens : [WhitelistedToken] = [];
   stable var stable_admins : [Principal] = [deployer.caller];
   stable var stable_blacklisted_words : [(Text, Bool)] = [];
@@ -336,6 +339,9 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   
   // Canister groups storage (separate from state object for simpler management)
   private transient let principal_canister_groups: HashMap.HashMap<Principal, CanisterGroupsRoot> = HashMap.HashMap<Principal, CanisterGroupsRoot>(100, Principal.equal, Principal.hash);
+
+  // Wallet layout storage - user's preferred ordering for wallet sections
+  private transient let principal_wallet_layouts: T.PrincipalWalletLayoutMap = HashMap.HashMap<Principal, WalletLayout>(100, Principal.equal, Principal.hash);
 
   // SwapRunner actor
   transient let swaprunner = actor(SWAPRUNNER_CANISTER_ID) : actor {
@@ -1034,6 +1040,15 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
 
   public shared ({ caller }) func delete_canister_groups() : async () {
     principal_canister_groups.delete(caller);
+  };
+
+  // Wallet Layout - user's preferred ordering for wallet sections
+  public query ({ caller }) func get_wallet_layout() : async ?WalletLayout {
+    principal_wallet_layouts.get(caller);
+  };
+
+  public shared ({ caller }) func set_wallet_layout(layout: WalletLayout) : async () {
+    principal_wallet_layouts.put(caller, layout);
   };
 
   public shared ({ caller }) func import_whitelist_from_swaprunner() : async () {
@@ -3294,6 +3309,18 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     };
     stable_principal_canister_groups := List.toArray<(Principal, CanisterGroupsRoot)>(list_stable_principal_canister_groups);
 
+    /// stable_principal_wallet_layouts
+    var list_stable_principal_wallet_layouts = List.nil<(Principal, WalletLayout)>();
+    for (principal in principal_wallet_layouts.keys()) {
+      switch (principal_wallet_layouts.get(principal)) {
+        case (?layout) {
+          list_stable_principal_wallet_layouts := List.push<(Principal, WalletLayout)>((principal, layout), list_stable_principal_wallet_layouts);
+        };
+        case _ {};
+      };
+    };
+    stable_principal_wallet_layouts := List.toArray<(Principal, WalletLayout)>(list_stable_principal_wallet_layouts);
+
     // Save whitelisted tokens to stable storage
     stable_whitelisted_tokens := Iter.toArray(whitelisted_tokens.vals());
 
@@ -3407,6 +3434,12 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         principal_canister_groups.put(principal, groups);
       };
       stable_principal_canister_groups := [];
+
+      /// stable_principal_wallet_layouts
+      for ((principal, layout) in stable_principal_wallet_layouts.vals()) {
+        principal_wallet_layouts.put(principal, layout);
+      };
+      stable_principal_wallet_layouts := [];
 
       // Restore whitelisted tokens from stable storage
       for (token in stable_whitelisted_tokens.vals()) {

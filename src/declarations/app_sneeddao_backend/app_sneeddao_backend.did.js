@@ -166,6 +166,12 @@ export const idlFactory = ({ IDL }) => {
     'permissions' : IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Vec(IDL.Int32))),
   });
   const Result_5 = IDL.Variant({ 'ok' : IDL.Vec(Neuron), 'err' : IDL.Text });
+  const WalletLayout = IDL.Record({
+    'apps' : IDL.Vec(IDL.Principal),
+    'staking_bots' : IDL.Vec(IDL.Principal),
+    'tokens' : IDL.Vec(IDL.Principal),
+    'positions' : IDL.Vec(IDL.Principal),
+  });
   const Result_4 = IDL.Variant({ 'ok' : WhitelistedToken, 'err' : IDL.Text });
   const TxIndex = IDL.Nat;
   const Balance = IDL.Nat;
@@ -414,6 +420,7 @@ export const idlFactory = ({ IDL }) => {
     'get_user_ban_history' : IDL.Func([IDL.Principal], [Result_6], ['query']),
     'get_user_neurons' : IDL.Func([], [Result_5], []),
     'get_user_tokens' : IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
+    'get_wallet_layout' : IDL.Func([], [IDL.Opt(WalletLayout)], ['query']),
     'get_whitelisted_tokens' : IDL.Func(
         [],
         [IDL.Vec(WhitelistedToken)],
@@ -492,6 +499,7 @@ export const idlFactory = ({ IDL }) => {
         [Result_1],
         [],
       ),
+    'set_wallet_layout' : IDL.Func([WalletLayout], [], []),
     'start_refresh_all_token_metadata' : IDL.Func([], [Result_2], []),
     'stop_refresh_all_token_metadata' : IDL.Func([], [], []),
     'test_calculate_ban_duration' : IDL.Func([IDL.Principal], [IDL.Nat], []),

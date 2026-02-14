@@ -8,6 +8,7 @@ import { useAuth } from './AuthContext';
 import { useTheme } from './contexts/ThemeContext';
 import { useNaming } from './NamingContext';
 import { useWalletOptional } from './contexts/WalletContext';
+import { useWalletLayout } from './contexts/WalletLayoutContext';
 import { computeAccountId, PrincipalDisplay, getPrincipalDisplayInfoFromContext, isSnsCanisterType, getCanisterTypeIcon } from './utils/PrincipalUtils';
 import { formatAmount } from './utils/StringUtils';
 import { get_available, get_available_backend } from './utils/TokenUtils';
@@ -100,6 +101,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const { theme } = useTheme();
     const { getPrincipalDisplayName, principalCanisterTypes } = useNaming();
     const walletContext = useWalletOptional();
+    const walletLayoutCtx = useWalletLayout();
     const navigate = useNavigate();
     const { isPremium } = usePremiumStatus(identity);
     
@@ -397,7 +399,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         return `${bytes}B`;
     }, []);
 
-    // Filter tokens based on hideDust setting
+    // Filter tokens based on hideDust setting, sorted by wallet layout
     const tokensWithBalance = useMemo(() => {
         // Debug: Check for duplicates in source array (using normalized principal comparison with fallback)
         const principalCounts = {};
@@ -410,7 +412,12 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
             console.error('%c🚨 [TOKENS] DUPLICATES in walletTokens!', 'background: #e74c3c; color: white; font-size: 14px;', duplicatePrincipals);
         }
         
-        return walletTokens.filter(token => {
+        // Sort by layout order first
+        const sorted = walletLayoutCtx?.sortByLayout
+            ? walletLayoutCtx.sortByLayout('tokens', walletTokens, t => normalizeId(t.principal) || normalizeId(t.ledger_canister_id))
+            : walletTokens;
+        
+        return sorted.filter(token => {
             const available = BigInt(token.available || token.balance || 0n);
             const locked = BigInt(token.locked || 0n);
             const staked = BigInt(token.staked || 0n);
@@ -433,7 +440,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
             
             return true;
         });
-    }, [walletTokens, hideDust]);
+    }, [walletTokens, hideDust, walletLayoutCtx?.sortByLayout]);
     
     // Flatten positions for display in compact wallet
     const flattenedPositions = useMemo(() => {

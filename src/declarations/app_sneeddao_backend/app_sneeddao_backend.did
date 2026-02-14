@@ -7,6 +7,13 @@ type WhitelistedToken =
    standard: text;
    symbol: text;
  };
+type WalletLayout = 
+ record {
+   apps: vec principal;
+   positions: vec principal;
+   staking_bots: vec principal;
+   tokens: vec principal;
+ };
 type UserSettingsUpdate = 
  record {
    always_show_remove_token: opt bool;
@@ -418,6 +425,7 @@ type AppSneedDaoBackend =
    get_user_ban_history: (user: principal) -> (Result_6) query;
    get_user_neurons: () -> (Result_5);
    get_user_tokens: () -> (vec principal) query;
+   get_wallet_layout: () -> (opt WalletLayout) query;
    get_whitelisted_tokens: () -> (vec WhitelistedToken) query;
    import_whitelist_from_swaprunner: () -> ();
    is_token_whitelisted: (ledger_id: principal) -> (bool) query;
@@ -457,6 +465,7 @@ type AppSneedDaoBackend =
     sns_root_canister_id: opt principal) -> (Result_1);
    set_principal_nickname: ("principal": principal, nickname: text) ->
     (Result_1);
+   set_wallet_layout: (layout: WalletLayout) -> ();
    start_refresh_all_token_metadata: () -> (Result_2);
    stop_refresh_all_token_metadata: () -> ();
    test_calculate_ban_duration: (user: principal) -> (nat);

@@ -22,6 +22,7 @@ import { ForumProvider } from './contexts/ForumContext';
 import { NeuronsProvider } from './contexts/NeuronsContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { WalletProvider } from './contexts/WalletContext';
+import { WalletLayoutProvider } from './contexts/WalletLayoutContext';
 import { FrontendUpdateProvider, useFrontendUpdate } from './contexts/FrontendUpdateContext';
 import { WhitelistTokensProvider } from './contexts/WhitelistTokensContext';
 import Layout from './components/Layout';
@@ -138,6 +139,7 @@ function App() {
                 <PremiumProvider>
                 <WhitelistTokensProvider>
                 <WalletProvider>
+                <WalletLayoutProvider>
                 <NamingProvider>
                   <FrontendUpdateProvider>
                     <GlobalNamingSetup />
@@ -255,6 +257,7 @@ function App() {
                   </Layout>
                   </FrontendUpdateProvider>
                 </NamingProvider>
+                </WalletLayoutProvider>
                 </WalletProvider>
                 </WhitelistTokensProvider>
                 </PremiumProvider>

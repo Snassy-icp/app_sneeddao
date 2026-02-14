@@ -920,6 +920,44 @@ export const convertGroupsFromBackend = (groupsRoot) => {
     };
 };
 
+// Wallet Layout - user's preferred ordering for wallet sections
+export const getWalletLayout = async (identity) => {
+    if (!identity) return null;
+    
+    try {
+        const actor = createBackendActor(identity);
+        const result = await actor.get_wallet_layout();
+        if (!result || result.length === 0) return null;
+        const layout = result[0]; // Candid ?T comes back as [] or [value]
+        return {
+            tokens: layout.tokens.map(p => p.toString()),
+            positions: layout.positions.map(p => p.toString()),
+            apps: layout.apps.map(p => p.toString()),
+            staking_bots: layout.staking_bots.map(p => p.toString()),
+        };
+    } catch (error) {
+        console.error('Error getting wallet layout:', error);
+        return null;
+    }
+};
+
+export const setWalletLayout = async (identity, layout) => {
+    if (!identity) return;
+    
+    try {
+        const actor = createBackendActor(identity);
+        await actor.set_wallet_layout({
+            tokens: layout.tokens.map(id => typeof id === 'string' ? Principal.fromText(id) : id),
+            positions: layout.positions.map(id => typeof id === 'string' ? Principal.fromText(id) : id),
+            apps: layout.apps.map(id => typeof id === 'string' ? Principal.fromText(id) : id),
+            staking_bots: layout.staking_bots.map(id => typeof id === 'string' ? Principal.fromText(id) : id),
+        });
+    } catch (error) {
+        console.error('Error saving wallet layout:', error);
+        throw error;
+    }
+};
+
 // Set a public name for a canister (caller must be a controller)
 export const setCanisterName = async (identity, canisterId, name) => {
     if (!identity || !canisterId) return null;

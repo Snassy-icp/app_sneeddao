@@ -124,6 +124,7 @@ export interface AppSneedDaoBackend {
   'get_user_ban_history' : ActorMethod<[Principal], Result_6>,
   'get_user_neurons' : ActorMethod<[], Result_5>,
   'get_user_tokens' : ActorMethod<[], Array<Principal>>,
+  'get_wallet_layout' : ActorMethod<[], [] | [WalletLayout]>,
   'get_whitelisted_tokens' : ActorMethod<[], Array<WhitelistedToken>>,
   'import_whitelist_from_swaprunner' : ActorMethod<[], undefined>,
   'is_token_whitelisted' : ActorMethod<[Principal], boolean>,
@@ -167,6 +168,7 @@ export interface AppSneedDaoBackend {
     Result_1
   >,
   'set_principal_nickname' : ActorMethod<[Principal, string], Result_1>,
+  'set_wallet_layout' : ActorMethod<[WalletLayout], undefined>,
   'start_refresh_all_token_metadata' : ActorMethod<[], Result_2>,
   'stop_refresh_all_token_metadata' : ActorMethod<[], undefined>,
   'test_calculate_ban_duration' : ActorMethod<[Principal], bigint>,
@@ -423,6 +425,12 @@ export interface UserSettingsUpdate {
   'show_header_notifications' : [] | [boolean],
   'collectibles_threshold' : [] | [number],
   'neuron_manager_cycle_threshold_orange' : [] | [bigint],
+}
+export interface WalletLayout {
+  'apps' : Array<Principal>,
+  'staking_bots' : Array<Principal>,
+  'tokens' : Array<Principal>,
+  'positions' : Array<Principal>,
 }
 export interface WhitelistedToken {
   'fee' : bigint,
