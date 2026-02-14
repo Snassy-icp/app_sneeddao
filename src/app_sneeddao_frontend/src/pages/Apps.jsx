@@ -3208,6 +3208,47 @@ export default function AppsPage() {
                         >
                             <FaEdit size={12} />
                         </Link>
+                        {confirmRemoveCanister?.canisterId === canisterId && confirmRemoveCanister?.groupId === groupId ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{ color: '#888', fontSize: '11px' }}>Remove?</span>
+                                <button
+                                    onClick={() => handleRemoveCanister(canisterId, groupId)}
+                                    style={{
+                                        backgroundColor: '#ef4444',
+                                        color: '#fff',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        padding: '4px 10px',
+                                        cursor: 'pointer',
+                                        fontSize: '12px',
+                                    }}
+                                >
+                                    Yes
+                                </button>
+                                <button
+                                    onClick={() => setConfirmRemoveCanister(null)}
+                                    style={{
+                                        backgroundColor: theme.colors.secondaryBg,
+                                        color: theme.colors.primaryText,
+                                        border: `1px solid ${theme.colors.border}`,
+                                        borderRadius: '4px',
+                                        padding: '4px 10px',
+                                        cursor: 'pointer',
+                                        fontSize: '12px',
+                                    }}
+                                >
+                                    No
+                                </button>
+                            </div>
+                        ) : (
+                            <button
+                                onClick={() => setConfirmRemoveCanister({ canisterId, groupId })}
+                                style={styles.removeButton}
+                                title="Remove from tracking"
+                            >
+                                <FaTrash />
+                            </button>
+                        )}
                     </div>
                 </div>
                 
