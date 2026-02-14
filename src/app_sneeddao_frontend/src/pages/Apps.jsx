@@ -2067,6 +2067,7 @@ export default function AppsPage() {
                                     defaultPrincipalType="canisters"
                                 />
                                 <button
+                                    onMouseDown={(e) => e.preventDefault()}
                                     onClick={() => handleAddCanisterToGroup(group.id)}
                                     disabled={!newCanisterForGroup.trim()}
                                     style={{ 
@@ -2082,6 +2083,7 @@ export default function AppsPage() {
                                     <FaCheck size={10} />
                                 </button>
                                 <button
+                                    onMouseDown={(e) => e.preventDefault()}
                                     onClick={() => { setAddingCanisterToGroupId(null); setNewCanisterForGroup(''); }}
                                     style={{ padding: '6px 10px', backgroundColor: theme.colors.secondaryBg, color: theme.colors.secondaryText, border: `1px solid ${theme.colors.border}`, borderRadius: '4px', cursor: 'pointer' }}
                                 >
