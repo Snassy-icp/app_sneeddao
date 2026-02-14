@@ -6,6 +6,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { app_sneeddao_backend, createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
+import { createActor as createIcpSwapFactoryActor, canisterId as icpSwapFactoryCanisterId } from 'external/icp_swap_factory';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'declarations/rll';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId  } from 'declarations/sneed_lock';
 import { createActor as createSgldtActor } from 'external/sgldt';
@@ -658,6 +659,8 @@ function Wallet() {
     const [refreshingPositionsSection, setRefreshingPositionsSection] = useState(false);
     const [scanningTokens, setScanningTokens] = useState(false);
     const [scanProgress, setScanProgress] = useState({ current: 0, total: 0, found: 0 });
+    const [scanningPositions, setScanningPositions] = useState(false);
+    const [positionScanProgress, setPositionScanProgress] = useState({ current: 0, total: 0, found: 0 });
     const [tokensExpanded, setTokensExpanded] = useState(true);
     const [positionsExpanded, setPositionsExpanded] = useState(true);
     const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -5101,6 +5104,110 @@ function Wallet() {
         }
     };
 
+    // Scan for LP positions - check all ICPSwap pools for user positions
+    const handleScanForPositions = async () => {
+        if (!identity || scanningPositions) return;
+
+        setScanningPositions(true);
+        setPositionScanProgress({ current: 0, total: 0, found: 0 });
+
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging'
+                ? 'https://icp0.io'
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+
+            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
+
+            // Get all ICPSwap pools from the factory
+            console.log('[PositionScan] Fetching all ICPSwap pools from factory...');
+            const factoryActor = createIcpSwapFactoryActor(icpSwapFactoryCanisterId, { agent });
+            const poolsResult = await factoryActor.getPools();
+            if ('err' in poolsResult) {
+                console.error('[PositionScan] Failed to get pools from factory:', poolsResult.err);
+                setScanningPositions(false);
+                return;
+            }
+            const allPools = poolsResult.ok;
+            console.log(`[PositionScan] Found ${allPools.length} total ICPSwap pools`);
+
+            // Get already registered swap canisters
+            const registeredSwapCanisters = await backendActor.get_swap_canister_ids();
+            const registeredSet = new Set(registeredSwapCanisters.map(s => s.toString()));
+
+            // Filter to only unregistered pools
+            const poolsToScan = allPools.filter(pool => !registeredSet.has(pool.canisterId.toString()));
+
+            if (poolsToScan.length === 0) {
+                console.log('[PositionScan] All ICPSwap pools are already registered');
+                setScanningPositions(false);
+                return;
+            }
+
+            console.log(`[PositionScan] Scanning ${poolsToScan.length} unregistered pools...`);
+            setPositionScanProgress({ current: 0, total: poolsToScan.length, found: 0 });
+
+            let foundCount = 0;
+            let completedCount = 0;
+            const newSwapCanisters = [];
+            const queue = [...poolsToScan];
+            const maxConcurrency = 8;
+
+            const runScanForPool = async (pool) => {
+                const poolCanisterId = pool.canisterId.toString();
+                try {
+                    const swapActor = createIcpSwapActor(poolCanisterId, { agent });
+                    const positionIdsResult = await swapActor.getUserPositionIdsByPrincipal(identity.getPrincipal());
+                    const positionIds = positionIdsResult?.ok || [];
+
+                    if (positionIds.length > 0) {
+                        console.log(`[PositionScan] Found ${positionIds.length} position(s) in pool ${poolCanisterId}`);
+                        await backendActor.register_swap_canister_id(Principal.fromText(poolCanisterId));
+                        newSwapCanisters.push(poolCanisterId);
+                        foundCount++;
+                    }
+                } catch (err) {
+                    // Skip pools that fail (might be unavailable or incompatible)
+                    console.warn(`[PositionScan] Failed to check pool ${poolCanisterId}:`, err.message || err);
+                } finally {
+                    completedCount++;
+                    setPositionScanProgress(prev => ({
+                        ...prev,
+                        current: completedCount,
+                        found: foundCount
+                    }));
+                }
+            };
+
+            const workerCount = Math.min(maxConcurrency, queue.length);
+            const workers = Array.from({ length: workerCount }, async () => {
+                while (queue.length > 0) {
+                    const pool = queue.shift();
+                    if (!pool) break;
+                    await runScanForPool(pool);
+                }
+            });
+
+            await Promise.all(workers);
+
+            // After scan completes, refresh positions to load the newly registered ones
+            if (newSwapCanisters.length > 0) {
+                console.log(`[PositionScan] Found positions in ${newSwapCanisters.length} new pool(s), refreshing...`);
+                if (contextRefreshPositions) contextRefreshPositions();
+            } else {
+                console.log('[PositionScan] No new positions found');
+            }
+
+        } catch (error) {
+            console.error('Error scanning for positions:', error);
+        } finally {
+            setScanningPositions(false);
+        }
+    };
+
     const handleRefreshPositionsSection = async () => {
         setRefreshingPositionsSection(true);
         setLocalPositionOverrides({}); // Clear local overrides
@@ -6293,6 +6400,32 @@ function Wallet() {
                             >
                                 <FaSync size={12} style={{ animation: refreshingPositionsSection ? 'walletSpin 1s linear infinite' : 'none' }} />
                                 Refresh
+                            </button>
+                            <button
+                                onClick={handleScanForPositions}
+                                disabled={scanningPositions}
+                                style={{
+                                    background: `${walletPrimary}15`,
+                                    color: walletPrimary,
+                                    border: `1px solid ${walletPrimary}30`,
+                                    borderRadius: '8px',
+                                    padding: '0.5rem 0.75rem',
+                                    cursor: scanningPositions ? 'not-allowed' : 'pointer',
+                                    fontSize: '0.85rem',
+                                    fontWeight: '500',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.4rem',
+                                    transition: 'all 0.2s ease',
+                                    opacity: scanningPositions ? 0.6 : 1
+                                }}
+                                title="Scan all ICPSwap pools to find your liquidity positions"
+                            >
+                                <FaSearch size={12} style={{ animation: scanningPositions ? 'walletPulse 1s ease-in-out infinite' : 'none' }} />
+                                {scanningPositions 
+                                    ? `Scanning ${positionScanProgress.current}/${positionScanProgress.total}${positionScanProgress.found > 0 ? ` (${positionScanProgress.found} found)` : ''}`
+                                    : 'Scan'
+                                }
                             </button>
                             <button
                                 onClick={() => setShowAddSwapModal(true)}
