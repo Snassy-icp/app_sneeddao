@@ -1513,6 +1513,7 @@ export default function Me() {
     const quickNavItems = [
         { icon: <FaShareAlt size={20} />, label: 'My Public Page', to: identity ? getPrincipalProfileUrl(identity.getPrincipal()) : '/user', color: '#3b82f6' },
         { icon: <FaWallet size={20} />, label: 'My Wallet', to: '/wallet', color: mePrimary },
+        { icon: <FaServer size={20} />, label: 'My Apps', to: '/apps', color: '#14b8a6' },
         { icon: <FaVoteYea size={20} />, label: 'Voting', to: '/active_proposals', color: '#8b5cf6' },
         { icon: <FaGavel size={20} />, label: 'My Trades', to: '/sneedex_my', color: '#6366f1' },
         { icon: <FaComments size={20} />, label: 'My Posts', to: '/posts', color: '#10b981' },
@@ -1520,7 +1521,6 @@ export default function Me() {
         { icon: <FaEnvelope size={20} />, label: 'My Messages', to: '/sms', color: '#ec4899' },
         { icon: <FaGift size={20} />, label: 'My Rewards', to: '/rewards', color: '#8b5cf6' },
         { icon: <FaLock size={20} />, label: 'My Locks', to: `/sneedlock_info?owner=${identity?.getPrincipal().toString()}`, color: '#06b6d4' },
-        { icon: <FaServer size={20} />, label: 'My Apps', to: '/apps', color: '#14b8a6' },
         { icon: <FaAddressBook size={20} />, label: 'My Contacts', to: '/names', color: '#f97316' },
     ];
 

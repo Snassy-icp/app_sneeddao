@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '../AuthContext';
 import { Link } from 'react-router-dom';
 import Header from '../components/Header';
@@ -212,6 +212,8 @@ export default function AppsPage() {
     const { principalNames, principalNicknames, verifiedNames, principalCanisterTypes } = useNaming();
     const navigate = useNavigate();
     const walletLayoutCtx = useWalletLayout();
+    
+    const reorderSaveTimerRef = useRef(null);
     
     // Premium status for folder limits
     const { isPremium, loading: loadingPremium } = usePremiumStatus(identity);
@@ -1360,6 +1362,57 @@ export default function AppsPage() {
         }
     };
 
+    // Reorder a canister within a group (swap positions on hover)
+    const handleReorderCanisterInGroup = useCallback((groupId, dragCanisterId, hoverCanisterId) => {
+        const reorderInGroups = (groups) => {
+            return groups.map(group => {
+                if (group.id === groupId) {
+                    const canisters = [...group.canisters];
+                    const dragIndex = canisters.indexOf(dragCanisterId);
+                    const hoverIndex = canisters.indexOf(hoverCanisterId);
+                    if (dragIndex === -1 || hoverIndex === -1) return group;
+                    const [moved] = canisters.splice(dragIndex, 1);
+                    canisters.splice(hoverIndex, 0, moved);
+                    return { ...group, canisters };
+                }
+                return { ...group, subgroups: reorderInGroups(group.subgroups) };
+            });
+        };
+
+        const newGroups = {
+            ...canisterGroups,
+            groups: reorderInGroups(canisterGroups.groups),
+        };
+        // Update state immediately for smooth hover UX, then save
+        setCanisterGroupsState(newGroups);
+        // Debounce the actual save
+        if (reorderSaveTimerRef.current) clearTimeout(reorderSaveTimerRef.current);
+        reorderSaveTimerRef.current = setTimeout(() => {
+            saveCanisterGroups(newGroups).catch(err => {
+                console.error('Error saving reordered group:', err);
+            });
+        }, 500);
+    }, [canisterGroups, saveCanisterGroups]);
+
+    // Also support reordering in ungrouped list
+    const handleReorderUngrouped = useCallback((dragCanisterId, hoverCanisterId) => {
+        const ungrouped = [...canisterGroups.ungrouped];
+        const dragIndex = ungrouped.indexOf(dragCanisterId);
+        const hoverIndex = ungrouped.indexOf(hoverCanisterId);
+        if (dragIndex === -1 || hoverIndex === -1) return;
+        const [moved] = ungrouped.splice(dragIndex, 1);
+        ungrouped.splice(hoverIndex, 0, moved);
+
+        const newGroups = { ...canisterGroups, ungrouped };
+        setCanisterGroupsState(newGroups);
+        if (reorderSaveTimerRef.current) clearTimeout(reorderSaveTimerRef.current);
+        reorderSaveTimerRef.current = setTimeout(() => {
+            saveCanisterGroups(newGroups).catch(err => {
+                console.error('Error saving reordered ungrouped:', err);
+            });
+        }, 500);
+    }, [canisterGroups, saveCanisterGroups]);
+
     // Collect all group IDs recursively
     const getAllGroupIds = useCallback((groupsRoot) => {
         const ids = [];
@@ -1835,6 +1888,8 @@ export default function AppsPage() {
         getGroupHealthStatus, getStatusLampColor,
         // Drag and drop handlers
         onDndDrop, canDropItem,
+        // Reorder within group
+        handleReorderCanisterInGroup,
         // Neuron manager detection props
         detectedNeuronManagers, neuronManagerCycleSettings, latestOfficialVersion,
         isVersionOutdated, getManagerHealthStatus,
@@ -2189,6 +2244,7 @@ export default function AppsPage() {
                                 getStatusLampColor={getStatusLampColor}
                                 onDndDrop={onDndDrop}
                                 canDropItem={canDropItem}
+                                handleReorderCanisterInGroup={handleReorderCanisterInGroup}
                                 detectedNeuronManagers={detectedNeuronManagers}
                                 neuronManagerCycleSettings={neuronManagerCycleSettings}
                                 latestOfficialVersion={latestOfficialVersion}
@@ -2258,6 +2314,7 @@ export default function AppsPage() {
                                             confirmRemoveCanister={confirmRemoveCanister}
                                             setConfirmRemoveCanister={setConfirmRemoveCanister}
                                             handleRemoveCanister={handleRemoveCanister}
+                                            onReorder={(dragId, hoverId) => handleReorderCanisterInGroup(group.id, dragId, hoverId)}
                                         />
                                     );
                                 })}
@@ -2703,8 +2760,10 @@ export default function AppsPage() {
     const CanisterCard = ({ 
         canisterId, groupId, styles, theme, canisterStatus, cycleSettings,
         principalNames, principalNicknames, isAuthenticated,
-        confirmRemoveCanister, setConfirmRemoveCanister, handleRemoveCanister
+        confirmRemoveCanister, setConfirmRemoveCanister, handleRemoveCanister,
+        onReorder,
     }) => {
+        const cardRef = React.useRef(null);
         // react-dnd drag hook
         const [{ isDragging }, drag] = useDrag(() => ({
             type: DragItemTypes.CANISTER,
@@ -2713,6 +2772,21 @@ export default function AppsPage() {
                 isDragging: monitor.isDragging(),
             }),
         }), [canisterId, groupId]);
+
+        // react-dnd drop hook for within-group reordering
+        const [{ isOverReorder }, dropReorder] = useDrop(() => ({
+            accept: DragItemTypes.CANISTER,
+            hover: (item) => {
+                if (item.sourceGroupId === groupId && item.id !== canisterId && onReorder) {
+                    onReorder(item.id, canisterId);
+                }
+            },
+            collect: (monitor) => ({
+                isOverReorder: monitor.isOver({ shallow: true }),
+            }),
+        }), [canisterId, groupId, onReorder]);
+
+        drag(dropReorder(cardRef));
 
         const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames, verifiedNames, principalCanisterTypes);
         const status = canisterStatus[canisterId];
@@ -2727,14 +2801,25 @@ export default function AppsPage() {
 
         return (
             <div 
-                ref={drag}
+                ref={cardRef}
                 style={{
                     ...styles.canisterCard,
                     cursor: isDragging ? 'grabbing' : 'grab',
                     opacity: isDragging ? 0.4 : 1,
                     transition: 'opacity 0.15s ease',
+                    position: 'relative',
                 }}
             >
+                {isOverReorder && <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: '3px',
+                    background: 'linear-gradient(90deg, #10b981, #3b82f6)',
+                    borderRadius: '2px',
+                    zIndex: 10,
+                }} />}
                 <div style={styles.canisterInfo}>
                     <div style={{ ...styles.canisterIcon, position: 'relative' }}>
                         {getCanisterTypeIcon(displayInfo?.canisterTypes, 18, theme.colors.accent)}
@@ -4903,6 +4988,7 @@ export default function AppsPage() {
                                                 getStatusLampColor={getStatusLampColor}
                                                 onDndDrop={handleDndDrop}
                                                 canDropItem={canDropItem}
+                                                handleReorderCanisterInGroup={handleReorderCanisterInGroup}
                                                 detectedNeuronManagers={detectedNeuronManagers}
                                                 neuronManagerCycleSettings={neuronManagerCycleSettings}
                                                 latestOfficialVersion={latestOfficialVersion}
@@ -5005,6 +5091,7 @@ export default function AppsPage() {
                                                                         confirmRemoveCanister={confirmRemoveCanister}
                                                                         setConfirmRemoveCanister={setConfirmRemoveCanister}
                                                                         handleRemoveCanister={handleRemoveCanister}
+                                                                        onReorder={handleReorderUngrouped}
                                                                     />
                                                                 );
                                                             })}
