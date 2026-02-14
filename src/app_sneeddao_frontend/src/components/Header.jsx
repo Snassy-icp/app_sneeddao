@@ -514,12 +514,12 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             subMenu: [
                 { name: 'Me', path: '/me' },
                 { name: 'Wallet', path: '/wallet' },
+                { name: 'Apps', path: '/apps' },
                 { name: 'Voting', path: '/active_proposals' },
                 { name: 'Messages', path: '/sms' },
                 { name: 'Posts', path: '/posts' },
                 { name: 'Tips', path: '/tips' },
                 { name: 'Rewards', path: '/rewards' },
-                { name: 'Apps', path: '/apps' },
                 { name: 'Address Book', path: '/names' },
                 { name: 'Premium', path: '/premium' }
             ]

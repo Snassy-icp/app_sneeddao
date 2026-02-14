@@ -214,7 +214,6 @@ export default function AppsPage() {
     const walletLayoutCtx = useWalletLayout();
     
     const reorderSaveTimerRef = useRef(null);
-    const addCanisterTabRef = useRef('private'); // Preserve PrincipalInput tab across GroupComponent remounts
     
     // Premium status for folder limits
     const { isPremium, loading: loadingPremium } = usePremiumStatus(identity);
@@ -246,7 +245,6 @@ export default function AppsPage() {
     const [newSubgroupParent, setNewSubgroupParent] = useState(null); // group id to add subgroup to
     const [newSubgroupName, setNewSubgroupName] = useState('');
     const [addingCanisterToGroupId, setAddingCanisterToGroupId] = useState(null); // group id to add canister to
-    const [newCanisterForGroup, setNewCanisterForGroup] = useState('');
     const [confirmRemoveCanister, setConfirmRemoveCanister] = useState(null); // { canisterId, groupId or 'ungrouped' }
     
     // Neuron Managers state
@@ -1268,12 +1266,12 @@ export default function AppsPage() {
     };
 
     // Add canister directly to a specific group
-    const handleAddCanisterToGroup = async (groupId) => {
-        if (!newCanisterForGroup.trim()) return;
+    const handleAddCanisterToGroup = async (groupId, canisterValue) => {
+        if (!canisterValue || !canisterValue.trim()) return;
 
         let canisterPrincipal;
         try {
-            canisterPrincipal = Principal.fromText(newCanisterForGroup.trim());
+            canisterPrincipal = Principal.fromText(canisterValue.trim());
         } catch (err) {
             setError('Invalid app canister id format');
             return;
@@ -1289,7 +1287,6 @@ export default function AppsPage() {
         try {
             const newGroups = addCanisterToGroup(canisterGroups, canisterIdStr, groupId);
             await saveCanisterGroups(newGroups);
-            setNewCanisterForGroup('');
             setAddingCanisterToGroupId(null);
             setSuccessMessage('App added to group');
             fetchCanisterStatus(canisterIdStr);
@@ -1884,7 +1881,7 @@ export default function AppsPage() {
         // New props for subgroups and adding canisters
         newSubgroupParent, setNewSubgroupParent, newSubgroupName, setNewSubgroupName,
         handleCreateSubgroup, addingCanisterToGroupId, setAddingCanisterToGroupId,
-        newCanisterForGroup, setNewCanisterForGroup, handleAddCanisterToGroup,
+        handleAddCanisterToGroup,
         // Health status props
         getGroupHealthStatus, getStatusLampColor,
         // Drag and drop handlers
@@ -1895,6 +1892,9 @@ export default function AppsPage() {
         detectedNeuronManagers, neuronManagerCycleSettings, latestOfficialVersion,
         isVersionOutdated, getManagerHealthStatus,
     }) => {
+        // Local state for the canister input value - kept here to avoid re-rendering the entire AppsPage on every keystroke
+        const [newCanisterForGroup, setNewCanisterForGroup] = useState('');
+
         // react-dnd drag hook for making this group draggable
         const [{ isDragging }, drag] = useDrag(() => ({
             type: DragItemTypes.GROUP,
@@ -2114,19 +2114,17 @@ export default function AppsPage() {
                                     placeholder="App canister id"
                                     autoFocus={true}
                                     onKeyDown={(e) => {
-                                        if (e.key === 'Enter') handleAddCanisterToGroup(group.id);
+                                        if (e.key === 'Enter') handleAddCanisterToGroup(group.id, newCanisterForGroup);
                                         if (e.key === 'Escape') { setAddingCanisterToGroupId(null); setNewCanisterForGroup(''); }
                                     }}
                                     style={{ flex: 1, minWidth: 0, maxWidth: 'none' }}
                                     inputStyle={{ padding: '6px 10px', fontSize: '12px', fontFamily: 'monospace' }}
                                     disabled={addingCanister}
                                     defaultPrincipalType="canisters"
-                                    defaultTab={addCanisterTabRef.current}
-                                    onTabChange={(tab) => { addCanisterTabRef.current = tab; }}
                                 />
                                 <button
                                     onMouseDown={(e) => e.preventDefault()}
-                                    onClick={() => handleAddCanisterToGroup(group.id)}
+                                    onClick={() => handleAddCanisterToGroup(group.id, newCanisterForGroup)}
                                     disabled={!newCanisterForGroup.trim()}
                                     style={{ 
                                         padding: '6px 10px', 
@@ -2240,8 +2238,6 @@ export default function AppsPage() {
                                 handleCreateSubgroup={handleCreateSubgroup}
                                 addingCanisterToGroupId={addingCanisterToGroupId}
                                 setAddingCanisterToGroupId={setAddingCanisterToGroupId}
-                                newCanisterForGroup={newCanisterForGroup}
-                                setNewCanisterForGroup={setNewCanisterForGroup}
                                 handleAddCanisterToGroup={handleAddCanisterToGroup}
                                 getGroupHealthStatus={getGroupHealthStatus}
                                 getStatusLampColor={getStatusLampColor}
@@ -4984,8 +4980,6 @@ export default function AppsPage() {
                                                 handleCreateSubgroup={handleCreateSubgroup}
                                                 addingCanisterToGroupId={addingCanisterToGroupId}
                                                 setAddingCanisterToGroupId={setAddingCanisterToGroupId}
-                                                newCanisterForGroup={newCanisterForGroup}
-                                                setNewCanisterForGroup={setNewCanisterForGroup}
                                                 handleAddCanisterToGroup={handleAddCanisterToGroup}
                                                 getGroupHealthStatus={getGroupHealthStatus}
                                                 getStatusLampColor={getStatusLampColor}
