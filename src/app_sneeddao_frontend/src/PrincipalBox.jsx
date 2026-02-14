@@ -442,10 +442,14 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         });
     }, [walletTokens, hideDust, walletLayoutCtx?.sortByLayout]);
     
-    // Flatten positions for display in compact wallet
+    // Flatten positions for display in compact wallet (sorted by layout)
     const flattenedPositions = useMemo(() => {
+        // Sort liquidity positions by wallet layout order first
+        const sortedLPs = walletLayoutCtx?.sortByLayout
+            ? walletLayoutCtx.sortByLayout('positions', liquidityPositions, lp => normalizeId(lp.swapCanisterId))
+            : liquidityPositions;
         const positions = [];
-        for (const lp of liquidityPositions) {
+        for (const lp of sortedLPs) {
             if (lp.positions && lp.positions.length > 0) {
                 for (const positionDetails of lp.positions) {
                     positions.push({
@@ -456,7 +460,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
             }
         }
         return positions;
-    }, [liquidityPositions]);
+    }, [liquidityPositions, walletLayoutCtx?.sortByLayout]);
 
     // Calculate total positions USD value
     const totalPositionsUSD = useMemo(() => {
@@ -2657,8 +2661,14 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                       </span>
                                   </div>
                               )}
-                              {/* Neuron Managers first */}
-                              {neuronManagers.map((manager, index) => {
+                              {/* Neuron Managers first (sorted by layout) */}
+                              {(walletLayoutCtx?.sortByLayout
+                                  ? walletLayoutCtx.sortByLayout('staking_bots', neuronManagers, m => {
+                                      if (!m.canisterId) return '';
+                                      return typeof m.canisterId === 'string' ? m.canisterId : (typeof m.canisterId.toText === 'function' ? m.canisterId.toText() : String(m.canisterId));
+                                  })
+                                  : neuronManagers
+                              ).map((manager, index) => {
                                   // Safely convert canisterId to string - handle Principal objects and plain objects
                                   let canisterIdStr = '';
                                   if (manager.canisterId) {
@@ -2853,8 +2863,11 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                   );
                               })}
                               
-                              {/* Tracked Canisters after - with progressive detection */}
-                              {trackedCanisters.map((canisterId, index) => {
+                              {/* Tracked Canisters after - with progressive detection (sorted by layout) */}
+                              {(walletLayoutCtx?.sortByLayout
+                                  ? walletLayoutCtx.sortByLayout('apps', trackedCanisters, c => typeof c === 'string' ? c : c.toString())
+                                  : trackedCanisters
+                              ).map((canisterId, index) => {
                                   const status = trackedCanisterStatus[canisterId];
                                   const detectedManager = detectedNeuronManagers[canisterId];
                                   const isNeuronManager = detectedManager?.isValid;

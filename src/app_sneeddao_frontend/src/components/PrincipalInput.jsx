@@ -808,7 +808,7 @@ const PrincipalInput = ({
                     searchResults.map((item, index) => (
                         <div
                             key={item.principalStr}
-                            onClick={() => handleSelect(item)}
+                            onMouseDown={(e) => { e.preventDefault(); handleSelect(item); }}
                             style={{
                                 padding: '8px 12px',
                                 cursor: 'pointer',
