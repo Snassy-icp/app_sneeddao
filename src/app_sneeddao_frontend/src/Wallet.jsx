@@ -71,7 +71,7 @@ import UpgradeBotsDialog from './components/UpgradeBotsDialog';
 import TopUpCyclesDialog from './components/TopUpCyclesDialog';
 import { PERM } from './utils/NeuronPermissionUtils.jsx';
 import { IDL } from '@dfinity/candid';
-import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle, FaTint, FaSeedling, FaGift, FaHourglassHalf, FaWater, FaUnlock, FaCheck, FaExclamationTriangle, FaCrown, FaBox, FaDatabase, FaCog, FaExternalLinkAlt, FaTimes, FaLightbulb, FaArrowRight, FaDollarSign, FaChartBar, FaBullseye, FaMoneyBillWave, FaBug, FaCopy, FaExpandAlt, FaSearch, FaArrowUp, FaBolt } from 'react-icons/fa';
+import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle, FaTint, FaSeedling, FaGift, FaHourglassHalf, FaWater, FaUnlock, FaCheck, FaExclamationTriangle, FaCrown, FaBox, FaDatabase, FaCog, FaExternalLinkAlt, FaTimes, FaLightbulb, FaArrowRight, FaDollarSign, FaChartBar, FaBullseye, FaMoneyBillWave, FaBug, FaCopy, FaExpandAlt, FaSearch, FaArrowUp, FaBolt, FaSpinner } from 'react-icons/fa';
 
 // Custom CSS for Wallet page animations
 const walletCustomStyles = `
@@ -496,6 +496,47 @@ const DraggableTokenCard = ({ ledgerId, onDrop, children }) => (
     </DraggableWalletCard>
 );
 
+// Droppable section that accepts items from another section (cross-section move)
+const DroppableWalletSection = ({ acceptTypes, onDrop, children, style }) => {
+    const ref = React.useRef(null);
+    const [{ isOver, canDrop }, drop] = useDrop(() => ({
+        accept: acceptTypes,
+        drop: (item) => {
+            onDrop(item);
+        },
+        collect: (monitor) => ({
+            isOver: monitor.isOver({ shallow: true }),
+            canDrop: monitor.canDrop(),
+        }),
+    }), [acceptTypes, onDrop]);
+
+    drop(ref);
+
+    return (
+        <div ref={ref} style={{
+            ...style,
+            ...(isOver && canDrop ? {
+                outline: '2px dashed #3b82f6',
+                outlineOffset: '-2px',
+            } : {}),
+        }}>
+            {children}
+            {isOver && canDrop && (
+                <div style={{
+                    padding: '8px 12px',
+                    textAlign: 'center',
+                    color: '#3b82f6',
+                    fontSize: '0.8rem',
+                    fontWeight: '500',
+                    opacity: 0.8,
+                }}>
+                    Drop here to move
+                </div>
+            )}
+        </div>
+    );
+};
+
 function Wallet() {
     const { identity, isAuthenticated, logout } = useAuth();
     const { theme } = useTheme();
@@ -669,6 +710,7 @@ function Wallet() {
     const [scanProgress, setScanProgress] = useState({ current: 0, total: 0, found: 0 });
     const [scanningPositions, setScanningPositions] = useState(false);
     const [positionScanProgress, setPositionScanProgress] = useState({ current: 0, total: 0, found: 0 });
+    const [dropInProgress, setDropInProgress] = useState(null); // { itemId, direction } for cross-section move progress
     const [tokensExpanded, setTokensExpanded] = useState(true);
     const [positionsExpanded, setPositionsExpanded] = useState(true);
     const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -5527,6 +5569,78 @@ function Wallet() {
         walletLayoutCtx.reorderSection('apps', dragIndex, hoverIndex);
     }, [walletLayoutCtx]);
 
+    // Cross-section move: move an app from Other Apps to ICP Staking Bots
+    const handleMoveToStakingBots = useCallback(async (item) => {
+        const canisterId = item.itemId;
+        if (!canisterId || !identity) return;
+        setDropInProgress({ itemId: canisterId, direction: 'to_staking_bots' });
+        try {
+            // Register as neuron manager FIRST (add to target)
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging'
+                ? 'https://ic0.app' : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const factory = createFactoryActor(factoryCanisterId, { agent });
+            const result = await factory.registerManager(Principal.fromText(canisterId));
+            if (result && 'Err' in result) {
+                throw new Error(typeof result.Err === 'string' ? result.Err : JSON.stringify(result.Err));
+            }
+            // THEN remove from tracked canisters (remove from source)
+            await unregisterTrackedCanister(identity, canisterId);
+            // Update layout: add to staking_bots, remove from apps
+            if (walletLayoutCtx) {
+                walletLayoutCtx.ensureInSection('staking_bots', canisterId);
+                walletLayoutCtx.removeFromSection('apps', canisterId);
+            }
+            // Refresh both lists
+            if (contextRefreshNeuronManagers) contextRefreshNeuronManagers();
+            if (contextRefreshTrackedCanisters) contextRefreshTrackedCanisters();
+        } catch (err) {
+            console.error('[WalletMove] Error moving to staking bots:', err);
+            alert('Failed to move app: ' + (err.message || 'Unknown error'));
+        } finally {
+            setDropInProgress(null);
+        }
+    }, [identity, walletLayoutCtx, contextRefreshNeuronManagers, contextRefreshTrackedCanisters]);
+
+    // Cross-section move: move an app from ICP Staking Bots to Other Apps
+    const handleMoveToOtherApps = useCallback(async (item) => {
+        const canisterId = item.itemId;
+        if (!canisterId || !identity) return;
+        setDropInProgress({ itemId: canisterId, direction: 'to_other_apps' });
+        try {
+            // Register as tracked canister FIRST (add to target)
+            await registerTrackedCanister(identity, canisterId);
+            // THEN deregister from neuron managers (remove from source)
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging'
+                ? 'https://ic0.app' : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const factory = createFactoryActor(factoryCanisterId, { agent });
+            const result = await factory.deregisterManager(Principal.fromText(canisterId));
+            if (result && 'Err' in result) {
+                throw new Error(typeof result.Err === 'string' ? result.Err : JSON.stringify(result.Err));
+            }
+            // Update layout: add to apps, remove from staking_bots
+            if (walletLayoutCtx) {
+                walletLayoutCtx.ensureInSection('apps', canisterId);
+                walletLayoutCtx.removeFromSection('staking_bots', canisterId);
+            }
+            // Refresh both lists
+            if (contextRefreshTrackedCanisters) contextRefreshTrackedCanisters();
+            if (contextRefreshNeuronManagers) contextRefreshNeuronManagers();
+        } catch (err) {
+            console.error('[WalletMove] Error moving to other apps:', err);
+            alert('Failed to move app: ' + (err.message || 'Unknown error'));
+        } finally {
+            setDropInProgress(null);
+        }
+    }, [identity, walletLayoutCtx, contextRefreshTrackedCanisters, contextRefreshNeuronManagers]);
+
     return (
         <DndProvider backend={HTML5Backend}>
         <div 
@@ -6640,13 +6754,18 @@ function Wallet() {
                             </div>
                         )}
 
-                        {/* ICP Staking Bots Section */}
-                        <div style={{ 
-                            backgroundColor: theme.colors.secondaryBg, 
-                            borderRadius: '12px', 
-                            padding: '16px',
-                            marginBottom: '16px'
-                        }}>
+                        {/* ICP Staking Bots Section - accepts drops from Other Apps */}
+                        <DroppableWalletSection
+                            acceptTypes={[DRAG_TYPE_APP]}
+                            onDrop={handleMoveToStakingBots}
+                            style={{ 
+                                backgroundColor: theme.colors.secondaryBg, 
+                                borderRadius: '12px', 
+                                padding: '16px',
+                                marginBottom: '16px',
+                                transition: 'outline 0.15s ease',
+                            }}
+                        >
                             <div 
                                 style={{ 
                                     display: 'flex', 
@@ -8056,15 +8175,20 @@ function Wallet() {
                         )}
                             </>
                             )}
-                        </div>
+                        </DroppableWalletSection>
 
-                        {/* Other Apps Section */}
-                        <div style={{ 
-                            backgroundColor: theme.colors.secondaryBg, 
-                            borderRadius: '12px', 
-                            padding: '16px',
-                            marginBottom: '16px'
-                        }}>
+                        {/* Other Apps Section - accepts drops from ICP Staking Bots */}
+                        <DroppableWalletSection
+                            acceptTypes={[DRAG_TYPE_STAKING_BOT]}
+                            onDrop={handleMoveToOtherApps}
+                            style={{ 
+                                backgroundColor: theme.colors.secondaryBg, 
+                                borderRadius: '12px', 
+                                padding: '16px',
+                                marginBottom: '16px',
+                                transition: 'outline 0.15s ease',
+                            }}
+                        >
                             <div 
                                 style={{ 
                                     display: 'flex', 
@@ -9599,6 +9723,55 @@ function Wallet() {
                         )}
                             </>
                             )}
+                        </DroppableWalletSection>
+                    </div>
+                )}
+
+                {/* Drop Progress Dialog */}
+                {dropInProgress && (
+                    <div style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: '100%',
+                        background: 'rgba(0, 0, 0, 0.5)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 10002,
+                        backdropFilter: 'blur(2px)',
+                    }}>
+                        <div style={{
+                            background: theme.colors.secondaryBgGradient || theme.colors.secondaryBg,
+                            border: `1px solid ${theme.colors.border}`,
+                            borderRadius: '16px',
+                            padding: '24px 32px',
+                            textAlign: 'center',
+                            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+                            minWidth: '200px',
+                        }}>
+                            <FaSpinner 
+                                className="spin" 
+                                size={28} 
+                                style={{ color: theme.colors.accent || '#3b82f6', marginBottom: '12px' }} 
+                            />
+                            <div style={{ 
+                                color: theme.colors.primaryText, 
+                                fontWeight: 600,
+                                fontSize: '0.95rem',
+                                marginBottom: '4px'
+                            }}>
+                                Moving app...
+                            </div>
+                            <div style={{ 
+                                color: theme.colors.mutedText, 
+                                fontSize: '0.8rem' 
+                            }}>
+                                {dropInProgress.direction === 'to_staking_bots' 
+                                    ? 'Moving to ICP Staking Bots' 
+                                    : 'Moving to Other Apps'}
+                            </div>
                         </div>
                     </div>
                 )}

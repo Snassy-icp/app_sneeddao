@@ -24,6 +24,7 @@ import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import UpgradeBotsDialog from '../components/UpgradeBotsDialog';
 import TopUpCyclesDialog from '../components/TopUpCyclesDialog';
+import { useWalletLayout } from '../contexts/WalletLayoutContext';
 
 // Drag item types for react-dnd
 const DragItemTypes = {
@@ -65,6 +66,55 @@ const DraggableItem = ({ type, id, sourceGroupId, children, style }) => {
 
     return (
         <div ref={drag} style={{ ...style, opacity: isDragging ? 0.4 : 1, cursor: isDragging ? 'grabbing' : 'grab' }}>
+            {typeof children === 'function' ? children({ isDragging }) : children}
+        </div>
+    );
+};
+
+// Reorderable draggable item - supports both cross-section DnD and within-section reordering
+const ReorderableItem = ({ type, id, sourceGroupId, onReorder, children, style }) => {
+    const ref = React.useRef(null);
+
+    const [{ isDragging }, drag] = useDrag(() => ({
+        type: type === 'canister' ? DragItemTypes.CANISTER : DragItemTypes.GROUP,
+        item: { type, id, sourceGroupId },
+        collect: (monitor) => ({
+            isDragging: monitor.isDragging(),
+        }),
+    }), [type, id, sourceGroupId]);
+
+    const [{ isOver }, drop] = useDrop(() => ({
+        accept: type === 'canister' ? DragItemTypes.CANISTER : DragItemTypes.GROUP,
+        hover: (item) => {
+            // Only reorder within the same section
+            if (item.sourceGroupId === sourceGroupId && item.id !== id && onReorder) {
+                onReorder(item.id, id);
+            }
+        },
+        collect: (monitor) => ({
+            isOver: monitor.isOver({ shallow: true }),
+        }),
+    }), [type, id, sourceGroupId, onReorder]);
+
+    drag(drop(ref));
+
+    return (
+        <div ref={ref} style={{ 
+            ...style, 
+            opacity: isDragging ? 0.4 : 1, 
+            cursor: isDragging ? 'grabbing' : 'grab',
+            position: 'relative',
+        }}>
+            {isOver && <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                height: '3px',
+                background: 'linear-gradient(90deg, #10b981, #3b82f6)',
+                borderRadius: '2px',
+                zIndex: 10,
+            }} />}
             {typeof children === 'function' ? children({ isDragging }) : children}
         </div>
     );
@@ -161,6 +211,7 @@ export default function AppsPage() {
     const { identity, isAuthenticated } = useAuth();
     const { principalNames, principalNicknames, verifiedNames, principalCanisterTypes } = useNaming();
     const navigate = useNavigate();
+    const walletLayoutCtx = useWalletLayout();
     
     // Premium status for folder limits
     const { isPremium, loading: loadingPremium } = usePremiumStatus(identity);
@@ -629,6 +680,24 @@ export default function AppsPage() {
         loadCanisterGroups();
         fetchNeuronManagers();
     }, [identity, fetchNeuronManagers, fetchCanisterStatus, getAllCanisterIds]);
+
+    // Sync loaded neuron managers into the wallet layout
+    useEffect(() => {
+        if (!walletLayoutCtx?.ensureManyInSection || !neuronManagers || neuronManagers.length === 0) return;
+        const managerIds = neuronManagers.map(m => m.canisterId.toText()).filter(Boolean);
+        if (managerIds.length > 0) {
+            walletLayoutCtx.ensureManyInSection('staking_bots', managerIds);
+        }
+    }, [neuronManagers, walletLayoutCtx?.ensureManyInSection]);
+
+    // Sync tracked canisters into the wallet layout
+    useEffect(() => {
+        if (!walletLayoutCtx?.ensureManyInSection || !trackedCanisters || trackedCanisters.length === 0) return;
+        const canisterIds = trackedCanisters.map(c => typeof c === 'string' ? c : c.toString()).filter(Boolean);
+        if (canisterIds.length > 0) {
+            walletLayoutCtx.ensureManyInSection('apps', canisterIds);
+        }
+    }, [trackedCanisters, walletLayoutCtx?.ensureManyInSection]);
     
     // Save canister groups to backend
     const saveCanisterGroups = useCallback(async (newGroups) => {
@@ -1430,6 +1499,13 @@ export default function AppsPage() {
             const canisters = await getTrackedCanisters(identity);
             setTrackedCanisters(canisters.map(p => p.toText()));
             
+            // Update wallet layout
+            if (walletLayoutCtx) {
+                if (destination === 'neuron_managers') {
+                    walletLayoutCtx.ensureInSection('staking_bots', canisterId);
+                }
+                walletLayoutCtx.removeFromSection('apps', canisterId);
+            }
             setSuccessMessage(destination === 'neuron_managers' ? 'App moved to Staking Bots' : 'App moved to groups');
         } catch (err) {
             console.error('Error moving canister from wallet:', err);
@@ -1474,6 +1550,14 @@ export default function AppsPage() {
             }
             await saveCanisterGroups(newGroups);
             
+            // Update wallet layout
+            if (walletLayoutCtx) {
+                if (destination === 'wallet') {
+                    walletLayoutCtx.ensureInSection('apps', canisterId);
+                } else if (destination === 'neuron_managers') {
+                    walletLayoutCtx.ensureInSection('staking_bots', canisterId);
+                }
+            }
             setSuccessMessage(destination === 'wallet' ? 'App moved to Wallet' : 'App moved to Staking Bots');
         } catch (err) {
             console.error('Error moving canister from groups:', err);
@@ -1521,6 +1605,13 @@ export default function AppsPage() {
             }
             await fetchNeuronManagers();
             
+            // Update wallet layout
+            if (walletLayoutCtx) {
+                if (destination === 'wallet') {
+                    walletLayoutCtx.ensureInSection('apps', canisterIdStr);
+                }
+                walletLayoutCtx.removeFromSection('staking_bots', canisterIdStr);
+            }
             setSuccessMessage(destination === 'wallet' ? 'App moved to Wallet' : 'App moved to groups');
         } catch (err) {
             console.error('Error moving canister from ICP staking bots:', err);
@@ -1586,6 +1677,27 @@ export default function AppsPage() {
     };
 
     // react-dnd drop handler - called when an item is dropped on a valid target
+    // Reorder handlers for wallet section items (using wallet layout)
+    const handleReorderStakingBot = useCallback((dragId, hoverId) => {
+        if (!walletLayoutCtx) return;
+        const section = walletLayoutCtx.layout?.staking_bots || [];
+        const dragIndex = section.indexOf(dragId);
+        const hoverIndex = section.indexOf(hoverId);
+        if (dragIndex >= 0 && hoverIndex >= 0) {
+            walletLayoutCtx.reorderSection('staking_bots', dragIndex, hoverIndex);
+        }
+    }, [walletLayoutCtx]);
+
+    const handleReorderWalletApp = useCallback((dragId, hoverId) => {
+        if (!walletLayoutCtx) return;
+        const section = walletLayoutCtx.layout?.apps || [];
+        const dragIndex = section.indexOf(dragId);
+        const hoverIndex = section.indexOf(hoverId);
+        if (dragIndex >= 0 && hoverIndex >= 0) {
+            walletLayoutCtx.reorderSection('apps', dragIndex, hoverIndex);
+        }
+    }, [walletLayoutCtx]);
+
     const handleDndDrop = useCallback(async (item, targetType, targetId = null) => {
         const { type: itemType, id: itemId, sourceGroupId } = item;
         
@@ -5165,7 +5277,10 @@ export default function AppsPage() {
                                     <>
                                         
                                     <div style={styles.canisterList}>
-                                        {neuronManagers.map((manager) => {
+                                        {(walletLayoutCtx?.sortByLayout
+                                            ? walletLayoutCtx.sortByLayout('staking_bots', neuronManagers, m => m.canisterId.toText())
+                                            : neuronManagers
+                                        ).map((manager) => {
                                             const canisterId = manager.canisterId.toText();
                                             const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames, verifiedNames, principalCanisterTypes);
                                             
@@ -5180,11 +5295,12 @@ export default function AppsPage() {
                                                 const canisterLampColor = getStatusLampColor(canisterHealth);
                                                 
                                                 return (
-                                                    <DraggableItem
+                                                    <ReorderableItem
                                                         key={canisterId}
                                                         type="canister"
                                                         id={canisterId}
                                                         sourceGroupId="neuron_managers"
+                                                        onReorder={handleReorderStakingBot}
                                                         style={{
                                                             ...styles.canisterCard,
                                                             transition: 'opacity 0.15s ease',
@@ -5335,7 +5451,7 @@ export default function AppsPage() {
                                                                 </button>
                                                             )}
                                                         </div>
-                                                    </DraggableItem>
+                                                    </ReorderableItem>
                                                 );
                                             }
                                             
@@ -5344,11 +5460,12 @@ export default function AppsPage() {
                                             const managerLampColor = getStatusLampColor(managerHealth);
                                             
                                             return (
-                                                <DraggableItem
+                                                <ReorderableItem
                                                     key={canisterId}
                                                     type="canister"
                                                     id={canisterId}
                                                     sourceGroupId="neuron_managers"
+                                                    onReorder={handleReorderStakingBot}
                                                     style={{
                                                         ...styles.managerCard,
                                                         transition: 'opacity 0.15s ease',
@@ -5544,7 +5661,7 @@ export default function AppsPage() {
                                                             </button>
                                                         )}
                                                     </div>
-                                                </DraggableItem>
+                                                </ReorderableItem>
                                             );
                                         })}
                                     </div>
@@ -5729,7 +5846,10 @@ export default function AppsPage() {
                                     <div style={{ marginBottom: '24px' }}>
                                         
                                         <div style={styles.canisterList}>
-                                            {trackedCanisters.map((canisterId) => {
+                                            {(walletLayoutCtx?.sortByLayout
+                                                ? walletLayoutCtx.sortByLayout('apps', trackedCanisters, c => typeof c === 'string' ? c : c.toString())
+                                                : trackedCanisters
+                                            ).map((canisterId) => {
                                                 const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames, verifiedNames, principalCanisterTypes);
                                                 const status = trackedCanisterStatus[canisterId];
                                                 const cycles = status?.cycles;
@@ -5742,26 +5862,34 @@ export default function AppsPage() {
                                                 const detectedManager = detectedNeuronManagers[canisterId];
                                                 if (detectedManager) {
                                                     return (
-                                                        <NeuronManagerCardItem
+                                                        <ReorderableItem
                                                             key={canisterId}
-                                                            canisterId={canisterId}
+                                                            type="canister"
+                                                            id={canisterId}
                                                             sourceGroupId="wallet"
-                                                            managerInfo={detectedManager}
-                                                            styles={styles}
-                                                            theme={theme}
-                                                            principalNames={principalNames}
-                                                            principalNicknames={principalNicknames}
-                                                            isAuthenticated={isAuthenticated}
-                                                            neuronManagerCycleSettings={neuronManagerCycleSettings}
-                                                            latestOfficialVersion={latestOfficialVersion}
-                                                            isVersionOutdated={isVersionOutdated}
-                                                            getManagerHealthStatus={getManagerHealthStatus}
-                                                            getStatusLampColor={getStatusLampColor}
-                                                            onRemove={handleRemoveWalletCanister}
-                                                            isConfirming={isConfirming}
-                                                            setConfirmRemove={setConfirmRemoveWalletCanister}
-                                                            isRemoving={isRemoving}
-                                                        />
+                                                            onReorder={handleReorderWalletApp}
+                                                            style={{ transition: 'opacity 0.15s ease' }}
+                                                        >
+                                                            <NeuronManagerCardItem
+                                                                canisterId={canisterId}
+                                                                sourceGroupId="wallet"
+                                                                managerInfo={detectedManager}
+                                                                styles={styles}
+                                                                theme={theme}
+                                                                principalNames={principalNames}
+                                                                principalNicknames={principalNicknames}
+                                                                isAuthenticated={isAuthenticated}
+                                                                neuronManagerCycleSettings={neuronManagerCycleSettings}
+                                                                latestOfficialVersion={latestOfficialVersion}
+                                                                isVersionOutdated={isVersionOutdated}
+                                                                getManagerHealthStatus={getManagerHealthStatus}
+                                                                getStatusLampColor={getStatusLampColor}
+                                                                onRemove={handleRemoveWalletCanister}
+                                                                isConfirming={isConfirming}
+                                                                setConfirmRemove={setConfirmRemoveWalletCanister}
+                                                                isRemoving={isRemoving}
+                                                            />
+                                                        </ReorderableItem>
                                                     );
                                                 }
                                                 
@@ -5770,11 +5898,12 @@ export default function AppsPage() {
                                                 const canisterLampColor = getStatusLampColor(canisterHealth);
 
                                                 return (
-                                                    <DraggableItem
+                                                    <ReorderableItem
                                                         key={canisterId}
                                                         type="canister"
                                                         id={canisterId}
                                                         sourceGroupId="wallet"
+                                                        onReorder={handleReorderWalletApp}
                                                         style={{
                                                             ...styles.canisterCard,
                                                             transition: 'opacity 0.15s ease',
@@ -5918,7 +6047,7 @@ export default function AppsPage() {
                                                                 </button>
                                                             )}
                                                         </div>
-                                                    </DraggableItem>
+                                                    </ReorderableItem>
                                                 );
                                             })}
                                         </div>
