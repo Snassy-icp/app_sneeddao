@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { formatAmount, getUSD, formatAmountWithConversion } from './utils/StringUtils';
 import { dateToReadable, format_duration } from './utils/DateUtils'
 import { rewardAmountOrZero, availableOrZero, get_available_backend } from './utils/TokenUtils';
@@ -147,6 +147,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     const [neuronsLoading, setNeuronsLoading] = useState(false);
     const [expandedNeurons, setExpandedNeurons] = useState(new Set());
     const [selectedNeuronId, setSelectedNeuronId] = useState(null); // hex id of neuron shown in detail
+    const [neuronDropdownOpen, setNeuronDropdownOpen] = useState(false);
+    const neuronDropdownRef = useRef(null);
     const [hideEmptyNeurons, setHideEmptyNeurons] = useState(() => {
         try {
             const saved = localStorage.getItem('hideEmptyNeurons_Wallet');
@@ -209,6 +211,18 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     const handleHeaderClick = () => {
         setIsExpanded(!isExpanded);
     };
+
+    // Close neuron dropdown when clicking outside
+    useEffect(() => {
+        if (!neuronDropdownOpen) return;
+        const handleClick = (e) => {
+            if (neuronDropdownRef.current && !neuronDropdownRef.current.contains(e.target)) {
+                setNeuronDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClick);
+        return () => document.removeEventListener('mousedown', handleClick);
+    }, [neuronDropdownOpen]);
 
     const toggleNeuronExpanded = (neuronIdHex) => {
         setExpandedNeurons(prev => {
@@ -2474,65 +2488,160 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
 
                                         return (
                                             <>
-                                                {/* Neuron selector dropdown */}
-                                                <div style={{ marginBottom: '12px' }}>
-                                                    <select
-                                                        value={effectiveId}
-                                                        onChange={(e) => setSelectedNeuronId(e.target.value)}
+                                                {/* Neuron selector - styled card header with dropdown */}
+                                                <div ref={neuronDropdownRef} style={{ marginBottom: '12px', position: 'relative' }}>
+                                                    {/* Selected neuron header */}
+                                                    <div
+                                                        onClick={() => filteredNeurons.length > 1 && setNeuronDropdownOpen(prev => !prev)}
                                                         style={{
-                                                            width: '100%',
+                                                            cursor: filteredNeurons.length > 1 ? 'pointer' : 'default',
                                                             padding: '10px 12px',
-                                                            borderRadius: '8px',
-                                                            border: `1px solid ${theme.colors.border}`,
-                                                            backgroundColor: theme.colors.cardBg,
-                                                            color: theme.colors.primaryText,
-                                                            fontSize: '0.9rem',
-                                                            fontWeight: '500',
-                                                            cursor: 'pointer',
-                                                            outline: 'none',
-                                                            appearance: 'auto',
+                                                            background: theme.colors.cardBg,
+                                                            border: `1px solid ${neuronDropdownOpen ? theme.colors.accent : theme.colors.border}`,
+                                                            borderRadius: neuronDropdownOpen ? '8px 8px 0 0' : '8px',
+                                                            display: 'flex',
+                                                            justifyContent: 'space-between',
+                                                            alignItems: 'center',
+                                                            transition: 'border-color 0.15s ease',
                                                         }}
                                                     >
-                                                        {filteredNeurons.map((n) => {
-                                                            const nId = getNeuronIdHex(n);
-                                                            const nStake = getNeuronStake(n);
-                                                            const nState = getNeuronState(n);
-                                                            const permIcons = identity ? getUserPermissionIcons(n, identity.getPrincipal().toString()) : [];
-                                                            const permSuffix = permIcons.length > 0 ? ` [${permIcons.map(p => p.title).join(', ')}]` : '';
-                                                            return (
-                                                                <option key={nId} value={nId}>
-                                                                    Neuron #{nId.slice(0, 8)}... — {formatAmount(nStake, token.decimals)} {token.symbol} — {nState}{permSuffix}
-                                                                </option>
-                                                            );
-                                                        })}
-                                                    </select>
-                                                    <div style={{
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '8px',
-                                                        marginTop: '6px',
-                                                        fontSize: '0.8rem',
-                                                        color: theme.colors.secondaryText,
-                                                    }}>
-                                                        <span>{filteredNeurons.length} neuron{filteredNeurons.length !== 1 ? 's' : ''}</span>
-                                                        {/* Permission icons for selected neuron */}
-                                                        {identity && getUserPermissionIcons(neuron, identity.getPrincipal().toString()).map((permIcon, idx) => (
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: 1, minWidth: 0 }}>
+                                                            <div style={{ 
+                                                                color: theme.colors.primaryText, 
+                                                                fontWeight: '500',
+                                                                fontSize: '0.85rem',
+                                                                overflow: 'hidden',
+                                                                textOverflow: 'ellipsis',
+                                                                whiteSpace: 'nowrap',
+                                                            }}>
+                                                                Neuron #{neuronIdHex.slice(0, 8)}...
+                                                                <span style={{ color: theme.colors.secondaryText, fontSize: '0.75rem', marginLeft: '6px' }}>
+                                                                    {filteredNeurons.length > 1 ? `(${filteredNeurons.length} neurons)` : '(1 neuron)'}
+                                                                </span>
+                                                            </div>
+                                                            <div style={{ 
+                                                                color: theme.colors.accent, 
+                                                                fontWeight: '600',
+                                                                fontSize: '0.9rem'
+                                                            }}>
+                                                                {formatAmount(stake, token.decimals)} {token.symbol}
+                                                            </div>
+                                                        </div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                                                            {/* Permission icons */}
+                                                            {identity && getUserPermissionIcons(neuron, identity.getPrincipal().toString()).map((permIcon, idx) => (
+                                                                <span 
+                                                                    key={idx}
+                                                                    style={{ fontSize: '1.1rem', cursor: 'help' }} 
+                                                                    title={permIcon.title}
+                                                                >
+                                                                    {permIcon.icon}
+                                                                </span>
+                                                            ))}
+                                                            {/* State icon */}
                                                             <span 
-                                                                key={idx}
-                                                                style={{ fontSize: '1rem', cursor: 'help' }} 
-                                                                title={permIcon.title}
+                                                                style={{ fontSize: '1.1rem', cursor: 'help' }}
+                                                                title={state}
                                                             >
-                                                                {permIcon.icon}
+                                                                {getStateIcon(state).icon}
                                                             </span>
-                                                        ))}
-                                                        {/* State icon */}
-                                                        <span 
-                                                            style={{ fontSize: '1rem', cursor: 'help' }}
-                                                            title={state}
-                                                        >
-                                                            {getStateIcon(state).icon}
-                                                        </span>
+                                                            {/* Dropdown chevron */}
+                                                            {filteredNeurons.length > 1 && (
+                                                                <span style={{ 
+                                                                    color: theme.colors.mutedText, 
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    transform: neuronDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                                                                    transition: 'transform 0.2s ease'
+                                                                }}>
+                                                                    <FaChevronDown size={11} />
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     </div>
+
+                                                    {/* Dropdown options */}
+                                                    {neuronDropdownOpen && filteredNeurons.length > 1 && (
+                                                        <div style={{
+                                                            position: 'absolute',
+                                                            top: '100%',
+                                                            left: 0,
+                                                            right: 0,
+                                                            zIndex: 50,
+                                                            border: `1px solid ${theme.colors.accent}`,
+                                                            borderTop: 'none',
+                                                            borderRadius: '0 0 8px 8px',
+                                                            background: theme.colors.cardBg,
+                                                            maxHeight: '220px',
+                                                            overflowY: 'auto',
+                                                            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                                                        }}>
+                                                            {filteredNeurons.map((n) => {
+                                                                const nId = getNeuronIdHex(n);
+                                                                const nStake = getNeuronStake(n);
+                                                                const nState = getNeuronState(n);
+                                                                const isSelected = nId === effectiveId;
+                                                                return (
+                                                                    <div
+                                                                        key={nId}
+                                                                        onClick={() => {
+                                                                            setSelectedNeuronId(nId);
+                                                                            setNeuronDropdownOpen(false);
+                                                                        }}
+                                                                        style={{
+                                                                            padding: '8px 12px',
+                                                                            cursor: 'pointer',
+                                                                            display: 'flex',
+                                                                            justifyContent: 'space-between',
+                                                                            alignItems: 'center',
+                                                                            background: isSelected ? `${theme.colors.accent}15` : 'transparent',
+                                                                            borderBottom: `1px solid ${theme.colors.border}40`,
+                                                                            transition: 'background 0.1s ease',
+                                                                        }}
+                                                                        onMouseEnter={(e) => {
+                                                                            if (!isSelected) e.currentTarget.style.background = theme.colors.hoverBg || theme.colors.secondaryBg;
+                                                                        }}
+                                                                        onMouseLeave={(e) => {
+                                                                            e.currentTarget.style.background = isSelected ? `${theme.colors.accent}15` : 'transparent';
+                                                                        }}
+                                                                    >
+                                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', flex: 1, minWidth: 0 }}>
+                                                                            <div style={{ 
+                                                                                color: theme.colors.primaryText, 
+                                                                                fontWeight: isSelected ? '600' : '500',
+                                                                                fontSize: '0.8rem',
+                                                                                overflow: 'hidden',
+                                                                                textOverflow: 'ellipsis',
+                                                                                whiteSpace: 'nowrap',
+                                                                            }}>
+                                                                                Neuron #{nId.slice(0, 8)}...
+                                                                            </div>
+                                                                            <div style={{ 
+                                                                                color: isSelected ? theme.colors.accent : theme.colors.secondaryText, 
+                                                                                fontWeight: '600',
+                                                                                fontSize: '0.8rem'
+                                                                            }}>
+                                                                                {formatAmount(nStake, token.decimals)} {token.symbol}
+                                                                            </div>
+                                                                        </div>
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                                                                            {identity && getUserPermissionIcons(n, identity.getPrincipal().toString()).map((permIcon, idx) => (
+                                                                                <span key={idx} style={{ fontSize: '0.9rem', cursor: 'help' }} title={permIcon.title}>
+                                                                                    {permIcon.icon}
+                                                                                </span>
+                                                                            ))}
+                                                                            <span style={{ fontSize: '0.9rem', cursor: 'help' }} title={nState}>
+                                                                                {getStateIcon(nState).icon}
+                                                                            </span>
+                                                                            {isSelected && (
+                                                                                <span style={{ color: theme.colors.accent, fontSize: '0.7rem', fontWeight: '700' }}>✓</span>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
                                                 </div>
 
                                                 {/* Selected neuron detail */}

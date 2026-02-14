@@ -4,14 +4,15 @@ import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSns } from '../contexts/SnsContext';
 import Header from '../components/Header';
-import { fetchAndCacheSnsData, fetchSnsLogo, getSnsById } from '../utils/SnsUtils';
+import { fetchAndCacheSnsData, fetchSnsLogo, getSnsById, fetchSnsCyclesFromRoot } from '../utils/SnsUtils';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { createActor as createSnsRootActor } from 'external/sns_root';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { HttpAgent } from '@dfinity/agent';
 import { formatE8s } from '../utils/NeuronUtils';
 import { priceService } from '../services/PriceService';
-import { FaGlobe, FaVoteYea, FaComments, FaRss, FaExternalLinkAlt, FaSearch, FaCoins, FaServer, FaUsers, FaHistory, FaShieldAlt, FaArrowRight, FaLink, FaCube, FaArchive, FaCode, FaExchangeAlt, FaCopy, FaCheck, FaChevronDown, FaChevronUp, FaList, FaInfoCircle, FaCog, FaKey, FaGift, FaClock, FaUserCog, FaDollarSign } from 'react-icons/fa';
+import { formatCyclesCompact } from '../utils/NeuronManagerSettings';
+import { FaGlobe, FaVoteYea, FaComments, FaRss, FaExternalLinkAlt, FaSearch, FaCoins, FaServer, FaUsers, FaHistory, FaShieldAlt, FaArrowRight, FaLink, FaCube, FaArchive, FaCode, FaExchangeAlt, FaCopy, FaCheck, FaChevronDown, FaChevronUp, FaList, FaInfoCircle, FaCog, FaKey, FaGift, FaClock, FaUserCog, FaDollarSign, FaSitemap, FaBox, FaSpinner } from 'react-icons/fa';
 
 // Custom CSS for animations
 const customStyles = `
@@ -44,6 +45,10 @@ const customStyles = `
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
+}
+
+.spin {
+    animation: spin 1s linear infinite;
 }
 
 .sns-card-animate {
@@ -115,6 +120,8 @@ function Sns() {
     const [isCanistersExpanded, setIsCanistersExpanded] = useState(false);
     const [isDappsExpanded, setIsDappsExpanded] = useState(false);
     const [isArchivesExpanded, setIsArchivesExpanded] = useState(false);
+    const [canisterStatus, setCanisterStatus] = useState({}); // canisterId -> { cycles, memory }
+    const [loadingCanisterStatus, setLoadingCanisterStatus] = useState(false);
     const [isAdvancedExpanded, setIsAdvancedExpanded] = useState(false);
     const [isRewardsExpanded, setIsRewardsExpanded] = useState(false);
     const [isPermissionsExpanded, setIsPermissionsExpanded] = useState(false);
@@ -336,6 +343,19 @@ function Sns() {
             } finally {
                 setLoadingPrice(false);
             }
+            // Fetch canister cycles/memory status in the background
+            setLoadingCanisterStatus(true);
+            setCanisterStatus({});
+            fetchSnsCyclesFromRoot(selectedSns.rootCanisterId, identity).then(cyclesMap => {
+                const statusObj = {};
+                cyclesMap.forEach((val, key) => { statusObj[key] = val; });
+                setCanisterStatus(statusObj);
+            }).catch(err => {
+                console.warn('Could not fetch canister status:', err);
+            }).finally(() => {
+                setLoadingCanisterStatus(false);
+            });
+
         } catch (err) {
             console.error('Error loading SNS details:', err);
         } finally {
@@ -524,10 +544,54 @@ function Sns() {
         }
     };
 
-    // Render a canister row with links
+    // Health status helpers (matching /apps page)
+    const getStatusLampColor = (status) => {
+        switch (status) {
+            case 'red': return '#ef4444';
+            case 'orange': return '#f59e0b';
+            case 'green': return '#22c55e';
+            default: return '#6b7280';
+        }
+    };
+
+    const getCanisterHealth = (canisterId) => {
+        const status = canisterStatus[canisterId];
+        if (!status || status.cycles === null || status.cycles === undefined) return 'unknown';
+        if (status.cycles < 500_000_000_000) return 'red';     // 0.5T
+        if (status.cycles < 2_000_000_000_000) return 'orange'; // 2T
+        return 'green';
+    };
+
+    const computeSectionHealth = (canisterIds) => {
+        let worst = 0;
+        for (const cid of canisterIds) {
+            if (!cid) continue;
+            const h = getCanisterHealth(cid);
+            if (h === 'red') return 'red';
+            if (h === 'orange' && worst < 2) worst = 2;
+            else if (h === 'green' && worst < 1) worst = 1;
+        }
+        return worst === 0 ? 'unknown' : worst === 2 ? 'orange' : 'green';
+    };
+
+    const formatMemory = (bytes) => {
+        if (bytes === null || bytes === undefined) return 'N/A';
+        const MB = 1024 * 1024;
+        const GB = 1024 * 1024 * 1024;
+        if (bytes >= GB) return `${(bytes / GB).toFixed(2)} GB`;
+        if (bytes >= MB) return `${(bytes / MB).toFixed(1)} MB`;
+        return `${(bytes / 1024).toFixed(0)} KB`;
+    };
+
+    // Render a canister row with links, cycles, memory, and health lamp
     const renderCanisterRow = (label, canisterId, icon, color) => {
         if (!canisterId) return null;
         const isCopied = copiedId === canisterId;
+        const health = getCanisterHealth(canisterId);
+        const lampColor = getStatusLampColor(health);
+        const status = canisterStatus[canisterId];
+        const cycles = status?.cycles;
+        const memory = status?.memory;
         
         return (
             <div key={canisterId} style={{
@@ -540,6 +604,18 @@ function Sns() {
                 gap: '0.5rem'
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+                    {/* Health lamp */}
+                    <span
+                        style={{
+                            width: '8px',
+                            height: '8px',
+                            borderRadius: '50%',
+                            backgroundColor: lampColor,
+                            boxShadow: health !== 'unknown' ? `0 0 6px ${lampColor}` : 'none',
+                            flexShrink: 0,
+                        }}
+                        title={`Health: ${health}`}
+                    />
                     <div style={{
                         width: '32px',
                         height: '32px',
@@ -554,7 +630,43 @@ function Sns() {
                         {icon}
                     </div>
                     <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ color: theme.colors.secondaryText, fontSize: '0.75rem', marginBottom: '2px' }}>{label}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                            <span style={{ color: theme.colors.secondaryText, fontSize: '0.75rem' }}>{label}</span>
+                            {/* Cycles badge */}
+                            {cycles !== undefined && cycles !== null && (
+                                <span style={{
+                                    fontSize: '0.7rem',
+                                    backgroundColor: `${theme.colors.accent}15`,
+                                    color: theme.colors.accent,
+                                    padding: '1px 5px',
+                                    borderRadius: '4px',
+                                    fontWeight: '600',
+                                }}
+                                title={`${cycles.toLocaleString()} cycles`}
+                                >
+                                    ⚡ {formatCyclesCompact(cycles)}
+                                </span>
+                            )}
+                            {/* Memory badge */}
+                            {memory !== undefined && memory !== null && (
+                                <span style={{
+                                    fontSize: '0.7rem',
+                                    backgroundColor: `${theme.colors.accent}15`,
+                                    color: theme.colors.accent,
+                                    padding: '1px 5px',
+                                    borderRadius: '4px',
+                                    fontWeight: '600',
+                                }}
+                                title={`${memory.toLocaleString()} bytes`}
+                                >
+                                    💾 {formatMemory(memory)}
+                                </span>
+                            )}
+                            {/* Loading indicator */}
+                            {loadingCanisterStatus && !status && (
+                                <FaSpinner size={10} className="spin" style={{ color: theme.colors.mutedText }} />
+                            )}
+                        </div>
                         <div style={{
                             color: theme.colors.primaryText,
                             fontSize: '0.8rem',
@@ -1684,6 +1796,46 @@ function Sns() {
 
                                                 {/* Canisters - Expandable */}
                                                 <div>
+                                                    {/* Overall health summary */}
+                                                    {(() => {
+                                                        const allIds = [
+                                                            selectedSnsDetails.allCanisters?.root,
+                                                            selectedSnsDetails.allCanisters?.governance,
+                                                            selectedSnsDetails.allCanisters?.ledger,
+                                                            selectedSnsDetails.allCanisters?.swap,
+                                                            selectedSnsDetails.allCanisters?.index,
+                                                            ...(selectedSnsDetails.allCanisters?.dapps || []),
+                                                            ...(selectedSnsDetails.allCanisters?.archives || []),
+                                                        ].filter(Boolean);
+                                                        const overallHealth = computeSectionHealth(allIds);
+                                                        const overallLamp = getStatusLampColor(overallHealth);
+                                                        return (
+                                                            <div style={{
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '8px',
+                                                                padding: '8px 12px',
+                                                                marginBottom: '8px',
+                                                                borderRadius: '8px',
+                                                                background: theme.colors.primaryBg,
+                                                                border: `1px solid ${theme.colors.border}`,
+                                                                fontSize: '0.8rem',
+                                                                color: theme.colors.secondaryText,
+                                                            }}>
+                                                                <span style={{
+                                                                    width: '10px', height: '10px', borderRadius: '50%',
+                                                                    backgroundColor: overallLamp,
+                                                                    boxShadow: overallHealth !== 'unknown' ? `0 0 6px ${overallLamp}` : 'none',
+                                                                    flexShrink: 0,
+                                                                }} title={`Overall: ${overallHealth}`} />
+                                                                <span>Overall Health: <strong style={{ color: overallLamp }}>{overallHealth === 'unknown' ? 'Loading...' : overallHealth.charAt(0).toUpperCase() + overallHealth.slice(1)}</strong></span>
+                                                                <span style={{ color: theme.colors.mutedText }}>({allIds.length} canisters)</span>
+                                                                {loadingCanisterStatus && <FaSpinner size={10} className="spin" style={{ color: theme.colors.mutedText }} />}
+                                                            </div>
+                                                        );
+                                                    })()}
+
+                                                    {/* System Canisters header */}
                                                     <button
                                                         onClick={() => setIsCanistersExpanded(!isCanistersExpanded)}
                                                         style={{
@@ -1702,6 +1854,18 @@ function Sns() {
                                                         }}
                                                     >
                                                         <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                            {(() => {
+                                                                const sysIds = [
+                                                                    selectedSnsDetails.allCanisters?.root,
+                                                                    selectedSnsDetails.allCanisters?.governance,
+                                                                    selectedSnsDetails.allCanisters?.ledger,
+                                                                    selectedSnsDetails.allCanisters?.swap,
+                                                                    selectedSnsDetails.allCanisters?.index,
+                                                                ].filter(Boolean);
+                                                                const h = computeSectionHealth(sysIds);
+                                                                const c = getStatusLampColor(h);
+                                                                return <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: c, boxShadow: h !== 'unknown' ? `0 0 5px ${c}` : 'none', flexShrink: 0 }} title={`System: ${h}`} />;
+                                                            })()}
                                                             <FaServer size={14} style={{ color: snsPrimary }} />
                                                             SNS Canisters (5)
                                                         </span>
@@ -1710,11 +1874,11 @@ function Sns() {
                                                     
                                                     {isCanistersExpanded && (
                                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
-                                                            {renderCanisterRow('Root', selectedSnsDetails.allCanisters?.root, <FaCube size={14} />, snsPrimary)}
-                                                            {renderCanisterRow('Governance', selectedSnsDetails.allCanisters?.governance, <FaShieldAlt size={14} />, '#f59e0b')}
+                                                            {renderCanisterRow('Root', selectedSnsDetails.allCanisters?.root, <FaSitemap size={14} />, snsPrimary)}
+                                                            {renderCanisterRow('Governance', selectedSnsDetails.allCanisters?.governance, <FaVoteYea size={14} />, '#f59e0b')}
                                                             {renderCanisterRow('Ledger', selectedSnsDetails.allCanisters?.ledger, <FaCoins size={14} />, theme.colors.success)}
                                                             {renderCanisterRow('Swap', selectedSnsDetails.allCanisters?.swap, <FaExchangeAlt size={14} />, '#e74c3c')}
-                                                            {renderCanisterRow('Index', selectedSnsDetails.allCanisters?.index, <FaSearch size={14} />, snsAccent)}
+                                                            {renderCanisterRow('Index', selectedSnsDetails.allCanisters?.index, <FaList size={14} />, snsAccent)}
                                                         </div>
                                                     )}
                                                     
@@ -1740,7 +1904,12 @@ function Sns() {
                                                                 }}
                                                             >
                                                                 <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                    <FaCode size={14} style={{ color: '#9b59b6' }} />
+                                                                    {(() => {
+                                                                        const h = computeSectionHealth(selectedSnsDetails.allCanisters.dapps);
+                                                                        const c = getStatusLampColor(h);
+                                                                        return <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: c, boxShadow: h !== 'unknown' ? `0 0 5px ${c}` : 'none', flexShrink: 0 }} title={`Dapps: ${h}`} />;
+                                                                    })()}
+                                                                    <FaBox size={14} style={{ color: '#9b59b6' }} />
                                                                     Dapp Canisters ({selectedSnsDetails.allCanisters.dapps.length})
                                                                 </span>
                                                                 {isDappsExpanded ? <FaChevronUp size={14} /> : <FaChevronDown size={14} />}
@@ -1749,7 +1918,7 @@ function Sns() {
                                                             {isDappsExpanded && (
                                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
                                                                     {selectedSnsDetails.allCanisters.dapps.map((dapp, idx) => (
-                                                                        renderCanisterRow(`Dapp ${idx + 1}`, dapp, <FaCode size={14} />, '#9b59b6')
+                                                                        renderCanisterRow(`Dapp ${idx + 1}`, dapp, <FaBox size={14} />, '#9b59b6')
                                                                     ))}
                                                                 </div>
                                                             )}
@@ -1778,6 +1947,11 @@ function Sns() {
                                                                 }}
                                                             >
                                                                 <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                    {(() => {
+                                                                        const h = computeSectionHealth(selectedSnsDetails.allCanisters.archives);
+                                                                        const c = getStatusLampColor(h);
+                                                                        return <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: c, boxShadow: h !== 'unknown' ? `0 0 5px ${c}` : 'none', flexShrink: 0 }} title={`Archives: ${h}`} />;
+                                                                    })()}
                                                                     <FaArchive size={14} style={{ color: theme.colors.mutedText }} />
                                                                     Archive Canisters ({selectedSnsDetails.allCanisters.archives.length})
                                                                 </span>
