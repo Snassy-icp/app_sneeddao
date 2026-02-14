@@ -146,6 +146,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     const [neurons, setNeurons] = useState([]);
     const [neuronsLoading, setNeuronsLoading] = useState(false);
     const [expandedNeurons, setExpandedNeurons] = useState(new Set());
+    const [selectedNeuronId, setSelectedNeuronId] = useState(null); // hex id of neuron shown in detail
     const [hideEmptyNeurons, setHideEmptyNeurons] = useState(() => {
         try {
             const saved = localStorage.getItem('hideEmptyNeurons_Wallet');
@@ -2448,154 +2449,436 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                         </label>
                                     )}
                                     
-                                    {neurons.length > 0 ? (
-                                        neurons
+                                    {neurons.length > 0 ? (() => {
+                                        const filteredNeurons = neurons
                                             .filter(neuron => !hideEmptyNeurons || !isNeuronEmpty(neuron))
                                             .sort((a, b) => {
-                                                // Sort by ownership priority (owners first, then hotkeys, then reachable)
                                                 const userPrincipal = identity?.getPrincipal()?.toString();
                                                 if (!userPrincipal) return 0;
-                                                const priorityA = getOwnershipPriority(a, userPrincipal);
-                                                const priorityB = getOwnershipPriority(b, userPrincipal);
-                                                return priorityA - priorityB;
-                                            })
-                                            .map((neuron, neuronIndex) => {
-                                            const neuronIdHex = getNeuronIdHex(neuron);
-                                            const isExpanded = expandedNeurons.has(neuronIdHex);
-                                            const stake = getNeuronStake(neuron);
-                                            const dissolveDelay = getDissolveDelaySeconds(neuron);
-                                            const state = getNeuronState(neuron);
-                                            
-                                            return (
-                                                <div 
-                                                    key={neuronIdHex || neuronIndex}
-                                                    style={{
-                                                        marginBottom: '12px',
-                                                        border: `1px solid ${theme.colors.border}`,
-                                                        borderRadius: '8px',
-                                                        overflow: 'hidden'
-                                                    }}
-                                                >
-                                                    {/* Neuron Header */}
-                                                    <div
-                                                        onClick={() => toggleNeuronExpanded(neuronIdHex)}
+                                                return getOwnershipPriority(a, userPrincipal) - getOwnershipPriority(b, userPrincipal);
+                                            });
+
+                                        if (filteredNeurons.length === 0) {
+                                            return <p style={{ color: theme.colors.mutedText, fontStyle: 'italic', margin: '10px 0' }}>All neurons hidden by filter</p>;
+                                        }
+
+                                        // Determine effective selection (fall back to first if selectedNeuronId is invalid/filtered out)
+                                        const effectiveId = (selectedNeuronId && filteredNeurons.some(n => getNeuronIdHex(n) === selectedNeuronId))
+                                            ? selectedNeuronId
+                                            : getNeuronIdHex(filteredNeurons[0]);
+                                        const neuron = filteredNeurons.find(n => getNeuronIdHex(n) === effectiveId);
+                                        const neuronIdHex = effectiveId;
+                                        const stake = getNeuronStake(neuron);
+                                        const dissolveDelay = getDissolveDelaySeconds(neuron);
+                                        const state = getNeuronState(neuron);
+
+                                        return (
+                                            <>
+                                                {/* Neuron selector dropdown */}
+                                                <div style={{ marginBottom: '12px' }}>
+                                                    <select
+                                                        value={effectiveId}
+                                                        onChange={(e) => setSelectedNeuronId(e.target.value)}
                                                         style={{
-                                                            cursor: 'pointer',
+                                                            width: '100%',
                                                             padding: '10px 12px',
-                                                            background: theme.colors.cardBg,
-                                                            display: 'flex',
-                                                            justifyContent: 'space-between',
-                                                            alignItems: 'center',
-                                                            transition: 'background 0.2s ease'
-                                                        }}
-                                                        onMouseEnter={(e) => {
-                                                            e.currentTarget.style.background = theme.colors.hoverBg || theme.colors.secondaryBg;
-                                                        }}
-                                                        onMouseLeave={(e) => {
-                                                            e.currentTarget.style.background = theme.colors.cardBg;
+                                                            borderRadius: '8px',
+                                                            border: `1px solid ${theme.colors.border}`,
+                                                            backgroundColor: theme.colors.cardBg,
+                                                            color: theme.colors.primaryText,
+                                                            fontSize: '0.9rem',
+                                                            fontWeight: '500',
+                                                            cursor: 'pointer',
+                                                            outline: 'none',
+                                                            appearance: 'auto',
                                                         }}
                                                     >
-                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
-                                                            <div style={{ 
-                                                                color: theme.colors.primaryText, 
-                                                                fontWeight: '500',
-                                                                fontSize: '0.9rem'
-                                                            }}>
-                                                                Neuron #{neuronIdHex.slice(0, 8)}...
-                                                            </div>
-                                                            <div style={{ 
-                                                                color: theme.colors.accent, 
-                                                                fontWeight: '600',
-                                                                fontSize: '0.95rem'
-                                                            }}>
-                                                                {formatAmount(stake, token.decimals)} {token.symbol}
-                                                            </div>
-                                                        </div>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                            {/* Permission icons */}
-                                                            {identity && getUserPermissionIcons(neuron, identity.getPrincipal().toString()).map((permIcon, idx) => (
-                                                                <span 
-                                                                    key={idx}
-                                                                    style={{ fontSize: '1.2rem', cursor: 'help' }} 
-                                                                    title={permIcon.title}
-                                                                >
-                                                                    {permIcon.icon}
-                                                                </span>
-                                                            ))}
-                                                            
-                                                            {/* State icon */}
+                                                        {filteredNeurons.map((n) => {
+                                                            const nId = getNeuronIdHex(n);
+                                                            const nStake = getNeuronStake(n);
+                                                            const nState = getNeuronState(n);
+                                                            const permIcons = identity ? getUserPermissionIcons(n, identity.getPrincipal().toString()) : [];
+                                                            const permSuffix = permIcons.length > 0 ? ` [${permIcons.map(p => p.title).join(', ')}]` : '';
+                                                            return (
+                                                                <option key={nId} value={nId}>
+                                                                    Neuron #{nId.slice(0, 8)}... — {formatAmount(nStake, token.decimals)} {token.symbol} — {nState}{permSuffix}
+                                                                </option>
+                                                            );
+                                                        })}
+                                                    </select>
+                                                    <div style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px',
+                                                        marginTop: '6px',
+                                                        fontSize: '0.8rem',
+                                                        color: theme.colors.secondaryText,
+                                                    }}>
+                                                        <span>{filteredNeurons.length} neuron{filteredNeurons.length !== 1 ? 's' : ''}</span>
+                                                        {/* Permission icons for selected neuron */}
+                                                        {identity && getUserPermissionIcons(neuron, identity.getPrincipal().toString()).map((permIcon, idx) => (
                                                             <span 
-                                                                style={{
-                                                                    fontSize: '1.2rem',
-                                                                    cursor: 'help'
-                                                                }}
-                                                                title={state}
+                                                                key={idx}
+                                                                style={{ fontSize: '1rem', cursor: 'help' }} 
+                                                                title={permIcon.title}
                                                             >
-                                                                {getStateIcon(state).icon}
+                                                                {permIcon.icon}
                                                             </span>
-                                                            
-                                                            {/* Expand/collapse indicator */}
-                                                            <span 
-                                                                style={{ 
-                                                                    color: theme.colors.mutedText, 
-                                                                    display: 'flex',
-                                                                    alignItems: 'center',
-                                                                    transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                                                                    transition: 'transform 0.2s ease'
-                                                                }}
-                                                            >
-                                                                <FaChevronDown size={12} />
-                                                            </span>
-                                                        </div>
+                                                        ))}
+                                                        {/* State icon */}
+                                                        <span 
+                                                            style={{ fontSize: '1rem', cursor: 'help' }}
+                                                            title={state}
+                                                        >
+                                                            {getStateIcon(state).icon}
+                                                        </span>
                                                     </div>
+                                                </div>
 
-                                                    {/* Neuron Details */}
-                                                    {isExpanded && (
-                                                        <div style={{
-                                                            padding: '12px',
-                                                            background: theme.colors.primaryBg,
-                                                            borderTop: `1px solid ${theme.colors.border}`
+                                                {/* Selected neuron detail */}
+                                                <div style={{
+                                                    border: `1px solid ${theme.colors.border}`,
+                                                    borderRadius: '8px',
+                                                    overflow: 'hidden',
+                                                }}>
+                                                    <div style={{
+                                                        padding: '12px',
+                                                        background: theme.colors.primaryBg,
+                                                    }}>
+                                                        {/* Top buttons row - Manage and Send */}
+                                                        <div style={{ 
+                                                            display: 'flex',
+                                                            justifyContent: 'flex-end',
+                                                            gap: '8px',
+                                                            marginBottom: '12px',
+                                                            paddingBottom: '12px',
+                                                            borderBottom: `1px solid ${theme.colors.border}`
                                                         }}>
-                                                            {/* Top buttons row - Manage and Send */}
-                                                            <div style={{ 
-                                                                display: 'flex',
-                                                                justifyContent: 'flex-end',
-                                                                gap: '8px',
-                                                                marginBottom: '12px',
-                                                                paddingBottom: '12px',
-                                                                borderBottom: `1px solid ${theme.colors.border}`
-                                                            }}>
-                                                                {/* Manage button - link to detailed neuron page */}
-                                                                <a
-                                                                    href={`/neuron?neuronid=${neuronIdHex}&sns=${snsRootCanisterId}`}
+                                                            {/* Manage button - link to detailed neuron page */}
+                                                            <a
+                                                                href={`/neuron?neuronid=${neuronIdHex}&sns=${snsRootCanisterId}`}
+                                                                style={{
+                                                                    background: theme.colors.secondaryBg,
+                                                                    color: theme.colors.primaryText,
+                                                                    border: `1px solid ${theme.colors.border}`,
+                                                                    borderRadius: '6px',
+                                                                    padding: '8px 12px',
+                                                                    cursor: 'pointer',
+                                                                    fontSize: '0.85rem',
+                                                                    fontWeight: '500',
+                                                                    textDecoration: 'none',
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '6px',
+                                                                    transition: 'background 0.2s ease'
+                                                                }}
+                                                                onMouseEnter={(e) => e.target.style.background = theme.colors.border}
+                                                                onMouseLeave={(e) => e.target.style.background = theme.colors.secondaryBg}
+                                                            >
+                                                                <FaCog size={10} style={{ marginRight: '4px' }} /> Manage
+                                                            </a>
+                                                            
+                                                            {/* Send button - transfer neuron to another principal */}
+                                                            {userHasPermission(neuron, PERM.MANAGE_PRINCIPALS) && (
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setManagingNeuronId(neuronIdHex);
+                                                                        setShowSendNeuronDialog(true);
+                                                                    }}
+                                                                    disabled={neuronActionBusy && managingNeuronId === neuronIdHex}
                                                                     style={{
-                                                                        background: theme.colors.secondaryBg,
-                                                                        color: theme.colors.primaryText,
-                                                                        border: `1px solid ${theme.colors.border}`,
+                                                                        background: theme.colors.accent,
+                                                                        color: theme.colors.primaryBg,
+                                                                        border: 'none',
                                                                         borderRadius: '6px',
                                                                         padding: '8px 12px',
-                                                                        cursor: 'pointer',
+                                                                        cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
                                                                         fontSize: '0.85rem',
                                                                         fontWeight: '500',
-                                                                        textDecoration: 'none',
-                                                                        display: 'inline-flex',
+                                                                        opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1,
+                                                                        display: 'flex',
                                                                         alignItems: 'center',
-                                                                        gap: '6px',
-                                                                        transition: 'background 0.2s ease'
+                                                                        gap: '6px'
                                                                     }}
-                                                                    onMouseEnter={(e) => e.target.style.background = theme.colors.border}
-                                                                    onMouseLeave={(e) => e.target.style.background = theme.colors.secondaryBg}
                                                                 >
-                                                                    <FaCog size={10} style={{ marginRight: '4px' }} /> Manage
-                                                                </a>
-                                                                
-                                                                {/* Send button - transfer neuron to another principal */}
-                                                                {userHasPermission(neuron, PERM.MANAGE_PRINCIPALS) && (
+                                                                    <img 
+                                                                        src="send-inverted.png" 
+                                                                        alt="Send" 
+                                                                        style={{ width: '14px', height: '14px' }}
+                                                                    />
+                                                                    Send
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                        
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                                <span style={{ color: theme.colors.secondaryText }}>Neuron ID:</span>
+                                                                {snsRootCanisterId && (
+                                                                    <NeuronDisplay
+                                                                        neuronId={neuronIdHex}
+                                                                        snsRoot={snsRootCanisterId}
+                                                                        displayInfo={getNeuronDisplayName(neuronIdHex, snsRootCanisterId)}
+                                                                        showCopyButton={true}
+                                                                        enableContextMenu={true}
+                                                                        isAuthenticated={isAuthenticated}
+                                                                        style={{ wordBreak: 'break-all' }}
+                                                                    />
+                                                                )}
+                                                            </div>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                <span style={{ color: theme.colors.secondaryText }}>Stake:</span>
+                                                                <span style={{ color: theme.colors.primaryText, fontWeight: '600' }}>
+                                                                    {formatAmount(stake, token.decimals)} {token.symbol}
+                                                                </span>
+                                                            </div>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                <span style={{ color: theme.colors.secondaryText }}>Dissolve Delay:</span>
+                                                                <span style={{ color: theme.colors.primaryText }}>
+                                                                    {format_duration(dissolveDelay * 1000)}
+                                                                </span>
+                                                            </div>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                <span style={{ color: theme.colors.secondaryText }}>State:</span>
+                                                                <span style={{ color: theme.colors.primaryText }}>{state}</span>
+                                                            </div>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                <span style={{ color: theme.colors.secondaryText }}>Voting Power:</span>
+                                                                <span style={{ color: theme.colors.primaryText }}>
+                                                                    {votingPowerCalc ? formatAmount(votingPowerCalc.getVotingPower(neuron), token.decimals) : 'Calculating...'}
+                                                                </span>
+                                                            </div>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                <span style={{ color: theme.colors.secondaryText }}>Created:</span>
+                                                                <span style={{ color: theme.colors.primaryText }}>
+                                                                    {dateToReadable(new Date(Number(neuron.created_timestamp_seconds || 0n) * 1000))}
+                                                                </span>
+                                                            </div>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                <span style={{ color: theme.colors.secondaryText }}>Age:</span>
+                                                                <span style={{ color: theme.colors.primaryText }}>
+                                                                    {format_duration(Date.now() - Number(neuron.aging_since_timestamp_seconds || 0n) * 1000)}
+                                                                </span>
+                                                            </div>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                <span style={{ color: theme.colors.secondaryText }}>Maturity:</span>
+                                                                <span style={{ color: theme.colors.primaryText, fontWeight: '600' }}>
+                                                                    {formatAmount(neuron.maturity_e8s_equivalent || 0n, token.decimals)} {token.symbol}
+                                                                </span>
+                                                            </div>
+                                                            
+                                                            {/* Disbursing Maturity - show if there's maturity in the 7-day vesting period */}
+                                                            {neuron.disburse_maturity_in_progress && neuron.disburse_maturity_in_progress.length > 0 && (
+                                                                <div style={{ 
+                                                                    marginTop: '8px',
+                                                                    padding: '10px',
+                                                                    backgroundColor: theme.colors.tertiaryBg,
+                                                                    borderRadius: '6px',
+                                                                    border: `1px solid ${theme.colors.accent}40`
+                                                                }}>
+                                                                    <div style={{ 
+                                                                        display: 'flex', 
+                                                                        alignItems: 'center', 
+                                                                        gap: '6px',
+                                                                        marginBottom: '8px',
+                                                                        color: theme.colors.accent,
+                                                                        fontWeight: '600',
+                                                                        fontSize: '0.9rem'
+                                                                    }}>
+                                                                        <FaHourglassHalf size={12} />
+                                                                        <span>Disbursing Maturity</span>
+                                                                    </div>
+                                                                    {neuron.disburse_maturity_in_progress.map((disbursement, idx) => {
+                                                                        const amount = BigInt(disbursement.amount_e8s || 0n);
+                                                                        const finalizeTimestamp = disbursement.finalize_disbursement_timestamp_seconds?.[0] || disbursement.finalize_disbursement_timestamp_seconds;
+                                                                        const finalizeDate = finalizeTimestamp ? new Date(Number(finalizeTimestamp) * 1000) : null;
+                                                                        const now = new Date();
+                                                                        const timeRemaining = finalizeDate ? finalizeDate - now : 0;
+                                                                        
+                                                                        return (
+                                                                            <div key={idx} style={{ 
+                                                                                display: 'flex', 
+                                                                                flexDirection: 'column',
+                                                                                gap: '4px',
+                                                                                paddingTop: idx > 0 ? '8px' : '0',
+                                                                                borderTop: idx > 0 ? `1px solid ${theme.colors.border}` : 'none'
+                                                                            }}>
+                                                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.85rem' }}>Amount:</span>
+                                                                                    <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.85rem' }}>
+                                                                                        {formatAmount(amount, token.decimals)} {token.symbol}
+                                                                                    </span>
+                                                                                </div>
+                                                                                {finalizeDate && (
+                                                                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                                        <span style={{ color: theme.colors.secondaryText, fontSize: '0.85rem' }}>
+                                                                                            {timeRemaining > 0 ? 'Arrives in:' : 'Available:'}
+                                                                                        </span>
+                                                                                        <span style={{ 
+                                                                                            color: timeRemaining > 0 ? theme.colors.accent : theme.colors.success, 
+                                                                                            fontWeight: '500',
+                                                                                            fontSize: '0.85rem'
+                                                                                        }}>
+                                                                                            {timeRemaining > 0 
+                                                                                                ? format_duration(timeRemaining)
+                                                                                                : 'Ready to claim'
+                                                                                            }
+                                                                                        </span>
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            )}
+                                                            
+                                                            {/* Auto-stake Maturity Checkbox */}
+                                                            {userHasPermission(neuron, PERM.MANAGE_VOTING_PERMISSION) && (
+                                                                <div style={{ 
+                                                                    display: 'flex', 
+                                                                    alignItems: 'center',
+                                                                    gap: '8px',
+                                                                    marginTop: '12px',
+                                                                    padding: '12px',
+                                                                    backgroundColor: theme.colors.tertiaryBg,
+                                                                    borderRadius: '6px'
+                                                                }}>
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        id={`auto-stake-${neuronIdHex}`}
+                                                                        checked={neuron.auto_stake_maturity?.[0] || false}
+                                                                        onChange={() => toggleAutoStakeMaturity(neuronIdHex, neuron.auto_stake_maturity?.[0] || false)}
+                                                                        disabled={neuronActionBusy && managingNeuronId === neuronIdHex}
+                                                                        style={{
+                                                                            cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
+                                                                            width: '18px',
+                                                                            height: '18px'
+                                                                        }}
+                                                                    />
+                                                                    <label 
+                                                                        htmlFor={`auto-stake-${neuronIdHex}`}
+                                                                        style={{ 
+                                                                            color: theme.colors.primaryText,
+                                                                            cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
+                                                                            userSelect: 'none',
+                                                                            fontSize: '0.95rem'
+                                                                        }}
+                                                                    >
+                                                                        Automatically stake new maturity
+                                                                    </label>
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        {/* Action Buttons */}
+                                                        {identity && (
+                                                            <div style={{ 
+                                                                marginTop: '16px', 
+                                                                paddingTop: '12px',
+                                                                borderTop: `1px solid ${theme.colors.border}`,
+                                                                display: 'flex',
+                                                                gap: '8px',
+                                                                flexWrap: 'wrap'
+                                                            }}>
+                                                                {/* Dissolve state buttons */}
+                                                                {userHasPermission(neuron, PERM.CONFIGURE_DISSOLVE_STATE) && (
+                                                                    <>
+                                                                        {state === 'Locked' && (
+                                                                            <button
+                                                                                onClick={() => startDissolving(neuronIdHex)}
+                                                                                disabled={neuronActionBusy && managingNeuronId === neuronIdHex}
+                                                                                style={{
+                                                                                    background: theme.colors.warning,
+                                                                                    color: theme.colors.primaryBg,
+                                                                                    border: 'none',
+                                                                                    borderRadius: '6px',
+                                                                                    padding: '8px 12px',
+                                                                                    cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
+                                                                                    fontSize: '0.85rem',
+                                                                                    fontWeight: '500',
+                                                                                    opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1
+                                                                                }}
+                                                                            >
+                                                                                <FaPlay size={10} style={{ marginRight: '4px' }} /> Start Dissolving
+                                                                            </button>
+                                                                        )}
+                                                                        {state === 'Dissolving' && (
+                                                                            <button
+                                                                                onClick={() => stopDissolving(neuronIdHex)}
+                                                                                disabled={neuronActionBusy && managingNeuronId === neuronIdHex}
+                                                                                style={{
+                                                                                    background: theme.colors.success,
+                                                                                    color: theme.colors.primaryBg,
+                                                                                    border: 'none',
+                                                                                    borderRadius: '6px',
+                                                                                    padding: '8px 12px',
+                                                                                    cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
+                                                                                    fontSize: '0.85rem',
+                                                                                    fontWeight: '500',
+                                                                                    opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1
+                                                                                }}
+                                                                            >
+                                                                                <FaStop size={10} style={{ marginRight: '4px' }} /> Stop Dissolving
+                                                                            </button>
+                                                                        )}
+                                                                        {state !== 'Dissolved' && (
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    setManagingNeuronId(neuronIdHex);
+                                                                                    setShowDissolveDelayDialog(true);
+                                                                                }}
+                                                                                disabled={neuronActionBusy && managingNeuronId === neuronIdHex}
+                                                                                style={{
+                                                                                    background: theme.colors.accent,
+                                                                                    color: theme.colors.primaryBg,
+                                                                                    border: 'none',
+                                                                                    borderRadius: '6px',
+                                                                                    padding: '8px 12px',
+                                                                                    cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
+                                                                                    fontSize: '0.85rem',
+                                                                                    fontWeight: '500',
+                                                                                    opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1
+                                                                                }}
+                                                                            >
+                                                                                <FaClock size={10} style={{ marginRight: '4px' }} /> {dissolveDelay > 0 ? 'Increase' : 'Set'} Dissolve Delay
+                                                                            </button>
+                                                                        )}
+                                                                    </>
+                                                                )}
+
+                                                                {/* Disburse button */}
+                                                                {state === 'Dissolved' && userHasPermission(neuron, PERM.DISBURSE) && (
                                                                     <button
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            setManagingNeuronId(neuronIdHex);
-                                                                            setShowSendNeuronDialog(true);
+                                                                        onClick={() => {
+                                                                            if (window.confirm('Are you sure you want to disburse this neuron? The tokens will be transferred to your wallet.')) {
+                                                                                disburseNeuron(neuronIdHex);
+                                                                            }
+                                                                        }}
+                                                                        disabled={neuronActionBusy && managingNeuronId === neuronIdHex}
+                                                                        style={{
+                                                                            background: theme.colors.error,
+                                                                            color: theme.colors.primaryBg,
+                                                                            border: 'none',
+                                                                            borderRadius: '6px',
+                                                                            padding: '8px 12px',
+                                                                            cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
+                                                                            fontSize: '0.85rem',
+                                                                            fontWeight: '500',
+                                                                            opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1
+                                                                        }}
+                                                                    >
+                                                                        <FaWallet size={10} style={{ marginRight: '4px' }} /> Disburse to Wallet
+                                                                    </button>
+                                                                )}
+
+                                                                {/* Disburse Maturity button - when neuron has maturity */}
+                                                                {(neuron.maturity_e8s_equivalent || 0n) > 0n && userHasPermission(neuron, PERM.DISBURSE_MATURITY) && (
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            if (window.confirm(`Disburse ${formatAmount(neuron.maturity_e8s_equivalent, token.decimals)} ${token.symbol} maturity to your wallet?`)) {
+                                                                                disburseMaturity(neuronIdHex);
+                                                                            }
                                                                         }}
                                                                         disabled={neuronActionBusy && managingNeuronId === neuronIdHex}
                                                                         style={{
@@ -2607,362 +2890,67 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                                             cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
                                                                             fontSize: '0.85rem',
                                                                             fontWeight: '500',
-                                                                            opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1,
-                                                                            display: 'flex',
-                                                                            alignItems: 'center',
-                                                                            gap: '6px'
+                                                                            opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1
                                                                         }}
                                                                     >
-                                                                        <img 
-                                                                            src="send-inverted.png" 
-                                                                            alt="Send" 
-                                                                            style={{ width: '14px', height: '14px' }}
-                                                                        />
-                                                                        Send
+                                                                        ✨ Disburse Maturity
+                                                                    </button>
+                                                                )}
+
+                                                                {/* Increase Stake button - available to everyone */}
+                                                                {token.available > 0n && (
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setManagingNeuronId(neuronIdHex);
+                                                                            setShowIncreaseStakeDialog(true);
+                                                                        }}
+                                                                        disabled={neuronActionBusy && managingNeuronId === neuronIdHex}
+                                                                        style={{
+                                                                            background: theme.colors.success,
+                                                                            color: theme.colors.primaryBg,
+                                                                            border: 'none',
+                                                                            borderRadius: '6px',
+                                                                            padding: '8px 12px',
+                                                                            cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
+                                                                            fontSize: '0.85rem',
+                                                                            fontWeight: '500',
+                                                                            opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1
+                                                                        }}
+                                                                    >
+                                                                        <FaPlus size={10} style={{ marginRight: '4px' }} /> Increase Stake
+                                                                    </button>
+                                                                )}
+                                                                
+                                                                {/* Split button - requires MANAGE_PRINCIPALS permission and stake > minimum */}
+                                                                {stake > 0n && userHasPermission(neuron, PERM.MANAGE_PRINCIPALS) && (
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setManagingNeuronId(neuronIdHex);
+                                                                            setShowSplitNeuronDialog(true);
+                                                                        }}
+                                                                        disabled={neuronActionBusy && managingNeuronId === neuronIdHex}
+                                                                        style={{
+                                                                            background: theme.colors.accent,
+                                                                            color: theme.colors.primaryBg,
+                                                                            border: 'none',
+                                                                            borderRadius: '6px',
+                                                                            padding: '8px 12px',
+                                                                            cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
+                                                                            fontSize: '0.85rem',
+                                                                            fontWeight: '500',
+                                                                            opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1
+                                                                        }}
+                                                                    >
+                                                                        <FaCut size={10} style={{ marginRight: '4px' }} /> Split Neuron
                                                                     </button>
                                                                 )}
                                                             </div>
-                                                            
-                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                                                    <span style={{ color: theme.colors.secondaryText }}>Neuron ID:</span>
-                                                                    {snsRootCanisterId && (
-                                                                        <NeuronDisplay
-                                                                            neuronId={neuronIdHex}
-                                                                            snsRoot={snsRootCanisterId}
-                                                                            displayInfo={getNeuronDisplayName(neuronIdHex, snsRootCanisterId)}
-                                                                            showCopyButton={true}
-                                                                            enableContextMenu={true}
-                                                                            isAuthenticated={isAuthenticated}
-                                                                            style={{ wordBreak: 'break-all' }}
-                                                                        />
-                                                                    )}
-                                                                </div>
-                                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                                    <span style={{ color: theme.colors.secondaryText }}>Stake:</span>
-                                                                    <span style={{ color: theme.colors.primaryText, fontWeight: '600' }}>
-                                                                        {formatAmount(stake, token.decimals)} {token.symbol}
-                                                                    </span>
-                                                                </div>
-                                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                                    <span style={{ color: theme.colors.secondaryText }}>Dissolve Delay:</span>
-                                                                    <span style={{ color: theme.colors.primaryText }}>
-                                                                        {format_duration(dissolveDelay * 1000)}
-                                                                    </span>
-                                                                </div>
-                                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                                    <span style={{ color: theme.colors.secondaryText }}>State:</span>
-                                                                    <span style={{ color: theme.colors.primaryText }}>{state}</span>
-                                                                </div>
-                                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                                    <span style={{ color: theme.colors.secondaryText }}>Voting Power:</span>
-                                                                    <span style={{ color: theme.colors.primaryText }}>
-                                                                        {votingPowerCalc ? formatAmount(votingPowerCalc.getVotingPower(neuron), token.decimals) : 'Calculating...'}
-                                                                    </span>
-                                                                </div>
-                                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                                    <span style={{ color: theme.colors.secondaryText }}>Created:</span>
-                                                                    <span style={{ color: theme.colors.primaryText }}>
-                                                                        {dateToReadable(new Date(Number(neuron.created_timestamp_seconds || 0n) * 1000))}
-                                                                    </span>
-                                                                </div>
-                                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                                    <span style={{ color: theme.colors.secondaryText }}>Age:</span>
-                                                                    <span style={{ color: theme.colors.primaryText }}>
-                                                                        {format_duration(Date.now() - Number(neuron.aging_since_timestamp_seconds || 0n) * 1000)}
-                                                                    </span>
-                                                                </div>
-                                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                                    <span style={{ color: theme.colors.secondaryText }}>Maturity:</span>
-                                                                    <span style={{ color: theme.colors.primaryText, fontWeight: '600' }}>
-                                                                        {formatAmount(neuron.maturity_e8s_equivalent || 0n, token.decimals)} {token.symbol}
-                                                                    </span>
-                                                                </div>
-                                                                
-                                                                {/* Disbursing Maturity - show if there's maturity in the 7-day vesting period */}
-                                                                {neuron.disburse_maturity_in_progress && neuron.disburse_maturity_in_progress.length > 0 && (
-                                                                    <div style={{ 
-                                                                        marginTop: '8px',
-                                                                        padding: '10px',
-                                                                        backgroundColor: theme.colors.tertiaryBg,
-                                                                        borderRadius: '6px',
-                                                                        border: `1px solid ${theme.colors.accent}40`
-                                                                    }}>
-                                                                        <div style={{ 
-                                                                            display: 'flex', 
-                                                                            alignItems: 'center', 
-                                                                            gap: '6px',
-                                                                            marginBottom: '8px',
-                                                                            color: theme.colors.accent,
-                                                                            fontWeight: '600',
-                                                                            fontSize: '0.9rem'
-                                                                        }}>
-                                                                            <FaHourglassHalf size={12} />
-                                                                            <span>Disbursing Maturity</span>
-                                                                        </div>
-                                                                        {neuron.disburse_maturity_in_progress.map((disbursement, idx) => {
-                                                                            const amount = BigInt(disbursement.amount_e8s || 0n);
-                                                                            const finalizeTimestamp = disbursement.finalize_disbursement_timestamp_seconds?.[0] || disbursement.finalize_disbursement_timestamp_seconds;
-                                                                            const finalizeDate = finalizeTimestamp ? new Date(Number(finalizeTimestamp) * 1000) : null;
-                                                                            const now = new Date();
-                                                                            const timeRemaining = finalizeDate ? finalizeDate - now : 0;
-                                                                            
-                                                                            return (
-                                                                                <div key={idx} style={{ 
-                                                                                    display: 'flex', 
-                                                                                    flexDirection: 'column',
-                                                                                    gap: '4px',
-                                                                                    paddingTop: idx > 0 ? '8px' : '0',
-                                                                                    borderTop: idx > 0 ? `1px solid ${theme.colors.border}` : 'none'
-                                                                                }}>
-                                                                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                                                        <span style={{ color: theme.colors.secondaryText, fontSize: '0.85rem' }}>Amount:</span>
-                                                                                        <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.85rem' }}>
-                                                                                            {formatAmount(amount, token.decimals)} {token.symbol}
-                                                                                        </span>
-                                                                                    </div>
-                                                                                    {finalizeDate && (
-                                                                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                                                            <span style={{ color: theme.colors.secondaryText, fontSize: '0.85rem' }}>
-                                                                                                {timeRemaining > 0 ? 'Arrives in:' : 'Available:'}
-                                                                                            </span>
-                                                                                            <span style={{ 
-                                                                                                color: timeRemaining > 0 ? theme.colors.accent : theme.colors.success, 
-                                                                                                fontWeight: '500',
-                                                                                                fontSize: '0.85rem'
-                                                                                            }}>
-                                                                                                {timeRemaining > 0 
-                                                                                                    ? format_duration(timeRemaining)
-                                                                                                    : 'Ready to claim'
-                                                                                                }
-                                                                                            </span>
-                                                                                        </div>
-                                                                                    )}
-                                                                                </div>
-                                                                            );
-                                                                        })}
-                                                                    </div>
-                                                                )}
-                                                                
-                                                                {/* Auto-stake Maturity Checkbox */}
-                                                                {userHasPermission(neuron, PERM.MANAGE_VOTING_PERMISSION) && (
-                                                                    <div style={{ 
-                                                                        display: 'flex', 
-                                                                        alignItems: 'center',
-                                                                        gap: '8px',
-                                                                        marginTop: '12px',
-                                                                        padding: '12px',
-                                                                        backgroundColor: theme.colors.tertiaryBg,
-                                                                        borderRadius: '6px'
-                                                                    }}>
-                                                                        <input
-                                                                            type="checkbox"
-                                                                            id={`auto-stake-${neuronIdHex}`}
-                                                                            checked={neuron.auto_stake_maturity?.[0] || false}
-                                                                            onChange={() => toggleAutoStakeMaturity(neuronIdHex, neuron.auto_stake_maturity?.[0] || false)}
-                                                                            disabled={neuronActionBusy && managingNeuronId === neuronIdHex}
-                                                                            style={{
-                                                                                cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
-                                                                                width: '18px',
-                                                                                height: '18px'
-                                                                            }}
-                                                                        />
-                                                                        <label 
-                                                                            htmlFor={`auto-stake-${neuronIdHex}`}
-                                                                            style={{ 
-                                                                                color: theme.colors.primaryText,
-                                                                                cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
-                                                                                userSelect: 'none',
-                                                                                fontSize: '0.95rem'
-                                                                            }}
-                                                                        >
-                                                                            Automatically stake new maturity
-                                                                        </label>
-                                                                    </div>
-                                                                )}
-                                                                            </div>
-
-                                                                            {/* Action Buttons */}
-                                                                            {identity && (
-                                                                                <div style={{ 
-                                                                                    marginTop: '16px', 
-                                                                                    paddingTop: '12px',
-                                                                                    borderTop: `1px solid ${theme.colors.border}`,
-                                                                                    display: 'flex',
-                                                                                    gap: '8px',
-                                                                                    flexWrap: 'wrap'
-                                                                                }}>
-                                                                                    {/* Dissolve state buttons */}
-                                                                                    {userHasPermission(neuron, PERM.CONFIGURE_DISSOLVE_STATE) && (
-                                                                                        <>
-                                                                                            {state === 'Locked' && (
-                                                                                                <button
-                                                                                                    onClick={() => startDissolving(neuronIdHex)}
-                                                                                                    disabled={neuronActionBusy && managingNeuronId === neuronIdHex}
-                                                                                                    style={{
-                                                                                                        background: theme.colors.warning,
-                                                                                                        color: theme.colors.primaryBg,
-                                                                                                        border: 'none',
-                                                                                                        borderRadius: '6px',
-                                                                                                        padding: '8px 12px',
-                                                                                                        cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
-                                                                                                        fontSize: '0.85rem',
-                                                                                                        fontWeight: '500',
-                                                                                                        opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1
-                                                                                                    }}
-                                                                                                >
-                                                                                                    <FaPlay size={10} style={{ marginRight: '4px' }} /> Start Dissolving
-                                                                                                </button>
-                                                                                            )}
-                                                                                            {state === 'Dissolving' && (
-                                                                                                <button
-                                                                                                    onClick={() => stopDissolving(neuronIdHex)}
-                                                                                                    disabled={neuronActionBusy && managingNeuronId === neuronIdHex}
-                                                                                                    style={{
-                                                                                                        background: theme.colors.success,
-                                                                                                        color: theme.colors.primaryBg,
-                                                                                                        border: 'none',
-                                                                                                        borderRadius: '6px',
-                                                                                                        padding: '8px 12px',
-                                                                                                        cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
-                                                                                                        fontSize: '0.85rem',
-                                                                                                        fontWeight: '500',
-                                                                                                        opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1
-                                                                                                    }}
-                                                                                                >
-                                                                                                    <FaStop size={10} style={{ marginRight: '4px' }} /> Stop Dissolving
-                                                                                                </button>
-                                                                                            )}
-                                                                                            {state !== 'Dissolved' && (
-                                                                                                <button
-                                                                                                    onClick={() => {
-                                                                                                        setManagingNeuronId(neuronIdHex);
-                                                                                                        setShowDissolveDelayDialog(true);
-                                                                                                    }}
-                                                                                                    disabled={neuronActionBusy && managingNeuronId === neuronIdHex}
-                                                                                                    style={{
-                                                                                                        background: theme.colors.accent,
-                                                                                                        color: theme.colors.primaryBg,
-                                                                                                        border: 'none',
-                                                                                                        borderRadius: '6px',
-                                                                                                        padding: '8px 12px',
-                                                                                                        cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
-                                                                                                        fontSize: '0.85rem',
-                                                                                                        fontWeight: '500',
-                                                                                                        opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1
-                                                                                                    }}
-                                                                                                >
-                                                                                                    <FaClock size={10} style={{ marginRight: '4px' }} /> {dissolveDelay > 0 ? 'Increase' : 'Set'} Dissolve Delay
-                                                                                                </button>
-                                                                                            )}
-                                                                                        </>
-                                                                                    )}
-
-                                                                                    {/* Disburse button */}
-                                                                                    {state === 'Dissolved' && userHasPermission(neuron, PERM.DISBURSE) && (
-                                                                                        <button
-                                                                                            onClick={() => {
-                                                                                                if (window.confirm('Are you sure you want to disburse this neuron? The tokens will be transferred to your wallet.')) {
-                                                                                                    disburseNeuron(neuronIdHex);
-                                                                                                }
-                                                                                            }}
-                                                                                            disabled={neuronActionBusy && managingNeuronId === neuronIdHex}
-                                                                                            style={{
-                                                                                                background: theme.colors.error,
-                                                                                                color: theme.colors.primaryBg,
-                                                                                                border: 'none',
-                                                                                                borderRadius: '6px',
-                                                                                                padding: '8px 12px',
-                                                                                                cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
-                                                                                                fontSize: '0.85rem',
-                                                                                                fontWeight: '500',
-                                                                                                opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1
-                                                                                            }}
-                                                                                        >
-                                                                                            <FaWallet size={10} style={{ marginRight: '4px' }} /> Disburse to Wallet
-                                                                                        </button>
-                                                                                    )}
-
-                                                                                    {/* Disburse Maturity button - when neuron has maturity */}
-                                                                                    {(neuron.maturity_e8s_equivalent || 0n) > 0n && userHasPermission(neuron, PERM.DISBURSE_MATURITY) && (
-                                                                                        <button
-                                                                                            onClick={() => {
-                                                                                                if (window.confirm(`Disburse ${formatAmount(neuron.maturity_e8s_equivalent, token.decimals)} ${token.symbol} maturity to your wallet?`)) {
-                                                                                                    disburseMaturity(neuronIdHex);
-                                                                                                }
-                                                                                            }}
-                                                                                            disabled={neuronActionBusy && managingNeuronId === neuronIdHex}
-                                                                                            style={{
-                                                                                                background: theme.colors.accent,
-                                                                                                color: theme.colors.primaryBg,
-                                                                                                border: 'none',
-                                                                                                borderRadius: '6px',
-                                                                                                padding: '8px 12px',
-                                                                                                cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
-                                                                                                fontSize: '0.85rem',
-                                                                                                fontWeight: '500',
-                                                                                                opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1
-                                                                                            }}
-                                                                                        >
-                                                                                            ✨ Disburse Maturity
-                                                                                        </button>
-                                                                                    )}
-
-                                                                                    {/* Increase Stake button - available to everyone */}
-                                                                                    {token.available > 0n && (
-                                                                                        <button
-                                                                                            onClick={() => {
-                                                                                                setManagingNeuronId(neuronIdHex);
-                                                                                                setShowIncreaseStakeDialog(true);
-                                                                                            }}
-                                                                                            disabled={neuronActionBusy && managingNeuronId === neuronIdHex}
-                                                                                            style={{
-                                                                                                background: theme.colors.success,
-                                                                                                color: theme.colors.primaryBg,
-                                                                                                border: 'none',
-                                                                                                borderRadius: '6px',
-                                                                                                padding: '8px 12px',
-                                                                                                cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
-                                                                                                fontSize: '0.85rem',
-                                                                                                fontWeight: '500',
-                                                                                                opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1
-                                                                                            }}
-                                                                                        >
-                                                                                            <FaPlus size={10} style={{ marginRight: '4px' }} /> Increase Stake
-                                                                                        </button>
-                                                                                    )}
-                                                                                    
-                                                                                    {/* Split button - requires MANAGE_PRINCIPALS permission and stake > minimum */}
-                                                                                    {stake > 0n && userHasPermission(neuron, PERM.MANAGE_PRINCIPALS) && (
-                                                                                        <button
-                                                                                            onClick={() => {
-                                                                                                setManagingNeuronId(neuronIdHex);
-                                                                                                setShowSplitNeuronDialog(true);
-                                                                                            }}
-                                                                                            disabled={neuronActionBusy && managingNeuronId === neuronIdHex}
-                                                                                            style={{
-                                                                                                background: theme.colors.accent,
-                                                                                                color: theme.colors.primaryBg,
-                                                                                                border: 'none',
-                                                                                                borderRadius: '6px',
-                                                                                                padding: '8px 12px',
-                                                                                                cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
-                                                                                                fontSize: '0.85rem',
-                                                                                                fontWeight: '500',
-                                                                                                opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1
-                                                                                            }}
-                                                                                        >
-                                                                                            <FaCut size={10} style={{ marginRight: '4px' }} /> Split Neuron
-                                                                                        </button>
-                                                                                    )}
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-                                                                    )}
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            );
-                                        })
-                                    ) : (
+                                            </>
+                                        );
+                                    })() : (
                                         <p style={{ color: theme.colors.mutedText, fontStyle: 'italic', margin: '10px 0' }}>
                                             No neurons found
                                         </p>
