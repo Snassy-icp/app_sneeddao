@@ -8,7 +8,7 @@ import {
     FaCoins, FaKey, FaCut, FaShieldAlt, FaCogs, FaRocket, 
     FaLightbulb, FaQuestionCircle, FaCheckCircle, FaExclamationTriangle,
     FaRobot, FaClock, FaPlay, FaPause, FaStop, FaExchangeAlt, FaSyncAlt,
-    FaHandshake, FaBrain, FaUserShield
+    FaHandshake, FaBrain, FaUserShield, FaDownload, FaClipboardList, FaArrowUp
 } from 'react-icons/fa';
 
 // Custom CSS for animations
@@ -380,6 +380,32 @@ function HelpIcpNeuronManager() {
                         </div>
                         <h2 style={styles.subheading}>Neuron Operations</h2>
                     </div>
+
+                    <div style={styles.featureCard}>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaCoins size={14} color="#3b82f6" />
+                            Create & Stake Neurons
+                        </h4>
+                        <ul style={{ ...styles.list, marginBottom: 0 }}>
+                            <li style={styles.listItem}>Create a new neuron by setting a stake amount and dissolve delay</li>
+                            <li style={styles.listItem}>Increase stake on existing neurons from your wallet</li>
+                            <li style={styles.listItem}>View a neuron's <strong style={styles.strong}>deposit account</strong> to send ICP directly (e.g. from external wallets or scripts), then refresh stake to pick it up</li>
+                            <li style={styles.listItem}>Toggle <strong style={styles.strong}>Auto-Stake Maturity</strong> to have the NNS automatically stake earned maturity instead of accumulating it</li>
+                        </ul>
+                    </div>
+
+                    <div style={styles.featureCard}>
+                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
+                            <FaWallet size={14} color="#f59e0b" />
+                            Maturity Management
+                        </h4>
+                        <ul style={{ ...styles.list, marginBottom: 0 }}>
+                            <li style={styles.listItem}><strong style={styles.strong}>Stake Maturity</strong> — convert a percentage of available maturity into staked maturity</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Merge Maturity</strong> — merge staked maturity into the neuron's stake</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Spawn Neuron</strong> — create a new neuron from accumulated maturity (with optional custom controller)</li>
+                            <li style={styles.listItem}><strong style={styles.strong}>Disburse Maturity</strong> — convert maturity to liquid ICP and send to a destination account</li>
+                        </ul>
+                    </div>
                     
                     <div style={styles.featureCard}>
                         <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
@@ -389,6 +415,7 @@ function HelpIcpNeuronManager() {
                         <ul style={{ ...styles.list, marginBottom: 0 }}>
                             <li style={styles.listItem}>Start/Stop Dissolving</li>
                             <li style={styles.listItem}>Increase Dissolve Delay</li>
+                            <li style={styles.listItem}>Disburse from dissolved neurons (full or partial amount to a destination)</li>
                         </ul>
                     </div>
                     
@@ -399,21 +426,10 @@ function HelpIcpNeuronManager() {
                         </h4>
                         <ul style={{ ...styles.list, marginBottom: 0 }}>
                             <li style={styles.listItem}>Vote on NNS proposals</li>
+                            <li style={styles.listItem}>Submit NNS proposals (Make Proposal)</li>
                             <li style={styles.listItem}>Set following for automatic voting</li>
-                            <li style={styles.listItem}>Configure different followees by topic</li>
-                        </ul>
-                    </div>
-                    
-                    <div style={styles.featureCard}>
-                        <h4 style={{ ...styles.subsubheading, marginTop: 0 }}>
-                            <FaCoins size={14} color="#3b82f6" />
-                            Stake & Rewards
-                        </h4>
-                        <ul style={{ ...styles.list, marginBottom: 0 }}>
-                            <li style={styles.listItem}>Increase stake on existing neurons</li>
-                            <li style={styles.listItem}>Spawn maturity into new neurons</li>
-                            <li style={styles.listItem}>Disburse maturity to liquid ICP</li>
-                            <li style={styles.listItem}>Disburse from dissolved neurons</li>
+                            <li style={styles.listItem}>Configure different followees by topic with quick-select options (All, Critical Only, Non-Critical Only)</li>
+                            <li style={styles.listItem}>Confirm following to keep voting rewards active</li>
                         </ul>
                     </div>
                     
@@ -442,6 +458,7 @@ function HelpIcpNeuronManager() {
                         <ul style={{ ...styles.list, marginBottom: 0 }}>
                             <li style={styles.listItem}>Split neurons into multiple neurons</li>
                             <li style={styles.listItem}>Merge neurons together</li>
+                            <li style={styles.listItem}>Change neuron visibility (make public or private)</li>
                         </ul>
                     </div>
                 </div>
@@ -816,6 +833,86 @@ function HelpIcpNeuronManager() {
                         <p style={{ ...styles.paragraph, marginBottom: 0 }}>
                             <strong style={styles.strong}>Top Up:</strong> Navigate to your ICP staking bot page, find "Top Up Cycles", 
                             and enter ICP amount. The CMC converts ICP to cycles automatically.
+                        </p>
+                    </div>
+                </div>
+
+                {/* Upgrade Canister */}
+                <div style={styles.section} className="icp-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon('#6366f1')}>
+                            <FaArrowUp size={20} color="#6366f1" />
+                        </div>
+                        <h2 style={styles.subheading}>Upgrading Your Bot</h2>
+                    </div>
+                    <p style={styles.paragraph}>
+                        New versions of the staking bot are released periodically with bug fixes, new features, and security improvements. 
+                        You can upgrade your bot from the <strong style={styles.strong}>Info</strong> tab on your bot's page.
+                    </p>
+                    <ul style={styles.list}>
+                        <li style={styles.listItem}><strong style={styles.strong}>Upgrade:</strong> Updates the canister code while preserving all stable memory (neurons, chore settings, botkeys, etc.)</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Install Official Version:</strong> If your canister has unverified WASM, you can install the official version</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Module Hash:</strong> The Info tab shows your current module hash and verifies it against the official release</li>
+                    </ul>
+                    <div style={styles.tipBox}>
+                        <p style={{ ...styles.paragraph, marginBottom: 0, fontSize: '0.85rem' }}>
+                            <strong style={styles.strong}>💡 Tip:</strong> After upgrading, all running chores resume automatically. 
+                            Check the release notes linked in the Info tab to see what's new in each version.
+                        </p>
+                    </div>
+                </div>
+
+                {/* Withdraw Funds */}
+                <div style={styles.section} className="icp-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon('#f59e0b')}>
+                            <FaDownload size={20} color="#f59e0b" />
+                        </div>
+                        <h2 style={styles.subheading}>Withdraw Funds</h2>
+                    </div>
+                    <p style={styles.paragraph}>
+                        Your bot canister can hold ICP and other tokens (for example, from collected maturity or distributions). 
+                        The <strong style={styles.strong}>Withdraw</strong> section in the Info tab lets you withdraw these tokens 
+                        to any account.
+                    </p>
+                    <ul style={styles.list}>
+                        <li style={styles.listItem}>Select the token ledger (ICP or custom token)</li>
+                        <li style={styles.listItem}>View the bot's current token balance</li>
+                        <li style={styles.listItem}>Enter the amount and destination account</li>
+                        <li style={styles.listItem}>Submit the withdrawal</li>
+                    </ul>
+                    <div style={styles.warningBox}>
+                        <p style={{ ...styles.paragraph, marginBottom: 0, fontSize: '0.85rem' }}>
+                            <strong style={styles.strong}>Note:</strong> This withdraws tokens held by the bot canister itself, not stake 
+                            locked in neurons. To retrieve stake from a neuron, use the Disburse function after the neuron has dissolved.
+                        </p>
+                    </div>
+                </div>
+
+                {/* Canister Logs */}
+                <div style={styles.section} className="icp-help-fade-in">
+                    <div style={styles.sectionHeader}>
+                        <div style={styles.sectionIcon('#14b8a6')}>
+                            <FaClipboardList size={20} color="#14b8a6" />
+                        </div>
+                        <h2 style={styles.subheading}>Canister Logs</h2>
+                    </div>
+                    <p style={styles.paragraph}>
+                        The <strong style={styles.strong}>Log</strong> tab provides a real-time view into your bot's activity. 
+                        Every action — chore runs, neuron operations, permission checks, errors — is logged so you can see exactly 
+                        what your bot has been doing.
+                    </p>
+                    <ul style={styles.list}>
+                        <li style={styles.listItem}><strong style={styles.strong}>Filter by level:</strong> Error, Warning, Info, Debug, or Trace (cumulative — selecting Info shows Info + Warning + Error)</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Filter by source:</strong> api, permissions, chore, system, or log</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Auto-refresh:</strong> Toggle auto-refresh to see new entries as they appear</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Configure logging:</strong> Set the log write level and max stored entries to control how much detail is captured</li>
+                        <li style={styles.listItem}><strong style={styles.strong}>Clear logs:</strong> Wipe all stored log entries when no longer needed</li>
+                    </ul>
+                    <div style={styles.tipBox}>
+                        <p style={{ ...styles.paragraph, marginBottom: 0, fontSize: '0.85rem' }}>
+                            <strong style={styles.strong}>💡 Tip:</strong> If a chore isn't working as expected, check the logs 
+                            filtered to "chore" source at Debug level to see step-by-step what happened.
                         </p>
                     </div>
                 </div>
