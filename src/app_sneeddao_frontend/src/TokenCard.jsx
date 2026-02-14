@@ -2571,7 +2571,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                             border: `1px solid ${theme.colors.accent}`,
                                                             borderTop: 'none',
                                                             borderRadius: '0 0 8px 8px',
-                                                            background: theme.colors.cardBg,
+                                                            background: theme.colors.secondaryBg,
                                                             maxHeight: '220px',
                                                             overflowY: 'auto',
                                                             boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
@@ -2594,15 +2594,15 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                                             display: 'flex',
                                                                             justifyContent: 'space-between',
                                                                             alignItems: 'center',
-                                                                            background: isSelected ? `${theme.colors.accent}15` : 'transparent',
-                                                                            borderBottom: `1px solid ${theme.colors.border}40`,
+                                                                            background: isSelected ? theme.colors.tertiaryBg : theme.colors.secondaryBg,
+                                                                            borderBottom: `1px solid ${theme.colors.border}`,
                                                                             transition: 'background 0.1s ease',
                                                                         }}
                                                                         onMouseEnter={(e) => {
-                                                                            if (!isSelected) e.currentTarget.style.background = theme.colors.hoverBg || theme.colors.secondaryBg;
+                                                                            if (!isSelected) e.currentTarget.style.background = theme.colors.tertiaryBg;
                                                                         }}
                                                                         onMouseLeave={(e) => {
-                                                                            e.currentTarget.style.background = isSelected ? `${theme.colors.accent}15` : 'transparent';
+                                                                            e.currentTarget.style.background = isSelected ? theme.colors.tertiaryBg : theme.colors.secondaryBg;
                                                                         }}
                                                                     >
                                                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', flex: 1, minWidth: 0 }}>
