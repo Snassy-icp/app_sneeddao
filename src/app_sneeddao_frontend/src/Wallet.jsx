@@ -436,33 +436,34 @@ const showDebug = false;
 const known_icrc1_ledgers = {};
 var summed_locks = {};
 
-// Drag-and-drop wrapper for token cards in the wallet
+// Drag-and-drop wrapper for wallet cards (tokens, positions, staking bots, apps)
 const DRAG_TYPE_TOKEN = 'WALLET_TOKEN';
+const DRAG_TYPE_POSITION = 'WALLET_POSITION';
+const DRAG_TYPE_STAKING_BOT = 'WALLET_STAKING_BOT';
+const DRAG_TYPE_APP = 'WALLET_APP';
 
-const DraggableTokenCard = ({ ledgerId, onDrop, children }) => {
+const DraggableWalletCard = ({ dragType, itemId, onDrop, children }) => {
     const ref = React.useRef(null);
 
     const [{ isDragging }, drag] = useDrag(() => ({
-        type: DRAG_TYPE_TOKEN,
-        item: { ledgerId },
+        type: dragType,
+        item: { itemId },
         collect: (monitor) => ({
             isDragging: monitor.isDragging(),
         }),
-    }), [ledgerId]);
+    }), [dragType, itemId]);
 
     const [{ isOver }, drop] = useDrop(() => ({
-        accept: DRAG_TYPE_TOKEN,
+        accept: dragType,
         hover: (item) => {
-            if (item.ledgerId !== ledgerId) {
-                onDrop(item.ledgerId, ledgerId);
-                // Update the dragged item's ID reference for subsequent hovers
-                item.ledgerId = item.ledgerId; // keep original for the drop handler
+            if (item.itemId !== itemId) {
+                onDrop(item.itemId, itemId);
             }
         },
         collect: (monitor) => ({
             isOver: monitor.isOver({ shallow: true }),
         }),
-    }), [ledgerId, onDrop]);
+    }), [dragType, itemId, onDrop]);
 
     drag(drop(ref));
 
@@ -487,6 +488,13 @@ const DraggableTokenCard = ({ ledgerId, onDrop, children }) => {
         </div>
     );
 };
+
+// Backwards-compatible alias for token cards
+const DraggableTokenCard = ({ ledgerId, onDrop, children }) => (
+    <DraggableWalletCard dragType={DRAG_TYPE_TOKEN} itemId={ledgerId} onDrop={onDrop}>
+        {children}
+    </DraggableWalletCard>
+);
 
 function Wallet() {
     const { identity, isAuthenticated, logout } = useAuth();
@@ -5489,6 +5497,36 @@ function Wallet() {
         walletLayoutCtx.reorderSection('tokens', dragIndex, hoverIndex);
     }, [walletLayoutCtx]);
 
+    // Drag-and-drop handler for reordering position cards
+    const handlePositionDrop = useCallback((dragId, hoverId) => {
+        if (!walletLayoutCtx?.layout || dragId === hoverId) return;
+        const section = walletLayoutCtx.layout.positions || [];
+        const dragIndex = section.indexOf(dragId);
+        const hoverIndex = section.indexOf(hoverId);
+        if (dragIndex < 0 || hoverIndex < 0) return;
+        walletLayoutCtx.reorderSection('positions', dragIndex, hoverIndex);
+    }, [walletLayoutCtx]);
+
+    // Drag-and-drop handler for reordering staking bot cards
+    const handleStakingBotDrop = useCallback((dragId, hoverId) => {
+        if (!walletLayoutCtx?.layout || dragId === hoverId) return;
+        const section = walletLayoutCtx.layout.staking_bots || [];
+        const dragIndex = section.indexOf(dragId);
+        const hoverIndex = section.indexOf(hoverId);
+        if (dragIndex < 0 || hoverIndex < 0) return;
+        walletLayoutCtx.reorderSection('staking_bots', dragIndex, hoverIndex);
+    }, [walletLayoutCtx]);
+
+    // Drag-and-drop handler for reordering app canister cards
+    const handleAppDrop = useCallback((dragId, hoverId) => {
+        if (!walletLayoutCtx?.layout || dragId === hoverId) return;
+        const section = walletLayoutCtx.layout.apps || [];
+        const dragIndex = section.indexOf(dragId);
+        const hoverIndex = section.indexOf(hoverId);
+        if (dragIndex < 0 || hoverIndex < 0) return;
+        walletLayoutCtx.reorderSection('apps', dragIndex, hoverIndex);
+    }, [walletLayoutCtx]);
+
     return (
         <DndProvider backend={HTML5Backend}>
         <div 
@@ -6452,9 +6490,9 @@ function Wallet() {
                     ).map((position, index) => {
                         const normalizedSwapId = normalizeId(position.swapCanisterId);
                         return (
-                        position.positions.length < 1 
+                        <DraggableWalletCard key={normalizedSwapId || index} dragType={DRAG_TYPE_POSITION} itemId={normalizedSwapId} onDrop={handlePositionDrop}>
+                        {position.positions.length < 1 
                         ? <EmptyPositionCard 
-                            key={index} 
                             position={position} 
                             onRemove={() => handleUnregisterSwapCanister(position.swapCanisterId)}
                             handleRefreshPosition={handleRefreshPosition}
@@ -6485,7 +6523,8 @@ function Wallet() {
                                 hideUnclaimedFees={false}
                                 onOpenDetailModal={openPositionDetailModal}
                             />
-                        ))
+                        ))}
+                        </DraggableWalletCard>
                     );})}
                     {showPositionsSpinner ? (
                         <div className="card">
@@ -6773,8 +6812,8 @@ function Wallet() {
                                     const hasMaturity = managerTotalMaturity > 0;
                                     
                                     return (
+                                        <DraggableWalletCard key={canisterId} dragType={DRAG_TYPE_STAKING_BOT} itemId={canisterId} onDrop={handleStakingBotDrop}>
                                         <div 
-                                            key={canisterId}
                                             className="card"
                                         >
                                             {/* Card Header - Similar to TokenCard */}
@@ -7921,6 +7960,7 @@ function Wallet() {
                                                 );
                                             })()}
                                         </div>
+                                        </DraggableWalletCard>
                                     );
                                 })}
                             </div>
@@ -8188,8 +8228,8 @@ function Wallet() {
                                         const managerIsController = detectedManager.isController;
                                         
                                         return (
+                                            <DraggableWalletCard key={canisterId} dragType={DRAG_TYPE_APP} itemId={canisterId} onDrop={handleAppDrop}>
                                             <div 
-                                                key={canisterId}
                                                 className="card"
                                             >
                                                 {/* Card Header - Neuron Manager style */}
@@ -8790,6 +8830,7 @@ function Wallet() {
                                                     );
                                                 })()}
                                             </div>
+                                            </DraggableWalletCard>
                                         );
                                     }
                                     
@@ -8799,8 +8840,8 @@ function Wallet() {
                                         const managerIsController = detectedManager.isController;
                                         
                                         return (
+                                            <DraggableWalletCard key={canisterId} dragType={DRAG_TYPE_APP} itemId={canisterId} onDrop={handleAppDrop}>
                                             <div 
-                                                key={canisterId}
                                                 className="card"
                                             >
                                                 {/* Card Header - Warning style */}
@@ -9040,13 +9081,14 @@ function Wallet() {
                                                     </div>
                                                 )}
                                             </div>
+                                            </DraggableWalletCard>
                                         );
                                     }
                                     
                                     // Regular canister card
                                     return (
+                                        <DraggableWalletCard key={canisterId} dragType={DRAG_TYPE_APP} itemId={canisterId} onDrop={handleAppDrop}>
                                         <div 
-                                            key={canisterId}
                                             className="card"
                                         >
                                             {/* Card Header - Similar to TokenCard */}
@@ -9550,6 +9592,7 @@ function Wallet() {
                                                 </div>
                                             )}
                                         </div>
+                                        </DraggableWalletCard>
                                     );
                                 })}
                             </div>
