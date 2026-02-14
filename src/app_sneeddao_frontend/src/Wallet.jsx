@@ -6552,6 +6552,94 @@ function Wallet() {
                             </Link>
                         </div>
 
+                        {/* Outdated bots banner */}
+                        {outdatedManagers.length > 0 && (
+                            <div
+                                onClick={() => setUpgradeDialogOpen(true)}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '10px',
+                                    padding: '10px 14px',
+                                    marginBottom: '12px',
+                                    borderRadius: '10px',
+                                    background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(139, 92, 246, 0.05))',
+                                    border: '1px solid rgba(139, 92, 246, 0.25)',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease',
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.5)';
+                                    e.currentTarget.style.transform = 'translateY(-1px)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.25)';
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                }}
+                            >
+                                <FaExclamationTriangle size={14} style={{ color: '#f59e0b', flexShrink: 0 }} />
+                                <span style={{ flex: 1, fontSize: '13px', color: theme.colors.primaryText }}>
+                                    <strong>{outdatedManagers.length}</strong> bot{outdatedManagers.length !== 1 ? 's' : ''} can be upgraded to{' '}
+                                    <span style={{ color: '#8b5cf6', fontWeight: '600' }}>
+                                        v{Number(latestOfficialVersion.major)}.{Number(latestOfficialVersion.minor)}.{Number(latestOfficialVersion.patch)}
+                                    </span>
+                                </span>
+                                <span style={{
+                                    padding: '4px 12px',
+                                    borderRadius: '6px',
+                                    backgroundColor: '#8b5cf6',
+                                    color: '#fff',
+                                    fontSize: '12px',
+                                    fontWeight: '600',
+                                    flexShrink: 0,
+                                }}>
+                                    Upgrade
+                                </span>
+                            </div>
+                        )}
+                        {/* Low cycles banner */}
+                        {lowCyclesCanisters.length > 0 && (
+                            <div
+                                onClick={() => setTopUpDialogOpen(true)}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '10px',
+                                    padding: '10px 14px',
+                                    marginBottom: '12px',
+                                    borderRadius: '10px',
+                                    background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.05))',
+                                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease',
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.5)';
+                                    e.currentTarget.style.transform = 'translateY(-1px)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.25)';
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                }}
+                            >
+                                <FaBolt size={14} style={{ color: '#ef4444', flexShrink: 0 }} />
+                                <span style={{ flex: 1, fontSize: '13px', color: theme.colors.primaryText }}>
+                                    <strong>{lowCyclesCanisters.length}</strong> canister{lowCyclesCanisters.length !== 1 ? 's' : ''} low on cycles
+                                </span>
+                                <span style={{
+                                    padding: '4px 12px',
+                                    borderRadius: '6px',
+                                    backgroundColor: '#ef4444',
+                                    color: '#fff',
+                                    fontSize: '12px',
+                                    fontWeight: '600',
+                                    flexShrink: 0,
+                                }}>
+                                    Top Up
+                                </span>
+                            </div>
+                        )}
+
                         {/* ICP Staking Bots Section */}
                         <div style={{ 
                             backgroundColor: theme.colors.secondaryBg, 
@@ -7970,95 +8058,7 @@ function Wallet() {
                             )}
                         </div>
 
-                        {/* Outdated bots banner */}
-                        {outdatedManagers.length > 0 && (
-                            <div
-                                onClick={() => setUpgradeDialogOpen(true)}
-                                style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '10px',
-                                    padding: '10px 14px',
-                                    marginBottom: '12px',
-                                    borderRadius: '10px',
-                                    background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(139, 92, 246, 0.05))',
-                                    border: '1px solid rgba(139, 92, 246, 0.25)',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.15s ease',
-                                }}
-                                onMouseEnter={(e) => {
-                                    e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.5)';
-                                    e.currentTarget.style.transform = 'translateY(-1px)';
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.25)';
-                                    e.currentTarget.style.transform = 'translateY(0)';
-                                }}
-                            >
-                                <FaExclamationTriangle size={14} style={{ color: '#f59e0b', flexShrink: 0 }} />
-                                <span style={{ flex: 1, fontSize: '13px', color: theme.colors.primaryText }}>
-                                    <strong>{outdatedManagers.length}</strong> bot{outdatedManagers.length !== 1 ? 's' : ''} can be upgraded to{' '}
-                                    <span style={{ color: '#8b5cf6', fontWeight: '600' }}>
-                                        v{Number(latestOfficialVersion.major)}.{Number(latestOfficialVersion.minor)}.{Number(latestOfficialVersion.patch)}
-                                    </span>
-                                </span>
-                                <span style={{
-                                    padding: '4px 12px',
-                                    borderRadius: '6px',
-                                    backgroundColor: '#8b5cf6',
-                                    color: '#fff',
-                                    fontSize: '12px',
-                                    fontWeight: '600',
-                                    flexShrink: 0,
-                                }}>
-                                    Upgrade
-                                </span>
-                            </div>
-                        )}
-                        {/* Low cycles banner */}
-                        {lowCyclesCanisters.length > 0 && (
-                            <div
-                                onClick={() => setTopUpDialogOpen(true)}
-                                style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '10px',
-                                    padding: '10px 14px',
-                                    marginBottom: '12px',
-                                    borderRadius: '10px',
-                                    background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.05))',
-                                    border: '1px solid rgba(239, 68, 68, 0.25)',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.15s ease',
-                                }}
-                                onMouseEnter={(e) => {
-                                    e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.5)';
-                                    e.currentTarget.style.transform = 'translateY(-1px)';
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.25)';
-                                    e.currentTarget.style.transform = 'translateY(0)';
-                                }}
-                            >
-                                <FaBolt size={14} style={{ color: '#ef4444', flexShrink: 0 }} />
-                                <span style={{ flex: 1, fontSize: '13px', color: theme.colors.primaryText }}>
-                                    <strong>{lowCyclesCanisters.length}</strong> canister{lowCyclesCanisters.length !== 1 ? 's' : ''} low on cycles
-                                </span>
-                                <span style={{
-                                    padding: '4px 12px',
-                                    borderRadius: '6px',
-                                    backgroundColor: '#ef4444',
-                                    color: '#fff',
-                                    fontSize: '12px',
-                                    fontWeight: '600',
-                                    flexShrink: 0,
-                                }}>
-                                    Top Up
-                                </span>
-                            </div>
-                        )}
-
-                        {/* Canisters Section */}
+                        {/* Other Apps Section */}
                         <div style={{ 
                             backgroundColor: theme.colors.secondaryBg, 
                             borderRadius: '12px', 
@@ -8086,7 +8086,7 @@ function Wallet() {
                                 }}>
                                     {trackedCanistersExpanded ? <FaChevronDown size={12} /> : <FaChevronRight size={12} />}
                                     <FaBox size={16} color={walletPrimary} />
-                                    Canisters
+                                    Other Apps
                                     {trackedCanisters.length > 0 && (
                                         <span style={{ color: walletPrimary, fontWeight: '500' }}>
                                             ({trackedCanisters.length})

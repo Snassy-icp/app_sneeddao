@@ -4968,380 +4968,6 @@ export default function AppsPage() {
                         
                         {walletExpanded && (
                             <>
-                                {/* Canisters Subsection - Drop Zone */}
-                                <DroppableSection
-                                    targetType="wallet"
-                                    onDrop={handleDndDrop}
-                                    canDropItem={canDropItem}
-                                >
-                                    {({ isOver: isWalletDropTarget }) => (
-                                <div
-                                    style={{
-                                        backgroundColor: isWalletDropTarget ? `${theme.colors.accent}10` : theme.colors.secondaryBg,
-                                        border: isWalletDropTarget ? `2px dashed ${theme.colors.accent}` : `1px solid ${theme.colors.border}`,
-                                        borderRadius: '12px',
-                                        transition: 'all 0.2s ease',
-                                        padding: '12px',
-                                        marginBottom: '12px',
-                                    }}
-                                >
-                                <div 
-                                    style={{ 
-                                        display: 'flex', 
-                                        justifyContent: 'space-between', 
-                                        alignItems: 'center',
-                                        cursor: 'pointer',
-                                        marginBottom: walletCanistersExpanded ? '12px' : 0
-                                    }}
-                                    onClick={() => setWalletCanistersExpanded(!walletCanistersExpanded)}
-                                >
-                                    <div style={{ ...styles.sectionTitle, fontSize: '14px' }}>
-                                        {walletCanistersExpanded ? <FaChevronDown size={12} /> : <FaChevronRight size={12} />}
-                                        {/* Apps health lamp */}
-                                        {(() => {
-                                            const stats = getWalletCanistersStatus(trackedCanisters, trackedCanisterStatus, cycleSettings, detectedNeuronManagers, neuronManagerCycleSettings);
-                                            if (stats.total === 0) return null;
-                                            const lampColor = getStatusLampColor(stats.overallStatus);
-                                            return (
-                                                <span
-                                                    style={{
-                                                        width: '8px',
-                                                        height: '8px',
-                                                        borderRadius: '50%',
-                                                        backgroundColor: lampColor,
-                                                        boxShadow: stats.overallStatus !== 'unknown' ? `0 0 6px ${lampColor}` : 'none',
-                                                        flexShrink: 0,
-                                                    }}
-                                                    title={`Apps health: ${stats.overallStatus}`}
-                                                />
-                                            );
-                                        })()}
-                                        <FaBox style={{ color: theme.colors.accent }} />
-                                        Apps
-                                        {trackedCanisters.length > 0 && (
-                                            <span style={{ ...styles.sectionCount, fontSize: '11px' }}>{trackedCanisters.length}</span>
-                                        )}
-                                        {isWalletDropTarget && (
-                                            <span style={{ marginLeft: '8px', color: theme.colors.accent, fontSize: '11px' }}>
-                                                Drop here to add
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-                        
-                                {walletCanistersExpanded && (
-                            <>
-                                {/* Combined: Add app + Health Summary */}
-                                <div style={{
-                                    backgroundColor: theme.colors.secondaryBg,
-                                    borderRadius: '10px',
-                                    border: `1px solid ${theme.colors.border}`,
-                                    padding: '10px 14px',
-                                    marginBottom: '16px',
-                                }}>
-                                    {/* Add input row */}
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: trackedCanisters.length > 0 ? '8px' : 0 }}>
-                                        <span style={{ color: theme.colors.secondaryText, fontSize: '0.7rem', whiteSpace: 'nowrap' }}>Add app</span>
-                                        <PrincipalInput
-                                            value={newWalletCanisterId}
-                                            onChange={(v) => {
-                                                setNewWalletCanisterId(v);
-                                                setWalletCanisterError(null);
-                                            }}
-                                            placeholder="Enter canister id"
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter' && newWalletCanisterId.trim()) {
-                                                    handleAddWalletCanister();
-                                                }
-                                            }}
-                                            style={{ flex: 1, maxWidth: 'none' }}
-                                            inputStyle={{ fontFamily: 'monospace', fontSize: '0.8rem', padding: '4px 8px' }}
-                                            disabled={addingWalletCanister}
-                                            defaultPrincipalType="canisters"
-                                        />
-                                        <button
-                                            onClick={handleAddWalletCanister}
-                                            style={{
-                                                ...styles.addButton,
-                                                padding: '4px 10px',
-                                                fontSize: '0.75rem',
-                                                backgroundColor: (addingWalletCanister || !newWalletCanisterId.trim()) ? '#6c757d' : '#28a745',
-                                                cursor: (addingWalletCanister || !newWalletCanisterId.trim()) ? 'not-allowed' : 'pointer',
-                                                opacity: (addingWalletCanister || !newWalletCanisterId.trim()) ? 0.6 : 1,
-                                            }}
-                                            disabled={addingWalletCanister || !newWalletCanisterId.trim()}
-                                        >
-                                            {addingWalletCanister ? <FaSpinner className="spin" size={10} /> : <FaPlus size={10} />}
-                                            Add
-                                        </button>
-                                    </div>
-                                    {walletCanisterError && (
-                                        <div style={{ color: '#ef4444', fontSize: '11px', marginBottom: '6px' }}>
-                                            {walletCanisterError}
-                                        </div>
-                                    )}
-                                    {/* Inline health summary */}
-                                    {trackedCanisters.length > 0 && (() => {
-                                        const walletStats = getWalletHealthStats(trackedCanisters, trackedCanisterStatus, cycleSettings);
-                                        const walletOverallColor = getStatusLampColor(walletStats.overallStatus);
-                                        return (
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', borderTop: `1px solid ${theme.colors.border}`, paddingTop: '8px' }}>
-                                                <span
-                                                    style={{
-                                                        width: '10px', height: '10px', borderRadius: '50%',
-                                                        backgroundColor: walletOverallColor,
-                                                        boxShadow: walletStats.overallStatus !== 'unknown' ? `0 0 6px ${walletOverallColor}` : 'none',
-                                                        flexShrink: 0,
-                                                    }}
-                                                    title={`Wallet health: ${walletStats.overallStatus}`}
-                                                />
-                                                <span style={{ fontWeight: 600, fontSize: '0.75rem', color: theme.colors.primaryText }}>Health</span>
-                                                {walletStats.red > 0 && (
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#ef4444', boxShadow: '0 0 4px #ef4444' }} />
-                                                        <span style={{ color: '#ef4444', fontWeight: 500, fontSize: '0.7rem' }}>{walletStats.red}{!isMobile && ' critical'}</span>
-                                                    </div>
-                                                )}
-                                                {walletStats.orange > 0 && (
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#f59e0b', boxShadow: '0 0 4px #f59e0b' }} />
-                                                        <span style={{ color: '#f59e0b', fontWeight: 500, fontSize: '0.7rem' }}>{walletStats.orange}{!isMobile && ' low'}</span>
-                                                    </div>
-                                                )}
-                                                {walletStats.green > 0 && (
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#22c55e', boxShadow: '0 0 4px #22c55e' }} />
-                                                        <span style={{ color: '#22c55e', fontWeight: 500, fontSize: '0.7rem' }}>{walletStats.green}{!isMobile && ' healthy'}</span>
-                                                    </div>
-                                                )}
-                                                {walletStats.unknown > 0 && (
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#6b7280' }} />
-                                                        <span style={{ color: '#6b7280', fontWeight: 500, fontSize: '0.7rem' }}>{walletStats.unknown}{!isMobile && ' unknown'}</span>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })()}
-                                </div>
-
-                                {loadingTrackedCanisters ? (
-                                    <div style={styles.loadingSpinner}>
-                                        <FaSpinner className="spin" size={24} />
-                                    </div>
-                                ) : trackedCanisters.length === 0 ? (
-                                    <div style={{ ...styles.emptyState, marginBottom: '24px' }}>
-                                        <div style={styles.emptyIcon}>💼</div>
-                                        <div style={styles.emptyText}>No apps in wallet</div>
-                                        <div style={styles.emptySubtext}>
-                                            Add an app canister id above to track it in your wallet.
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div style={{ marginBottom: '24px' }}>
-                                        
-                                        <div style={styles.canisterList}>
-                                            {trackedCanisters.map((canisterId) => {
-                                                const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames, verifiedNames, principalCanisterTypes);
-                                                const status = trackedCanisterStatus[canisterId];
-                                                const cycles = status?.cycles;
-                                                const memory = status?.memory;
-                                                const isController = status?.isController;
-                                                const isConfirming = confirmRemoveWalletCanister === canisterId;
-                                                const isRemoving = removingWalletCanister === canisterId;
-                                                
-                                                // Check if this canister is a detected neuron manager
-                                                const detectedManager = detectedNeuronManagers[canisterId];
-                                                if (detectedManager) {
-                                                    return (
-                                                        <NeuronManagerCardItem
-                                                            key={canisterId}
-                                                            canisterId={canisterId}
-                                                            sourceGroupId="wallet"
-                                                            managerInfo={detectedManager}
-                                                            styles={styles}
-                                                            theme={theme}
-                                                            principalNames={principalNames}
-                                                            principalNicknames={principalNicknames}
-                                                            isAuthenticated={isAuthenticated}
-                                                            neuronManagerCycleSettings={neuronManagerCycleSettings}
-                                                            latestOfficialVersion={latestOfficialVersion}
-                                                            isVersionOutdated={isVersionOutdated}
-                                                            getManagerHealthStatus={getManagerHealthStatus}
-                                                            getStatusLampColor={getStatusLampColor}
-                                                            onRemove={handleRemoveWalletCanister}
-                                                            isConfirming={isConfirming}
-                                                            setConfirmRemove={setConfirmRemoveWalletCanister}
-                                                            isRemoving={isRemoving}
-                                                        />
-                                                    );
-                                                }
-                                                
-                                                // Get health status for this canister
-                                                const canisterHealth = getCanisterHealthStatus(canisterId, trackedCanisterStatus, cycleSettings);
-                                                const canisterLampColor = getStatusLampColor(canisterHealth);
-
-                                                return (
-                                                    <DraggableItem
-                                                        key={canisterId}
-                                                        type="canister"
-                                                        id={canisterId}
-                                                        sourceGroupId="wallet"
-                                                        style={{
-                                                            ...styles.canisterCard,
-                                                            transition: 'opacity 0.15s ease',
-                                                        }}
-                                                    >
-                                                        <div style={styles.canisterInfo}>
-                                                            <div style={{ ...styles.canisterIcon, position: 'relative' }}>
-                                                                {getCanisterTypeIcon(displayInfo?.canisterTypes, 18, theme.colors.accent)}
-                                                                {isController && (
-                                                                    <FaCrown 
-                                                                        size={10} 
-                                                                        style={{ 
-                                                                            position: 'absolute', 
-                                                                            top: -4, 
-                                                                            right: -4, 
-                                                                            color: '#f59e0b',
-                                                                        }} 
-                                                                        title="You are a controller"
-                                                                    />
-                                                                )}
-                                                                {/* Cycle status lamp - top left */}
-                                                                <span
-                                                                    style={{
-                                                                        position: 'absolute',
-                                                                        top: -3,
-                                                                        left: -3,
-                                                                        width: '8px',
-                                                                        height: '8px',
-                                                                        borderRadius: '50%',
-                                                                        backgroundColor: canisterLampColor,
-                                                                        boxShadow: canisterHealth !== 'unknown' ? `0 0 6px ${canisterLampColor}` : 'none',
-                                                                        zIndex: 2,
-                                                                    }}
-                                                                    title={`Health: ${canisterHealth}`}
-                                                                />
-                                                                {isSnsCanisterType(displayInfo?.canisterTypes) && <SnsPill size="small" />}
-                                                            </div>
-                                                            <PrincipalDisplay
-                                                                principal={canisterId}
-                                                                displayInfo={displayInfo}
-                                                                showCopyButton={true}
-                                                                isAuthenticated={isAuthenticated}
-                                                                noLink={true}
-                                                                style={{ fontSize: '14px' }}
-                                                                showSendMessage={false}
-                                                                showViewProfile={false}
-                                                            />
-                                                        </div>
-                                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
-                                                            {/* Cycles badge */}
-                                                            {cycles !== undefined && cycles !== null && (
-                                                                <span 
-                                                                    style={{
-                                                                        ...styles.managerVersion,
-                                                                        backgroundColor: `${getCyclesColor(cycles, neuronManagerCycleSettings)}20`,
-                                                                        color: getCyclesColor(cycles, neuronManagerCycleSettings),
-                                                                    }}
-                                                                    title={`${cycles.toLocaleString()} cycles`}
-                                                                >
-                                                                    ⚡ {formatCyclesCompact(cycles)}
-                                                                </span>
-                                                            )}
-                                                            {/* Memory badge */}
-                                                            {memory !== undefined && memory !== null && (
-                                                                <span 
-                                                                    style={{
-                                                                        ...styles.managerVersion,
-                                                                        backgroundColor: `${theme.colors.accent}20`,
-                                                                        color: theme.colors.accent,
-                                                                    }}
-                                                                    title={`${memory.toLocaleString()} bytes`}
-                                                                >
-                                                                    💾 {formatMemory(memory)}
-                                                                </span>
-                                                            )}
-                                                            {status === undefined && (
-                                                                <span 
-                                                                    style={{
-                                                                        ...styles.managerVersion,
-                                                                        backgroundColor: `${theme.colors.mutedText || theme.colors.secondaryText}20`,
-                                                                        color: theme.colors.mutedText || theme.colors.secondaryText,
-                                                                    }}
-                                                                >
-                                                                    ⚡ ...
-                                                                </span>
-                                                            )}
-                                                            <Link
-                                                                to={`/canister?id=${canisterId}`}
-                                                                style={{
-                                                                    ...styles.viewLink,
-                                                                    padding: '6px 8px',
-                                                                    display: 'flex',
-                                                                    alignItems: 'center',
-                                                                    justifyContent: 'center',
-                                                                }}
-                                                                title="View details"
-                                                            >
-                                                                <FaEdit size={12} />
-                                                            </Link>
-                                                            {isConfirming ? (
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                    <span style={{ color: '#888', fontSize: '11px' }}>Remove?</span>
-                                                                    <button
-                                                                        onClick={() => handleRemoveWalletCanister(canisterId)}
-                                                                        disabled={isRemoving}
-                                                                        style={{
-                                                                            backgroundColor: '#ef4444',
-                                                                            color: '#fff',
-                                                                            border: 'none',
-                                                                            borderRadius: '4px',
-                                                                            padding: '4px 10px',
-                                                                            cursor: isRemoving ? 'not-allowed' : 'pointer',
-                                                                            fontSize: '12px',
-                                                                            opacity: isRemoving ? 0.6 : 1,
-                                                                        }}
-                                                                    >
-                                                                        {isRemoving ? <FaSpinner className="spin" size={10} /> : 'Yes'}
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => setConfirmRemoveWalletCanister(null)}
-                                                                        style={{
-                                                                            backgroundColor: theme.colors.secondaryBg,
-                                                                            color: theme.colors.primaryText,
-                                                                            border: `1px solid ${theme.colors.border}`,
-                                                                            borderRadius: '4px',
-                                                                            padding: '4px 10px',
-                                                                            cursor: 'pointer',
-                                                                            fontSize: '12px',
-                                                                        }}
-                                                                    >
-                                                                        No
-                                                                    </button>
-                                                                </div>
-                                                            ) : (
-                                                                <button
-                                                                    onClick={() => setConfirmRemoveWalletCanister(canisterId)}
-                                                                    style={styles.removeButton}
-                                                                    title="Remove from wallet"
-                                                                >
-                                                                    <FaTrash />
-                                                                </button>
-                                                            )}
-                                                        </div>
-                                                    </DraggableItem>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                )}
-                            </>
-                                )}
-                                </div>
-                                    )}
-                                </DroppableSection>
-
                                 {/* ICP Staking Bots Subsection - Drop Zone */}
                                 <DroppableSection
                                     targetType="neuron_managers"
@@ -5923,6 +5549,380 @@ export default function AppsPage() {
                                         })}
                                     </div>
                                     </>
+                                )}
+                            </>
+                                )}
+                                </div>
+                                    )}
+                                </DroppableSection>
+
+                                {/* Canisters Subsection - Drop Zone */}
+                                <DroppableSection
+                                    targetType="wallet"
+                                    onDrop={handleDndDrop}
+                                    canDropItem={canDropItem}
+                                >
+                                    {({ isOver: isWalletDropTarget }) => (
+                                <div
+                                    style={{
+                                        backgroundColor: isWalletDropTarget ? `${theme.colors.accent}10` : theme.colors.secondaryBg,
+                                        border: isWalletDropTarget ? `2px dashed ${theme.colors.accent}` : `1px solid ${theme.colors.border}`,
+                                        borderRadius: '12px',
+                                        transition: 'all 0.2s ease',
+                                        padding: '12px',
+                                        marginBottom: '12px',
+                                    }}
+                                >
+                                <div 
+                                    style={{ 
+                                        display: 'flex', 
+                                        justifyContent: 'space-between', 
+                                        alignItems: 'center',
+                                        cursor: 'pointer',
+                                        marginBottom: walletCanistersExpanded ? '12px' : 0
+                                    }}
+                                    onClick={() => setWalletCanistersExpanded(!walletCanistersExpanded)}
+                                >
+                                    <div style={{ ...styles.sectionTitle, fontSize: '14px' }}>
+                                        {walletCanistersExpanded ? <FaChevronDown size={12} /> : <FaChevronRight size={12} />}
+                                        {/* Apps health lamp */}
+                                        {(() => {
+                                            const stats = getWalletCanistersStatus(trackedCanisters, trackedCanisterStatus, cycleSettings, detectedNeuronManagers, neuronManagerCycleSettings);
+                                            if (stats.total === 0) return null;
+                                            const lampColor = getStatusLampColor(stats.overallStatus);
+                                            return (
+                                                <span
+                                                    style={{
+                                                        width: '8px',
+                                                        height: '8px',
+                                                        borderRadius: '50%',
+                                                        backgroundColor: lampColor,
+                                                        boxShadow: stats.overallStatus !== 'unknown' ? `0 0 6px ${lampColor}` : 'none',
+                                                        flexShrink: 0,
+                                                    }}
+                                                    title={`Apps health: ${stats.overallStatus}`}
+                                                />
+                                            );
+                                        })()}
+                                        <FaBox style={{ color: theme.colors.accent }} />
+                                        Other Apps
+                                        {trackedCanisters.length > 0 && (
+                                            <span style={{ ...styles.sectionCount, fontSize: '11px' }}>{trackedCanisters.length}</span>
+                                        )}
+                                        {isWalletDropTarget && (
+                                            <span style={{ marginLeft: '8px', color: theme.colors.accent, fontSize: '11px' }}>
+                                                Drop here to add
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                        
+                                {walletCanistersExpanded && (
+                            <>
+                                {/* Combined: Add app + Health Summary */}
+                                <div style={{
+                                    backgroundColor: theme.colors.secondaryBg,
+                                    borderRadius: '10px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    padding: '10px 14px',
+                                    marginBottom: '16px',
+                                }}>
+                                    {/* Add input row */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: trackedCanisters.length > 0 ? '8px' : 0 }}>
+                                        <span style={{ color: theme.colors.secondaryText, fontSize: '0.7rem', whiteSpace: 'nowrap' }}>Add app</span>
+                                        <PrincipalInput
+                                            value={newWalletCanisterId}
+                                            onChange={(v) => {
+                                                setNewWalletCanisterId(v);
+                                                setWalletCanisterError(null);
+                                            }}
+                                            placeholder="Enter canister id"
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' && newWalletCanisterId.trim()) {
+                                                    handleAddWalletCanister();
+                                                }
+                                            }}
+                                            style={{ flex: 1, maxWidth: 'none' }}
+                                            inputStyle={{ fontFamily: 'monospace', fontSize: '0.8rem', padding: '4px 8px' }}
+                                            disabled={addingWalletCanister}
+                                            defaultPrincipalType="canisters"
+                                        />
+                                        <button
+                                            onClick={handleAddWalletCanister}
+                                            style={{
+                                                ...styles.addButton,
+                                                padding: '4px 10px',
+                                                fontSize: '0.75rem',
+                                                backgroundColor: (addingWalletCanister || !newWalletCanisterId.trim()) ? '#6c757d' : '#28a745',
+                                                cursor: (addingWalletCanister || !newWalletCanisterId.trim()) ? 'not-allowed' : 'pointer',
+                                                opacity: (addingWalletCanister || !newWalletCanisterId.trim()) ? 0.6 : 1,
+                                            }}
+                                            disabled={addingWalletCanister || !newWalletCanisterId.trim()}
+                                        >
+                                            {addingWalletCanister ? <FaSpinner className="spin" size={10} /> : <FaPlus size={10} />}
+                                            Add
+                                        </button>
+                                    </div>
+                                    {walletCanisterError && (
+                                        <div style={{ color: '#ef4444', fontSize: '11px', marginBottom: '6px' }}>
+                                            {walletCanisterError}
+                                        </div>
+                                    )}
+                                    {/* Inline health summary */}
+                                    {trackedCanisters.length > 0 && (() => {
+                                        const walletStats = getWalletHealthStats(trackedCanisters, trackedCanisterStatus, cycleSettings);
+                                        const walletOverallColor = getStatusLampColor(walletStats.overallStatus);
+                                        return (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', borderTop: `1px solid ${theme.colors.border}`, paddingTop: '8px' }}>
+                                                <span
+                                                    style={{
+                                                        width: '10px', height: '10px', borderRadius: '50%',
+                                                        backgroundColor: walletOverallColor,
+                                                        boxShadow: walletStats.overallStatus !== 'unknown' ? `0 0 6px ${walletOverallColor}` : 'none',
+                                                        flexShrink: 0,
+                                                    }}
+                                                    title={`Wallet health: ${walletStats.overallStatus}`}
+                                                />
+                                                <span style={{ fontWeight: 600, fontSize: '0.75rem', color: theme.colors.primaryText }}>Health</span>
+                                                {walletStats.red > 0 && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#ef4444', boxShadow: '0 0 4px #ef4444' }} />
+                                                        <span style={{ color: '#ef4444', fontWeight: 500, fontSize: '0.7rem' }}>{walletStats.red}{!isMobile && ' critical'}</span>
+                                                    </div>
+                                                )}
+                                                {walletStats.orange > 0 && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#f59e0b', boxShadow: '0 0 4px #f59e0b' }} />
+                                                        <span style={{ color: '#f59e0b', fontWeight: 500, fontSize: '0.7rem' }}>{walletStats.orange}{!isMobile && ' low'}</span>
+                                                    </div>
+                                                )}
+                                                {walletStats.green > 0 && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#22c55e', boxShadow: '0 0 4px #22c55e' }} />
+                                                        <span style={{ color: '#22c55e', fontWeight: 500, fontSize: '0.7rem' }}>{walletStats.green}{!isMobile && ' healthy'}</span>
+                                                    </div>
+                                                )}
+                                                {walletStats.unknown > 0 && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#6b7280' }} />
+                                                        <span style={{ color: '#6b7280', fontWeight: 500, fontSize: '0.7rem' }}>{walletStats.unknown}{!isMobile && ' unknown'}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })()}
+                                </div>
+
+                                {loadingTrackedCanisters ? (
+                                    <div style={styles.loadingSpinner}>
+                                        <FaSpinner className="spin" size={24} />
+                                    </div>
+                                ) : trackedCanisters.length === 0 ? (
+                                    <div style={{ ...styles.emptyState, marginBottom: '24px' }}>
+                                        <div style={styles.emptyIcon}>💼</div>
+                                        <div style={styles.emptyText}>No apps in wallet</div>
+                                        <div style={styles.emptySubtext}>
+                                            Add an app canister id above to track it in your wallet.
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div style={{ marginBottom: '24px' }}>
+                                        
+                                        <div style={styles.canisterList}>
+                                            {trackedCanisters.map((canisterId) => {
+                                                const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames, verifiedNames, principalCanisterTypes);
+                                                const status = trackedCanisterStatus[canisterId];
+                                                const cycles = status?.cycles;
+                                                const memory = status?.memory;
+                                                const isController = status?.isController;
+                                                const isConfirming = confirmRemoveWalletCanister === canisterId;
+                                                const isRemoving = removingWalletCanister === canisterId;
+                                                
+                                                // Check if this canister is a detected neuron manager
+                                                const detectedManager = detectedNeuronManagers[canisterId];
+                                                if (detectedManager) {
+                                                    return (
+                                                        <NeuronManagerCardItem
+                                                            key={canisterId}
+                                                            canisterId={canisterId}
+                                                            sourceGroupId="wallet"
+                                                            managerInfo={detectedManager}
+                                                            styles={styles}
+                                                            theme={theme}
+                                                            principalNames={principalNames}
+                                                            principalNicknames={principalNicknames}
+                                                            isAuthenticated={isAuthenticated}
+                                                            neuronManagerCycleSettings={neuronManagerCycleSettings}
+                                                            latestOfficialVersion={latestOfficialVersion}
+                                                            isVersionOutdated={isVersionOutdated}
+                                                            getManagerHealthStatus={getManagerHealthStatus}
+                                                            getStatusLampColor={getStatusLampColor}
+                                                            onRemove={handleRemoveWalletCanister}
+                                                            isConfirming={isConfirming}
+                                                            setConfirmRemove={setConfirmRemoveWalletCanister}
+                                                            isRemoving={isRemoving}
+                                                        />
+                                                    );
+                                                }
+                                                
+                                                // Get health status for this canister
+                                                const canisterHealth = getCanisterHealthStatus(canisterId, trackedCanisterStatus, cycleSettings);
+                                                const canisterLampColor = getStatusLampColor(canisterHealth);
+
+                                                return (
+                                                    <DraggableItem
+                                                        key={canisterId}
+                                                        type="canister"
+                                                        id={canisterId}
+                                                        sourceGroupId="wallet"
+                                                        style={{
+                                                            ...styles.canisterCard,
+                                                            transition: 'opacity 0.15s ease',
+                                                        }}
+                                                    >
+                                                        <div style={styles.canisterInfo}>
+                                                            <div style={{ ...styles.canisterIcon, position: 'relative' }}>
+                                                                {getCanisterTypeIcon(displayInfo?.canisterTypes, 18, theme.colors.accent)}
+                                                                {isController && (
+                                                                    <FaCrown 
+                                                                        size={10} 
+                                                                        style={{ 
+                                                                            position: 'absolute', 
+                                                                            top: -4, 
+                                                                            right: -4, 
+                                                                            color: '#f59e0b',
+                                                                        }} 
+                                                                        title="You are a controller"
+                                                                    />
+                                                                )}
+                                                                {/* Cycle status lamp - top left */}
+                                                                <span
+                                                                    style={{
+                                                                        position: 'absolute',
+                                                                        top: -3,
+                                                                        left: -3,
+                                                                        width: '8px',
+                                                                        height: '8px',
+                                                                        borderRadius: '50%',
+                                                                        backgroundColor: canisterLampColor,
+                                                                        boxShadow: canisterHealth !== 'unknown' ? `0 0 6px ${canisterLampColor}` : 'none',
+                                                                        zIndex: 2,
+                                                                    }}
+                                                                    title={`Health: ${canisterHealth}`}
+                                                                />
+                                                                {isSnsCanisterType(displayInfo?.canisterTypes) && <SnsPill size="small" />}
+                                                            </div>
+                                                            <PrincipalDisplay
+                                                                principal={canisterId}
+                                                                displayInfo={displayInfo}
+                                                                showCopyButton={true}
+                                                                isAuthenticated={isAuthenticated}
+                                                                noLink={true}
+                                                                style={{ fontSize: '14px' }}
+                                                                showSendMessage={false}
+                                                                showViewProfile={false}
+                                                            />
+                                                        </div>
+                                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
+                                                            {/* Cycles badge */}
+                                                            {cycles !== undefined && cycles !== null && (
+                                                                <span 
+                                                                    style={{
+                                                                        ...styles.managerVersion,
+                                                                        backgroundColor: `${getCyclesColor(cycles, neuronManagerCycleSettings)}20`,
+                                                                        color: getCyclesColor(cycles, neuronManagerCycleSettings),
+                                                                    }}
+                                                                    title={`${cycles.toLocaleString()} cycles`}
+                                                                >
+                                                                    ⚡ {formatCyclesCompact(cycles)}
+                                                                </span>
+                                                            )}
+                                                            {/* Memory badge */}
+                                                            {memory !== undefined && memory !== null && (
+                                                                <span 
+                                                                    style={{
+                                                                        ...styles.managerVersion,
+                                                                        backgroundColor: `${theme.colors.accent}20`,
+                                                                        color: theme.colors.accent,
+                                                                    }}
+                                                                    title={`${memory.toLocaleString()} bytes`}
+                                                                >
+                                                                    💾 {formatMemory(memory)}
+                                                                </span>
+                                                            )}
+                                                            {status === undefined && (
+                                                                <span 
+                                                                    style={{
+                                                                        ...styles.managerVersion,
+                                                                        backgroundColor: `${theme.colors.mutedText || theme.colors.secondaryText}20`,
+                                                                        color: theme.colors.mutedText || theme.colors.secondaryText,
+                                                                    }}
+                                                                >
+                                                                    ⚡ ...
+                                                                </span>
+                                                            )}
+                                                            <Link
+                                                                to={`/canister?id=${canisterId}`}
+                                                                style={{
+                                                                    ...styles.viewLink,
+                                                                    padding: '6px 8px',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'center',
+                                                                }}
+                                                                title="View details"
+                                                            >
+                                                                <FaEdit size={12} />
+                                                            </Link>
+                                                            {isConfirming ? (
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                    <span style={{ color: '#888', fontSize: '11px' }}>Remove?</span>
+                                                                    <button
+                                                                        onClick={() => handleRemoveWalletCanister(canisterId)}
+                                                                        disabled={isRemoving}
+                                                                        style={{
+                                                                            backgroundColor: '#ef4444',
+                                                                            color: '#fff',
+                                                                            border: 'none',
+                                                                            borderRadius: '4px',
+                                                                            padding: '4px 10px',
+                                                                            cursor: isRemoving ? 'not-allowed' : 'pointer',
+                                                                            fontSize: '12px',
+                                                                            opacity: isRemoving ? 0.6 : 1,
+                                                                        }}
+                                                                    >
+                                                                        {isRemoving ? <FaSpinner className="spin" size={10} /> : 'Yes'}
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => setConfirmRemoveWalletCanister(null)}
+                                                                        style={{
+                                                                            backgroundColor: theme.colors.secondaryBg,
+                                                                            color: theme.colors.primaryText,
+                                                                            border: `1px solid ${theme.colors.border}`,
+                                                                            borderRadius: '4px',
+                                                                            padding: '4px 10px',
+                                                                            cursor: 'pointer',
+                                                                            fontSize: '12px',
+                                                                        }}
+                                                                    >
+                                                                        No
+                                                                    </button>
+                                                                </div>
+                                                            ) : (
+                                                                <button
+                                                                    onClick={() => setConfirmRemoveWalletCanister(canisterId)}
+                                                                    style={styles.removeButton}
+                                                                    title="Remove from wallet"
+                                                                >
+                                                                    <FaTrash />
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </DraggableItem>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
                                 )}
                             </>
                                 )}
