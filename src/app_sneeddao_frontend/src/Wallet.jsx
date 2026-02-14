@@ -4919,12 +4919,14 @@ function Wallet() {
                         subaccount: [] 
                     });
                     
-                    // If balance > 0, register this token
+                    // If balance > 0, register this token and immediately add to wallet
                     if (BigInt(balance) > 0n) {
                         console.log(`[Scan] Found balance on ${ledgerId}: ${balance}`);
                         await backendActor.register_ledger_canister_id(Principal.fromText(ledgerId));
                         newLedgers.push(ledgerId);
                         foundCount++;
+                        // Register to wallet immediately so it appears during the scan
+                        fetchBalancesAndLocks(Principal.fromText(ledgerId));
                     }
                 } catch (err) {
                     // Skip ledgers that fail (might be unavailable)
@@ -4950,13 +4952,8 @@ function Wallet() {
 
             await Promise.all(workers);
             
-            // Refresh tokens to show newly added ones
             if (newLedgers.length > 0) {
                 console.log(`[Scan] Found ${newLedgers.length} new tokens with balance`);
-                // Refresh to load the new tokens
-                for (const ledgerId of newLedgers) {
-                    fetchBalancesAndLocks(Principal.fromText(ledgerId));
-                }
             }
             
         } catch (error) {
