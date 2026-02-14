@@ -217,6 +217,7 @@ export default function Me() {
         canister_manager_cycle_threshold_red: 1_000_000_000_000,
         canister_manager_cycle_threshold_orange: 5_000_000_000_000,
         frontend_auto_update_enabled: false,
+        frontend_clear_cache_on_update: false,
         frontend_update_check_interval_sec: 600,
         frontend_update_countdown_sec: 300,
         swap_slippage_tolerance: 0.01,
@@ -275,6 +276,7 @@ export default function Me() {
             canister_manager_cycle_threshold_red: canisterSettings.cycleThresholdRed ?? defaultUserSettings.canister_manager_cycle_threshold_red,
             canister_manager_cycle_threshold_orange: canisterSettings.cycleThresholdOrange ?? defaultUserSettings.canister_manager_cycle_threshold_orange,
             frontend_auto_update_enabled: readBool('frontendAutoUpdateEnabled', defaultUserSettings.frontend_auto_update_enabled),
+            frontend_clear_cache_on_update: readBool('frontendClearCacheOnUpdate', defaultUserSettings.frontend_clear_cache_on_update),
             frontend_update_check_interval_sec: readNat('frontendUpdateCheckIntervalSec', defaultUserSettings.frontend_update_check_interval_sec),
             frontend_update_countdown_sec: readNat('frontendUpdateCountdownSec', defaultUserSettings.frontend_update_countdown_sec),
             swap_slippage_tolerance: readFloat('swapSlippageTolerance', defaultUserSettings.swap_slippage_tolerance),
@@ -308,6 +310,7 @@ export default function Me() {
             && toNumber(settings.canister_manager_cycle_threshold_red ?? defaultUserSettings.canister_manager_cycle_threshold_red) === defaultUserSettings.canister_manager_cycle_threshold_red
             && toNumber(settings.canister_manager_cycle_threshold_orange ?? defaultUserSettings.canister_manager_cycle_threshold_orange) === defaultUserSettings.canister_manager_cycle_threshold_orange
             && (settings.frontend_auto_update_enabled ?? defaultUserSettings.frontend_auto_update_enabled) === defaultUserSettings.frontend_auto_update_enabled
+            && (settings.frontend_clear_cache_on_update ?? defaultUserSettings.frontend_clear_cache_on_update) === defaultUserSettings.frontend_clear_cache_on_update
             && toNumber(settings.frontend_update_check_interval_sec ?? defaultUserSettings.frontend_update_check_interval_sec) === defaultUserSettings.frontend_update_check_interval_sec
             && toNumber(settings.frontend_update_countdown_sec ?? defaultUserSettings.frontend_update_countdown_sec) === defaultUserSettings.frontend_update_countdown_sec
             && toNumber(settings.swap_slippage_tolerance ?? defaultUserSettings.swap_slippage_tolerance) === defaultUserSettings.swap_slippage_tolerance
@@ -399,9 +402,15 @@ export default function Me() {
         const frontendAutoUpdateValue = settings.frontend_auto_update_enabled ?? false;
         setFrontendAutoUpdateEnabled(frontendAutoUpdateValue);
         localStorage.setItem('frontendAutoUpdateEnabled', JSON.stringify(frontendAutoUpdateValue));
+
+        const frontendClearCacheValue = settings.frontend_clear_cache_on_update ?? false;
+        setFrontendClearCacheOnUpdate(frontendClearCacheValue);
+        localStorage.setItem('frontendClearCacheOnUpdate', JSON.stringify(frontendClearCacheValue));
+
         window.dispatchEvent(new CustomEvent('frontendUpdateSettingsChanged', {
             detail: {
                 autoUpdateEnabled: frontendAutoUpdateValue,
+                clearCacheOnUpdate: frontendClearCacheValue,
                 checkIntervalSec: settings.frontend_update_check_interval_sec ?? 600,
                 countdownSec: settings.frontend_update_countdown_sec ?? 300,
             }
@@ -561,6 +570,14 @@ export default function Me() {
         try {
             const saved = localStorage.getItem('frontendAutoUpdateEnabled');
             return saved !== null ? JSON.parse(saved) : false; // Default OFF - notification only, no auto-refresh
+        } catch (error) {
+            return false;
+        }
+    });
+    const [frontendClearCacheOnUpdate, setFrontendClearCacheOnUpdate] = useState(() => {
+        try {
+            const saved = localStorage.getItem('frontendClearCacheOnUpdate');
+            return saved !== null ? JSON.parse(saved) : false; // Default OFF - just refresh without clearing cache
         } catch (error) {
             return false;
         }
@@ -2312,7 +2329,26 @@ export default function Me() {
                                                 localStorage.setItem('frontendAutoUpdateEnabled', JSON.stringify(newValue));
                                                 updateBackendSettings({ frontend_auto_update_enabled: newValue });
                                                 window.dispatchEvent(new CustomEvent('frontendUpdateSettingsChanged', {
-                                                    detail: { autoUpdateEnabled: newValue, checkIntervalSec: frontendUpdateCheckInterval, countdownSec: frontendUpdateCountdown }
+                                                    detail: { autoUpdateEnabled: newValue, clearCacheOnUpdate: frontendClearCacheOnUpdate, checkIntervalSec: frontendUpdateCheckInterval, countdownSec: frontendUpdateCountdown }
+                                                }));
+                                            }}
+                                        />
+                                    </SettingItem>
+
+                                    <SettingItem
+                                        title="Clear cache on update"
+                                        description="When refreshing for a new version, also clear the browser cache. This can sometimes cause loading issues — only enable if you experience stale content after updates."
+                                        theme={theme}
+                                    >
+                                        <ToggleSwitch
+                                            checked={frontendClearCacheOnUpdate}
+                                            onChange={(e) => {
+                                                const newValue = e.target.checked;
+                                                setFrontendClearCacheOnUpdate(newValue);
+                                                localStorage.setItem('frontendClearCacheOnUpdate', JSON.stringify(newValue));
+                                                updateBackendSettings({ frontend_clear_cache_on_update: newValue });
+                                                window.dispatchEvent(new CustomEvent('frontendUpdateSettingsChanged', {
+                                                    detail: { autoUpdateEnabled: frontendAutoUpdateEnabled, clearCacheOnUpdate: newValue, checkIntervalSec: frontendUpdateCheckInterval, countdownSec: frontendUpdateCountdown }
                                                 }));
                                             }}
                                         />
@@ -2334,7 +2370,7 @@ export default function Me() {
                                                     setFrontendUpdateCheckInterval(newValue);
                                                     localStorage.setItem('frontendUpdateCheckIntervalSec', newValue.toString());
                                                     window.dispatchEvent(new CustomEvent('frontendUpdateSettingsChanged', {
-                                                        detail: { autoUpdateEnabled: frontendAutoUpdateEnabled, checkIntervalSec: newValue, countdownSec: frontendUpdateCountdown }
+                                                        detail: { autoUpdateEnabled: frontendAutoUpdateEnabled, clearCacheOnUpdate: frontendClearCacheOnUpdate, checkIntervalSec: newValue, countdownSec: frontendUpdateCountdown }
                                                     }));
                                                     if (frontendUpdateSaveTimerRef.current) clearTimeout(frontendUpdateSaveTimerRef.current);
                                                     frontendUpdateSaveTimerRef.current = setTimeout(() => {
@@ -2373,7 +2409,7 @@ export default function Me() {
                                                     setFrontendUpdateCountdown(newValue);
                                                     localStorage.setItem('frontendUpdateCountdownSec', newValue.toString());
                                                     window.dispatchEvent(new CustomEvent('frontendUpdateSettingsChanged', {
-                                                        detail: { autoUpdateEnabled: frontendAutoUpdateEnabled, checkIntervalSec: frontendUpdateCheckInterval, countdownSec: newValue }
+                                                        detail: { autoUpdateEnabled: frontendAutoUpdateEnabled, clearCacheOnUpdate: frontendClearCacheOnUpdate, checkIntervalSec: frontendUpdateCheckInterval, countdownSec: newValue }
                                                     }));
                                                     if (frontendUpdateSaveTimerRef.current) clearTimeout(frontendUpdateSaveTimerRef.current);
                                                     frontendUpdateSaveTimerRef.current = setTimeout(() => {

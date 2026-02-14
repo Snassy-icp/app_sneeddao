@@ -14,6 +14,7 @@ type UserSettingsUpdate =
    collectibles_threshold: opt float64;
    expand_quick_links_on_desktop: opt bool;
    frontend_auto_update_enabled: opt bool;
+   frontend_clear_cache_on_update: opt bool;
    frontend_update_check_interval_sec: opt nat;
    frontend_update_countdown_sec: opt nat;
    neuron_color_coding: opt bool;
@@ -41,6 +42,7 @@ type UserSettings =
    collectibles_threshold: float64;
    expand_quick_links_on_desktop: bool;
    frontend_auto_update_enabled: bool;
+   frontend_clear_cache_on_update: bool;
    frontend_update_check_interval_sec: nat;
    frontend_update_countdown_sec: nat;
    neuron_color_coding: bool;

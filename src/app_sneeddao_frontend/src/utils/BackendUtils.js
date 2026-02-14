@@ -45,6 +45,7 @@ export const setMySettings = async (identity, updates) => {
             canister_manager_cycle_threshold_red: toOptional(updates.canister_manager_cycle_threshold_red),
             canister_manager_cycle_threshold_orange: toOptional(updates.canister_manager_cycle_threshold_orange),
             frontend_auto_update_enabled: toOptional(updates.frontend_auto_update_enabled),
+            frontend_clear_cache_on_update: toOptional(updates.frontend_clear_cache_on_update),
             frontend_update_check_interval_sec: toOptional(updates.frontend_update_check_interval_sec),
             frontend_update_countdown_sec: toOptional(updates.frontend_update_countdown_sec),
             swap_slippage_tolerance: toOptional(updates.swap_slippage_tolerance),

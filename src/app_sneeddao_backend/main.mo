@@ -127,6 +127,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   stable var stable_user_setting_canister_manager_cycle_threshold_red : [(Principal, Nat)] = [];
   stable var stable_user_setting_canister_manager_cycle_threshold_orange : [(Principal, Nat)] = [];
   stable var stable_user_setting_frontend_auto_update_enabled : [(Principal, Bool)] = [];
+  stable var stable_user_setting_frontend_clear_cache_on_update : [(Principal, Bool)] = [];
   stable var stable_user_setting_frontend_update_check_interval_sec : [(Principal, Nat)] = [];
   stable var stable_user_setting_frontend_update_countdown_sec : [(Principal, Nat)] = [];
   stable var stable_user_setting_swap_slippage_tolerance : [(Principal, Float)] = [];
@@ -249,6 +250,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   transient let default_cycle_threshold_red : Nat = 1_000_000_000_000;
   transient let default_cycle_threshold_orange : Nat = 5_000_000_000_000;
   transient let default_frontend_auto_update_enabled : Bool = false;
+  transient let default_frontend_clear_cache_on_update : Bool = false;
   transient let default_frontend_update_check_interval_sec : Nat = 600;
   transient let default_frontend_update_countdown_sec : Nat = 300;
   transient let default_swap_slippage_tolerance : Float = 0.01;
@@ -275,6 +277,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   transient var user_setting_canister_manager_cycle_threshold_red : HashMap.HashMap<Principal, Nat> = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
   transient var user_setting_canister_manager_cycle_threshold_orange : HashMap.HashMap<Principal, Nat> = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
   transient var user_setting_frontend_auto_update_enabled : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
+  transient var user_setting_frontend_clear_cache_on_update : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
   transient var user_setting_frontend_update_check_interval_sec : HashMap.HashMap<Principal, Nat> = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
   transient var user_setting_frontend_update_countdown_sec : HashMap.HashMap<Principal, Nat> = HashMap.HashMap<Principal, Nat>(100, Principal.equal, Principal.hash);
   transient var user_setting_swap_slippage_tolerance : HashMap.HashMap<Principal, Float> = HashMap.HashMap<Principal, Float>(100, Principal.equal, Principal.hash);
@@ -452,6 +455,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         case (?value) value;
         case null default_frontend_auto_update_enabled;
       };
+      frontend_clear_cache_on_update = switch (user_setting_frontend_clear_cache_on_update.get(user)) {
+        case (?value) value;
+        case null default_frontend_clear_cache_on_update;
+      };
       frontend_update_check_interval_sec = switch (user_setting_frontend_update_check_interval_sec.get(user)) {
         case (?value) value;
         case null default_frontend_update_check_interval_sec;
@@ -552,6 +559,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       case (?value) { user_setting_frontend_auto_update_enabled.put(user, value) };
       case null {};
     };
+    switch (update.frontend_clear_cache_on_update) {
+      case (?value) { user_setting_frontend_clear_cache_on_update.put(user, value) };
+      case null {};
+    };
     switch (update.frontend_update_check_interval_sec) {
       case (?value) { user_setting_frontend_update_check_interval_sec.put(user, value) };
       case null {};
@@ -618,6 +629,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         canister_manager_cycle_threshold_red = default_cycle_threshold_red;
         canister_manager_cycle_threshold_orange = default_cycle_threshold_orange;
         frontend_auto_update_enabled = default_frontend_auto_update_enabled;
+        frontend_clear_cache_on_update = default_frontend_clear_cache_on_update;
         frontend_update_check_interval_sec = default_frontend_update_check_interval_sec;
         frontend_update_countdown_sec = default_frontend_update_countdown_sec;
         swap_slippage_tolerance = default_swap_slippage_tolerance;
@@ -3339,6 +3351,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     stable_user_setting_canister_manager_cycle_threshold_red := Iter.toArray(user_setting_canister_manager_cycle_threshold_red.entries());
     stable_user_setting_canister_manager_cycle_threshold_orange := Iter.toArray(user_setting_canister_manager_cycle_threshold_orange.entries());
     stable_user_setting_frontend_auto_update_enabled := Iter.toArray(user_setting_frontend_auto_update_enabled.entries());
+    stable_user_setting_frontend_clear_cache_on_update := Iter.toArray(user_setting_frontend_clear_cache_on_update.entries());
     stable_user_setting_frontend_update_check_interval_sec := Iter.toArray(user_setting_frontend_update_check_interval_sec.entries());
     stable_user_setting_frontend_update_countdown_sec := Iter.toArray(user_setting_frontend_update_countdown_sec.entries());
     stable_user_setting_swap_slippage_tolerance := Iter.toArray(user_setting_swap_slippage_tolerance.entries());
@@ -3532,6 +3545,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         user_setting_frontend_auto_update_enabled.put(user, value);
       };
       stable_user_setting_frontend_auto_update_enabled := [];
+      for ((user, value) in stable_user_setting_frontend_clear_cache_on_update.vals()) {
+        user_setting_frontend_clear_cache_on_update.put(user, value);
+      };
+      stable_user_setting_frontend_clear_cache_on_update := [];
       for ((user, value) in stable_user_setting_frontend_update_check_interval_sec.vals()) {
         user_setting_frontend_update_check_interval_sec.put(user, value);
       };

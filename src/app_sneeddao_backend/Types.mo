@@ -49,6 +49,7 @@ module {
         canister_manager_cycle_threshold_red: Nat;
         canister_manager_cycle_threshold_orange: Nat;
         frontend_auto_update_enabled: Bool;
+        frontend_clear_cache_on_update: Bool;
         frontend_update_check_interval_sec: Nat;
         frontend_update_countdown_sec: Nat;
         swap_slippage_tolerance: Float;
@@ -77,6 +78,7 @@ module {
         canister_manager_cycle_threshold_red: ?Nat;
         canister_manager_cycle_threshold_orange: ?Nat;
         frontend_auto_update_enabled: ?Bool;
+        frontend_clear_cache_on_update: ?Bool;
         frontend_update_check_interval_sec: ?Nat;
         frontend_update_countdown_sec: ?Nat;
         swap_slippage_tolerance: ?Float;

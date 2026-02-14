@@ -12,18 +12,21 @@ const DEFAULT_COUNTDOWN_SEC = 300;
 function readSettingsFromStorage() {
     try {
         const autoUpdate = localStorage.getItem('frontendAutoUpdateEnabled');
+        const clearCache = localStorage.getItem('frontendClearCacheOnUpdate');
         const checkInterval = localStorage.getItem('frontendUpdateCheckIntervalSec');
         const countdown = localStorage.getItem('frontendUpdateCountdownSec');
         const checkNum = checkInterval != null ? parseInt(checkInterval, 10) : NaN;
         const countNum = countdown != null ? parseInt(countdown, 10) : NaN;
         return {
             autoUpdateEnabled: autoUpdate !== null ? JSON.parse(autoUpdate) : false,
+            clearCacheOnUpdate: clearCache !== null ? JSON.parse(clearCache) : false,
             checkIntervalSec: Number.isNaN(checkNum) ? DEFAULT_CHECK_INTERVAL_SEC : Math.max(30, Math.min(3600, checkNum)),
             countdownSec: Number.isNaN(countNum) ? DEFAULT_COUNTDOWN_SEC : Math.max(10, Math.min(300, countNum)),
         };
     } catch {
         return {
             autoUpdateEnabled: true,
+            clearCacheOnUpdate: false,
             checkIntervalSec: DEFAULT_CHECK_INTERVAL_SEC,
             countdownSec: DEFAULT_COUNTDOWN_SEC,
         };
@@ -44,15 +47,17 @@ export function FrontendUpdateProvider({ children }) {
         if (isRefreshing) return;
         setIsRefreshing(true);
 
-        try {
-            await clearAllCaches();
-            await new Promise(r => setTimeout(r, 300));
-        } catch (err) {
-            console.error('[FrontendUpdate] Failed to clear cache before refresh:', err);
-        } finally {
-            window.location.reload();
+        if (settings.clearCacheOnUpdate) {
+            try {
+                await clearAllCaches();
+                await new Promise(r => setTimeout(r, 300));
+            } catch (err) {
+                console.error('[FrontendUpdate] Failed to clear cache before refresh:', err);
+            }
         }
-    }, [isRefreshing]);
+
+        window.location.reload();
+    }, [isRefreshing, settings.clearCacheOnUpdate]);
 
     const triggerRefresh = useCallback(() => {
         if (countdownIntervalRef.current) {
@@ -138,6 +143,7 @@ export function FrontendUpdateProvider({ children }) {
                     const countdown = backendSettings.frontend_update_countdown_sec;
                     applySettings({
                         autoUpdateEnabled: backendSettings.frontend_auto_update_enabled ?? false,
+                        clearCacheOnUpdate: backendSettings.frontend_clear_cache_on_update ?? false,
                         checkIntervalSec: checkInterval !== undefined && checkInterval !== null
                             ? (typeof checkInterval === 'bigint' ? Number(checkInterval) : Number(checkInterval))
                             : DEFAULT_CHECK_INTERVAL_SEC,
@@ -156,6 +162,7 @@ export function FrontendUpdateProvider({ children }) {
                 const d = e.detail;
                 applySettings({
                     autoUpdateEnabled: d.autoUpdateEnabled,
+                    clearCacheOnUpdate: d.clearCacheOnUpdate,
                     checkIntervalSec: d.checkIntervalSec != null ? Number(d.checkIntervalSec) : undefined,
                     countdownSec: d.countdownSec != null ? Number(d.countdownSec) : undefined,
                 });
