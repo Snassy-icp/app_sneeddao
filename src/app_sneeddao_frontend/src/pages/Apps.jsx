@@ -214,6 +214,7 @@ export default function AppsPage() {
     const walletLayoutCtx = useWalletLayout();
     
     const reorderSaveTimerRef = useRef(null);
+    const addCanisterTabRef = useRef('private'); // Preserve PrincipalInput tab across GroupComponent remounts
     
     // Premium status for folder limits
     const { isPremium, loading: loadingPremium } = usePremiumStatus(identity);
@@ -2120,6 +2121,8 @@ export default function AppsPage() {
                                     inputStyle={{ padding: '6px 10px', fontSize: '12px', fontFamily: 'monospace' }}
                                     disabled={addingCanister}
                                     defaultPrincipalType="canisters"
+                                    defaultTab={addCanisterTabRef.current}
+                                    onTabChange={(tab) => { addCanisterTabRef.current = tab; }}
                                 />
                                 <button
                                     onMouseDown={(e) => e.preventDefault()}

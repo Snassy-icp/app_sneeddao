@@ -87,6 +87,7 @@ const PrincipalInput = ({
     onSelect = null, // Called when user selects from dropdown (principalStr) - use for navigate-on-select
     onFocus: onFocusProp,
     onBlur: onBlurProp,
+    onTabChange = null, // Called when user switches Private/Public/All tab - (tabKey) => void
     // Subaccount support props
     showSubaccountOption = false, // If true, show a button to open subaccount dialog
     onAccountChange = null // Callback with { principal: string, subaccount: Uint8Array|null, encoded: string }
@@ -721,7 +722,7 @@ const PrincipalInput = ({
                                     key={tab.key}
                                     type="button"
                                     onMouseDown={(e) => e.preventDefault()}
-                                    onClick={() => setActiveTab(tab.key)}
+                                    onClick={() => { setActiveTab(tab.key); onTabChange?.(tab.key); }}
                                     style={{
                                         flex: 1,
                                         padding: '5px 6px',
@@ -808,7 +809,7 @@ const PrincipalInput = ({
                     searchResults.map((item, index) => (
                         <div
                             key={item.principalStr}
-                            onMouseDown={(e) => { e.preventDefault(); handleSelect(item); }}
+                            onClick={() => handleSelect(item)}
                             style={{
                                 padding: '8px 12px',
                                 cursor: 'pointer',
