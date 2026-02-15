@@ -21,13 +21,16 @@ export default function SneedAppAdmin() {
 
     // Apps state
     const [apps, setApps] = useState([]);
-    const [editingApp, setEditingApp] = useState(null);
+    const [editingApp, setEditingApp] = useState(null); // appId string or null
+    const [editingAppData, setEditingAppData] = useState({});
     const [newApp, setNewApp] = useState({ appId: '', name: '', description: '', iconUrl: '', mintPriceE8s: '1', premiumMintPriceE8s: '0.5', viewUrl: '', manageUrl: '', mintUrl: '' });
 
     // Versions state
     const [selectedAppId, setSelectedAppId] = useState('');
     const [versions, setVersions] = useState([]);
     const [newVersion, setNewVersion] = useState({ major: '', minor: '', patch: '', wasmHash: '', wasmUrl: '', sourceUrl: '', releaseNotes: '', releaseDate: '' });
+    const [editingVersion, setEditingVersion] = useState(null); // vKey string or null
+    const [editVersionData, setEditVersionData] = useState({});
     const [wasmFile, setWasmFile] = useState(null);
     const [uploadingWasm, setUploadingWasm] = useState('');
 
@@ -187,6 +190,39 @@ export default function SneedAppAdmin() {
         } catch (e) { showError(e.message); }
     };
 
+    const startEditVersion = (v) => {
+        const vKey = `${Number(v.major)}.${Number(v.minor)}.${Number(v.patch)}`;
+        setEditingVersion(vKey);
+        setEditVersionData({
+            wasmHash: v.wasmHash || '',
+            wasmUrl: v.wasmUrl?.length > 0 ? v.wasmUrl[0] : '',
+            sourceUrl: v.sourceUrl?.length > 0 ? v.sourceUrl[0] : '',
+            releaseNotes: v.releaseNotes || '',
+            releaseDate: v.releaseDate ? new Date(Number(v.releaseDate) / 1_000_000).toISOString().split('T')[0] : ''
+        });
+    };
+
+    const handleUpdateVersion = async (v) => {
+        setLoading(true);
+        try {
+            const factory = getFactory();
+            await factory.updateAppVersion(selectedAppId, v.major, v.minor, v.patch, {
+                major: v.major,
+                minor: v.minor,
+                patch: v.patch,
+                wasmHash: editVersionData.wasmHash,
+                wasmUrl: editVersionData.wasmUrl ? [editVersionData.wasmUrl] : [],
+                sourceUrl: editVersionData.sourceUrl ? [editVersionData.sourceUrl] : [],
+                releaseNotes: editVersionData.releaseNotes,
+                releaseDate: BigInt(editVersionData.releaseDate ? new Date(editVersionData.releaseDate).getTime() * 1_000_000 : Date.now() * 1_000_000)
+            });
+            showSuccess('Version updated');
+            setEditingVersion(null);
+            await loadVersions();
+        } catch (e) { showError('Failed to update version: ' + e.message); }
+        setLoading(false);
+    };
+
     const handleUploadWasm = async (v) => {
         if (!wasmFile) return;
         const vKey = `${Number(v.major)}.${Number(v.minor)}.${Number(v.patch)}`;
@@ -272,28 +308,121 @@ export default function SneedAppAdmin() {
                     <div>
                         {/* Existing Apps */}
                         <h3 style={{ color: theme.colors.primaryText, marginBottom: 12 }}>Registered Apps ({apps.length})</h3>
-                        {apps.map(app => (
+                        {apps.map(app => {
+                            const isEditing = editingApp === app.appId;
+                            // Local edit state is stored in a closure via the editingAppData state
+                            return (
                             <div key={app.appId} style={cardStyle}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                                    <div>
-                                        <div style={{ color: theme.colors.primaryText, fontWeight: 600 }}>{app.name}</div>
-                                        <code style={{ color: theme.colors.secondaryText, fontSize: 12 }}>{app.appId}</code>
-                                    </div>
-                                    <div style={{ display: 'flex', gap: 6 }}>
-                                        <button onClick={() => handleToggleApp(app.appId, !app.enabled)} style={btnSm(app.enabled ? '#10b981' : '#ef4444')}>
-                                            {app.enabled ? 'Enabled' : 'Disabled'}
-                                        </button>
-                                        <button onClick={() => handleRemoveApp(app.appId)} style={btnSm('#ef4444')}>
-                                            <FaTrash />
-                                        </button>
-                                    </div>
-                                </div>
-                                <div style={{ color: theme.colors.secondaryText, fontSize: 13, marginBottom: 4 }}>{app.description}</div>
-                                <div style={{ fontSize: 12, color: theme.colors.secondaryText }}>
-                                    Price: {(Number(app.mintPriceE8s) / E8S).toFixed(2)} ICP | Premium: {(Number(app.premiumMintPriceE8s) / E8S).toFixed(2)} ICP
-                                </div>
+                                {!isEditing ? (
+                                    <>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                                            <div>
+                                                <div style={{ color: theme.colors.primaryText, fontWeight: 600 }}>{app.name}</div>
+                                                <code style={{ color: theme.colors.secondaryText, fontSize: 12 }}>{app.appId}</code>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: 6 }}>
+                                                <button onClick={() => {
+                                                    setEditingApp(app.appId);
+                                                    setEditingAppData({
+                                                        name: app.name,
+                                                        description: app.description,
+                                                        iconUrl: app.iconUrl?.length > 0 ? app.iconUrl[0] : '',
+                                                        mintPriceE8s: (Number(app.mintPriceE8s) / E8S).toString(),
+                                                        premiumMintPriceE8s: (Number(app.premiumMintPriceE8s) / E8S).toString(),
+                                                        viewUrl: app.viewUrl?.length > 0 ? app.viewUrl[0] : '',
+                                                        manageUrl: app.manageUrl?.length > 0 ? app.manageUrl[0] : '',
+                                                        mintUrl: app.mintUrl?.length > 0 ? app.mintUrl[0] : ''
+                                                    });
+                                                }} style={btnSm(appPrimary)}>
+                                                    <FaEdit /> Edit
+                                                </button>
+                                                <button onClick={() => handleToggleApp(app.appId, !app.enabled)} style={btnSm(app.enabled ? '#10b981' : '#ef4444')}>
+                                                    {app.enabled ? 'Enabled' : 'Disabled'}
+                                                </button>
+                                                <button onClick={() => handleRemoveApp(app.appId)} style={btnSm('#ef4444')}>
+                                                    <FaTrash />
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div style={{ color: theme.colors.secondaryText, fontSize: 13, marginBottom: 4 }}>{app.description}</div>
+                                        <div style={{ fontSize: 12, color: theme.colors.secondaryText }}>
+                                            Price: {(Number(app.mintPriceE8s) / E8S).toFixed(2)} ICP | Premium: {(Number(app.premiumMintPriceE8s) / E8S).toFixed(2)} ICP
+                                        </div>
+                                        {(app.viewUrl?.length > 0 || app.manageUrl?.length > 0 || app.mintUrl?.length > 0) && (
+                                            <div style={{ fontSize: 11, color: theme.colors.secondaryText, marginTop: 4 }}>
+                                                {app.viewUrl?.length > 0 && <span>View: {app.viewUrl[0]} </span>}
+                                                {app.manageUrl?.length > 0 && <span>| Manage: {app.manageUrl[0]} </span>}
+                                                {app.mintUrl?.length > 0 && <span>| Mint: {app.mintUrl[0]}</span>}
+                                            </div>
+                                        )}
+                                    </>
+                                ) : (
+                                    <>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                                            <div>
+                                                <span style={{ color: appPrimary, fontWeight: 600 }}>Editing: </span>
+                                                <code style={{ color: theme.colors.secondaryText, fontSize: 12 }}>{app.appId}</code>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: 6 }}>
+                                                <button onClick={() => {
+                                                    handleUpdateApp({
+                                                        ...app,
+                                                        name: editingAppData.name,
+                                                        description: editingAppData.description,
+                                                        iconUrl: editingAppData.iconUrl ? [editingAppData.iconUrl] : [],
+                                                        mintPriceE8s: BigInt(Math.round(parseFloat(editingAppData.mintPriceE8s || '0') * E8S)),
+                                                        premiumMintPriceE8s: BigInt(Math.round(parseFloat(editingAppData.premiumMintPriceE8s || '0') * E8S)),
+                                                        viewUrl: editingAppData.viewUrl ? [editingAppData.viewUrl] : [],
+                                                        manageUrl: editingAppData.manageUrl ? [editingAppData.manageUrl] : [],
+                                                        mintUrl: editingAppData.mintUrl ? [editingAppData.mintUrl] : [],
+                                                    });
+                                                }} disabled={loading} style={btnSm('#10b981')}>
+                                                    {loading ? <FaSpinner className="fa-spin" /> : <FaSave />} Save
+                                                </button>
+                                                <button onClick={() => setEditingApp(null)} style={btnSm('#ef4444')}>
+                                                    <FaTimes /> Cancel
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                                            <div>
+                                                <label style={{ color: theme.colors.secondaryText, fontSize: 11, display: 'block', marginBottom: 2 }}>Name</label>
+                                                <input value={editingAppData.name} onChange={e => setEditingAppData({ ...editingAppData, name: e.target.value })} style={inputStyle} />
+                                            </div>
+                                            <div>
+                                                <label style={{ color: theme.colors.secondaryText, fontSize: 11, display: 'block', marginBottom: 2 }}>Icon URL</label>
+                                                <input value={editingAppData.iconUrl} onChange={e => setEditingAppData({ ...editingAppData, iconUrl: e.target.value })} style={inputStyle} />
+                                            </div>
+                                            <div style={{ gridColumn: '1 / -1' }}>
+                                                <label style={{ color: theme.colors.secondaryText, fontSize: 11, display: 'block', marginBottom: 2 }}>Description</label>
+                                                <input value={editingAppData.description} onChange={e => setEditingAppData({ ...editingAppData, description: e.target.value })} style={inputStyle} />
+                                            </div>
+                                            <div>
+                                                <label style={{ color: theme.colors.secondaryText, fontSize: 11, display: 'block', marginBottom: 2 }}>Mint Price (ICP)</label>
+                                                <input value={editingAppData.mintPriceE8s} onChange={e => setEditingAppData({ ...editingAppData, mintPriceE8s: e.target.value })} type="number" step="0.01" style={inputStyle} />
+                                            </div>
+                                            <div>
+                                                <label style={{ color: theme.colors.secondaryText, fontSize: 11, display: 'block', marginBottom: 2 }}>Premium Price (ICP)</label>
+                                                <input value={editingAppData.premiumMintPriceE8s} onChange={e => setEditingAppData({ ...editingAppData, premiumMintPriceE8s: e.target.value })} type="number" step="0.01" style={inputStyle} />
+                                            </div>
+                                            <div>
+                                                <label style={{ color: theme.colors.secondaryText, fontSize: 11, display: 'block', marginBottom: 2 }}>View URL</label>
+                                                <input value={editingAppData.viewUrl} onChange={e => setEditingAppData({ ...editingAppData, viewUrl: e.target.value })} placeholder="/app/CANISTER_ID" style={inputStyle} />
+                                            </div>
+                                            <div>
+                                                <label style={{ color: theme.colors.secondaryText, fontSize: 11, display: 'block', marginBottom: 2 }}>Manage URL</label>
+                                                <input value={editingAppData.manageUrl} onChange={e => setEditingAppData({ ...editingAppData, manageUrl: e.target.value })} placeholder="/app/CANISTER_ID/admin" style={inputStyle} />
+                                            </div>
+                                            <div style={{ gridColumn: '1 / -1' }}>
+                                                <label style={{ color: theme.colors.secondaryText, fontSize: 11, display: 'block', marginBottom: 2 }}>Custom Mint URL</label>
+                                                <input value={editingAppData.mintUrl} onChange={e => setEditingAppData({ ...editingAppData, mintUrl: e.target.value })} placeholder="Leave empty for generic" style={inputStyle} />
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
                             </div>
-                        ))}
+                            );
+                        })}
 
                         {/* Add New App */}
                         <h3 style={{ color: theme.colors.primaryText, marginTop: 24, marginBottom: 12 }}>Add New App</h3>
@@ -366,6 +495,7 @@ export default function SneedAppAdmin() {
                         <h3 style={{ color: theme.colors.primaryText, marginBottom: 12 }}>Versions ({versions.length})</h3>
                         {versions.map(v => {
                             const vKey = `${Number(v.major)}.${Number(v.minor)}.${Number(v.patch)}`;
+                            const isEditingV = editingVersion === vKey;
                             return (
                                 <div key={vKey} style={cardStyle}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -381,10 +511,60 @@ export default function SneedAppAdmin() {
                                                 </span>
                                             )}
                                         </div>
-                                        <button onClick={() => handleRemoveVersion(v)} style={btnSm('#ef4444')}><FaTrash /></button>
+                                        <div style={{ display: 'flex', gap: 6 }}>
+                                            {!isEditingV ? (
+                                                <>
+                                                    <button onClick={() => startEditVersion(v)} style={btnSm(appPrimary)}>
+                                                        <FaEdit /> Edit
+                                                    </button>
+                                                    <button onClick={() => handleRemoveVersion(v)} style={btnSm('#ef4444')}><FaTrash /></button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <button onClick={() => handleUpdateVersion(v)} disabled={loading} style={btnSm('#10b981')}>
+                                                        {loading ? <FaSpinner className="fa-spin" /> : <FaSave />} Save
+                                                    </button>
+                                                    <button onClick={() => setEditingVersion(null)} style={btnSm('#ef4444')}>
+                                                        <FaTimes /> Cancel
+                                                    </button>
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
-                                    {v.releaseNotes && <div style={{ color: theme.colors.secondaryText, fontSize: 12, marginBottom: 8 }}>{v.releaseNotes}</div>}
-                                    {v.wasmHash && <div style={{ color: theme.colors.secondaryText, fontSize: 11 }}>Hash: {v.wasmHash.substring(0, 16)}...</div>}
+
+                                    {!isEditingV ? (
+                                        <>
+                                            {v.releaseNotes && <div style={{ color: theme.colors.secondaryText, fontSize: 12, marginBottom: 8 }}>{v.releaseNotes}</div>}
+                                            {v.wasmHash && <div style={{ color: theme.colors.secondaryText, fontSize: 11, marginBottom: 4 }}>Hash: {v.wasmHash.substring(0, 16)}...</div>}
+                                            {v.wasmUrl?.length > 0 && <div style={{ color: theme.colors.secondaryText, fontSize: 11, marginBottom: 2 }}>WASM URL: {v.wasmUrl[0]}</div>}
+                                            {v.sourceUrl?.length > 0 && <div style={{ color: theme.colors.secondaryText, fontSize: 11, marginBottom: 2 }}>Source: {v.sourceUrl[0]}</div>}
+                                            {v.releaseDate && <div style={{ color: theme.colors.secondaryText, fontSize: 11 }}>Released: {new Date(Number(v.releaseDate) / 1_000_000).toLocaleDateString()}</div>}
+                                        </>
+                                    ) : (
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 8 }}>
+                                            <div>
+                                                <label style={{ color: theme.colors.secondaryText, fontSize: 11, display: 'block', marginBottom: 2 }}>WASM Hash</label>
+                                                <input value={editVersionData.wasmHash} onChange={e => setEditVersionData({ ...editVersionData, wasmHash: e.target.value })} placeholder="SHA256 hex" style={inputStyle} />
+                                            </div>
+                                            <div>
+                                                <label style={{ color: theme.colors.secondaryText, fontSize: 11, display: 'block', marginBottom: 2 }}>Release Date</label>
+                                                <input value={editVersionData.releaseDate} onChange={e => setEditVersionData({ ...editVersionData, releaseDate: e.target.value })} type="date" style={inputStyle} />
+                                            </div>
+                                            <div>
+                                                <label style={{ color: theme.colors.secondaryText, fontSize: 11, display: 'block', marginBottom: 2 }}>WASM URL</label>
+                                                <input value={editVersionData.wasmUrl} onChange={e => setEditVersionData({ ...editVersionData, wasmUrl: e.target.value })} placeholder="https://..." style={inputStyle} />
+                                            </div>
+                                            <div>
+                                                <label style={{ color: theme.colors.secondaryText, fontSize: 11, display: 'block', marginBottom: 2 }}>Source URL</label>
+                                                <input value={editVersionData.sourceUrl} onChange={e => setEditVersionData({ ...editVersionData, sourceUrl: e.target.value })} placeholder="https://github.com/..." style={inputStyle} />
+                                            </div>
+                                            <div style={{ gridColumn: '1 / -1' }}>
+                                                <label style={{ color: theme.colors.secondaryText, fontSize: 11, display: 'block', marginBottom: 2 }}>Release Notes</label>
+                                                <textarea value={editVersionData.releaseNotes} onChange={e => setEditVersionData({ ...editVersionData, releaseNotes: e.target.value })}
+                                                    rows={3} placeholder="What's new..." style={{ ...inputStyle, resize: 'vertical' }} />
+                                            </div>
+                                        </div>
+                                    )}
 
                                     {/* WASM Upload */}
                                     <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
