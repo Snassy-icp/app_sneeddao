@@ -202,14 +202,24 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
     const [success, setSuccess] = useState('');
     const [saving, setSaving] = useState(false);
     const [adding, setAdding] = useState(false);
+    const [showConditions, setShowConditions] = useState(false);
 
     // New action form state
     const [newActionType, setNewActionType] = useState(allowedTypes[0]);
     const [newInputToken, setNewInputToken] = useState('');
     const [newOutputToken, setNewOutputToken] = useState('');
-    const [newMinAmount, setNewMinAmount] = useState('0');
-    const [newMaxAmount, setNewMaxAmount] = useState('0');
+    const [newMinAmount, setNewMinAmount] = useState('');
+    const [newMaxAmount, setNewMaxAmount] = useState('');
     const [newEnabled, setNewEnabled] = useState(true);
+    // Condition fields
+    const [newMinBalance, setNewMinBalance] = useState('');
+    const [newMaxBalance, setNewMaxBalance] = useState('');
+    const [newMinPrice, setNewMinPrice] = useState('');
+    const [newMaxPrice, setNewMaxPrice] = useState('');
+    const [newMaxPriceImpactBps, setNewMaxPriceImpactBps] = useState('');
+    const [newMaxSlippageBps, setNewMaxSlippageBps] = useState('');
+    // Destination fields (for Send/Withdraw/Deposit)
+    const [newDestOwner, setNewDestOwner] = useState('');
 
     // Collect all unique token principals from actions for metadata resolution
     const actionTokenIds = React.useMemo(() => {
@@ -222,13 +232,19 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                 ids.add(out);
             }
         }
+        // Also include the currently selected input token for decimal info
+        if (newInputToken) ids.add(newInputToken);
         return [...ids];
-    }, [actions]);
+    }, [actions, newInputToken]);
     const tokenMeta = useTokenMetadata(actionTokenIds, identity);
 
     const getSymbol = (principal) => {
         const key = typeof principal === 'string' ? principal : principal?.toText?.() || String(principal);
         return tokenMeta[key]?.symbol || shortPrincipal(key);
+    };
+    const getDecimals = (principal) => {
+        const key = typeof principal === 'string' ? principal : principal?.toText?.() || String(principal);
+        return tokenMeta[key]?.decimals ?? 8;
     };
 
     const loadActions = useCallback(async () => {
@@ -246,32 +262,40 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
 
     useEffect(() => { loadActions(); }, [loadActions]);
 
+    const resetForm = () => {
+        setNewInputToken(''); setNewOutputToken(''); setNewMinAmount(''); setNewMaxAmount('');
+        setNewMinBalance(''); setNewMaxBalance(''); setNewMinPrice(''); setNewMaxPrice('');
+        setNewMaxPriceImpactBps(''); setNewMaxSlippageBps(''); setNewDestOwner('');
+        setShowConditions(false); setNewEnabled(true);
+    };
+
     const handleAdd = async () => {
         if (!newInputToken) { setError('Input token is required.'); return; }
         if (newActionType === ACTION_TYPE_TRADE && !newOutputToken) { setError('Output token is required for trades.'); return; }
         setSaving(true); setError(''); setSuccess('');
         try {
             const bot = await getReadyBotActor();
+            const inputDecimals = getDecimals(newInputToken);
             const config = {
                 actionType: BigInt(newActionType),
                 enabled: newEnabled,
                 inputToken: Principal.fromText(newInputToken),
                 outputToken: newActionType === ACTION_TYPE_TRADE && newOutputToken ? [Principal.fromText(newOutputToken)] : [],
-                minAmount: BigInt(newMinAmount || 0),
-                maxAmount: BigInt(newMaxAmount || 0),
+                minAmount: newMinAmount ? BigInt(parseTokenAmount(newMinAmount, inputDecimals)) : BigInt(0),
+                maxAmount: newMaxAmount ? BigInt(parseTokenAmount(newMaxAmount, inputDecimals)) : BigInt(0),
                 preferredDex: [],
                 sourceSubaccount: [],
                 targetSubaccount: [],
-                destinationOwner: [],
+                destinationOwner: newDestOwner.trim() ? [Principal.fromText(newDestOwner.trim())] : [],
                 destinationSubaccount: [],
-                minBalance: [],
-                maxBalance: [],
+                minBalance: newMinBalance ? [BigInt(parseTokenAmount(newMinBalance, inputDecimals))] : [],
+                maxBalance: newMaxBalance ? [BigInt(parseTokenAmount(newMaxBalance, inputDecimals))] : [],
                 balanceDenominationToken: [],
-                minPrice: [],
-                maxPrice: [],
+                minPrice: newMinPrice ? [BigInt(newMinPrice)] : [],
+                maxPrice: newMaxPrice ? [BigInt(newMaxPrice)] : [],
                 priceDenominationToken: [],
-                maxPriceImpactBps: [],
-                maxSlippageBps: [],
+                maxPriceImpactBps: newMaxPriceImpactBps ? [BigInt(newMaxPriceImpactBps)] : [],
+                maxSlippageBps: newMaxSlippageBps ? [BigInt(newMaxSlippageBps)] : [],
                 minFrequencySeconds: [],
                 maxFrequencySeconds: [],
                 tradeSizeDenominationToken: [],
@@ -279,7 +303,7 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
             await bot[addFn](instanceId, config);
             setSuccess('Action added.');
             setAdding(false);
-            setNewInputToken(''); setNewOutputToken(''); setNewMinAmount('0'); setNewMaxAmount('0');
+            resetForm();
             await loadActions();
         } catch (err) { setError('Failed to add action: ' + err.message); }
         finally { setSaving(false); }
@@ -331,6 +355,11 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
         finally { setSaving(false); }
     };
 
+    // Helper to format an opt value (Candid optional = array of 0 or 1)
+    const optVal = (arr) => arr?.length > 0 ? arr[0] : null;
+
+    const labelStyle = { fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' };
+
     return (
         <div style={cardStyle}>
             <h3 style={{ color: theme.colors.primaryText, margin: '0 0 12px 0', fontSize: '0.95rem', fontWeight: '600' }}>{title}</h3>
@@ -349,55 +378,66 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                         </div>
                     )}
 
-                    {actions.map((action) => (
-                        <div key={Number(action.id)} style={{
-                            padding: '12px', marginBottom: '8px',
-                            background: theme.colors.primaryBg, borderRadius: '8px',
-                            border: `1px solid ${action.enabled ? accentColor + '30' : theme.colors.border}`,
-                            opacity: action.enabled ? 1 : 0.6,
-                        }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                                <div>
-                                    <span style={{ fontSize: '0.8rem', fontWeight: '600', color: theme.colors.primaryText }}>
-                                        #{Number(action.id)} — {ACTION_TYPE_LABELS[Number(action.actionType)] || `Type ${Number(action.actionType)}`}
-                                    </span>
-                                    <span style={{ marginLeft: '8px', fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: action.enabled ? '#22c55e20' : '#6b728020', color: action.enabled ? '#22c55e' : '#6b7280' }}>
-                                        {action.enabled ? 'Enabled' : 'Disabled'}
-                                    </span>
+                    {actions.map((action) => {
+                        const inputSym = getSymbol(action.inputToken);
+                        const inputDec = getDecimals(action.inputToken);
+                        return (
+                            <div key={Number(action.id)} style={{
+                                padding: '12px', marginBottom: '8px',
+                                background: theme.colors.primaryBg, borderRadius: '8px',
+                                border: `1px solid ${action.enabled ? accentColor + '30' : theme.colors.border}`,
+                                opacity: action.enabled ? 1 : 0.6,
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                                    <div>
+                                        <span style={{ fontSize: '0.8rem', fontWeight: '600', color: theme.colors.primaryText }}>
+                                            #{Number(action.id)} — {ACTION_TYPE_LABELS[Number(action.actionType)] || `Type ${Number(action.actionType)}`}
+                                        </span>
+                                        <span style={{ marginLeft: '8px', fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: action.enabled ? '#22c55e20' : '#6b728020', color: action.enabled ? '#22c55e' : '#6b7280' }}>
+                                            {action.enabled ? 'Enabled' : 'Disabled'}
+                                        </span>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                        <button onClick={() => handleToggle(action)} disabled={saving}
+                                            style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px' }}
+                                        >{action.enabled ? 'Disable' : 'Enable'}</button>
+                                        <button onClick={() => handleRemove(Number(action.id))} disabled={saving}
+                                            style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px', color: '#ef4444', borderColor: '#ef444440' }}
+                                        ><FaTrash style={{ fontSize: '0.6rem' }} /></button>
+                                    </div>
                                 </div>
-                                <div style={{ display: 'flex', gap: '6px' }}>
-                                    <button onClick={() => handleToggle(action)} disabled={saving}
-                                        style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px' }}
-                                    >{action.enabled ? 'Disable' : 'Enable'}</button>
-                                    <button onClick={() => handleRemove(Number(action.id))} disabled={saving}
-                                        style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px', color: '#ef4444', borderColor: '#ef444440' }}
-                                    ><FaTrash style={{ fontSize: '0.6rem' }} /></button>
+                                <div style={{ marginTop: '8px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '6px', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
+                                    <div><strong>Input:</strong> {inputSym}</div>
+                                    {action.outputToken?.length > 0 && <div><strong>Output:</strong> {getSymbol(action.outputToken[0])}</div>}
+                                    <div><strong>Min:</strong> {formatTokenAmount(action.minAmount, inputDec)} {inputSym}</div>
+                                    <div><strong>Max:</strong> {formatTokenAmount(action.maxAmount, inputDec)} {inputSym}</div>
+                                    {optVal(action.destinationOwner) && <div><strong>Dest:</strong> {shortPrincipal(optVal(action.destinationOwner))}</div>}
+                                    {optVal(action.minBalance) != null && <div><strong>Min Bal:</strong> {formatTokenAmount(optVal(action.minBalance), inputDec)} {inputSym}</div>}
+                                    {optVal(action.maxBalance) != null && <div><strong>Max Bal:</strong> {formatTokenAmount(optVal(action.maxBalance), inputDec)} {inputSym}</div>}
+                                    {optVal(action.minPrice) != null && <div><strong>Min Price:</strong> {Number(optVal(action.minPrice)).toLocaleString()}</div>}
+                                    {optVal(action.maxPrice) != null && <div><strong>Max Price:</strong> {Number(optVal(action.maxPrice)).toLocaleString()}</div>}
+                                    {optVal(action.maxPriceImpactBps) != null && <div><strong>Max Impact:</strong> {Number(optVal(action.maxPriceImpactBps))} bps</div>}
+                                    {optVal(action.maxSlippageBps) != null && <div><strong>Max Slippage:</strong> {Number(optVal(action.maxSlippageBps))} bps</div>}
+                                    {action.lastExecutedAt?.length > 0 && (
+                                        <div><strong>Last run:</strong> {new Date(Number(action.lastExecutedAt[0]) / 1_000_000).toLocaleString()}</div>
+                                    )}
                                 </div>
                             </div>
-                            <div style={{ marginTop: '8px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '6px', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
-                                <div><strong>Input:</strong> {getSymbol(action.inputToken)}</div>
-                                {action.outputToken?.length > 0 && <div><strong>Output:</strong> {getSymbol(action.outputToken[0])}</div>}
-                                <div><strong>Min:</strong> {Number(action.minAmount).toLocaleString()}</div>
-                                <div><strong>Max:</strong> {Number(action.maxAmount).toLocaleString()}</div>
-                                {action.lastExecutedAt?.length > 0 && (
-                                    <div><strong>Last run:</strong> {new Date(Number(action.lastExecutedAt[0]) / 1_000_000).toLocaleString()}</div>
-                                )}
-                            </div>
-                        </div>
-                    ))}
+                        );
+                    })}
 
                     {/* Add Action Form */}
                     {adding ? (
                         <div style={{ padding: '14px', background: `${accentColor}06`, borderRadius: '8px', border: `1px solid ${accentColor}20`, marginTop: '10px' }}>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
                                 <div>
-                                    <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Type</label>
+                                    <label style={labelStyle}>Type</label>
                                     <select value={newActionType} onChange={(e) => setNewActionType(Number(e.target.value))} style={{ ...inputStyle, width: '100%', appearance: 'auto' }}>
                                         {allowedTypes.map(t => <option key={t} value={t}>{ACTION_TYPE_LABELS[t]}</option>)}
                                     </select>
                                 </div>
                                 <div>
-                                    <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Input Token</label>
+                                    <label style={labelStyle}>Input Token</label>
                                     <TokenSelector
                                         value={newInputToken}
                                         onChange={setNewInputToken}
@@ -408,7 +448,7 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                                 </div>
                                 {newActionType === ACTION_TYPE_TRADE && (
                                     <div>
-                                        <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Output Token</label>
+                                        <label style={labelStyle}>Output Token</label>
                                         <TokenSelector
                                             value={newOutputToken}
                                             onChange={setNewOutputToken}
@@ -419,23 +459,69 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                                     </div>
                                 )}
                                 <div>
-                                    <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Min Amount (raw)</label>
-                                    <input value={newMinAmount} onChange={(e) => setNewMinAmount(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" />
+                                    <label style={labelStyle}>Min Amount{newInputToken && tokenMeta[newInputToken] ? ` (${tokenMeta[newInputToken].symbol})` : ''}</label>
+                                    <input value={newMinAmount} onChange={(e) => setNewMinAmount(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="0.0" />
                                 </div>
                                 <div>
-                                    <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Max Amount (raw)</label>
-                                    <input value={newMaxAmount} onChange={(e) => setNewMaxAmount(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" />
+                                    <label style={labelStyle}>Max Amount{newInputToken && tokenMeta[newInputToken] ? ` (${tokenMeta[newInputToken].symbol})` : ''}</label>
+                                    <input value={newMaxAmount} onChange={(e) => setNewMaxAmount(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="0.0" />
                                 </div>
+                                {/* Destination owner for Send/Withdraw/Deposit */}
+                                {(newActionType === ACTION_TYPE_SEND || newActionType === ACTION_TYPE_WITHDRAW || newActionType === ACTION_TYPE_DEPOSIT) && (
+                                    <div>
+                                        <label style={labelStyle}>Destination Owner (principal)</label>
+                                        <input value={newDestOwner} onChange={(e) => setNewDestOwner(e.target.value)} style={{ ...inputStyle, width: '100%' }} placeholder="Principal ID" />
+                                    </div>
+                                )}
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '20px' }}>
                                     <input type="checkbox" checked={newEnabled} onChange={(e) => setNewEnabled(e.target.checked)} id={`new-action-enabled-${instanceId}`} />
                                     <label htmlFor={`new-action-enabled-${instanceId}`} style={{ fontSize: '0.8rem', color: theme.colors.secondaryText }}>Enabled</label>
                                 </div>
                             </div>
+
+                            {/* Conditions toggle */}
+                            <div style={{ marginTop: '12px', borderTop: `1px solid ${theme.colors.border}`, paddingTop: '10px' }}>
+                                <button
+                                    onClick={() => setShowConditions(!showConditions)}
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '500', color: accentColor, padding: 0, display: 'flex', alignItems: 'center', gap: '4px' }}
+                                >
+                                    {showConditions ? '▾' : '▸'} Conditions (optional)
+                                </button>
+                                {showConditions && (
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px', marginTop: '10px' }}>
+                                        <div>
+                                            <label style={labelStyle}>Min Input Balance{newInputToken && tokenMeta[newInputToken] ? ` (${tokenMeta[newInputToken].symbol})` : ''}</label>
+                                            <input value={newMinBalance} onChange={(e) => setNewMinBalance(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="Only run if balance ≥" />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Max Input Balance{newInputToken && tokenMeta[newInputToken] ? ` (${tokenMeta[newInputToken].symbol})` : ''}</label>
+                                            <input value={newMaxBalance} onChange={(e) => setNewMaxBalance(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="Only run if balance ≤" />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Min Price (raw)</label>
+                                            <input value={newMinPrice} onChange={(e) => setNewMinPrice(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" placeholder="Skip if price below" />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Max Price (raw)</label>
+                                            <input value={newMaxPrice} onChange={(e) => setNewMaxPrice(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" placeholder="Skip if price above" />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Max Price Impact (bps)</label>
+                                            <input value={newMaxPriceImpactBps} onChange={(e) => setNewMaxPriceImpactBps(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" placeholder="e.g. 100 = 1%" />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Max Slippage (bps)</label>
+                                            <input value={newMaxSlippageBps} onChange={(e) => setNewMaxSlippageBps(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" placeholder="e.g. 50 = 0.5%" />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
                             <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
                                 <button onClick={handleAdd} disabled={saving} style={{ ...buttonStyle, background: `linear-gradient(135deg, ${accentColor}, ${accentColor}cc)`, color: '#fff', border: 'none', opacity: saving ? 0.6 : 1 }}>
                                     <FaPlus style={{ marginRight: '4px', fontSize: '0.7rem' }} /> Add Action
                                 </button>
-                                <button onClick={() => setAdding(false)} style={{ ...secondaryButtonStyle }}>Cancel</button>
+                                <button onClick={() => { setAdding(false); resetForm(); }} style={{ ...secondaryButtonStyle }}>Cancel</button>
                             </div>
                         </div>
                     ) : (
@@ -960,9 +1046,9 @@ function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, g
                     addFn="addTradeAction"
                     updateFn="updateTradeAction"
                     removeFn="removeTradeAction"
-                    allowedTypes={[ACTION_TYPE_TRADE]}
+                    allowedTypes={[ACTION_TYPE_TRADE, ACTION_TYPE_DEPOSIT, ACTION_TYPE_WITHDRAW, ACTION_TYPE_SEND]}
                     title="Trade Actions"
-                    description="Configure token swaps that execute when this chore fires. Each action can have conditions (balance thresholds, price ranges) and frequency limits."
+                    description="Configure token swaps, deposits, withdrawals, and sends that execute when this chore fires. Each action can have conditions (balance thresholds, price ranges) and frequency limits."
                 />
             );
 
