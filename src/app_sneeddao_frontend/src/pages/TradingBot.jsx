@@ -6,15 +6,17 @@
  * Uses the reusable BotManagementPanel for Info, Botkeys, Chores framework, and Log tabs.
  * The per-chore configuration panels are custom to the trading bot.
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import Header from '../components/Header';
 import BotManagementPanel from '../components/BotManagementPanel';
+import TokenSelector from '../components/TokenSelector';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 // Trading bot Candid declarations — aligned with staking bot API for shared BotManagementPanel.
 import { createActor as createBotActor } from 'external/sneed_trading_bot';
+import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes } from 'react-icons/fa';
 
 // Trading bot accent colors — green/teal for trading
@@ -92,9 +94,108 @@ const shortPrincipal = (p) => {
 };
 
 // ============================================
+// TOKEN METADATA CACHE — shared across panels
+// ============================================
+// Global in-memory cache: canisterId -> { symbol, name, decimals, fee }
+const _tokenMetaCache = new Map();
+
+/** Resolve a canister principal to token metadata. Uses cache, falls back to ICRC-1 metadata call. */
+async function resolveTokenMeta(canisterId, identity) {
+    const key = typeof canisterId === 'string' ? canisterId : canisterId?.toText?.() || String(canisterId);
+    if (_tokenMetaCache.has(key)) return _tokenMetaCache.get(key);
+    try {
+        const actor = createLedgerActor(key, { agentOptions: { identity } });
+        const metadata = await actor.icrc1_metadata();
+        const info = { symbol: 'TOKEN', name: 'Unknown', decimals: 8, fee: 0n };
+        for (const [k, v] of metadata) {
+            if (k === 'icrc1:symbol' && 'Text' in v) info.symbol = v.Text;
+            else if (k === 'icrc1:name' && 'Text' in v) info.name = v.Text;
+            else if (k === 'icrc1:decimals' && 'Nat' in v) info.decimals = Number(v.Nat);
+            else if (k === 'icrc1:fee' && 'Nat' in v) info.fee = v.Nat;
+        }
+        _tokenMetaCache.set(key, info);
+        return info;
+    } catch {
+        const fallback = { symbol: key.slice(0, 5) + '...', name: key, decimals: 8, fee: 0n };
+        _tokenMetaCache.set(key, fallback);
+        return fallback;
+    }
+}
+
+/** Store metadata from TokenSelector's onSelectToken callback into the cache. */
+function cacheTokenMeta(tokenData) {
+    if (!tokenData?.ledger_id) return;
+    _tokenMetaCache.set(tokenData.ledger_id, {
+        symbol: tokenData.symbol || 'TOKEN',
+        name: tokenData.name || 'Unknown',
+        decimals: tokenData.decimals ?? 8,
+        fee: tokenData.fee ?? 0n,
+    });
+}
+
+/**
+ * Hook that resolves an array of canister IDs to metadata, returning a map.
+ * Updates as each token resolves.
+ */
+function useTokenMetadata(canisterIds, identity) {
+    const [meta, setMeta] = useState(() => {
+        const m = {};
+        for (const id of canisterIds) {
+            const key = typeof id === 'string' ? id : id?.toText?.() || String(id);
+            if (_tokenMetaCache.has(key)) m[key] = _tokenMetaCache.get(key);
+        }
+        return m;
+    });
+    const prevIdsRef = useRef('');
+
+    useEffect(() => {
+        const ids = canisterIds.map(id => typeof id === 'string' ? id : id?.toText?.() || String(id));
+        const key = ids.sort().join(',');
+        if (key === prevIdsRef.current) return;
+        prevIdsRef.current = key;
+
+        let mounted = true;
+        const missing = ids.filter(id => !_tokenMetaCache.has(id));
+        if (missing.length === 0) {
+            // All cached
+            const m = {};
+            for (const id of ids) m[id] = _tokenMetaCache.get(id);
+            setMeta(m);
+            return;
+        }
+        // Resolve missing in parallel
+        (async () => {
+            await Promise.all(missing.map(id => resolveTokenMeta(id, identity)));
+            if (!mounted) return;
+            const m = {};
+            for (const id of ids) m[id] = _tokenMetaCache.get(id) || { symbol: shortPrincipal(id), name: id, decimals: 8, fee: 0n };
+            setMeta(m);
+        })();
+        return () => { mounted = false; };
+    }, [canisterIds, identity]);
+
+    return meta;
+}
+
+/** Format a raw amount (bigint/number) into human-readable token units. */
+const formatTokenAmount = (raw, decimals) => {
+    const n = Number(raw);
+    if (n === 0) return '0';
+    return (n / Math.pow(10, decimals)).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: decimals });
+};
+
+/** Parse a human-readable token amount to raw units (string). */
+const parseTokenAmount = (humanStr, decimals) => {
+    const n = parseFloat(humanStr);
+    if (isNaN(n) || n < 0) return '0';
+    return Math.round(n * Math.pow(10, decimals)).toString();
+};
+
+// ============================================
 // REUSABLE: Action List Panel (for Trade and Move Funds chores)
 // ============================================
 function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, cardStyle, inputStyle, buttonStyle, secondaryButtonStyle, fetchFn, addFn, updateFn, removeFn, allowedTypes, title, description }) {
+    const { identity } = useAuth();
     const [actions, setActions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -109,6 +210,26 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
     const [newMinAmount, setNewMinAmount] = useState('0');
     const [newMaxAmount, setNewMaxAmount] = useState('0');
     const [newEnabled, setNewEnabled] = useState(true);
+
+    // Collect all unique token principals from actions for metadata resolution
+    const actionTokenIds = React.useMemo(() => {
+        const ids = new Set();
+        for (const a of actions) {
+            const inp = typeof a.inputToken === 'string' ? a.inputToken : a.inputToken?.toText?.() || String(a.inputToken);
+            ids.add(inp);
+            if (a.outputToken?.length > 0) {
+                const out = typeof a.outputToken[0] === 'string' ? a.outputToken[0] : a.outputToken[0]?.toText?.() || String(a.outputToken[0]);
+                ids.add(out);
+            }
+        }
+        return [...ids];
+    }, [actions]);
+    const tokenMeta = useTokenMetadata(actionTokenIds, identity);
+
+    const getSymbol = (principal) => {
+        const key = typeof principal === 'string' ? principal : principal?.toText?.() || String(principal);
+        return tokenMeta[key]?.symbol || shortPrincipal(key);
+    };
 
     const loadActions = useCallback(async () => {
         try {
@@ -126,16 +247,16 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
     useEffect(() => { loadActions(); }, [loadActions]);
 
     const handleAdd = async () => {
-        if (!newInputToken.trim()) { setError('Input token is required.'); return; }
-        if (newActionType === ACTION_TYPE_TRADE && !newOutputToken.trim()) { setError('Output token is required for trades.'); return; }
+        if (!newInputToken) { setError('Input token is required.'); return; }
+        if (newActionType === ACTION_TYPE_TRADE && !newOutputToken) { setError('Output token is required for trades.'); return; }
         setSaving(true); setError(''); setSuccess('');
         try {
             const bot = await getReadyBotActor();
             const config = {
                 actionType: BigInt(newActionType),
                 enabled: newEnabled,
-                inputToken: Principal.fromText(newInputToken.trim()),
-                outputToken: newActionType === ACTION_TYPE_TRADE && newOutputToken.trim() ? [Principal.fromText(newOutputToken.trim())] : [],
+                inputToken: Principal.fromText(newInputToken),
+                outputToken: newActionType === ACTION_TYPE_TRADE && newOutputToken ? [Principal.fromText(newOutputToken)] : [],
                 minAmount: BigInt(newMinAmount || 0),
                 maxAmount: BigInt(newMaxAmount || 0),
                 preferredDex: [],
@@ -254,8 +375,8 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                                 </div>
                             </div>
                             <div style={{ marginTop: '8px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '6px', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
-                                <div><strong>Input:</strong> {shortPrincipal(action.inputToken)}</div>
-                                {action.outputToken?.length > 0 && <div><strong>Output:</strong> {shortPrincipal(action.outputToken[0])}</div>}
+                                <div><strong>Input:</strong> {getSymbol(action.inputToken)}</div>
+                                {action.outputToken?.length > 0 && <div><strong>Output:</strong> {getSymbol(action.outputToken[0])}</div>}
                                 <div><strong>Min:</strong> {Number(action.minAmount).toLocaleString()}</div>
                                 <div><strong>Max:</strong> {Number(action.maxAmount).toLocaleString()}</div>
                                 {action.lastExecutedAt?.length > 0 && (
@@ -276,26 +397,38 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                                     </select>
                                 </div>
                                 <div>
-                                    <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Input Token (canister ID)</label>
-                                    <input value={newInputToken} onChange={(e) => setNewInputToken(e.target.value)} style={{ ...inputStyle, width: '100%' }} placeholder="ryjl3-tyaaa-aaaaa-aaaba-cai" />
+                                    <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Input Token</label>
+                                    <TokenSelector
+                                        value={newInputToken}
+                                        onChange={setNewInputToken}
+                                        onSelectToken={cacheTokenMeta}
+                                        allowCustom={true}
+                                        placeholder="Select input token..."
+                                    />
                                 </div>
                                 {newActionType === ACTION_TYPE_TRADE && (
                                     <div>
-                                        <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Output Token (canister ID)</label>
-                                        <input value={newOutputToken} onChange={(e) => setNewOutputToken(e.target.value)} style={{ ...inputStyle, width: '100%' }} placeholder="mxzaz-hqaaa-aaaar-qaada-cai" />
+                                        <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Output Token</label>
+                                        <TokenSelector
+                                            value={newOutputToken}
+                                            onChange={setNewOutputToken}
+                                            onSelectToken={cacheTokenMeta}
+                                            allowCustom={true}
+                                            placeholder="Select output token..."
+                                        />
                                     </div>
                                 )}
                                 <div>
-                                    <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Min Amount</label>
+                                    <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Min Amount (raw)</label>
                                     <input value={newMinAmount} onChange={(e) => setNewMinAmount(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" />
                                 </div>
                                 <div>
-                                    <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Max Amount</label>
+                                    <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Max Amount (raw)</label>
                                     <input value={newMaxAmount} onChange={(e) => setNewMaxAmount(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" />
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '20px' }}>
-                                    <input type="checkbox" checked={newEnabled} onChange={(e) => setNewEnabled(e.target.checked)} id="new-action-enabled" />
-                                    <label htmlFor="new-action-enabled" style={{ fontSize: '0.8rem', color: theme.colors.secondaryText }}>Enabled</label>
+                                    <input type="checkbox" checked={newEnabled} onChange={(e) => setNewEnabled(e.target.checked)} id={`new-action-enabled-${instanceId}`} />
+                                    <label htmlFor={`new-action-enabled-${instanceId}`} style={{ fontSize: '0.8rem', color: theme.colors.secondaryText }}>Enabled</label>
                                 </div>
                             </div>
                             <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
@@ -320,6 +453,7 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
 // REBALANCER CONFIG PANEL
 // ============================================
 function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColor, cardStyle, inputStyle, buttonStyle, secondaryButtonStyle }) {
+    const { identity } = useAuth();
     const [settings, setSettings] = useState(null);
     const [targets, setTargets] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -331,6 +465,39 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
 
     // Edit state for targets
     const [editingTargets, setEditingTargets] = useState(null); // null = not editing, array = editing
+
+    // Resolve token metadata for all target tokens + denomination token
+    const allTokenIds = React.useMemo(() => {
+        const ids = new Set();
+        for (const t of targets) {
+            const key = typeof t.token === 'string' ? t.token : t.token?.toText?.() || String(t.token);
+            ids.add(key);
+        }
+        if (settings?.denominationToken) {
+            const key = typeof settings.denominationToken === 'string' ? settings.denominationToken : settings.denominationToken?.toText?.() || String(settings.denominationToken);
+            ids.add(key);
+        }
+        return [...ids];
+    }, [targets, settings]);
+    const tokenMeta = useTokenMetadata(allTokenIds, identity);
+
+    const getTokenLabel = (principal) => {
+        const key = typeof principal === 'string' ? principal : principal?.toText?.() || String(principal);
+        const m = tokenMeta[key];
+        return m ? `${m.symbol} (${m.name})` : shortPrincipal(key);
+    };
+    const getSymbol = (principal) => {
+        const key = typeof principal === 'string' ? principal : principal?.toText?.() || String(principal);
+        return tokenMeta[key]?.symbol || shortPrincipal(key);
+    };
+
+    // Denomination token metadata (for decimal-aware trade size editing)
+    const denomKey = settings?.denominationToken
+        ? (typeof settings.denominationToken === 'string' ? settings.denominationToken : settings.denominationToken?.toText?.() || String(settings.denominationToken))
+        : null;
+    const denomMeta = denomKey ? tokenMeta[denomKey] : null;
+    const denomDecimals = denomMeta?.decimals ?? 8;
+    const denomSymbol = denomMeta?.symbol || 'tokens';
 
     const loadData = useCallback(async () => {
         try {
@@ -365,6 +532,10 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
         if (!editingTargets) return;
         const totalBps = editingTargets.reduce((sum, t) => sum + (parseInt(t.targetBps) || 0), 0);
         if (totalBps !== 10000) { setError(`Target allocations must total 100% (10000 bps). Current total: ${totalBps} bps (${(totalBps / 100).toFixed(1)}%).`); return; }
+        // Validate all tokens are set
+        for (const t of editingTargets) {
+            if (!t.token) { setError('All tokens must be selected.'); return; }
+        }
         setSaving(true); setError(''); setSuccess('');
         try {
             const bot = await getReadyBotActor();
@@ -413,22 +584,32 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px' }}>
                                 <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
                                     <div style={{ fontSize: '0.7rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Denomination Token</div>
-                                    <div style={{ fontSize: '0.8rem', color: theme.colors.primaryText, fontFamily: 'monospace', wordBreak: 'break-all' }}>{shortPrincipal(settings.denominationToken)}</div>
+                                    <div style={{ fontSize: '0.8rem', color: theme.colors.primaryText, fontWeight: '500' }}>{getTokenLabel(settings.denominationToken)}</div>
+                                    <div style={{ marginTop: '6px' }}>
+                                        <TokenSelector
+                                            value={denomKey || ''}
+                                            onChange={(v) => { if (v) handleSaveSetting('setRebalanceDenominationToken', Principal.fromText(v)); }}
+                                            onSelectToken={cacheTokenMeta}
+                                            allowCustom={true}
+                                            placeholder="Change denomination token..."
+                                            style={{ fontSize: '0.75rem' }}
+                                        />
+                                    </div>
                                 </div>
                                 <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
                                     <div style={{ fontSize: '0.7rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Max Trade Size</div>
-                                    <div style={{ fontSize: '0.8rem', color: theme.colors.primaryText }}>{Number(settings.maxTradeSize).toLocaleString()}</div>
+                                    <div style={{ fontSize: '0.8rem', color: theme.colors.primaryText }}>{formatTokenAmount(settings.maxTradeSize, denomDecimals)} {denomSymbol}</div>
                                     <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
-                                        <input type="text" inputMode="numeric" id={`rebal-max-trade-${instanceId}`} defaultValue={Number(settings.maxTradeSize)} style={{ ...inputStyle, width: '80px', fontSize: '0.7rem' }} />
-                                        <button onClick={() => { const v = document.getElementById(`rebal-max-trade-${instanceId}`)?.value; if (v) handleSaveSetting('setRebalanceMaxTradeSize', BigInt(v)); }} disabled={saving} style={{ ...secondaryButtonStyle, fontSize: '0.65rem', padding: '2px 6px' }}>Set</button>
+                                        <input type="text" inputMode="decimal" id={`rebal-max-trade-${instanceId}`} defaultValue={formatTokenAmount(settings.maxTradeSize, denomDecimals)} style={{ ...inputStyle, width: '100px', fontSize: '0.7rem' }} />
+                                        <button onClick={() => { const v = document.getElementById(`rebal-max-trade-${instanceId}`)?.value; if (v) handleSaveSetting('setRebalanceMaxTradeSize', BigInt(parseTokenAmount(v, denomDecimals))); }} disabled={saving} style={{ ...secondaryButtonStyle, fontSize: '0.65rem', padding: '2px 6px' }}>Set</button>
                                     </div>
                                 </div>
                                 <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
                                     <div style={{ fontSize: '0.7rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Min Trade Size</div>
-                                    <div style={{ fontSize: '0.8rem', color: theme.colors.primaryText }}>{Number(settings.minTradeSize).toLocaleString()}</div>
+                                    <div style={{ fontSize: '0.8rem', color: theme.colors.primaryText }}>{formatTokenAmount(settings.minTradeSize, denomDecimals)} {denomSymbol}</div>
                                     <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
-                                        <input type="text" inputMode="numeric" id={`rebal-min-trade-${instanceId}`} defaultValue={Number(settings.minTradeSize)} style={{ ...inputStyle, width: '80px', fontSize: '0.7rem' }} />
-                                        <button onClick={() => { const v = document.getElementById(`rebal-min-trade-${instanceId}`)?.value; if (v) handleSaveSetting('setRebalanceMinTradeSize', BigInt(v)); }} disabled={saving} style={{ ...secondaryButtonStyle, fontSize: '0.65rem', padding: '2px 6px' }}>Set</button>
+                                        <input type="text" inputMode="decimal" id={`rebal-min-trade-${instanceId}`} defaultValue={formatTokenAmount(settings.minTradeSize, denomDecimals)} style={{ ...inputStyle, width: '100px', fontSize: '0.7rem' }} />
+                                        <button onClick={() => { const v = document.getElementById(`rebal-min-trade-${instanceId}`)?.value; if (v) handleSaveSetting('setRebalanceMinTradeSize', BigInt(parseTokenAmount(v, denomDecimals))); }} disabled={saving} style={{ ...secondaryButtonStyle, fontSize: '0.65rem', padding: '2px 6px' }}>Set</button>
                                     </div>
                                 </div>
                                 <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
@@ -490,7 +671,7 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                 <div style={{ display: 'grid', gap: '6px' }}>
                                     {targets.map((t, i) => (
                                         <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
-                                            <span style={{ fontSize: '0.8rem', color: theme.colors.primaryText, fontFamily: 'monospace' }}>{shortPrincipal(t.token)}</span>
+                                            <span style={{ fontSize: '0.8rem', color: theme.colors.primaryText, fontWeight: '500' }}>{getTokenLabel(t.token)}</span>
                                             <span style={{ fontSize: '0.85rem', fontWeight: '600', color: accentColor }}>{(Number(t.targetBps) / 100).toFixed(1)}%</span>
                                         </div>
                                     ))}
@@ -502,8 +683,16 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                         ) : (
                             <div>
                                 {editingTargets.map((t, i) => (
-                                    <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '6px' }}>
-                                        <input value={t.token} onChange={(e) => { const arr = [...editingTargets]; arr[i] = { ...arr[i], token: e.target.value }; setEditingTargets(arr); }} style={{ ...inputStyle, flex: 1, fontSize: '0.75rem' }} placeholder="Token canister ID" />
+                                    <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
+                                        <div style={{ flex: 1 }}>
+                                            <TokenSelector
+                                                value={t.token}
+                                                onChange={(v) => { const arr = [...editingTargets]; arr[i] = { ...arr[i], token: v }; setEditingTargets(arr); }}
+                                                onSelectToken={cacheTokenMeta}
+                                                allowCustom={true}
+                                                placeholder="Select token..."
+                                            />
+                                        </div>
                                         <input value={t.targetBps} onChange={(e) => { const arr = [...editingTargets]; arr[i] = { ...arr[i], targetBps: e.target.value }; setEditingTargets(arr); }} style={{ ...inputStyle, width: '70px', fontSize: '0.75rem' }} type="text" inputMode="numeric" />
                                         <span style={{ fontSize: '0.7rem', color: theme.colors.secondaryText, minWidth: '30px' }}>bps</span>
                                         <button onClick={() => setEditingTargets(editingTargets.filter((_, j) => j !== i))} style={{ ...secondaryButtonStyle, fontSize: '0.65rem', padding: '2px 6px', color: '#ef4444', borderColor: '#ef444440' }}>
@@ -531,7 +720,7 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                         {portfolioStatus && (
                             <div style={{ background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}`, overflow: 'hidden' }}>
                                 <div style={{ padding: '8px 12px', fontSize: '0.75rem', color: theme.colors.secondaryText, borderBottom: `1px solid ${theme.colors.border}` }}>
-                                    Total value: <strong style={{ color: theme.colors.primaryText }}>{Number(portfolioStatus.totalValueInDenomination).toLocaleString()}</strong> (denomination units)
+                                    Total value: <strong style={{ color: theme.colors.primaryText }}>{formatTokenAmount(portfolioStatus.totalValueInDenomination, denomDecimals)} {denomSymbol}</strong>
                                 </div>
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
                                     <thead>
@@ -545,7 +734,7 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                     <tbody>
                                         {portfolioStatus.tokens.map((tok, i) => (
                                             <tr key={i} style={{ borderTop: `1px solid ${theme.colors.border}` }}>
-                                                <td style={{ padding: '6px 10px', color: theme.colors.primaryText }}>{tok.symbol || shortPrincipal(tok.token)}</td>
+                                                <td style={{ padding: '6px 10px', color: theme.colors.primaryText }}>{tok.symbol || getSymbol(tok.token)}</td>
                                                 <td style={{ padding: '6px 10px', textAlign: 'right', color: theme.colors.primaryText }}>{(Number(tok.currentBps) / 100).toFixed(1)}%</td>
                                                 <td style={{ padding: '6px 10px', textAlign: 'right', color: theme.colors.primaryText }}>{(Number(tok.targetBps) / 100).toFixed(1)}%</td>
                                                 <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: '500', color: Number(tok.deviationBps) > 0 ? '#ef4444' : Number(tok.deviationBps) < 0 ? '#3b82f6' : theme.colors.secondaryText }}>
@@ -568,6 +757,7 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
 // DISTRIBUTION CONFIG PANEL
 // ============================================
 function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentColor, cardStyle, inputStyle, buttonStyle, secondaryButtonStyle }) {
+    const { identity } = useAuth();
     const [lists, setLists] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -626,6 +816,19 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
         finally { setSaving(false); }
     };
 
+    // Resolve token metadata for ledger tokens in distribution lists
+    const distTokenIds = React.useMemo(() => {
+        return lists.map(l => {
+            const key = typeof l.tokenLedgerCanisterId === 'string' ? l.tokenLedgerCanisterId : l.tokenLedgerCanisterId?.toText?.() || String(l.tokenLedgerCanisterId);
+            return key;
+        });
+    }, [lists]);
+    const distTokenMeta = useTokenMetadata(distTokenIds, identity);
+    const getDistTokenSymbol = (principal) => {
+        const key = typeof principal === 'string' ? principal : principal?.toText?.() || String(principal);
+        return distTokenMeta[key]?.symbol || shortPrincipal(key);
+    };
+
     return (
         <div style={cardStyle}>
             <h3 style={{ color: theme.colors.primaryText, margin: '0 0 12px 0', fontSize: '0.95rem', fontWeight: '600' }}>Distribution Lists</h3>
@@ -669,7 +872,7 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
                                 </div>
                             </div>
                             <div style={{ marginTop: '6px', fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-                                <span>Ledger: {shortPrincipal(list.tokenLedgerCanisterId)}</span>
+                                <span>Token: {getDistTokenSymbol(list.tokenLedgerCanisterId)}</span>
                                 <span>Threshold: {Number(list.thresholdAmount).toLocaleString()}</span>
                                 <span>Max: {Number(list.maxDistributionAmount).toLocaleString()}</span>
                                 <span>Targets: {list.targets.length}</span>
@@ -700,8 +903,14 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
                                     <input value={newName} onChange={(e) => setNewName(e.target.value)} style={{ ...inputStyle, width: '100%' }} placeholder="e.g. Revenue Share" />
                                 </div>
                                 <div>
-                                    <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Token Ledger (canister ID)</label>
-                                    <input value={newLedger} onChange={(e) => setNewLedger(e.target.value)} style={{ ...inputStyle, width: '100%' }} placeholder="ryjl3-tyaaa-aaaaa-aaaba-cai" />
+                                    <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Token Ledger</label>
+                                    <TokenSelector
+                                        value={newLedger}
+                                        onChange={setNewLedger}
+                                        onSelectToken={cacheTokenMeta}
+                                        allowCustom={true}
+                                        placeholder="Select token..."
+                                    />
                                 </div>
                                 <div>
                                     <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Threshold Amount</label>
