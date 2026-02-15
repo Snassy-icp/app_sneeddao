@@ -366,8 +366,18 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
             minBalance: fMinBalance ? [BigInt(parseTokenAmount(fMinBalance, inputDecimals))] : [],
             maxBalance: fMaxBalance ? [BigInt(parseTokenAmount(fMaxBalance, inputDecimals))] : [],
             balanceDenominationToken: [],
-            minPrice: (() => { const v = humanPriceToE8s(fMinPrice, outputDec, fPriceDirection); return v != null ? [v] : []; })(),
-            maxPrice: (() => { const v = humanPriceToE8s(fMaxPrice, outputDec, fPriceDirection); return v != null ? [v] : []; })(),
+            minPrice: (() => {
+                // When direction is inverted, user's "max" maps to native min (inversion flips ordering)
+                const src = fPriceDirection === 'input_per_output' ? fMaxPrice : fMinPrice;
+                const v = humanPriceToE8s(src, outputDec, fPriceDirection);
+                return v != null ? [v] : [];
+            })(),
+            maxPrice: (() => {
+                // When direction is inverted, user's "min" maps to native max (inversion flips ordering)
+                const src = fPriceDirection === 'input_per_output' ? fMinPrice : fMaxPrice;
+                const v = humanPriceToE8s(src, outputDec, fPriceDirection);
+                return v != null ? [v] : [];
+            })(),
             priceDenominationToken: [],
             maxPriceImpactBps: fMaxPriceImpactBps ? [BigInt(fMaxPriceImpactBps)] : [],
             maxSlippageBps: fMaxSlippageBps ? [BigInt(fMaxSlippageBps)] : [],
