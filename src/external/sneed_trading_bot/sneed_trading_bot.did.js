@@ -413,6 +413,7 @@ export const idlFactory = ({ IDL }) => {
         trigger: IDL.Text,
         tradeLogId: IDL.Opt(IDL.Nat),
         phase: SnapshotPhase,
+        choreId: IDL.Opt(IDL.Text),
         denominationToken: IDL.Opt(IDL.Principal),
         totalValueIcpE8s: IDL.Opt(IDL.Nat),
         totalValueUsdE8s: IDL.Opt(IDL.Nat),

@@ -470,10 +470,35 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     };
 
     /// Get a cached price/quote for a token pair (returns null if not cached).
+    /// Direction-aware: if the cached quote was stored for the reverse direction,
+    /// the inputAmount and expectedOutput are swapped so callers always get
+    /// a quote consistent with the requested (inputToken → outputToken) direction.
     func getCachedQuote(inputToken: Principal, outputToken: Principal): ?T.SwapQuote {
         let key = pairKey(inputToken, outputToken);
         for ((k, cached) in _priceCache.vals()) {
-            if (k == key) return ?cached.quote;
+            if (k == key) {
+                if (cached.inputToken == inputToken and cached.outputToken == outputToken) {
+                    return ?cached.quote;
+                } else {
+                    // Cached in reverse direction — swap amounts so the caller
+                    // can compute (expectedOutput / inputAmount) correctly.
+                    return ?{
+                        dexId = cached.quote.dexId;
+                        inputToken = inputToken;
+                        outputToken = outputToken;
+                        inputAmount = cached.quote.expectedOutput;
+                        effectiveInputAmount = cached.quote.expectedOutput;
+                        expectedOutput = cached.quote.inputAmount;
+                        spotPriceE8s = cached.quote.spotPriceE8s;
+                        priceImpactBps = cached.quote.priceImpactBps;
+                        dexFeeBps = cached.quote.dexFeeBps;
+                        inputFeesTotal = 0;
+                        outputFeesTotal = 0;
+                        poolCanisterId = cached.quote.poolCanisterId;
+                        timestamp = cached.quote.timestamp;
+                    };
+                };
+            };
         };
         null
     };
@@ -991,6 +1016,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             trigger = entry.trigger;
             tradeLogId = entry.tradeLogId;
             phase = entry.phase;
+            choreId = entry.choreId;
             denominationToken = entry.denominationToken;
             totalValueIcpE8s = entry.totalValueIcpE8s;
             totalValueUsdE8s = entry.totalValueUsdE8s;

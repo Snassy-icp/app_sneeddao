@@ -612,6 +612,7 @@ module {
         trigger: Text;             // Human-readable trigger description
         tradeLogId: ?Nat;          // Link to the trade log entry that triggered this
         phase: SnapshotPhase;
+        choreId: ?Text;            // Instance ID of the chore that triggered this
         denominationToken: ?Principal;
         totalValueIcpE8s: ?Nat;
         totalValueUsdE8s: ?Nat;
