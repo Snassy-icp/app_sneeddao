@@ -114,6 +114,11 @@ import Premium from './pages/Premium';
 // Swap page
 import Swap from './pages/Swap';
 
+// Sneedapp pages
+import SneedApp from './pages/SneedApp';
+import SneedAppMint from './pages/SneedAppMint';
+import SneedAppAdmin from './pages/admin/SneedAppAdmin';
+
 // Component to set up global naming function
 function GlobalNamingSetup() {
     const { getNeuronDisplayName } = useNaming();
@@ -216,6 +221,10 @@ function App() {
                     <Route path="/feed" element={<Feed />} />
                     <Route path="/topic/:topicId" element={<Topic />} />
 
+                    {/* Sneedapp routes */}
+                    <Route path="/sneedapp" element={<SneedApp />} />
+                    <Route path="/sneedapp/mint/:appId" element={<SneedAppMint />} />
+
                     {/* Swap route */}
                     <Route path="/swap" element={<Swap />} />
 
@@ -244,6 +253,7 @@ function App() {
                     <Route path="/admin/sms" element={<SmsAdmin />} />
                     <Route path="/admin/sneedlock" element={<SneedLockAdmin />} />
                     <Route path="/admin/neuron-manager-factory" element={<IcpNeuronManagerFactoryAdmin />} />
+                    <Route path="/admin/sneedapp" element={<SneedAppAdmin />} />
                     <Route path="/admin/sneedex" element={<SneedexAdmin />} />
                     <Route path="/admin/premium" element={<SneedPremiumAdmin />} />
                     <Route path="/admin/canisters" element={<CanisterGroupsAdmin />} />
