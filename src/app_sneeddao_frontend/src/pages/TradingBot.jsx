@@ -12,9 +12,8 @@ import Header from '../components/Header';
 import BotManagementPanel from '../components/BotManagementPanel';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
-// Use staking bot declarations temporarily — the shared bot interface (botkeys, chores, logs)
-// is identical. Swap to 'declarations/sneed_trading_bot' once the backend is built.
-import { createActor as createBotActor } from 'declarations/sneed_icp_neuron_manager';
+// Trading bot Candid declarations — aligned with staking bot API for shared BotManagementPanel.
+import { createActor as createBotActor } from 'external/sneed_trading_bot';
 import { FaChartLine } from 'react-icons/fa';
 
 // Trading bot accent colors — green/teal for trading

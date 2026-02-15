@@ -1539,38 +1539,88 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     };
 
     // ============================================
-    // PUBLIC API — PERMISSIONS
+    // PUBLIC API — PERMISSIONS (aligned with staking bot API)
     // ============================================
 
-    public shared query (msg) func getHotkeyPermissions(): async [T.HotkeyPermissionInfo] {
-        assertPermission(msg.caller, T.TradingPermission.ManagePermissions);
+    // Add permissions to a botkey principal (merges with existing permissions)
+    public shared ({ caller }) func addHotkeyPermissions(
+        hotkeyPrincipal: Principal,
+        permissions: [T.TradingPermissionType]
+    ): async T.OperationResult {
+        assertPermission(caller, T.TradingPermission.ManagePermissions);
+        logEngine.logInfo("permissions", "addHotkeyPermissions", ?caller, [("principal", Principal.toText(hotkeyPrincipal))]);
+
+        if (Principal.isAnonymous(hotkeyPrincipal)) {
+            return #Err(#InvalidOperation("Cannot add anonymous principal as hotkey"));
+        };
+
+        hotkeyPermissions := permEngine.addPermissions(hotkeyPrincipal, permissions, hotkeyPermissions);
+        #Ok
+    };
+
+    // Remove specific permissions from a botkey principal
+    // If all permissions are removed, the principal is removed entirely
+    public shared ({ caller }) func removeHotkeyPermissions(
+        hotkeyPrincipal: Principal,
+        permissions: [T.TradingPermissionType]
+    ): async T.OperationResult {
+        assertPermission(caller, T.TradingPermission.ManagePermissions);
+        logEngine.logInfo("permissions", "removeHotkeyPermissions", ?caller, [("principal", Principal.toText(hotkeyPrincipal))]);
+
+        hotkeyPermissions := permEngine.removePermissions(hotkeyPrincipal, permissions, hotkeyPermissions);
+        #Ok
+    };
+
+    // Remove a botkey principal entirely (removes all their permissions)
+    public shared ({ caller }) func removeHotkeyPrincipal(
+        hotkeyPrincipal: Principal
+    ): async T.OperationResult {
+        assertPermission(caller, T.TradingPermission.ManagePermissions);
+        logEngine.logInfo("permissions", "removeHotkeyPrincipal", ?caller, [("principal", Principal.toText(hotkeyPrincipal))]);
+
+        hotkeyPermissions := permEngine.removePrincipal(hotkeyPrincipal, hotkeyPermissions);
+        #Ok
+    };
+
+    // Get permissions for a specific botkey principal
+    public query func getHotkeyPermissions(hotkeyPrincipal: Principal): async [T.TradingPermissionType] {
+        permEngine.getPermissions(hotkeyPrincipal, hotkeyPermissions)
+    };
+
+    // List all botkey principals and their permissions
+    public query func listHotkeyPrincipals(): async [T.HotkeyPermissionInfo] {
         permEngine.listPrincipals(hotkeyPermissions)
     };
 
-    public shared (msg) func addHotkeyPermissions(principal: Principal, permissions: [T.TradingPermissionType]): async () {
-        assertPermission(msg.caller, T.TradingPermission.ManagePermissions);
-        hotkeyPermissions := permEngine.addPermissions(principal, permissions, hotkeyPermissions);
-        logEngine.logInfo("permissions", "Added permissions to " # Principal.toText(principal), ?msg.caller, []);
-    };
-
-    public shared (msg) func removeHotkeyPermissions(principal: Principal, permissions: [T.TradingPermissionType]): async () {
-        assertPermission(msg.caller, T.TradingPermission.ManagePermissions);
-        hotkeyPermissions := permEngine.removePermissions(principal, permissions, hotkeyPermissions);
-        logEngine.logInfo("permissions", "Removed permissions from " # Principal.toText(principal), ?msg.caller, []);
-    };
-
-    public shared (msg) func removeHotkey(principal: Principal): async () {
-        assertPermission(msg.caller, T.TradingPermission.ManagePermissions);
-        hotkeyPermissions := permEngine.removePrincipal(principal, hotkeyPermissions);
-        logEngine.logInfo("permissions", "Removed hotkey " # Principal.toText(principal), ?msg.caller, []);
-    };
-
-    public shared query func listPermissionTypes(): async [(Nat, T.TradingPermissionType)] {
+    // List all available permission types and their numeric IDs
+    public query func listPermissionTypes(): async [(Nat, T.TradingPermissionType)] {
         PERMISSION_MAP
     };
 
-    public shared query (msg) func getCallerPermissions(): async [T.TradingPermissionType] {
-        permEngine.getCallerPermissions(msg.caller, hotkeyPermissions)
+    // Get the caller's current permissions
+    // Controllers and principals with FullPermissions get all permissions;
+    // other botkey principals get their assigned permissions.
+    public shared query ({ caller }) func callerPermissions(): async [T.TradingPermissionType] {
+        permEngine.getCallerPermissions(caller, hotkeyPermissions)
+    };
+
+    // Check if the caller has a specific permission
+    public shared query ({ caller }) func checkPermission(permission: T.TradingPermissionType): async Bool {
+        callerHasPermission(caller, permissionVariantToId(permission))
+    };
+
+    // Get raw botkey snapshot for escrow backup (controller-only)
+    public shared ({ caller }) func getBotkeySnapshot() : async [(Principal, [Nat])] {
+        assert(Principal.isController(caller));
+        logEngine.logInfo("permissions", "getBotkeySnapshot", ?caller, []);
+        hotkeyPermissions
+    };
+
+    // Restore botkey snapshot from escrow backup (controller-only)
+    public shared ({ caller }) func restoreBotkeySnapshot(data : [(Principal, [Nat])]) : async () {
+        assert(Principal.isController(caller));
+        logEngine.logInfo("permissions", "restoreBotkeySnapshot", ?caller, []);
+        hotkeyPermissions := data;
     };
 
     // ============================================
@@ -2113,6 +2163,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     public shared query (msg) func getChoreTypes(): async [BotChoreTypes.ChoreTypeInfo] {
         assertPermission(msg.caller, T.TradingPermission.ViewChores);
         choreEngine.listChoreTypes()
+    };
+
+    // Query: Get configs of all chores (aligned with staking bot API)
+    public shared query ({ caller }) func getChoreConfigs(): async [(Text, BotChoreTypes.ChoreConfig)] {
+        assertPermission(caller, T.TradingPermission.ViewChores);
+        choreEngine.getAllConfigs()
     };
 
     public shared (msg) func createChoreInstance(typeId: Text, instanceId: Text, instanceLabel: Text): async Bool {

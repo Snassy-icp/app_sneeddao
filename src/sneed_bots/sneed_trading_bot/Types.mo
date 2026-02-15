@@ -473,6 +473,23 @@ module {
     public type HotkeyPermissionInfo = BotkeyTypes.BotkeyPermissionInfo<TradingPermissionType>;
 
     // ============================================
+    // OPERATION RESULT TYPES (aligned with staking bot API)
+    // ============================================
+
+    /// Generic operation result — matches staking bot's OperationResult shape
+    /// so the frontend can handle both bots identically.
+    public type OperationResult = {
+        #Ok;
+        #Err: OperationError;
+    };
+
+    public type OperationError = {
+        #NotAuthorized;
+        #InvalidOperation: Text;
+        #TransferFailed: Text;
+    };
+
+    // ============================================
     // IC MANAGEMENT CANISTER TYPES
     // ============================================
 

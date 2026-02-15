@@ -408,7 +408,7 @@ export default function BotManagementPanel({
             if (!bot) return;
             const [types, principals] = await Promise.all([
                 bot.listPermissionTypes(),
-                bot.getHotkeyPermissions(),
+                bot.listHotkeyPrincipals(),
             ]);
             setPermissionTypes(types);
             setHotkeyPrincipals(principals);
@@ -752,8 +752,20 @@ export default function BotManagementPanel({
         try {
             const bot = await getReadyBotActor();
             const principal = Principal.fromText(principalText);
-            if (toAdd.length > 0) await bot.addHotkeyPermissions(principal, toAdd);
-            if (toRemove.length > 0) await bot.removeHotkeyPermissions(principal, toRemove);
+            if (toAdd.length > 0) {
+                const addResult = await bot.addHotkeyPermissions(principal, toAdd);
+                if (addResult && 'Err' in addResult) {
+                    setPermissionError('Failed to add: ' + JSON.stringify(addResult.Err));
+                    return;
+                }
+            }
+            if (toRemove.length > 0) {
+                const removeResult = await bot.removeHotkeyPermissions(principal, toRemove);
+                if (removeResult && 'Err' in removeResult) {
+                    setPermissionError('Failed to remove: ' + JSON.stringify(removeResult.Err));
+                    return;
+                }
+            }
             setPermissionSuccess('Permissions updated');
             setEditingPrincipal(null);
             await loadHotkeyPermissions();
@@ -765,7 +777,7 @@ export default function BotManagementPanel({
         setSavingPermissions(true); setPermissionError('');
         try {
             const bot = await getReadyBotActor();
-            const result = await bot.removeHotkey(Principal.fromText(principalText));
+            const result = await bot.removeHotkeyPrincipal(Principal.fromText(principalText));
             if ('Ok' in result) {
                 setPermissionSuccess('Botkey removed');
                 setConfirmRemoveHotkey(null);
@@ -1674,7 +1686,19 @@ export default function BotManagementPanel({
                                                     const isEnabled = chore.enabled;
                                                     const isPaused = chore.paused;
                                                     const isStopped = !isEnabled;
+                                                    const isRunning = !('Idle' in chore.conductorStatus);
                                                     const fmtTime = (nsOpt) => { if (!nsOpt || nsOpt.length === 0) return '—'; const ms = Number(nsOpt[0]) / 1_000_000; return ms <= 0 ? '—' : new Date(ms).toLocaleString(); };
+
+                                                    // bestUnit helper for interval display with unit selector
+                                                    const bestUnit = (secs) => {
+                                                        if (secs <= 0) return { value: 0, unit: 'minutes' };
+                                                        if (secs % 86400 === 0 && secs >= 86400) return { value: secs / 86400, unit: 'days' };
+                                                        if (secs % 3600 === 0 && secs >= 3600) return { value: secs / 3600, unit: 'hours' };
+                                                        return { value: Math.round(secs / 60), unit: 'minutes' };
+                                                    };
+                                                    const currentBest = bestUnit(intervalSeconds);
+                                                    const unitMultipliers = { minutes: 60, hours: 3600, days: 86400 };
+                                                    const hasRange = maxIntervalSeconds != null && maxIntervalSeconds > intervalSeconds;
 
                                                     return (
                                                         <div key={chore.choreId}>
@@ -1705,51 +1729,378 @@ export default function BotManagementPanel({
                                                                     <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
                                                                         <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Interval</div>
                                                                         <div style={{ fontSize: '0.9rem', color: theme.colors.primaryText, fontWeight: '500' }}>
-                                                                            {maxIntervalSeconds && maxIntervalSeconds > intervalSeconds ? `${fmtInt(intervalSeconds)}–${fmtInt(maxIntervalSeconds)}` : fmtInt(intervalSeconds)}
+                                                                            {hasRange ? `${fmtInt(intervalSeconds)}–${fmtInt(maxIntervalSeconds)}` : fmtInt(intervalSeconds)}
                                                                         </div>
                                                                     </div>
                                                                     <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
-                                                                        <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Next Run</div>
-                                                                        <div style={{ fontSize: '0.85rem', color: theme.colors.primaryText, fontWeight: '500' }}>{fmtTime(chore.nextScheduledRunAt)}</div>
+                                                                        <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Next Scheduled Run</div>
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                                            <div style={{ fontSize: '0.85rem', color: theme.colors.primaryText, fontWeight: '500' }}>{fmtTime(chore.nextScheduledRunAt)}</div>
+                                                                            {chore.enabled && (
+                                                                                <button
+                                                                                    style={{ background: 'none', border: `1px solid ${theme.colors.border}`, borderRadius: '4px', fontSize: '0.65rem', color: theme.colors.secondaryText, cursor: 'pointer', padding: '2px 6px' }}
+                                                                                    title="Set next scheduled run time"
+                                                                                    onClick={() => {
+                                                                                        const el = document.getElementById(`next-run-picker-${chore.choreId}`);
+                                                                                        if (el) { el.style.display = el.style.display === 'none' ? 'flex' : 'none'; }
+                                                                                    }}
+                                                                                >Set</button>
+                                                                            )}
+                                                                        </div>
+                                                                        {chore.enabled && (
+                                                                            <div id={`next-run-picker-${chore.choreId}`} style={{ display: 'none', marginTop: '6px', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                                                <input
+                                                                                    type="datetime-local"
+                                                                                    id={`next-run-input-${chore.choreId}`}
+                                                                                    style={{ ...inputStyle, fontSize: '0.75rem', width: '200px' }}
+                                                                                    defaultValue={(() => {
+                                                                                        const ns = chore.nextScheduledRunAt?.length > 0 ? Number(chore.nextScheduledRunAt[0]) : Date.now() * 1_000_000;
+                                                                                        const d = new Date(ns / 1_000_000);
+                                                                                        const pad = (n) => String(n).padStart(2, '0');
+                                                                                        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                                                                                    })()}
+                                                                                />
+                                                                                <button
+                                                                                    style={{ ...buttonStyle, fontSize: '0.7rem', padding: '4px 10px', background: `${accent}10`, color: accent, border: `1px solid ${accent}25` }}
+                                                                                    disabled={savingChore}
+                                                                                    onClick={async () => {
+                                                                                        const input = document.getElementById(`next-run-input-${chore.choreId}`);
+                                                                                        if (!input?.value) return;
+                                                                                        const tsNanos = BigInt(new Date(input.value).getTime()) * 1_000_000n;
+                                                                                        setSavingChore(true);
+                                                                                        setChoreError('');
+                                                                                        try {
+                                                                                            const bot = await getReadyBotActor();
+                                                                                            await bot.setChoreNextRun(chore.choreId, tsNanos);
+                                                                                            setChoreStatuses(prev => prev.map(s =>
+                                                                                                s.choreId === chore.choreId
+                                                                                                    ? { ...s, nextScheduledRunAt: [tsNanos] }
+                                                                                                    : s
+                                                                                            ));
+                                                                                            setChoreSuccess('Next run time updated.');
+                                                                                            const el = document.getElementById(`next-run-picker-${chore.choreId}`);
+                                                                                            if (el) el.style.display = 'none';
+                                                                                            setTimeout(() => loadChoreData(true), 2500);
+                                                                                        } catch (err) {
+                                                                                            setChoreError('Failed to set next run: ' + err.message);
+                                                                                        } finally {
+                                                                                            setSavingChore(false);
+                                                                                        }
+                                                                                    }}
+                                                                                >Save</button>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                    <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+                                                                        <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Last Completed</div>
+                                                                        <div style={{ fontSize: '0.85rem', color: theme.colors.primaryText, fontWeight: '500' }}>{fmtTime(chore.lastCompletedRunAt)}</div>
+                                                                    </div>
+                                                                    <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+                                                                        <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Runs (Success / Fail)</div>
+                                                                        <div style={{ fontSize: '0.9rem', color: theme.colors.primaryText, fontWeight: '500' }}>
+                                                                            {Number(chore.totalSuccessCount)} / {Number(chore.totalFailureCount)}
+                                                                        </div>
                                                                     </div>
                                                                 </div>
+
+                                                                {/* Last error display */}
+                                                                {chore.lastError && chore.lastError.length > 0 && (
+                                                                    <div style={{
+                                                                        marginTop: '10px', padding: '10px',
+                                                                        background: `${theme.colors.error || '#ef4444'}10`,
+                                                                        border: `1px solid ${theme.colors.error || '#ef4444'}25`,
+                                                                        borderRadius: '8px', fontSize: '0.8rem',
+                                                                        color: theme.colors.error || '#ef4444',
+                                                                    }}>
+                                                                        <strong>Last error:</strong> {chore.lastError[0]}
+                                                                        {chore.lastErrorAt && chore.lastErrorAt.length > 0 && (
+                                                                            <span style={{ opacity: 0.7 }}> ({fmtTime(chore.lastErrorAt)})</span>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Current task info (when running) */}
+                                                                {chore.currentTaskId && chore.currentTaskId.length > 0 && (
+                                                                    <div style={{
+                                                                        marginTop: '10px', padding: '10px',
+                                                                        background: `${accent}10`,
+                                                                        border: `1px solid ${accent}25`,
+                                                                        borderRadius: '8px', fontSize: '0.8rem',
+                                                                        color: theme.colors.primaryText,
+                                                                    }}>
+                                                                        <strong>Current task:</strong> {chore.currentTaskId[0]}
+                                                                        {chore.taskStartedAt && chore.taskStartedAt.length > 0 && (
+                                                                            <span style={{ opacity: 0.7 }}> (started {fmtTime(chore.taskStartedAt)})</span>
+                                                                        )}
+                                                                    </div>
+                                                                )}
                                                             </div>
 
                                                             {/* Controls */}
                                                             <div style={cardStyle}>
                                                                 <h3 style={{ color: theme.colors.primaryText, margin: '0 0 12px 0', fontSize: '0.95rem', fontWeight: '600' }}>Controls</h3>
-                                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                                                                    {isStopped ? (
-                                                                        <button onClick={() => choreAction(bot => bot.startChore(chore.choreId))} disabled={savingChore}
-                                                                            style={{ ...buttonStyle, background: '#22c55e', opacity: savingChore ? 0.7 : 1 }}>▶ Start</button>
-                                                                    ) : (
-                                                                        <button onClick={() => choreAction(bot => bot.stopChore(chore.choreId))} disabled={savingChore}
-                                                                            style={{ ...buttonStyle, background: '#ef4444', opacity: savingChore ? 0.7 : 1 }}>⏹ Stop</button>
+                                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
+                                                                    {/* Start (split button with schedule-start dropdown) — shown when Stopped */}
+                                                                    {isStopped && (
+                                                                    <div style={{ display: 'inline-flex', position: 'relative' }}>
+                                                                        <button
+                                                                            style={{
+                                                                                ...buttonStyle,
+                                                                                background: `linear-gradient(135deg, ${accent}, ${accentSec})`,
+                                                                                color: '#fff', border: 'none',
+                                                                                borderRadius: '8px 0 0 8px',
+                                                                                opacity: savingChore ? 0.6 : 1,
+                                                                            }}
+                                                                            disabled={savingChore}
+                                                                            onClick={async () => {
+                                                                                setSavingChore(true); setChoreError(''); setChoreSuccess('');
+                                                                                try {
+                                                                                    const bot = await getReadyBotActor();
+                                                                                    await bot.startChore(chore.choreId);
+                                                                                    setChoreSuccess('Chore started! Running now and scheduled for next interval.');
+                                                                                    setTimeout(() => loadChoreData(true), 2000);
+                                                                                } catch (err) { setChoreError('Failed to start: ' + err.message); }
+                                                                                finally { setSavingChore(false); }
+                                                                            }}
+                                                                        >Start</button>
+                                                                        <button
+                                                                            style={{
+                                                                                ...buttonStyle,
+                                                                                background: `linear-gradient(135deg, ${accent}, ${accentSec})`,
+                                                                                color: '#fff', border: 'none',
+                                                                                borderLeft: '1px solid rgba(255,255,255,0.3)',
+                                                                                borderRadius: '0 8px 8px 0',
+                                                                                padding: '0.4rem 0.45rem', minWidth: 'unset',
+                                                                                opacity: savingChore ? 0.6 : 1,
+                                                                            }}
+                                                                            disabled={savingChore}
+                                                                            title="Schedule start at a specific time"
+                                                                            onClick={() => {
+                                                                                const el = document.getElementById(`schedule-start-panel-${chore.choreId}`);
+                                                                                if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+                                                                            }}
+                                                                        >
+                                                                            <span style={{ fontSize: '0.6rem' }}>&#9660;</span>
+                                                                        </button>
+                                                                    </div>
                                                                     )}
+
+                                                                    {/* Pause — shown when Running (enabled, not paused) */}
                                                                     {isEnabled && !isPaused && (
-                                                                        <button onClick={() => choreAction(bot => bot.pauseChore(chore.choreId))} disabled={savingChore}
-                                                                            style={{ ...buttonStyle, background: '#f59e0b', opacity: savingChore ? 0.7 : 1 }}>⏸ Pause</button>
+                                                                    <button
+                                                                        style={{ ...buttonStyle, background: '#f59e0b15', color: '#f59e0b', border: '1px solid #f59e0b40', opacity: savingChore ? 0.6 : 1 }}
+                                                                        disabled={savingChore}
+                                                                        onClick={async () => {
+                                                                            setSavingChore(true); setChoreError(''); setChoreSuccess('');
+                                                                            try {
+                                                                                const bot = await getReadyBotActor();
+                                                                                await bot.pauseChore(chore.choreId);
+                                                                                setChoreSuccess('Chore paused. Schedule preserved — resume to continue.');
+                                                                                await loadChoreData(true);
+                                                                            } catch (err) { setChoreError('Failed to pause: ' + err.message); }
+                                                                            finally { setSavingChore(false); }
+                                                                        }}
+                                                                    >Pause</button>
                                                                     )}
-                                                                    {isEnabled && isPaused && (
-                                                                        <button onClick={() => choreAction(bot => bot.resumeChore(chore.choreId))} disabled={savingChore}
-                                                                            style={{ ...buttonStyle, background: '#22c55e', opacity: savingChore ? 0.7 : 1 }}>▶ Resume</button>
+
+                                                                    {/* Resume — shown when Paused */}
+                                                                    {isPaused && (
+                                                                    <button
+                                                                        style={{ ...buttonStyle, background: `linear-gradient(135deg, ${accent}, ${accentSec})`, color: '#fff', border: 'none', opacity: savingChore ? 0.6 : 1 }}
+                                                                        disabled={savingChore}
+                                                                        onClick={async () => {
+                                                                            setSavingChore(true); setChoreError(''); setChoreSuccess('');
+                                                                            try {
+                                                                                const bot = await getReadyBotActor();
+                                                                                await bot.resumeChore(chore.choreId);
+                                                                                setChoreSuccess('Chore resumed! Schedule re-activated.');
+                                                                                setTimeout(() => loadChoreData(true), 2000);
+                                                                            } catch (err) { setChoreError('Failed to resume: ' + err.message); }
+                                                                            finally { setSavingChore(false); }
+                                                                        }}
+                                                                    >Resume</button>
                                                                     )}
+
+                                                                    {/* Stop — shown when Running or Paused */}
                                                                     {isEnabled && (
-                                                                        <button onClick={() => choreAction(bot => bot.triggerChore(chore.choreId))} disabled={savingChore}
-                                                                            style={{ ...secondaryButtonStyle, opacity: savingChore ? 0.7 : 1 }}>⚡ Trigger Now</button>
+                                                                    <button
+                                                                        style={{ ...buttonStyle, background: `${theme.colors.error || '#ef4444'}15`, color: theme.colors.error || '#ef4444', border: `1px solid ${theme.colors.error || '#ef4444'}30`, opacity: savingChore ? 0.6 : 1 }}
+                                                                        disabled={savingChore}
+                                                                        onClick={async () => {
+                                                                            setSavingChore(true); setChoreError(''); setChoreSuccess('');
+                                                                            try {
+                                                                                const bot = await getReadyBotActor();
+                                                                                await bot.stopChore(chore.choreId);
+                                                                                setChoreSuccess('Chore stopped. Schedule cleared.');
+                                                                                await loadChoreData(true);
+                                                                            } catch (err) { setChoreError('Failed to stop: ' + err.message); }
+                                                                            finally { setSavingChore(false); }
+                                                                        }}
+                                                                    >Stop</button>
+                                                                    )}
+
+                                                                    {/* Run Once (when stopped) / Run Now (when enabled+idle) */}
+                                                                    {!isRunning && (
+                                                                    <button
+                                                                        style={{ ...buttonStyle, background: `${accent}15`, color: accent, border: `1px solid ${accent}30`, opacity: savingChore ? 0.6 : 1 }}
+                                                                        disabled={savingChore}
+                                                                        onClick={async () => {
+                                                                            setSavingChore(true); setChoreError(''); setChoreSuccess('');
+                                                                            try {
+                                                                                const bot = await getReadyBotActor();
+                                                                                await bot.triggerChore(chore.choreId);
+                                                                                setChoreSuccess(isStopped
+                                                                                    ? 'Chore triggered once. It will run without enabling the schedule.'
+                                                                                    : 'Chore triggered manually. It will start running shortly.');
+                                                                                setTimeout(() => loadChoreData(true), 2000);
+                                                                            } catch (err) { setChoreError('Failed to trigger: ' + err.message); }
+                                                                            finally { setSavingChore(false); }
+                                                                        }}
+                                                                    >{isStopped ? 'Run Once' : 'Run Now'}</button>
                                                                     )}
                                                                 </div>
 
-                                                                {/* Interval setting */}
-                                                                <div style={{ marginTop: '16px' }}>
-                                                                    <label style={{ color: theme.colors.mutedText, fontSize: '11px', display: 'block', marginBottom: '4px' }}>Set Interval (seconds)</label>
-                                                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                                                        <input type="number" defaultValue={intervalSeconds} id={`interval-input-${chore.choreId}`}
-                                                                            style={{ ...inputStyle, maxWidth: '120px' }} min="1" />
-                                                                        <button onClick={() => {
-                                                                            const val = parseInt(document.getElementById(`interval-input-${chore.choreId}`).value);
-                                                                            if (val > 0) choreAction(bot => bot.setChoreInterval(chore.choreId, BigInt(val)));
-                                                                        }} disabled={savingChore} style={{ ...secondaryButtonStyle, fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}>Set</button>
+                                                                {/* Schedule Start panel — shown when user clicks dropdown arrow on Start button */}
+                                                                {isStopped && (
+                                                                <div id={`schedule-start-panel-${chore.choreId}`} style={{ display: 'none', marginTop: '8px', padding: '10px', background: `${accent}06`, border: `1px solid ${accent}20`, borderRadius: '8px', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                                    <span style={{ fontSize: '0.8rem', color: theme.colors.secondaryText, marginRight: '4px' }}>Schedule first run at:</span>
+                                                                    <input
+                                                                        type="datetime-local"
+                                                                        id={`schedule-start-input-${chore.choreId}`}
+                                                                        style={{ ...inputStyle, fontSize: '0.8rem', padding: '0.35rem 0.5rem', width: 'auto' }}
+                                                                    />
+                                                                    <button
+                                                                        style={{ ...buttonStyle, background: `linear-gradient(135deg, ${accent}, ${accentSec})`, color: '#fff', border: 'none', fontSize: '0.8rem', opacity: savingChore ? 0.6 : 1 }}
+                                                                        disabled={savingChore}
+                                                                        onClick={async () => {
+                                                                            const input = document.getElementById(`schedule-start-input-${chore.choreId}`);
+                                                                            if (!input?.value) { setChoreError('Please select a date and time.'); return; }
+                                                                            const selectedTime = new Date(input.value).getTime();
+                                                                            if (selectedTime <= Date.now()) { setChoreError('Scheduled time must be in the future.'); return; }
+                                                                            const tsNanos = BigInt(selectedTime) * 1_000_000n;
+                                                                            setSavingChore(true); setChoreError(''); setChoreSuccess('');
+                                                                            try {
+                                                                                const bot = await getReadyBotActor();
+                                                                                await bot.scheduleStartChore(chore.choreId, tsNanos);
+                                                                                setChoreSuccess('Chore scheduled! First run at ' + new Date(selectedTime).toLocaleString());
+                                                                                const el = document.getElementById(`schedule-start-panel-${chore.choreId}`);
+                                                                                if (el) el.style.display = 'none';
+                                                                                setTimeout(() => loadChoreData(true), 2000);
+                                                                            } catch (err) { setChoreError('Failed to schedule start: ' + err.message); }
+                                                                            finally { setSavingChore(false); }
+                                                                        }}
+                                                                    >Confirm</button>
+                                                                    <button
+                                                                        style={{ ...buttonStyle, background: 'transparent', color: theme.colors.secondaryText, border: `1px solid ${theme.colors.border}`, fontSize: '0.8rem' }}
+                                                                        onClick={() => { const el = document.getElementById(`schedule-start-panel-${chore.choreId}`); if (el) el.style.display = 'none'; }}
+                                                                    >Cancel</button>
+                                                                </div>
+                                                                )}
+
+                                                                {/* Frequency / Interval Setting with unit selector */}
+                                                                <div style={{ marginTop: '8px' }}>
+                                                                    <label style={{ fontSize: '0.8rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '6px' }}>
+                                                                        Frequency:
+                                                                    </label>
+                                                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                                        <span style={{ fontSize: '0.8rem', color: theme.colors.secondaryText }}>Every</span>
+                                                                        <input
+                                                                            type="text"
+                                                                            inputMode="numeric"
+                                                                            defaultValue={currentBest.value}
+                                                                            style={{ ...inputStyle, width: '70px' }}
+                                                                            id={`chore-interval-${chore.choreId}`}
+                                                                        />
+                                                                        <select
+                                                                            id={`chore-interval-unit-${chore.choreId}`}
+                                                                            defaultValue={currentBest.unit}
+                                                                            style={{ ...inputStyle, width: 'auto', padding: '4px 8px', cursor: 'pointer', appearance: 'auto' }}
+                                                                        >
+                                                                            <option value="minutes">minutes</option>
+                                                                            <option value="hours">hours</option>
+                                                                            <option value="days">days</option>
+                                                                        </select>
+                                                                        <button
+                                                                            style={{ ...buttonStyle, background: `${accent}10`, color: accent, border: `1px solid ${accent}25`, opacity: savingChore ? 0.6 : 1 }}
+                                                                            disabled={savingChore}
+                                                                            onClick={async () => {
+                                                                                const valInput = document.getElementById(`chore-interval-${chore.choreId}`);
+                                                                                const unitSelect = document.getElementById(`chore-interval-unit-${chore.choreId}`);
+                                                                                const val = parseFloat(valInput?.value);
+                                                                                const unit = unitSelect?.value || 'days';
+                                                                                const multiplier = unitMultipliers[unit] || 86400;
+                                                                                const totalSeconds = Math.round(val * multiplier);
+                                                                                if (!val || val <= 0 || totalSeconds < 60) { setChoreError('Interval must be at least 1 minute.'); return; }
+                                                                                if (totalSeconds > 365 * 86400) { setChoreError('Interval cannot exceed 365 days.'); return; }
+                                                                                // Also handle the optional max interval if the range section is open
+                                                                                const maxInput = document.getElementById(`chore-max-interval-${chore.choreId}`);
+                                                                                const maxUnitSelect = document.getElementById(`chore-max-interval-unit-${chore.choreId}`);
+                                                                                let maxSeconds = null;
+                                                                                if (maxInput && maxUnitSelect) {
+                                                                                    const maxVal = parseFloat(maxInput.value?.trim());
+                                                                                    if (maxVal && maxVal > 0) {
+                                                                                        const maxMult = unitMultipliers[maxUnitSelect.value] || 86400;
+                                                                                        maxSeconds = Math.round(maxVal * maxMult);
+                                                                                        if (maxSeconds <= totalSeconds) { setChoreError('Max interval must be greater than the base interval.'); return; }
+                                                                                        if (maxSeconds > 365 * 86400) { setChoreError('Max interval cannot exceed 365 days.'); return; }
+                                                                                    }
+                                                                                }
+                                                                                setSavingChore(true); setChoreError(''); setChoreSuccess('');
+                                                                                try {
+                                                                                    const bot = await getReadyBotActor();
+                                                                                    await bot.setChoreInterval(chore.choreId, BigInt(totalSeconds));
+                                                                                    await bot.setChoreMaxInterval(chore.choreId, maxSeconds !== null ? [BigInt(maxSeconds)] : []);
+                                                                                    const msg = maxSeconds !== null
+                                                                                        ? `Interval updated to ${fmtInt(totalSeconds)}–${fmtInt(maxSeconds)} (randomized).`
+                                                                                        : `Interval updated to ${fmtInt(totalSeconds)}.`;
+                                                                                    setChoreSuccess(msg);
+                                                                                    await loadChoreData(true);
+                                                                                } catch (err) { setChoreError('Failed to update interval: ' + err.message); }
+                                                                                finally { setSavingChore(false); }
+                                                                            }}
+                                                                        >Save</button>
+                                                                    </div>
+
+                                                                    {/* Randomized range — collapsed by default, toggle to expand */}
+                                                                    <div style={{ marginTop: '6px' }}>
+                                                                        <button
+                                                                            style={{
+                                                                                background: 'none', border: 'none', padding: 0,
+                                                                                fontSize: '0.7rem', color: theme.colors.mutedText,
+                                                                                cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted',
+                                                                            }}
+                                                                            onClick={() => {
+                                                                                const el = document.getElementById(`chore-range-panel-${chore.choreId}`);
+                                                                                if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+                                                                            }}
+                                                                        >
+                                                                            {hasRange ? `Randomized range active (up to ${fmtInt(maxIntervalSeconds)}) — edit` : 'Randomize interval...'}
+                                                                        </button>
+                                                                        <div
+                                                                            id={`chore-range-panel-${chore.choreId}`}
+                                                                            style={{ display: hasRange ? 'flex' : 'none', marginTop: '6px', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}
+                                                                        >
+                                                                            <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>Max:</span>
+                                                                            <input
+                                                                                type="text"
+                                                                                inputMode="numeric"
+                                                                                defaultValue={maxIntervalSeconds != null ? bestUnit(maxIntervalSeconds).value : ''}
+                                                                                placeholder="none"
+                                                                                style={{ ...inputStyle, width: '70px', fontSize: '0.8rem' }}
+                                                                                id={`chore-max-interval-${chore.choreId}`}
+                                                                                title="Optional max interval for randomized scheduling. Clear to use exact interval."
+                                                                            />
+                                                                            <select
+                                                                                id={`chore-max-interval-unit-${chore.choreId}`}
+                                                                                defaultValue={maxIntervalSeconds != null ? bestUnit(maxIntervalSeconds).unit : currentBest.unit}
+                                                                                style={{ ...inputStyle, width: 'auto', padding: '4px 8px', fontSize: '0.8rem', cursor: 'pointer', appearance: 'auto' }}
+                                                                            >
+                                                                                <option value="minutes">minutes</option>
+                                                                                <option value="hours">hours</option>
+                                                                                <option value="days">days</option>
+                                                                            </select>
+                                                                            <span style={{ fontSize: '0.65rem', color: theme.colors.mutedText }}>(clear to disable)</span>
+                                                                        </div>
                                                                     </div>
                                                                 </div>
                                                             </div>
