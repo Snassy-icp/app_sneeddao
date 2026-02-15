@@ -417,6 +417,28 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         Array.find<T.TokenRegistryEntry>(tokenRegistry, func(e) { e.ledgerCanisterId == token })
     };
 
+    /// Get token info from registry, or fetch metadata from the ledger on-the-fly.
+    /// This ensures quotes and trades work even if tokens aren't pre-registered.
+    func getTokenInfoOrFetch(token: Principal): async T.TokenRegistryEntry {
+        switch (getTokenInfo(token)) {
+            case (?entry) { entry };
+            case null {
+                let ledger = getLedger(token);
+                let fee = await ledger.icrc1_fee();
+                let decimals = await ledger.icrc1_decimals();
+                let symbol = await ledger.icrc1_symbol();
+                let entry: T.TokenRegistryEntry = {
+                    ledgerCanisterId = token;
+                    symbol = symbol;
+                    decimals = decimals;
+                    fee = fee;
+                };
+                logEngine.logDebug("dex", "Fetched metadata for unregistered token " # symbol # " (" # Principal.toText(token) # "): fee=" # Nat.toText(fee) # " decimals=" # Nat8.toText(decimals), null, []);
+                entry
+            };
+        }
+    };
+
     /// Check if a DEX is enabled.
     func isDexEnabled(dexId: Nat): Bool {
         Array.find<Nat>(enabledDexes, func(d) { d == dexId }) != null
@@ -429,10 +451,22 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     /// Get a swap quote from ICPSwap.
     func getICPSwapQuote(inputToken: Principal, outputToken: Principal, amount: Nat): async ?T.SwapQuote {
         let poolOpt = await getICPSwapPool(inputToken, outputToken);
-        let poolCid = switch (poolOpt) { case (?p) p; case null { return null } };
+        let poolCid = switch (poolOpt) {
+            case (?p) p;
+            case null {
+                logEngine.logDebug("dex", "ICPSwap: no pool found for " # Principal.toText(inputToken) # " -> " # Principal.toText(outputToken), null, []);
+                return null;
+            };
+        };
 
-        let inputInfo = switch (getTokenInfo(inputToken)) { case (?i) i; case null { return null } };
-        let outputInfo = switch (getTokenInfo(outputToken)) { case (?i) i; case null { return null } };
+        let inputInfo = try { await getTokenInfoOrFetch(inputToken) } catch (e) {
+            logEngine.logWarning("dex", "ICPSwap: failed to get info for input token " # Principal.toText(inputToken) # ": " # Error.message(e), null, []);
+            return null;
+        };
+        let outputInfo = try { await getTokenInfoOrFetch(outputToken) } catch (e) {
+            logEngine.logWarning("dex", "ICPSwap: failed to get info for output token " # Principal.toText(outputToken) # ": " # Error.message(e), null, []);
+            return null;
+        };
 
         // ICPSwap: 2 input fees (transfer + deposit), 1 output fee (withdrawal)
         let inputFees = 2 * inputInfo.fee;
@@ -487,8 +521,14 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
     /// Get a swap quote from KongSwap.
     func getKongQuote(inputToken: Principal, outputToken: Principal, amount: Nat): async ?T.SwapQuote {
-        let inputInfo = switch (getTokenInfo(inputToken)) { case (?i) i; case null { return null } };
-        let outputInfo = switch (getTokenInfo(outputToken)) { case (?i) i; case null { return null } };
+        let inputInfo = try { await getTokenInfoOrFetch(inputToken) } catch (e) {
+            logEngine.logWarning("dex", "Kong: failed to get info for input token " # Principal.toText(inputToken) # ": " # Error.message(e), null, []);
+            return null;
+        };
+        let outputInfo = try { await getTokenInfoOrFetch(outputToken) } catch (e) {
+            logEngine.logWarning("dex", "Kong: failed to get info for output token " # Principal.toText(outputToken) # ": " # Error.message(e), null, []);
+            return null;
+        };
 
         // Kong ICRC1: 1 input fee, 0 output fees
         // Kong ICRC2: 2 input fees, 0 output fees — we'll use ICRC1 fee count for now
