@@ -140,6 +140,14 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         Array.filter<(Text, V)>(map, func((k, _)) { k != key })
     };
 
+    // Look up the chore type ID for a given instance ID (e.g., "trade", "rebalance")
+    func getInstanceTypeId(instanceId: Text): ?Text {
+        for ((id, info) in choreInstances.vals()) {
+            if (id == instanceId) return ?info.typeId;
+        };
+        null
+    };
+
     // Trade chore actions helpers
     func getTradeActionsForInstance(instanceId: Text): [T.ActionConfig] {
         getFromMap(tradeChoreActions, instanceId, [])
@@ -861,6 +869,88 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     };
 
     // ============================================
+    // TRADE LOG — INTERNAL HELPERS
+    // ============================================
+
+    /// Append a trade log entry (called internally by chore conductors).
+    /// Respects master and per-chore logging settings.
+    /// Returns the assigned entry ID (or null if logging was disabled).
+    func appendTradeLog(entry: {
+        choreId: ?Text;
+        choreTypeId: ?Text;
+        actionId: ?Nat;
+        actionType: Nat;
+        inputToken: Principal;
+        outputToken: ?Principal;
+        inputAmount: Nat;
+        outputAmount: ?Nat;
+        priceE8s: ?Nat;
+        priceImpactBps: ?Nat;
+        slippageBps: ?Nat;
+        dexId: ?Nat;
+        status: T.TradeStatus;
+        errorMessage: ?Text;
+        txId: ?Nat;
+        destinationOwner: ?Principal;
+    }): ?Nat {
+        // Check master setting
+        if (not loggingSettings.tradeLogEnabled) { return null };
+        // Check per-chore override
+        switch (entry.choreId) {
+            case (?cid) {
+                for ((id, ovr) in choreLoggingOverrides.vals()) {
+                    if (id == cid) {
+                        switch (ovr.tradeLogEnabled) {
+                            case (?false) { return null };
+                            case (_) {};
+                        };
+                    };
+                };
+            };
+            case (null) {};
+        };
+
+        let id = tradeLogNextId;
+        tradeLogNextId += 1;
+        let full: T.TradeLogEntry = {
+            id = id;
+            timestamp = Time.now();
+            choreId = entry.choreId;
+            choreTypeId = entry.choreTypeId;
+            actionId = entry.actionId;
+            actionType = entry.actionType;
+            inputToken = entry.inputToken;
+            outputToken = entry.outputToken;
+            inputAmount = entry.inputAmount;
+            outputAmount = entry.outputAmount;
+            priceE8s = entry.priceE8s;
+            priceImpactBps = entry.priceImpactBps;
+            slippageBps = entry.slippageBps;
+            dexId = entry.dexId;
+            status = entry.status;
+            errorMessage = entry.errorMessage;
+            txId = entry.txId;
+            destinationOwner = entry.destinationOwner;
+        };
+        let buf = Buffer.fromArray<T.TradeLogEntry>(tradeLogEntries);
+        buf.add(full);
+        // Trim circular buffer
+        if (buf.size() > loggingSettings.maxTradeLogEntries) {
+            let excess = buf.size() - loggingSettings.maxTradeLogEntries : Nat;
+            let trimmed = Buffer.Buffer<T.TradeLogEntry>(loggingSettings.maxTradeLogEntries);
+            var i = excess;
+            while (i < buf.size()) {
+                trimmed.add(buf.get(i));
+                i += 1;
+            };
+            tradeLogEntries := Buffer.toArray(trimmed);
+        } else {
+            tradeLogEntries := Buffer.toArray(buf);
+        };
+        ?id
+    };
+
+    // ============================================
     // TRADE ACTION EXECUTION
     // ============================================
 
@@ -1035,6 +1125,24 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     ("outputAmount", Nat.toText(r.amountOut)),
                     ("dexId", Nat.toText(quote.dexId)),
                 ]);
+                ignore appendTradeLog({
+                    choreId = ?instanceId;
+                    choreTypeId = getInstanceTypeId(instanceId);
+                    actionId = ?action.id;
+                    actionType = 0;
+                    inputToken = action.inputToken;
+                    outputToken = ?outputToken;
+                    inputAmount = actualTradeSize;
+                    outputAmount = ?r.amountOut;
+                    priceE8s = ?quote.spotPriceE8s;
+                    priceImpactBps = ?quote.priceImpactBps;
+                    slippageBps = ?slippage;
+                    dexId = ?quote.dexId;
+                    status = #Success;
+                    errorMessage = null;
+                    txId = r.txId;
+                    destinationOwner = null;
+                });
                 true
             };
             case (#Err(e)) {
@@ -1042,6 +1150,24 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     ("actionId", Nat.toText(action.id)),
                     ("error", e),
                 ]);
+                ignore appendTradeLog({
+                    choreId = ?instanceId;
+                    choreTypeId = getInstanceTypeId(instanceId);
+                    actionId = ?action.id;
+                    actionType = 0;
+                    inputToken = action.inputToken;
+                    outputToken = ?outputToken;
+                    inputAmount = actualTradeSize;
+                    outputAmount = null;
+                    priceE8s = ?quote.spotPriceE8s;
+                    priceImpactBps = ?quote.priceImpactBps;
+                    slippageBps = ?slippage;
+                    dexId = ?quote.dexId;
+                    status = #Failed;
+                    errorMessage = ?e;
+                    txId = null;
+                    destinationOwner = null;
+                });
                 false
             };
         };
@@ -1077,12 +1203,48 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         );
 
         switch (result) {
-            case (#Ok(_)) {
+            case (#Ok(blockIdx)) {
                 logEngine.logInfo(src, "Deposit " # Nat.toText(action.id) # ": " # Nat.toText(amount) # " to subaccount " # Nat.toText(targetSub), null, []);
+                ignore appendTradeLog({
+                    choreId = ?instanceId;
+                    choreTypeId = getInstanceTypeId(instanceId);
+                    actionId = ?action.id;
+                    actionType = 1;
+                    inputToken = action.inputToken;
+                    outputToken = null;
+                    inputAmount = amount;
+                    outputAmount = null;
+                    priceE8s = null;
+                    priceImpactBps = null;
+                    slippageBps = null;
+                    dexId = null;
+                    status = #Success;
+                    errorMessage = null;
+                    txId = ?blockIdx;
+                    destinationOwner = null;
+                });
                 true
             };
             case (#Err(e)) {
                 logEngine.logError(src, "Deposit " # Nat.toText(action.id) # " failed: " # debug_show(e), null, []);
+                ignore appendTradeLog({
+                    choreId = ?instanceId;
+                    choreTypeId = getInstanceTypeId(instanceId);
+                    actionId = ?action.id;
+                    actionType = 1;
+                    inputToken = action.inputToken;
+                    outputToken = null;
+                    inputAmount = amount;
+                    outputAmount = null;
+                    priceE8s = null;
+                    priceImpactBps = null;
+                    slippageBps = null;
+                    dexId = null;
+                    status = #Failed;
+                    errorMessage = ?debug_show(e);
+                    txId = null;
+                    destinationOwner = null;
+                });
                 false
             };
         };
@@ -1118,12 +1280,48 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         );
 
         switch (result) {
-            case (#Ok(_)) {
+            case (#Ok(blockIdx)) {
                 logEngine.logInfo(src, "Withdraw " # Nat.toText(action.id) # ": " # Nat.toText(amount) # " from subaccount " # Nat.toText(sourceSub), null, []);
+                ignore appendTradeLog({
+                    choreId = ?instanceId;
+                    choreTypeId = getInstanceTypeId(instanceId);
+                    actionId = ?action.id;
+                    actionType = 2;
+                    inputToken = action.inputToken;
+                    outputToken = null;
+                    inputAmount = amount;
+                    outputAmount = null;
+                    priceE8s = null;
+                    priceImpactBps = null;
+                    slippageBps = null;
+                    dexId = null;
+                    status = #Success;
+                    errorMessage = null;
+                    txId = ?blockIdx;
+                    destinationOwner = null;
+                });
                 true
             };
             case (#Err(e)) {
                 logEngine.logError(src, "Withdraw " # Nat.toText(action.id) # " failed: " # debug_show(e), null, []);
+                ignore appendTradeLog({
+                    choreId = ?instanceId;
+                    choreTypeId = getInstanceTypeId(instanceId);
+                    actionId = ?action.id;
+                    actionType = 2;
+                    inputToken = action.inputToken;
+                    outputToken = null;
+                    inputAmount = amount;
+                    outputAmount = null;
+                    priceE8s = null;
+                    priceImpactBps = null;
+                    slippageBps = null;
+                    dexId = null;
+                    status = #Failed;
+                    errorMessage = ?debug_show(e);
+                    txId = null;
+                    destinationOwner = null;
+                });
                 false
             };
         };
@@ -1159,12 +1357,48 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         );
 
         switch (result) {
-            case (#Ok(_)) {
+            case (#Ok(blockIdx)) {
                 logEngine.logInfo(src, "Send " # Nat.toText(action.id) # ": " # Nat.toText(amount) # " to " # Principal.toText(destOwner), null, []);
+                ignore appendTradeLog({
+                    choreId = ?instanceId;
+                    choreTypeId = getInstanceTypeId(instanceId);
+                    actionId = ?action.id;
+                    actionType = 3;
+                    inputToken = action.inputToken;
+                    outputToken = null;
+                    inputAmount = amount;
+                    outputAmount = null;
+                    priceE8s = null;
+                    priceImpactBps = null;
+                    slippageBps = null;
+                    dexId = null;
+                    status = #Success;
+                    errorMessage = null;
+                    txId = ?blockIdx;
+                    destinationOwner = ?destOwner;
+                });
                 true
             };
             case (#Err(e)) {
                 logEngine.logError(src, "Send " # Nat.toText(action.id) # " failed: " # debug_show(e), null, []);
+                ignore appendTradeLog({
+                    choreId = ?instanceId;
+                    choreTypeId = getInstanceTypeId(instanceId);
+                    actionId = ?action.id;
+                    actionType = 3;
+                    inputToken = action.inputToken;
+                    outputToken = null;
+                    inputAmount = amount;
+                    outputAmount = null;
+                    priceE8s = null;
+                    priceImpactBps = null;
+                    slippageBps = null;
+                    dexId = null;
+                    status = #Failed;
+                    errorMessage = ?debug_show(e);
+                    txId = null;
+                    destinationOwner = ?destOwner;
+                });
                 false
             };
         };
@@ -1366,6 +1600,24 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     ("sellDeviation", Nat.toText(sellToken.deviationBps)),
                     ("buyDeviation", Nat.toText(buyToken.deviationBps)),
                 ]);
+                ignore appendTradeLog({
+                    choreId = ?instanceId;
+                    choreTypeId = getInstanceTypeId(instanceId);
+                    actionId = null;
+                    actionType = 0;
+                    inputToken = sellToken.token;
+                    outputToken = ?buyToken.token;
+                    inputAmount = tradeSize;
+                    outputAmount = ?r.amountOut;
+                    priceE8s = ?quote.spotPriceE8s;
+                    priceImpactBps = ?quote.priceImpactBps;
+                    slippageBps = ?slippage;
+                    dexId = ?quote.dexId;
+                    status = #Success;
+                    errorMessage = null;
+                    txId = r.txId;
+                    destinationOwner = null;
+                });
                 true
             };
             case (#Err(e)) {
@@ -1374,6 +1626,24 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     ("buyToken", Principal.toText(buyToken.token)),
                     ("error", e),
                 ]);
+                ignore appendTradeLog({
+                    choreId = ?instanceId;
+                    choreTypeId = getInstanceTypeId(instanceId);
+                    actionId = null;
+                    actionType = 0;
+                    inputToken = sellToken.token;
+                    outputToken = ?buyToken.token;
+                    inputAmount = tradeSize;
+                    outputAmount = null;
+                    priceE8s = ?quote.spotPriceE8s;
+                    priceImpactBps = ?quote.priceImpactBps;
+                    slippageBps = ?slippage;
+                    dexId = ?quote.dexId;
+                    status = #Failed;
+                    errorMessage = ?e;
+                    txId = null;
+                    destinationOwner = null;
+                });
                 false
             };
         };
@@ -2717,88 +2987,6 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     public shared (msg) func clearLogs(): async () {
         assertPermission(msg.caller, T.TradingPermission.ManageLogs);
         logEngine.clear();
-    };
-
-    // ============================================
-    // TRADE LOG — INTERNAL HELPERS
-    // ============================================
-
-    /// Append a trade log entry (called internally by chore conductors).
-    /// Respects master and per-chore logging settings.
-    /// Returns the assigned entry ID (or null if logging was disabled).
-    func appendTradeLog(entry: {
-        choreId: ?Text;
-        choreTypeId: ?Text;
-        actionId: ?Nat;
-        actionType: Nat;
-        inputToken: Principal;
-        outputToken: ?Principal;
-        inputAmount: Nat;
-        outputAmount: ?Nat;
-        priceE8s: ?Nat;
-        priceImpactBps: ?Nat;
-        slippageBps: ?Nat;
-        dexId: ?Nat;
-        status: T.TradeStatus;
-        errorMessage: ?Text;
-        txId: ?Nat;
-        destinationOwner: ?Principal;
-    }): ?Nat {
-        // Check master setting
-        if (not loggingSettings.tradeLogEnabled) { return null };
-        // Check per-chore override
-        switch (entry.choreId) {
-            case (?cid) {
-                for ((id, ovr) in choreLoggingOverrides.vals()) {
-                    if (id == cid) {
-                        switch (ovr.tradeLogEnabled) {
-                            case (?false) { return null };
-                            case (_) {};
-                        };
-                    };
-                };
-            };
-            case (null) {};
-        };
-
-        let id = tradeLogNextId;
-        tradeLogNextId += 1;
-        let full: T.TradeLogEntry = {
-            id = id;
-            timestamp = Time.now();
-            choreId = entry.choreId;
-            choreTypeId = entry.choreTypeId;
-            actionId = entry.actionId;
-            actionType = entry.actionType;
-            inputToken = entry.inputToken;
-            outputToken = entry.outputToken;
-            inputAmount = entry.inputAmount;
-            outputAmount = entry.outputAmount;
-            priceE8s = entry.priceE8s;
-            priceImpactBps = entry.priceImpactBps;
-            slippageBps = entry.slippageBps;
-            dexId = entry.dexId;
-            status = entry.status;
-            errorMessage = entry.errorMessage;
-            txId = entry.txId;
-            destinationOwner = entry.destinationOwner;
-        };
-        let buf = Buffer.fromArray<T.TradeLogEntry>(tradeLogEntries);
-        buf.add(full);
-        // Trim circular buffer
-        if (buf.size() > loggingSettings.maxTradeLogEntries) {
-            let excess = buf.size() - loggingSettings.maxTradeLogEntries : Nat;
-            let trimmed = Buffer.Buffer<T.TradeLogEntry>(loggingSettings.maxTradeLogEntries);
-            var i = excess;
-            while (i < buf.size()) {
-                trimmed.add(buf.get(i));
-                i += 1;
-            };
-            tradeLogEntries := Buffer.toArray(trimmed);
-        } else {
-            tradeLogEntries := Buffer.toArray(buf);
-        };
-        ?id
     };
 
     /// Append a portfolio snapshot (called internally).
