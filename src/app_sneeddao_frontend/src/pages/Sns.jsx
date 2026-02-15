@@ -544,7 +544,12 @@ function Sns() {
         }
     };
 
-    // Health status helpers (matching /apps page)
+    // SNS canister cycle thresholds
+    // SNS canisters are critical infrastructure and should maintain higher cycle balances
+    const SNS_CYCLE_THRESHOLD_RED    = 5_000_000_000_000;   // 5T  — critical, needs immediate top-up
+    const SNS_CYCLE_THRESHOLD_ORANGE = 10_000_000_000_000;  // 10T — warning, should top up soon
+
+    // Health status helpers
     const getStatusLampColor = (status) => {
         switch (status) {
             case 'red': return '#ef4444';
@@ -557,8 +562,8 @@ function Sns() {
     const getCanisterHealth = (canisterId) => {
         const status = canisterStatus[canisterId];
         if (!status || status.cycles === null || status.cycles === undefined) return 'unknown';
-        if (status.cycles < 500_000_000_000) return 'red';     // 0.5T
-        if (status.cycles < 2_000_000_000_000) return 'orange'; // 2T
+        if (status.cycles < SNS_CYCLE_THRESHOLD_RED) return 'red';
+        if (status.cycles < SNS_CYCLE_THRESHOLD_ORANGE) return 'orange';
         return 'green';
     };
 

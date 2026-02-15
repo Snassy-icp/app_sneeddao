@@ -13,7 +13,7 @@ import Error "mo:base/Error";
 import Cycles "mo:base/ExperimentalCycles";
 import Text "mo:base/Text";
 
-import T "Types";
+import T "../sneed_bots/sneed_icp_staking_bot/Types";
 import PremiumClient "../PremiumClient";
 
 shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {

@@ -16,12 +16,16 @@
       "main": "src/sneed_sms/main.mo",
       "type": "motoko"
     },
-    "sneed_icp_neuron_manager": {
-      "main": "src/sneed_icp_neuron_manager/neuron_manager_canister.mo",
+    "sneed_icp_staking_bot": {
+      "main": "src/sneed_bots/sneed_icp_staking_bot/main.mo",
       "type": "motoko"
     },
-    "sneed_icp_neuron_manager_factory": {
-      "main": "src/sneed_icp_neuron_manager/main.mo",
+    "sneed_trading_bot": {
+      "main": "src/sneed_bots/sneed_trading_bot/main.mo",
+      "type": "motoko"
+    },
+    "sneedapp": {
+      "main": "src/sneedapp/main.mo",
       "type": "motoko"
     },
     "sneedex": {

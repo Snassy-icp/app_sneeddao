@@ -7,11 +7,11 @@
     "ic": "pxtkg-giaaa-aaaal-ajjzq-cai",
     "staging": "2icdp-6qaaa-aaaal-qjt6a-cai"
   },
-  "sneed_icp_neuron_manager": {
+  "sneed_icp_staking_bot": {
     "ic": "utrgg-zqaaa-aaaad-aduma-cai",
     "staging": "utrgg-zqaaa-aaaad-aduma-cai"
   },
-  "sneed_icp_neuron_manager_factory": {
+  "sneedapp": {
     "ic": "sfamc-kyaaa-aaaau-adnpq-cai",
     "staging": "34e6r-ayaaa-aaaad-adkoa-cai"
   },

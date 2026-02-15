@@ -1,0 +1,2221 @@
+import Principal "mo:base/Principal";
+import Blob "mo:base/Blob";
+import Nat "mo:base/Nat";
+import Nat8 "mo:base/Nat8";
+// Nat64 available if needed for future timestamp operations
+import Int "mo:base/Int";
+import Float "mo:base/Float";
+import Time "mo:base/Time";
+import Array "mo:base/Array";
+import Buffer "mo:base/Buffer";
+import Text "mo:base/Text";
+import Debug "mo:base/Debug";
+import Error "mo:base/Error";
+
+import T "Types";
+import BotkeyPermissions "../BotkeyPermissions";
+import BotChoreTypes "../BotChoreTypes";
+import BotChoreEngine "../BotChoreEngine";
+import BotLogTypes "../BotLogTypes";
+import BotLogEngine "../BotLogEngine";
+import DistributionTypes "../DistributionTypes";
+
+/// Sneed Trading Bot — autonomous token trading canister.
+///
+/// Reuses shared infrastructure: Botkeys, Bot Chores, Botlog.
+/// Supports: Trade Chore, Rebalance Chore, Move Funds Chore, Distribute Funds Chore.
+shared (deployer) persistent actor class TradingBotCanister() = this {
+
+    // ============================================
+    // STATE — Individual stable vars (no config records)
+    // ============================================
+
+    var createdAt: Int = Time.now();
+
+    transient let currentVersion: T.Version = T.CURRENT_VERSION;
+
+    // Hotkey permissions: Principal -> [numeric permission IDs]
+    var hotkeyPermissions: [(Principal, [Nat])] = [];
+
+    // Token Registry
+    var tokenRegistry: [T.TokenRegistryEntry] = [];
+
+    // Named Subaccounts
+    var namedSubaccounts: [(Nat, Text)] = [];
+    var nextSubaccountNumber: Nat = 1;
+
+    // DEX Settings
+    var enabledDexes: [Nat] = [0, 1]; // ICPSwap and KongSwap
+    var defaultSlippageBps: Nat = 100; // 1%
+    var defaultMaxPriceImpactBps: Nat = 300; // 3%
+    var icpswapPoolCache: [(Text, Principal)] = [];
+
+    // Bot Chores: stable state for the chore system
+    var choreConfigs: [(Text, BotChoreTypes.ChoreConfig)] = [];
+    var choreStates: [(Text, BotChoreTypes.ChoreRuntimeState)] = [];
+    var choreInstances: [(Text, BotChoreTypes.ChoreInstanceInfo)] = [];
+
+    // Trade Chore: per-instance action lists
+    var tradeChoreActions: [(Text, [T.ActionConfig])] = [];
+    var tradeChoreNextActionId: [(Text, Nat)] = [];
+
+    // Rebalance Chore: per-instance settings
+    var rebalanceTargets: [(Text, [T.RebalanceTarget])] = [];
+    var rebalanceDenominationToken: [(Text, Principal)] = [];
+    var rebalanceMaxTradeSize: [(Text, Nat)] = [];
+    var rebalanceMinTradeSize: [(Text, Nat)] = [];
+    var rebalanceMaxPriceImpactBps: [(Text, Nat)] = [];
+    var rebalanceMaxSlippageBps: [(Text, Nat)] = [];
+    var rebalanceThresholdBps: [(Text, Nat)] = [];
+
+    // Move Funds Chore: per-instance action lists
+    var moveFundsActions: [(Text, [T.ActionConfig])] = [];
+    var moveFundsNextActionId: [(Text, Nat)] = [];
+
+    // Distribution (shared pattern)
+    var distributionSettings: [(Text, { lists: [DistributionTypes.DistributionList]; nextListId: Nat })] = [];
+
+    // Bot Log
+    var botLogEntries: [BotLogTypes.LogEntry] = [];
+    var botLogNextId: Nat = 0;
+    var botLogLevel: Nat = 3; // Info
+    var botLogMaxEntries: Nat = 10_000;
+
+    // ============================================
+    // PER-INSTANCE SETTINGS HELPERS
+    // ============================================
+
+    // Generic helpers for per-instance keyed arrays
+    func getFromMap<V>(map: [(Text, V)], key: Text, default_: V): V {
+        for ((k, v) in map.vals()) { if (k == key) return v };
+        default_
+    };
+
+    func setInMap<V>(map: [(Text, V)], key: Text, value: V): [(Text, V)] {
+        var found = false;
+        let updated = Array.map<(Text, V), (Text, V)>(map,
+            func((k, v)) { if (k == key) { found := true; (k, value) } else { (k, v) } }
+        );
+        if (found) updated
+        else Array.append(updated, [(key, value)])
+    };
+
+    func removeFromMap<V>(map: [(Text, V)], key: Text): [(Text, V)] {
+        Array.filter<(Text, V)>(map, func((k, _)) { k != key })
+    };
+
+    // Trade chore actions helpers
+    func getTradeActionsForInstance(instanceId: Text): [T.ActionConfig] {
+        getFromMap(tradeChoreActions, instanceId, [])
+    };
+    func setTradeActionsForInstance(instanceId: Text, actions: [T.ActionConfig]) {
+        tradeChoreActions := setInMap(tradeChoreActions, instanceId, actions)
+    };
+    func getTradeNextId(instanceId: Text): Nat {
+        getFromMap(tradeChoreNextActionId, instanceId, 1)
+    };
+    func setTradeNextId(instanceId: Text, n: Nat) {
+        tradeChoreNextActionId := setInMap(tradeChoreNextActionId, instanceId, n)
+    };
+
+    // Move funds actions helpers
+    func getMoveFundsActionsForInstance(instanceId: Text): [T.ActionConfig] {
+        getFromMap(moveFundsActions, instanceId, [])
+    };
+    func setMoveFundsActionsForInstance(instanceId: Text, actions: [T.ActionConfig]) {
+        moveFundsActions := setInMap(moveFundsActions, instanceId, actions)
+    };
+    func getMoveFundsNextId(instanceId: Text): Nat {
+        getFromMap(moveFundsNextActionId, instanceId, 1)
+    };
+    func setMoveFundsNextId(instanceId: Text, n: Nat) {
+        moveFundsNextActionId := setInMap(moveFundsNextActionId, instanceId, n)
+    };
+
+    // Distribution settings helpers
+    func getDistSettings(instanceId: Text): { lists: [DistributionTypes.DistributionList]; nextListId: Nat } {
+        getFromMap(distributionSettings, instanceId, { lists = []; nextListId = 1 })
+    };
+    func setDistSettings(instanceId: Text, s: { lists: [DistributionTypes.DistributionList]; nextListId: Nat }) {
+        distributionSettings := setInMap(distributionSettings, instanceId, s)
+    };
+
+    // Rebalance settings helpers
+    func getRebalTargets(instanceId: Text): [T.RebalanceTarget] {
+        getFromMap(rebalanceTargets, instanceId, [])
+    };
+    func setRebalTargets(instanceId: Text, targets: [T.RebalanceTarget]) {
+        rebalanceTargets := setInMap(rebalanceTargets, instanceId, targets)
+    };
+    func getRebalDenomToken(instanceId: Text): Principal {
+        getFromMap(rebalanceDenominationToken, instanceId, Principal.fromText(T.ICP_LEDGER))
+    };
+    func getRebalMaxTrade(instanceId: Text): Nat {
+        getFromMap(rebalanceMaxTradeSize, instanceId, 100_000_000) // 1 ICP default
+    };
+    func getRebalMinTrade(instanceId: Text): Nat {
+        getFromMap(rebalanceMinTradeSize, instanceId, 10_000) // 0.0001 ICP default
+    };
+    func getRebalMaxImpact(instanceId: Text): Nat {
+        getFromMap(rebalanceMaxPriceImpactBps, instanceId, 300) // 3%
+    };
+    func getRebalMaxSlippage(instanceId: Text): Nat {
+        getFromMap(rebalanceMaxSlippageBps, instanceId, 100) // 1%
+    };
+    func getRebalThreshold(instanceId: Text): Nat {
+        getFromMap(rebalanceThresholdBps, instanceId, 200) // 2% minimum deviation
+    };
+
+    // ============================================
+    // PERMISSION SYSTEM
+    // ============================================
+
+    transient let PERMISSION_MAP: [(Nat, T.TradingPermissionType)] = [
+        // Shared base permissions (0–99)
+        (0,   #FullPermissions),
+        (1,   #ManagePermissions),
+        (2,   #ViewChores),
+        (3,   #ViewLogs),
+        (4,   #ManageLogs),
+        // Trading Bot permissions (200–299)
+        (200, #ViewPortfolio),
+        (201, #ManageSubaccounts),
+        (202, #ManageTrades),
+        (203, #ManageRebalancer),
+        (204, #ManageTradeChore),
+        (205, #ManageRebalanceChore),
+        (206, #ManageMoveFundsChore),
+        (207, #ManageTokenRegistry),
+        (208, #ManageDexSettings),
+        (209, #WithdrawFunds),
+        (210, #ConfigureDistribution),
+        (211, #ManageDistributeFunds),
+    ];
+
+    func permissionVariantToId(perm: T.TradingPermissionType): Nat {
+        switch (perm) {
+            case (#FullPermissions) { 0 };
+            case (#ManagePermissions) { 1 };
+            case (#ViewChores) { 2 };
+            case (#ViewLogs) { 3 };
+            case (#ManageLogs) { 4 };
+            case (#ViewPortfolio) { 200 };
+            case (#ManageSubaccounts) { 201 };
+            case (#ManageTrades) { 202 };
+            case (#ManageRebalancer) { 203 };
+            case (#ManageTradeChore) { 204 };
+            case (#ManageRebalanceChore) { 205 };
+            case (#ManageMoveFundsChore) { 206 };
+            case (#ManageTokenRegistry) { 207 };
+            case (#ManageDexSettings) { 208 };
+            case (#WithdrawFunds) { 209 };
+            case (#ConfigureDistribution) { 210 };
+            case (#ManageDistributeFunds) { 211 };
+        }
+    };
+
+    func permissionIdToVariant(id: Nat): ?T.TradingPermissionType {
+        switch (id) {
+            case (0)   { ?#FullPermissions };
+            case (1)   { ?#ManagePermissions };
+            case (2)   { ?#ViewChores };
+            case (3)   { ?#ViewLogs };
+            case (4)   { ?#ManageLogs };
+            case (200) { ?#ViewPortfolio };
+            case (201) { ?#ManageSubaccounts };
+            case (202) { ?#ManageTrades };
+            case (203) { ?#ManageRebalancer };
+            case (204) { ?#ManageTradeChore };
+            case (205) { ?#ManageRebalanceChore };
+            case (206) { ?#ManageMoveFundsChore };
+            case (207) { ?#ManageTokenRegistry };
+            case (208) { ?#ManageDexSettings };
+            case (209) { ?#WithdrawFunds };
+            case (210) { ?#ConfigureDistribution };
+            case (211) { ?#ManageDistributeFunds };
+            case (_)   { null };
+        }
+    };
+
+    transient let permEngine = BotkeyPermissions.Engine<T.TradingPermissionType>({
+        permissionMap = PERMISSION_MAP;
+        variantToId = permissionVariantToId;
+        idToVariant = permissionIdToVariant;
+    });
+
+    func callerHasPermission(caller: Principal, permissionId: Nat): Bool {
+        permEngine.callerHasPermission(caller, permissionId, hotkeyPermissions)
+    };
+
+    func assertPermission(caller: Principal, permissionId: Nat) {
+        permEngine.assertPermission(caller, permissionId, hotkeyPermissions)
+    };
+
+    // Map chore instance -> manage permission
+    func choreManagePermission(instanceId: Text): Nat {
+        let typeId = switch (choreEngine.getInstance(instanceId)) {
+            case (?info) { info.typeId };
+            case null { instanceId };
+        };
+        switch (typeId) {
+            case ("trade") { T.TradingPermission.ManageTradeChore };
+            case ("rebalance") { T.TradingPermission.ManageRebalanceChore };
+            case ("move-funds") { T.TradingPermission.ManageMoveFundsChore };
+            case ("distribute-funds") { T.TradingPermission.ManageDistributeFunds };
+            case (_) { Debug.trap("Unknown chore type: " # typeId) };
+        }
+    };
+
+    // ============================================
+    // BOT LOG SYSTEM
+    // ============================================
+
+    transient let logEngine = BotLogEngine.Engine({
+        getEntries = func(): [BotLogTypes.LogEntry] { botLogEntries };
+        setEntries = func(e: [BotLogTypes.LogEntry]): () { botLogEntries := e };
+        getNextId = func(): Nat { botLogNextId };
+        setNextId = func(n: Nat): () { botLogNextId := n };
+        getLogLevel = func(): Nat { botLogLevel };
+        setLogLevel = func(n: Nat): () { botLogLevel := n };
+        maxEntries = botLogMaxEntries;
+    });
+
+    // ============================================
+    // BOT CHORES SYSTEM
+    // ============================================
+
+    transient let choreEngine = BotChoreEngine.Engine({
+        getConfigs = func(): [(Text, BotChoreTypes.ChoreConfig)] { choreConfigs };
+        setConfigs = func(c: [(Text, BotChoreTypes.ChoreConfig)]): () { choreConfigs := c };
+        getStates = func(): [(Text, BotChoreTypes.ChoreRuntimeState)] { choreStates };
+        setStates = func(s: [(Text, BotChoreTypes.ChoreRuntimeState)]): () { choreStates := s };
+        getInstances = func(): [(Text, BotChoreTypes.ChoreInstanceInfo)] { choreInstances };
+        setInstances = func(i: [(Text, BotChoreTypes.ChoreInstanceInfo)]): () { choreInstances := i };
+        log = ?(func(level: BotChoreTypes.ChoreLogLevel, source: Text, message: Text, tags: [(Text, Text)]): () {
+            switch (level) {
+                case (#Info) { logEngine.logInfo(source, message, null, tags) };
+                case (#Warning) { logEngine.logWarning(source, message, null, tags) };
+                case (#Error) { logEngine.logError(source, message, null, tags) };
+            };
+        });
+    });
+
+    // ============================================
+    // SUBACCOUNT HELPERS
+    // ============================================
+
+    /// Convert a subaccount number to a 32-byte blob (big-endian encoding).
+    func subaccountNumberToBlob(n: Nat): Blob {
+        let bytes = Array.tabulate<Nat8>(32, func(i: Nat): Nat8 {
+            let shift = (31 - i) * 8;
+            Nat8.fromNat((n / (2 ** shift)) % 256)
+        });
+        Blob.fromArray(bytes)
+    };
+
+    /// Get the subaccount blob for a given number (0 = null = main account).
+    func getSubaccountBlob(number: ?Nat): ?Blob {
+        switch (number) {
+            case null { null };
+            case (?0) { null };
+            case (?n) { ?subaccountNumberToBlob(n) };
+        }
+    };
+
+    // ============================================
+    // DEX AGGREGATOR — INTERNAL HELPERS
+    // ============================================
+
+    /// Get the ICPSwap factory actor.
+    func getICPSwapFactory(): T.ICPSwapFactoryActor {
+        actor(T.ICPSWAP_FACTORY): T.ICPSwapFactoryActor
+    };
+
+    /// Get the Kong swap actor.
+    func getKongSwap(): T.KongSwapActor {
+        actor(T.KONG_SWAP): T.KongSwapActor
+    };
+
+    /// Create a ledger actor from a canister ID.
+    func getLedger(canisterId: Principal): T.LedgerActor {
+        actor(Principal.toText(canisterId)): T.LedgerActor
+    };
+
+    /// Get ICPSwap pool canister for a token pair.
+    /// Returns cached result if available, otherwise queries factory.
+    func getICPSwapPool(tokenA: Principal, tokenB: Principal): async ?Principal {
+        let key = pairKey(tokenA, tokenB);
+        // Check cache
+        for ((k, v) in icpswapPoolCache.vals()) {
+            if (k == key) return ?v;
+        };
+        // Query factory
+        let factory = getICPSwapFactory();
+        let aText = Principal.toText(tokenA);
+        let bText = Principal.toText(tokenB);
+        let (t0, t1) = if (aText < bText) { (aText, bText) } else { (bText, aText) };
+        try {
+            let result = await factory.getPool({
+                token0 = { address = t0; standard = "ICRC1" };
+                token1 = { address = t1; standard = "ICRC1" };
+                fee = 3000; // 0.3% standard fee tier
+            });
+            switch (result) {
+                case (#ok(pool)) {
+                    icpswapPoolCache := Array.append(icpswapPoolCache, [(key, pool.canisterId)]);
+                    ?pool.canisterId
+                };
+                case (#err(_)) { null };
+            };
+        } catch (_) { null };
+    };
+
+    /// Build a canonical pair key (sorted lexicographically).
+    func pairKey(tokenA: Principal, tokenB: Principal): Text {
+        let a = Principal.toText(tokenA);
+        let b = Principal.toText(tokenB);
+        if (a < b) { a # ":" # b } else { b # ":" # a }
+    };
+
+    /// Determine ICPSwap zeroForOne direction.
+    func isZeroForOne(inputToken: Principal, outputToken: Principal): Bool {
+        Principal.toText(inputToken) < Principal.toText(outputToken)
+    };
+
+    /// Compute pool subaccount for a principal (ICPSwap ICRC1 deposit pattern).
+    func principalToSubaccount(p: Principal): Blob {
+        let bytes = Blob.toArray(Principal.toBlob(p));
+        let sub = Array.tabulate<Nat8>(32, func(i: Nat): Nat8 {
+            if (i == 0) { Nat8.fromNat(bytes.size()) }
+            else if (i <= bytes.size()) { bytes[i - 1] }
+            else { 0 }
+        });
+        Blob.fromArray(sub)
+    };
+
+    /// Get token info from the registry.
+    func getTokenInfo(token: Principal): ?T.TokenRegistryEntry {
+        Array.find<T.TokenRegistryEntry>(tokenRegistry, func(e) { e.ledgerCanisterId == token })
+    };
+
+    /// Check if a DEX is enabled.
+    func isDexEnabled(dexId: Nat): Bool {
+        Array.find<Nat>(enabledDexes, func(d) { d == dexId }) != null
+    };
+
+    // ============================================
+    // DEX AGGREGATOR — QUOTING
+    // ============================================
+
+    /// Get a swap quote from ICPSwap.
+    func getICPSwapQuote(inputToken: Principal, outputToken: Principal, amount: Nat): async ?T.SwapQuote {
+        let poolOpt = await getICPSwapPool(inputToken, outputToken);
+        let poolCid = switch (poolOpt) { case (?p) p; case null { return null } };
+
+        let inputInfo = switch (getTokenInfo(inputToken)) { case (?i) i; case null { return null } };
+        let outputInfo = switch (getTokenInfo(outputToken)) { case (?i) i; case null { return null } };
+
+        // ICPSwap: 2 input fees (transfer + deposit), 1 output fee (withdrawal)
+        let inputFees = 2 * inputInfo.fee;
+        let outputFees = 1 * outputInfo.fee;
+
+        if (amount <= inputFees) return null;
+        let effectiveInput = amount - inputFees;
+
+        let pool: T.ICPSwapPoolActor = actor(Principal.toText(poolCid));
+        let zfo = isZeroForOne(inputToken, outputToken);
+
+        try {
+            let quoteResult = await pool.quote({
+                amountIn = Nat.toText(effectiveInput);
+                zeroForOne = zfo;
+                amountOutMinimum = "0";
+            });
+
+            switch (quoteResult) {
+                case (#ok(expectedOutput)) {
+                    let netOutput = if (expectedOutput > outputFees) { expectedOutput - outputFees } else { 0 };
+
+                    // Calculate spot price (as e8s: output per 1e(inputDecimals) input)
+                    // Using the quote for a reasonable estimate
+                    let spotPriceE8s = if (effectiveInput > 0) {
+                        (expectedOutput * (10 ** Nat8.toNat(inputInfo.decimals))) / effectiveInput
+                    } else { 0 };
+
+                    // Price impact estimate
+                    let priceImpactBps: Nat = 0; // Would need metadata for precise calculation
+
+                    ?{
+                        dexId = T.DexId.ICPSwap;
+                        inputToken = inputToken;
+                        outputToken = outputToken;
+                        inputAmount = amount;
+                        effectiveInputAmount = effectiveInput;
+                        expectedOutput = netOutput;
+                        spotPriceE8s = spotPriceE8s;
+                        priceImpactBps = priceImpactBps;
+                        dexFeeBps = 30; // 0.3%
+                        inputFeesTotal = inputFees;
+                        outputFeesTotal = outputFees;
+                        poolCanisterId = ?poolCid;
+                        timestamp = Time.now();
+                    }
+                };
+                case (#err(_)) { null };
+            };
+        } catch (_) { null };
+    };
+
+    /// Get a swap quote from KongSwap.
+    func getKongQuote(inputToken: Principal, outputToken: Principal, amount: Nat): async ?T.SwapQuote {
+        let inputInfo = switch (getTokenInfo(inputToken)) { case (?i) i; case null { return null } };
+        let outputInfo = switch (getTokenInfo(outputToken)) { case (?i) i; case null { return null } };
+
+        // Kong ICRC1: 1 input fee, 0 output fees
+        // Kong ICRC2: 2 input fees, 0 output fees — we'll use ICRC1 fee count for now
+        let inputFees = 1 * inputInfo.fee;
+        let outputFees: Nat = 0;
+
+        if (amount <= inputFees) return null;
+        let effectiveInput = amount - inputFees;
+
+        let kong = getKongSwap();
+
+        try {
+            let result = await kong.swap_amounts(
+                Principal.toText(inputToken),
+                effectiveInput,
+                Principal.toText(outputToken)
+            );
+
+            switch (result) {
+                case (#Ok(quoteData)) {
+                    let netOutput = quoteData.receive_amount; // Kong has 0 output fees
+
+                    let spotPriceE8s = if (quoteData.mid_price > 0.0) {
+                        // Convert float mid_price to e8s representation
+                        let decimalAdj = Float.pow(10.0, Float.fromInt(Nat8.toNat(outputInfo.decimals)));
+                        let priceNat = Int.abs(Float.toInt(quoteData.mid_price * decimalAdj));
+                        priceNat
+                    } else { 0 };
+
+                    let priceImpactBps = Int.abs(Float.toInt(Float.abs(quoteData.slippage) * 100.0));
+
+                    ?{
+                        dexId = T.DexId.KongSwap;
+                        inputToken = inputToken;
+                        outputToken = outputToken;
+                        inputAmount = amount;
+                        effectiveInputAmount = effectiveInput;
+                        expectedOutput = netOutput;
+                        spotPriceE8s = spotPriceE8s;
+                        priceImpactBps = priceImpactBps;
+                        dexFeeBps = 30; // Default 0.3%, varies by pool
+                        inputFeesTotal = inputFees;
+                        outputFeesTotal = outputFees;
+                        poolCanisterId = null;
+                        timestamp = Time.now();
+                    }
+                };
+                case (#Err(_)) { null };
+            };
+        } catch (_) { null };
+    };
+
+    /// Get quotes from all enabled DEXes, sorted by output (best first).
+    func getAllQuotes(inputToken: Principal, outputToken: Principal, amount: Nat): async [T.SwapQuote] {
+        let quotes = Buffer.Buffer<T.SwapQuote>(2);
+
+        if (isDexEnabled(T.DexId.ICPSwap)) {
+            let q = await getICPSwapQuote(inputToken, outputToken, amount);
+            switch (q) { case (?quote) { quotes.add(quote) }; case null {} };
+        };
+
+        if (isDexEnabled(T.DexId.KongSwap)) {
+            let q = await getKongQuote(inputToken, outputToken, amount);
+            switch (q) { case (?quote) { quotes.add(quote) }; case null {} };
+        };
+
+        // Sort by expectedOutput descending
+        let arr = Buffer.toArray(quotes);
+        Array.sort<T.SwapQuote>(arr, func(a, b) {
+            if (a.expectedOutput > b.expectedOutput) { #less }
+            else if (a.expectedOutput < b.expectedOutput) { #greater }
+            else { #equal }
+        })
+    };
+
+    /// Get the best quote across all enabled DEXes.
+    func getBestQuote(inputToken: Principal, outputToken: Principal, amount: Nat): async ?T.SwapQuote {
+        let quotes = await getAllQuotes(inputToken, outputToken, amount);
+        if (quotes.size() > 0) { ?quotes[0] } else { null }
+    };
+
+    // ============================================
+    // DEX AGGREGATOR — SWAP EXECUTION
+    // ============================================
+
+    /// Execute a swap on ICPSwap using ICRC-1 path.
+    /// (Transfer to pool subaccount, then depositAndSwap)
+    func executeICPSwapSwap(quote: T.SwapQuote, slippageBps: Nat): async T.SwapResult {
+        let poolCid = switch (quote.poolCanisterId) {
+            case (?p) p;
+            case null { return #Err("No pool canister for ICPSwap swap") };
+        };
+
+        let inputInfo = switch (getTokenInfo(quote.inputToken)) {
+            case (?i) i;
+            case null { return #Err("Input token not in registry") };
+        };
+        let outputInfo = switch (getTokenInfo(quote.outputToken)) {
+            case (?i) i;
+            case null { return #Err("Output token not in registry") };
+        };
+
+        let zfo = isZeroForOne(quote.inputToken, quote.outputToken);
+        let effectiveInput = quote.effectiveInputAmount;
+        let minOutput = quote.expectedOutput - (quote.expectedOutput * slippageBps / 10000);
+
+        let pool: T.ICPSwapPoolActor = actor(Principal.toText(poolCid));
+        let inputLedger = getLedger(quote.inputToken);
+
+        // Step 1: Transfer input tokens to pool's subaccount for our principal
+        let selfPrincipal = Principal.fromActor(this);
+        let poolSubaccount = principalToSubaccount(selfPrincipal);
+        let transferAmount = effectiveInput + inputInfo.fee; // Pool's internal deposit costs a fee
+
+        try {
+            let transferResult = await inputLedger.icrc1_transfer({
+                to = { owner = poolCid; subaccount = ?poolSubaccount };
+                fee = ?inputInfo.fee;
+                memo = null;
+                from_subaccount = null;
+                created_at_time = null;
+                amount = transferAmount;
+            });
+
+            switch (transferResult) {
+                case (#Err(e)) {
+                    return #Err("Transfer to pool failed: " # debug_show(e));
+                };
+                case (#Ok(_)) {};
+            };
+        } catch (e) {
+            return #Err("Transfer to pool threw: " # Error.message(e));
+        };
+
+        // Step 2: depositAndSwap
+        try {
+            let swapResult = await pool.depositAndSwap({
+                amountIn = Nat.toText(effectiveInput);
+                zeroForOne = zfo;
+                amountOutMinimum = Nat.toText(minOutput);
+                tokenInFee = inputInfo.fee;
+                tokenOutFee = outputInfo.fee;
+            });
+
+            switch (swapResult) {
+                case (#ok(amountOut)) { #Ok({ amountOut = amountOut; txId = null }) };
+                case (#err(e)) { #Err("ICPSwap swap failed: " # e.message) };
+            };
+        } catch (e) {
+            #Err("ICPSwap swap threw: " # Error.message(e))
+        };
+    };
+
+    /// Execute a swap on KongSwap using ICRC-1 path.
+    /// (Transfer to Kong canister, then swap with block index)
+    func executeKongSwapSwap(quote: T.SwapQuote, slippageBps: Nat): async T.SwapResult {
+        let inputInfo = switch (getTokenInfo(quote.inputToken)) {
+            case (?i) i;
+            case null { return #Err("Input token not in registry") };
+        };
+
+        let effectiveInput = quote.effectiveInputAmount;
+        let minOutput = quote.expectedOutput - (quote.expectedOutput * slippageBps / 10000);
+
+        let inputLedger = getLedger(quote.inputToken);
+        let kongPrincipal = Principal.fromText(T.KONG_SWAP);
+        let kong = getKongSwap();
+
+        // Step 1: Transfer input tokens to Kong canister
+        let blockIndex: Nat = try {
+            let transferResult = await inputLedger.icrc1_transfer({
+                to = { owner = kongPrincipal; subaccount = null };
+                fee = ?inputInfo.fee;
+                memo = null;
+                from_subaccount = null;
+                created_at_time = null;
+                amount = effectiveInput;
+            });
+
+            switch (transferResult) {
+                case (#Ok(idx)) { idx };
+                case (#Err(e)) {
+                    return #Err("Transfer to Kong failed: " # debug_show(e));
+                };
+            };
+        } catch (e) {
+            return #Err("Transfer to Kong threw: " # Error.message(e));
+        };
+
+        // Step 2: Call swap with block index
+        // Calculate max_slippage: Kong's slippage is total % deviation from mid_price
+        let totalSlippagePct = Float.fromInt(quote.priceImpactBps + quote.dexFeeBps + slippageBps) / 100.0;
+
+        try {
+            let swapResult = await kong.swap({
+                pay_token = Principal.toText(quote.inputToken);
+                pay_amount = effectiveInput;
+                receive_token = Principal.toText(quote.outputToken);
+                receive_amount = ?minOutput;
+                receive_address = null;
+                pay_tx_id = ?#BlockIndex(blockIndex);
+                max_slippage = ?totalSlippagePct;
+                referred_by = null;
+            });
+
+            switch (swapResult) {
+                case (#Ok(reply)) {
+                    #Ok({ amountOut = reply.receive_amount; txId = ?reply.tx_id })
+                };
+                case (#Err(e)) { #Err("Kong swap failed: " # e) };
+            };
+        } catch (e) {
+            #Err("Kong swap threw: " # Error.message(e))
+        };
+    };
+
+    /// Execute a swap using the given quote.
+    func executeSwap(quote: T.SwapQuote, slippageBps: Nat): async T.SwapResult {
+        if (quote.dexId == T.DexId.ICPSwap) {
+            await executeICPSwapSwap(quote, slippageBps)
+        } else if (quote.dexId == T.DexId.KongSwap) {
+            await executeKongSwapSwap(quote, slippageBps)
+        } else {
+            #Err("Unknown DEX ID: " # Nat.toText(quote.dexId))
+        }
+    };
+
+    // ============================================
+    // ICRC-1 TRANSFER HELPERS
+    // ============================================
+
+    /// Transfer tokens (internal helper).
+    func transferTokens(token: Principal, fromSubaccount: ?Blob, to: T.Account, amount: Nat): async T.TransferResult {
+        let ledger = getLedger(token);
+        let fee = switch (getTokenInfo(token)) {
+            case (?info) { info.fee };
+            case null { 0 }; // will be fetched by ledger
+        };
+        await ledger.icrc1_transfer({
+            to = to;
+            fee = ?fee;
+            memo = null;
+            from_subaccount = fromSubaccount;
+            created_at_time = null;
+            amount = amount;
+        })
+    };
+
+    /// Get balance of a token in a subaccount.
+    func getBalance(token: Principal, subaccount: ?Blob): async Nat {
+        let ledger = getLedger(token);
+        await ledger.icrc1_balance_of({
+            owner = Principal.fromActor(this);
+            subaccount = subaccount;
+        })
+    };
+
+    // ============================================
+    // TRADE ACTION EXECUTION
+    // ============================================
+
+    /// Execute a single trade action. Returns true if executed, false if skipped.
+    func executeTradeAction(action: T.ActionConfig, instanceId: Text): async Bool {
+        let src = "chore:" # instanceId;
+
+        // Check frequency
+        switch (action.minFrequencySeconds) {
+            case (?minFreq) {
+                switch (action.lastExecutedAt) {
+                    case (?lastTime) {
+                        let elapsed = (Time.now() - lastTime) / 1_000_000_000;
+                        if (elapsed < Int.abs(minFreq)) {
+                            logEngine.logDebug(src, "Action " # Nat.toText(action.id) # " skipped: frequency limit (" # Nat.toText(Int.abs(elapsed)) # "s < " # Nat.toText(minFreq) # "s)", null, []);
+                            return false;
+                        };
+                    };
+                    case null {};
+                };
+            };
+            case null {};
+        };
+
+        switch (action.actionType) {
+            case (0) { // Trade
+                await executeTradeSwap(action, instanceId)
+            };
+            case (1) { // Deposit
+                await executeDeposit(action, instanceId)
+            };
+            case (2) { // Withdraw
+                await executeWithdraw(action, instanceId)
+            };
+            case (3) { // Send
+                await executeSend(action, instanceId)
+            };
+            case (_) {
+                logEngine.logError(src, "Unknown action type: " # Nat.toText(action.actionType), null, []);
+                false
+            };
+        }
+    };
+
+    /// Execute a Trade action (action type 0).
+    func executeTradeSwap(action: T.ActionConfig, instanceId: Text): async Bool {
+        let src = "chore:" # instanceId;
+        let outputToken = switch (action.outputToken) {
+            case (?t) t;
+            case null {
+                logEngine.logError(src, "Trade action " # Nat.toText(action.id) # " has no output token", null, []);
+                return false;
+            };
+        };
+
+        // Check input balance
+        let balance = await getBalance(action.inputToken, null); // Main account only for trades
+        switch (action.minBalance) {
+            case (?min) { if (balance < min) {
+                logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: balance " # Nat.toText(balance) # " < min " # Nat.toText(min), null, []);
+                return false;
+            }};
+            case null {};
+        };
+        switch (action.maxBalance) {
+            case (?max) { if (balance > max) {
+                logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: balance " # Nat.toText(balance) # " > max " # Nat.toText(max), null, []);
+                return false;
+            }};
+            case null {};
+        };
+
+        // Determine trade size (pick a value in the min-max range)
+        let tradeSize = if (action.minAmount == action.maxAmount) {
+            action.minAmount
+        } else {
+            // Use Time.now() for deterministic but varying amounts within the range
+            let range = action.maxAmount - action.minAmount;
+            let entropy = Int.abs(Time.now()) % (range + 1);
+            action.minAmount + entropy
+        };
+
+        // Clamp to available balance (minus fees)
+        let inputFee = switch (getTokenInfo(action.inputToken)) { case (?i) i.fee; case null 0 };
+        let maxAffordable = if (balance > inputFee * 3) { balance - inputFee * 3 } else { 0 };
+        let actualTradeSize = Nat.min(tradeSize, maxAffordable);
+
+        if (actualTradeSize < action.minAmount) {
+            logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: affordable amount " # Nat.toText(actualTradeSize) # " < min " # Nat.toText(action.minAmount), null, []);
+            return false;
+        };
+
+        // Get quote
+        let quoteOpt = switch (action.preferredDex) {
+            case (?dexId) {
+                if (dexId == T.DexId.ICPSwap) {
+                    await getICPSwapQuote(action.inputToken, outputToken, actualTradeSize)
+                } else if (dexId == T.DexId.KongSwap) {
+                    await getKongQuote(action.inputToken, outputToken, actualTradeSize)
+                } else { null }
+            };
+            case null {
+                await getBestQuote(action.inputToken, outputToken, actualTradeSize)
+            };
+        };
+
+        let quote = switch (quoteOpt) {
+            case (?q) q;
+            case null {
+                logEngine.logWarning(src, "Trade " # Nat.toText(action.id) # " skipped: no quote available", null, []);
+                return false;
+            };
+        };
+
+        // Check price impact
+        let maxImpact = switch (action.maxPriceImpactBps) {
+            case (?m) m;
+            case null { defaultMaxPriceImpactBps };
+        };
+        if (quote.priceImpactBps > maxImpact) {
+            logEngine.logWarning(src, "Trade " # Nat.toText(action.id) # " skipped: price impact " # Nat.toText(quote.priceImpactBps) # " bps > max " # Nat.toText(maxImpact) # " bps", null, []);
+            return false;
+        };
+
+        // Check price conditions
+        switch (action.minPrice) {
+            case (?min) { if (quote.spotPriceE8s < min) {
+                logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: price too low", null, []);
+                return false;
+            }};
+            case null {};
+        };
+        switch (action.maxPrice) {
+            case (?max) { if (quote.spotPriceE8s > max) {
+                logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: price too high", null, []);
+                return false;
+            }};
+            case null {};
+        };
+
+        // Execute the swap
+        let slippage = switch (action.maxSlippageBps) {
+            case (?s) s;
+            case null { defaultSlippageBps };
+        };
+
+        let result = await executeSwap(quote, slippage);
+
+        switch (result) {
+            case (#Ok(r)) {
+                logEngine.logInfo(src, "Trade " # Nat.toText(action.id) # " executed: " # Nat.toText(actualTradeSize) # " -> " # Nat.toText(r.amountOut) # " via DEX " # Nat.toText(quote.dexId), null, [
+                    ("actionId", Nat.toText(action.id)),
+                    ("inputToken", Principal.toText(action.inputToken)),
+                    ("outputToken", Principal.toText(outputToken)),
+                    ("inputAmount", Nat.toText(actualTradeSize)),
+                    ("outputAmount", Nat.toText(r.amountOut)),
+                    ("dexId", Nat.toText(quote.dexId)),
+                ]);
+                true
+            };
+            case (#Err(e)) {
+                logEngine.logError(src, "Trade " # Nat.toText(action.id) # " failed: " # e, null, [
+                    ("actionId", Nat.toText(action.id)),
+                    ("error", e),
+                ]);
+                false
+            };
+        };
+    };
+
+    /// Execute a Deposit action (action type 1).
+    func executeDeposit(action: T.ActionConfig, instanceId: Text): async Bool {
+        let src = "chore:" # instanceId;
+        let targetSub = switch (action.targetSubaccount) {
+            case (?n) n;
+            case null {
+                logEngine.logError(src, "Deposit action " # Nat.toText(action.id) # " has no target subaccount", null, []);
+                return false;
+            };
+        };
+
+        let balance = await getBalance(action.inputToken, null); // Main account
+        switch (action.minBalance) {
+            case (?min) { if (balance < min) { return false } };
+            case null {};
+        };
+
+        let fee = switch (getTokenInfo(action.inputToken)) { case (?i) i.fee; case null 0 };
+        let amount = Nat.min(action.maxAmount, if (balance > fee) { balance - fee } else { 0 });
+        if (amount < action.minAmount) return false;
+
+        let targetBlob = subaccountNumberToBlob(targetSub);
+        let result = await transferTokens(
+            action.inputToken,
+            null, // from main
+            { owner = Principal.fromActor(this); subaccount = ?targetBlob },
+            amount
+        );
+
+        switch (result) {
+            case (#Ok(_)) {
+                logEngine.logInfo(src, "Deposit " # Nat.toText(action.id) # ": " # Nat.toText(amount) # " to subaccount " # Nat.toText(targetSub), null, []);
+                true
+            };
+            case (#Err(e)) {
+                logEngine.logError(src, "Deposit " # Nat.toText(action.id) # " failed: " # debug_show(e), null, []);
+                false
+            };
+        };
+    };
+
+    /// Execute a Withdraw action (action type 2).
+    func executeWithdraw(action: T.ActionConfig, instanceId: Text): async Bool {
+        let src = "chore:" # instanceId;
+        let sourceSub = switch (action.sourceSubaccount) {
+            case (?n) n;
+            case null {
+                logEngine.logError(src, "Withdraw action " # Nat.toText(action.id) # " has no source subaccount", null, []);
+                return false;
+            };
+        };
+
+        let sourceBlob = subaccountNumberToBlob(sourceSub);
+        let balance = await getBalance(action.inputToken, ?sourceBlob);
+        switch (action.minBalance) {
+            case (?min) { if (balance < min) { return false } };
+            case null {};
+        };
+
+        let fee = switch (getTokenInfo(action.inputToken)) { case (?i) i.fee; case null 0 };
+        let amount = Nat.min(action.maxAmount, if (balance > fee) { balance - fee } else { 0 });
+        if (amount < action.minAmount) return false;
+
+        let result = await transferTokens(
+            action.inputToken,
+            ?sourceBlob, // from subaccount
+            { owner = Principal.fromActor(this); subaccount = null }, // to main
+            amount
+        );
+
+        switch (result) {
+            case (#Ok(_)) {
+                logEngine.logInfo(src, "Withdraw " # Nat.toText(action.id) # ": " # Nat.toText(amount) # " from subaccount " # Nat.toText(sourceSub), null, []);
+                true
+            };
+            case (#Err(e)) {
+                logEngine.logError(src, "Withdraw " # Nat.toText(action.id) # " failed: " # debug_show(e), null, []);
+                false
+            };
+        };
+    };
+
+    /// Execute a Send action (action type 3).
+    func executeSend(action: T.ActionConfig, instanceId: Text): async Bool {
+        let src = "chore:" # instanceId;
+        let destOwner = switch (action.destinationOwner) {
+            case (?o) o;
+            case null {
+                logEngine.logError(src, "Send action " # Nat.toText(action.id) # " has no destination", null, []);
+                return false;
+            };
+        };
+
+        let sourceBlob = getSubaccountBlob(action.sourceSubaccount);
+        let balance = await getBalance(action.inputToken, sourceBlob);
+        switch (action.minBalance) {
+            case (?min) { if (balance < min) { return false } };
+            case null {};
+        };
+
+        let fee = switch (getTokenInfo(action.inputToken)) { case (?i) i.fee; case null 0 };
+        let amount = Nat.min(action.maxAmount, if (balance > fee) { balance - fee } else { 0 });
+        if (amount < action.minAmount) return false;
+
+        let result = await transferTokens(
+            action.inputToken,
+            sourceBlob,
+            { owner = destOwner; subaccount = action.destinationSubaccount },
+            amount
+        );
+
+        switch (result) {
+            case (#Ok(_)) {
+                logEngine.logInfo(src, "Send " # Nat.toText(action.id) # ": " # Nat.toText(amount) # " to " # Principal.toText(destOwner), null, []);
+                true
+            };
+            case (#Err(e)) {
+                logEngine.logError(src, "Send " # Nat.toText(action.id) # " failed: " # debug_show(e), null, []);
+                false
+            };
+        };
+    };
+
+    // Update lastExecutedAt for an action in a list
+    func updateActionLastExecuted(instanceId: Text, actionId: Nat, isTradeChore: Bool) {
+        let now = Time.now();
+        let actions = if (isTradeChore) { getTradeActionsForInstance(instanceId) }
+                     else { getMoveFundsActionsForInstance(instanceId) };
+        let updated = Array.map<T.ActionConfig, T.ActionConfig>(actions, func(a) {
+            if (a.id == actionId) { { a with lastExecutedAt = ?now } } else { a }
+        });
+        if (isTradeChore) { setTradeActionsForInstance(instanceId, updated) }
+        else { setMoveFundsActionsForInstance(instanceId, updated) };
+    };
+
+    // ============================================
+    // REBALANCER EXECUTION
+    // ============================================
+
+    /// Execute one rebalancing trade for the given instance.
+    func executeRebalance(instanceId: Text): async Bool {
+        let src = "chore:" # instanceId;
+        let targets = getRebalTargets(instanceId);
+        if (targets.size() == 0) {
+            logEngine.logInfo(src, "Rebalance skipped: no targets configured", null, []);
+            return false;
+        };
+
+        let denomToken = getRebalDenomToken(instanceId);
+        let threshold = getRebalThreshold(instanceId);
+
+        // 1. Value portfolio
+        let tokenValues = Buffer.Buffer<{
+            token: Principal;
+            balance: Nat;
+            value: Nat;
+            targetBps: Nat;
+        }>(targets.size());
+
+        var totalValue: Nat = 0;
+
+        for (target in targets.vals()) {
+            let balance = await getBalance(target.token, null); // Main account
+
+            // Get value in denomination token
+            let value = if (target.token == denomToken) {
+                balance
+            } else {
+                // Get spot price: how much denomToken per 1 unit of this token
+                let quoteOpt = await getBestQuote(target.token, denomToken, balance);
+                switch (quoteOpt) {
+                    case (?q) { q.expectedOutput };
+                    case null { 0 }; // Can't price this token, treat as 0
+                };
+            };
+
+            tokenValues.add({ token = target.token; balance = balance; value = value; targetBps = target.targetBps });
+            totalValue += value;
+        };
+
+        if (totalValue == 0) {
+            logEngine.logInfo(src, "Rebalance skipped: portfolio value is 0", null, []);
+            return false;
+        };
+
+        // 2. Calculate deviations
+        let overweight = Buffer.Buffer<{ token: Principal; deviationBps: Nat; balance: Nat; value: Nat }>(4);
+        let underweight = Buffer.Buffer<{ token: Principal; deviationBps: Nat; balance: Nat; value: Nat }>(4);
+
+        for (tv in tokenValues.vals()) {
+            let currentBps = (tv.value * 10000) / totalValue;
+            if (currentBps > tv.targetBps + threshold) {
+                overweight.add({
+                    token = tv.token;
+                    deviationBps = currentBps - tv.targetBps;
+                    balance = tv.balance;
+                    value = tv.value;
+                });
+            } else if (tv.targetBps > currentBps + threshold) {
+                underweight.add({
+                    token = tv.token;
+                    deviationBps = tv.targetBps - currentBps;
+                    balance = tv.balance;
+                    value = tv.value;
+                });
+            };
+        };
+
+        if (overweight.size() == 0 or underweight.size() == 0) {
+            logEngine.logInfo(src, "Rebalance skipped: portfolio within tolerance", null, []);
+            return false;
+        };
+
+        // 3. Weighted random selection
+        let entropy = Int.abs(Time.now());
+
+        // Pick overweight token (weighted by deviation)
+        var totalOverWeight: Nat = 0;
+        for (ow in overweight.vals()) { totalOverWeight += ow.deviationBps };
+        let owRand = entropy % totalOverWeight;
+        var owCumulative: Nat = 0;
+        var sellToken = overweight.get(0);
+        for (ow in overweight.vals()) {
+            owCumulative += ow.deviationBps;
+            if (owCumulative > owRand) {
+                sellToken := ow;
+                // Break out by exhausting the loop range isn't possible in Motoko iter,
+                // so we just let the last match win. We need to break manually.
+                // Actually, we should use a var and check a flag:
+            };
+        };
+        // Re-do with flag
+        owCumulative := 0;
+        var owPicked = false;
+        for (ow in overweight.vals()) {
+            if (not owPicked) {
+                owCumulative += ow.deviationBps;
+                if (owCumulative > owRand) {
+                    sellToken := ow;
+                    owPicked := true;
+                };
+            };
+        };
+
+        // Pick underweight token (weighted by deviation)
+        var totalUnderWeight: Nat = 0;
+        for (uw in underweight.vals()) { totalUnderWeight += uw.deviationBps };
+        let uwRand = (entropy / 1000) % totalUnderWeight; // Different entropy slice
+        var uwCumulative: Nat = 0;
+        var buyToken = underweight.get(0);
+        var uwPicked = false;
+        for (uw in underweight.vals()) {
+            if (not uwPicked) {
+                uwCumulative += uw.deviationBps;
+                if (uwCumulative > uwRand) {
+                    buyToken := uw;
+                    uwPicked := true;
+                };
+            };
+        };
+
+        // 4. Calculate trade size
+        let maxTrade = getRebalMaxTrade(instanceId);
+        let minTrade = getRebalMinTrade(instanceId);
+
+        let fee = switch (getTokenInfo(sellToken.token)) { case (?i) i.fee; case null 0 };
+        let maxAffordable = if (sellToken.balance > fee * 3) { sellToken.balance - fee * 3 } else { 0 };
+        let tradeSize = Nat.min(maxTrade, Nat.min(maxAffordable, sellToken.balance / 4)); // Don't sell more than 25% at once
+
+        if (tradeSize < minTrade) {
+            logEngine.logDebug(src, "Rebalance skipped: trade size " # Nat.toText(tradeSize) # " < min " # Nat.toText(minTrade), null, []);
+            return false;
+        };
+
+        // 5. Get quote and validate
+        let quoteOpt = await getBestQuote(sellToken.token, buyToken.token, tradeSize);
+        let quote = switch (quoteOpt) {
+            case (?q) q;
+            case null {
+                logEngine.logWarning(src, "Rebalance skipped: no quote for " # Principal.toText(sellToken.token) # " -> " # Principal.toText(buyToken.token), null, []);
+                return false;
+            };
+        };
+
+        let maxImpact = getRebalMaxImpact(instanceId);
+        if (quote.priceImpactBps > maxImpact) {
+            logEngine.logWarning(src, "Rebalance skipped: price impact " # Nat.toText(quote.priceImpactBps) # " bps > max " # Nat.toText(maxImpact), null, []);
+            return false;
+        };
+
+        // 6. Execute trade
+        let slippage = getRebalMaxSlippage(instanceId);
+        let result = await executeSwap(quote, slippage);
+
+        switch (result) {
+            case (#Ok(r)) {
+                logEngine.logInfo(src, "Rebalance trade: sold " # Nat.toText(tradeSize) # " of " # Principal.toText(sellToken.token) # " for " # Nat.toText(r.amountOut) # " of " # Principal.toText(buyToken.token), null, [
+                    ("sellToken", Principal.toText(sellToken.token)),
+                    ("buyToken", Principal.toText(buyToken.token)),
+                    ("sellAmount", Nat.toText(tradeSize)),
+                    ("buyAmount", Nat.toText(r.amountOut)),
+                    ("dexId", Nat.toText(quote.dexId)),
+                    ("sellDeviation", Nat.toText(sellToken.deviationBps)),
+                    ("buyDeviation", Nat.toText(buyToken.deviationBps)),
+                ]);
+                true
+            };
+            case (#Err(e)) {
+                logEngine.logError(src, "Rebalance trade failed: " # e, null, [
+                    ("sellToken", Principal.toText(sellToken.token)),
+                    ("buyToken", Principal.toText(buyToken.token)),
+                    ("error", e),
+                ]);
+                false
+            };
+        };
+    };
+
+    // ============================================
+    // DISTRIBUTION HELPERS (reused from staking bot pattern)
+    // ============================================
+
+    // Transient per-instance state for distribution conductor
+    transient var _df_state: [(Text, { lists: [DistributionTypes.DistributionList]; index: Nat })] = [];
+
+    func _df_getState(instanceId: Text): { lists: [DistributionTypes.DistributionList]; index: Nat } {
+        getFromMap(_df_state, instanceId, { lists = []; index = 0 })
+    };
+    func _df_setState(instanceId: Text, s: { lists: [DistributionTypes.DistributionList]; index: Nat }) {
+        _df_state := setInMap(_df_state, instanceId, s)
+    };
+
+    func _df_makeTaskFn(list: DistributionTypes.DistributionList): () -> async BotChoreTypes.TaskAction {
+        func(): async BotChoreTypes.TaskAction {
+            try {
+                let ledger = getLedger(list.tokenLedgerCanisterId);
+                let fee = await ledger.icrc1_fee();
+                let balance = await ledger.icrc1_balance_of({
+                    owner = Principal.fromActor(this);
+                    subaccount = list.sourceSubaccount;
+                });
+
+                if (balance < list.thresholdAmount) {
+                    return #Done; // Below threshold, skip
+                };
+
+                let distributable = Nat.min(balance, list.maxDistributionAmount);
+                let totalFees = fee * list.targets.size();
+                if (distributable <= totalFees) {
+                    return #Done; // Not enough to cover fees
+                };
+                let net = distributable - totalFees;
+
+                // Calculate shares based on basis points
+                var assignedBps: Nat = 0;
+                var autoSplitCount: Nat = 0;
+                for (t in list.targets.vals()) {
+                    switch (t.basisPoints) {
+                        case (?bp) { assignedBps += bp };
+                        case null { autoSplitCount += 1 };
+                    };
+                };
+
+                for (target in list.targets.vals()) {
+                    let share = switch (target.basisPoints) {
+                        case (?bp) { (net * bp) / 10000 };
+                        case null {
+                            if (autoSplitCount > 0 and assignedBps < 10000) {
+                                let remainder = net * (10000 - assignedBps) / 10000;
+                                remainder / autoSplitCount
+                            } else { 0 }
+                        };
+                    };
+
+                    if (share > fee) {
+                        ignore await ledger.icrc1_transfer({
+                            to = { owner = target.account.owner; subaccount = target.account.subaccount };
+                            fee = ?fee;
+                            memo = null;
+                            from_subaccount = list.sourceSubaccount;
+                            created_at_time = null;
+                            amount = share;
+                        });
+                    };
+                };
+
+                #Done
+            } catch (e) {
+                #Error("Distribution failed: " # Error.message(e))
+            }
+        }
+    };
+
+    func _df_startCurrentTask(instanceId: Text) {
+        let st = _df_getState(instanceId);
+        if (st.index < st.lists.size()) {
+            let list = st.lists[st.index];
+            let taskFn = _df_makeTaskFn(list);
+            choreEngine.setPendingTask(instanceId, "dist-" # Nat.toText(list.id), taskFn);
+        };
+    };
+
+    // ============================================
+    // CHORE CONDUCTOR — TRADE CHORE
+    // ============================================
+
+    // Transient per-instance state for trade conductor
+    transient var _trade_state: [(Text, { actions: [T.ActionConfig]; index: Nat })] = [];
+
+    func _trade_getState(instanceId: Text): { actions: [T.ActionConfig]; index: Nat } {
+        getFromMap(_trade_state, instanceId, { actions = []; index = 0 })
+    };
+    func _trade_setState(instanceId: Text, s: { actions: [T.ActionConfig]; index: Nat }) {
+        _trade_state := setInMap(_trade_state, instanceId, s)
+    };
+
+    func _trade_makeTaskFn(action: T.ActionConfig, instanceId: Text, isTradeChore: Bool): () -> async BotChoreTypes.TaskAction {
+        func(): async BotChoreTypes.TaskAction {
+            try {
+                let executed = await executeTradeAction(action, instanceId);
+                if (executed) {
+                    updateActionLastExecuted(instanceId, action.id, isTradeChore);
+                };
+                #Done
+            } catch (e) {
+                #Error("Action " # Nat.toText(action.id) # " failed: " # Error.message(e))
+            }
+        }
+    };
+
+    func _trade_startCurrentTask(instanceId: Text) {
+        let st = _trade_getState(instanceId);
+        if (st.index < st.actions.size()) {
+            let action = st.actions[st.index];
+            let taskFn = _trade_makeTaskFn(action, instanceId, true);
+            choreEngine.setPendingTask(instanceId, "trade-action-" # Nat.toText(action.id), taskFn);
+        };
+    };
+
+    // ============================================
+    // CHORE CONDUCTOR — MOVE FUNDS CHORE
+    // ============================================
+
+    transient var _mf_state: [(Text, { actions: [T.ActionConfig]; index: Nat })] = [];
+
+    func _mf_getState(instanceId: Text): { actions: [T.ActionConfig]; index: Nat } {
+        getFromMap(_mf_state, instanceId, { actions = []; index = 0 })
+    };
+    func _mf_setState(instanceId: Text, s: { actions: [T.ActionConfig]; index: Nat }) {
+        _mf_state := setInMap(_mf_state, instanceId, s)
+    };
+
+    func _mf_startCurrentTask(instanceId: Text) {
+        let st = _mf_getState(instanceId);
+        if (st.index < st.actions.size()) {
+            let action = st.actions[st.index];
+            let taskFn = _trade_makeTaskFn(action, instanceId, false); // Reuse, passing isTradeChore=false
+            choreEngine.setPendingTask(instanceId, "mf-action-" # Nat.toText(action.id), taskFn);
+        };
+    };
+
+    // ============================================
+    // CHORE REGISTRATION
+    // ============================================
+
+    transient let _choreInit: () = do {
+
+        // --- Chore: Trade ---
+        choreEngine.registerChoreType({
+            id = "trade";
+            name = "Trade";
+            description = "Execute a configurable list of conditional trades, deposits, withdrawals and sends on a recurring schedule. Each action runs as an independent task, so a failure in one doesn't block the rest.";
+            defaultIntervalSeconds = 300; // 5 minutes
+            defaultMaxIntervalSeconds = ?600; // Up to 10 minutes for randomization
+            defaultTaskTimeoutSeconds = 300; // 5 minutes per action
+            conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
+                let instanceId = ctx.choreId;
+                let src = "chore:" # instanceId;
+
+                if (ctx.isTaskRunning) { return #ContinueIn(10) };
+
+                switch (ctx.lastCompletedTask) {
+                    case null {
+                        // First invocation: load enabled actions
+                        let allActions = getTradeActionsForInstance(instanceId);
+                        let enabledActions = Array.filter<T.ActionConfig>(allActions, func(a) { a.enabled });
+                        _trade_setState(instanceId, { actions = enabledActions; index = 0 });
+
+                        logEngine.logInfo(src, "Starting: " # Nat.toText(enabledActions.size()) # " enabled actions", null, []);
+
+                        if (enabledActions.size() == 0) { return #Done };
+                        _trade_startCurrentTask(instanceId);
+                        return #ContinueIn(10);
+                    };
+                    case (?_) {
+                        let st = _trade_getState(instanceId);
+                        let nextIdx = st.index + 1;
+                        _trade_setState(instanceId, { st with index = nextIdx });
+                        if (nextIdx >= st.actions.size()) {
+                            logEngine.logInfo(src, "Completed: all actions processed", null, []);
+                            return #Done;
+                        };
+                        _trade_startCurrentTask(instanceId);
+                        return #ContinueIn(10);
+                    };
+                };
+            };
+        });
+
+        // --- Chore: Rebalance ---
+        choreEngine.registerChore({
+            id = "rebalance";
+            name = "Rebalance Portfolio";
+            description = "Automatically rebalance a portfolio toward target allocations by identifying over/underweight tokens and executing weighted-random trades between them.";
+            defaultIntervalSeconds = 3600; // 1 hour
+            defaultMaxIntervalSeconds = ?7200; // Up to 2 hours for randomization
+            defaultTaskTimeoutSeconds = 600; // 10 minutes
+            conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
+                let instanceId = ctx.choreId;
+
+                if (ctx.isTaskRunning) { return #ContinueIn(10) };
+
+                switch (ctx.lastCompletedTask) {
+                    case null {
+                        // Start a single rebalance task
+                        let taskFn = func(): async BotChoreTypes.TaskAction {
+                            try {
+                                ignore await executeRebalance(instanceId);
+                                #Done
+                            } catch (e) {
+                                #Error("Rebalance failed: " # Error.message(e))
+                            }
+                        };
+                        choreEngine.setPendingTask(instanceId, "rebalance-" # Nat.toText(Int.abs(Time.now())), taskFn);
+                        return #ContinueIn(15);
+                    };
+                    case (?_) {
+                        return #Done;
+                    };
+                };
+            };
+        });
+
+        // --- Chore: Move Funds ---
+        choreEngine.registerChoreType({
+            id = "move-funds";
+            name = "Move Funds";
+            description = "Execute deposit, withdraw, and send actions on a recurring schedule (no trading). Useful for scheduled fund movements between subaccounts or to external addresses.";
+            defaultIntervalSeconds = 3600; // 1 hour
+            defaultMaxIntervalSeconds = null;
+            defaultTaskTimeoutSeconds = 300;
+            conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
+                let instanceId = ctx.choreId;
+                let src = "chore:" # instanceId;
+
+                if (ctx.isTaskRunning) { return #ContinueIn(10) };
+
+                switch (ctx.lastCompletedTask) {
+                    case null {
+                        let allActions = getMoveFundsActionsForInstance(instanceId);
+                        let enabledActions = Array.filter<T.ActionConfig>(allActions, func(a) { a.enabled });
+                        _mf_setState(instanceId, { actions = enabledActions; index = 0 });
+
+                        logEngine.logInfo(src, "Starting: " # Nat.toText(enabledActions.size()) # " enabled actions", null, []);
+
+                        if (enabledActions.size() == 0) { return #Done };
+                        _mf_startCurrentTask(instanceId);
+                        return #ContinueIn(10);
+                    };
+                    case (?_) {
+                        let st = _mf_getState(instanceId);
+                        let nextIdx = st.index + 1;
+                        _mf_setState(instanceId, { st with index = nextIdx });
+                        if (nextIdx >= st.actions.size()) {
+                            logEngine.logInfo(src, "Completed: all actions processed", null, []);
+                            return #Done;
+                        };
+                        _mf_startCurrentTask(instanceId);
+                        return #ContinueIn(10);
+                    };
+                };
+            };
+        });
+
+        // --- Chore: Distribute Funds ---
+        choreEngine.registerChore({
+            id = "distribute-funds";
+            name = "Distribute Funds";
+            description = "Periodically distributes funds from the bot's account to target accounts based on configured percentages. Supports multiple distribution lists per instance.";
+            defaultIntervalSeconds = 24 * 60 * 60; // 1 day
+            defaultMaxIntervalSeconds = null;
+            defaultTaskTimeoutSeconds = 600;
+            conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
+                let instanceId = ctx.choreId;
+                let src = "chore:" # instanceId;
+
+                if (ctx.isTaskRunning) { return #ContinueIn(10) };
+
+                switch (ctx.lastCompletedTask) {
+                    case null {
+                        let ds = getDistSettings(instanceId);
+                        _df_setState(instanceId, { lists = ds.lists; index = 0 });
+                        logEngine.logInfo(src, "Starting: " # Nat.toText(ds.lists.size()) # " distribution list(s)", null, []);
+                        if (ds.lists.size() == 0) { return #Done };
+                        _df_startCurrentTask(instanceId);
+                        return #ContinueIn(10);
+                    };
+                    case (?_) {
+                        let st = _df_getState(instanceId);
+                        let nextIdx = st.index + 1;
+                        _df_setState(instanceId, { st with index = nextIdx });
+                        if (nextIdx >= st.lists.size()) {
+                            logEngine.logInfo(src, "Completed: all lists processed", null, []);
+                            return #Done;
+                        };
+                        _df_startCurrentTask(instanceId);
+                        return #ContinueIn(10);
+                    };
+                };
+            };
+        });
+
+        // Resume all chore timers
+        choreEngine.resumeTimers<system>();
+    };
+
+    system func postupgrade() {
+        choreEngine.resumeTimers<system>();
+    };
+
+    // ============================================
+    // PUBLIC API — CANISTER INFO
+    // ============================================
+
+    public query func getVersion(): async T.Version { currentVersion };
+
+    public query func getCanisterPrincipal(): async Principal {
+        Principal.fromActor(this)
+    };
+
+    // ============================================
+    // PUBLIC API — PERMISSIONS
+    // ============================================
+
+    public shared query (msg) func getHotkeyPermissions(): async [T.HotkeyPermissionInfo] {
+        assertPermission(msg.caller, T.TradingPermission.ManagePermissions);
+        permEngine.listPrincipals(hotkeyPermissions)
+    };
+
+    public shared (msg) func addHotkeyPermissions(principal: Principal, permissions: [T.TradingPermissionType]): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManagePermissions);
+        hotkeyPermissions := permEngine.addPermissions(principal, permissions, hotkeyPermissions);
+        logEngine.logInfo("permissions", "Added permissions to " # Principal.toText(principal), ?msg.caller, []);
+    };
+
+    public shared (msg) func removeHotkeyPermissions(principal: Principal, permissions: [T.TradingPermissionType]): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManagePermissions);
+        hotkeyPermissions := permEngine.removePermissions(principal, permissions, hotkeyPermissions);
+        logEngine.logInfo("permissions", "Removed permissions from " # Principal.toText(principal), ?msg.caller, []);
+    };
+
+    public shared (msg) func removeHotkey(principal: Principal): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManagePermissions);
+        hotkeyPermissions := permEngine.removePrincipal(principal, hotkeyPermissions);
+        logEngine.logInfo("permissions", "Removed hotkey " # Principal.toText(principal), ?msg.caller, []);
+    };
+
+    public shared query func listPermissionTypes(): async [(Nat, T.TradingPermissionType)] {
+        PERMISSION_MAP
+    };
+
+    public shared query (msg) func getCallerPermissions(): async [T.TradingPermissionType] {
+        permEngine.getCallerPermissions(msg.caller, hotkeyPermissions)
+    };
+
+    // ============================================
+    // PUBLIC API — TOKEN REGISTRY
+    // ============================================
+
+    public shared query (msg) func getTokenRegistry(): async [T.TokenRegistryEntry] {
+        assertPermission(msg.caller, T.TradingPermission.ViewPortfolio);
+        tokenRegistry
+    };
+
+    public shared (msg) func addToken(entry: T.TokenRegistryEntry): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageTokenRegistry);
+        // Check for duplicate
+        let existing = Array.find<T.TokenRegistryEntry>(tokenRegistry, func(e) { e.ledgerCanisterId == entry.ledgerCanisterId });
+        switch (existing) {
+            case (?_) { Debug.trap("Token already registered: " # Principal.toText(entry.ledgerCanisterId)) };
+            case null {
+                tokenRegistry := Array.append(tokenRegistry, [entry]);
+                logEngine.logInfo("api", "Added token: " # entry.symbol # " (" # Principal.toText(entry.ledgerCanisterId) # ")", ?msg.caller, []);
+            };
+        };
+    };
+
+    public shared (msg) func removeToken(ledgerCanisterId: Principal): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageTokenRegistry);
+        tokenRegistry := Array.filter<T.TokenRegistryEntry>(tokenRegistry, func(e) { e.ledgerCanisterId != ledgerCanisterId });
+        logEngine.logInfo("api", "Removed token: " # Principal.toText(ledgerCanisterId), ?msg.caller, []);
+    };
+
+    public shared (msg) func refreshTokenMetadata(ledgerCanisterId: Principal): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageTokenRegistry);
+        let ledger = getLedger(ledgerCanisterId);
+        let fee = await ledger.icrc1_fee();
+        let decimals = await ledger.icrc1_decimals();
+        let symbol = await ledger.icrc1_symbol();
+        tokenRegistry := Array.map<T.TokenRegistryEntry, T.TokenRegistryEntry>(tokenRegistry, func(e) {
+            if (e.ledgerCanisterId == ledgerCanisterId) {
+                { e with fee = fee; decimals = decimals; symbol = symbol }
+            } else { e }
+        });
+        logEngine.logInfo("api", "Refreshed metadata for " # Principal.toText(ledgerCanisterId), ?msg.caller, []);
+    };
+
+    // ============================================
+    // PUBLIC API — SUBACCOUNTS
+    // ============================================
+
+    public shared query (msg) func getSubaccounts(): async [T.SubaccountInfo] {
+        assertPermission(msg.caller, T.TradingPermission.ViewPortfolio);
+        Array.map<(Nat, Text), T.SubaccountInfo>(namedSubaccounts, func((n, name)) {
+            { number = n; name = name; subaccount = subaccountNumberToBlob(n) }
+        })
+    };
+
+    public shared (msg) func createSubaccount(name: Text): async T.SubaccountInfo {
+        assertPermission(msg.caller, T.TradingPermission.ManageSubaccounts);
+        let number = nextSubaccountNumber;
+        nextSubaccountNumber += 1;
+        namedSubaccounts := Array.append(namedSubaccounts, [(number, name)]);
+        logEngine.logInfo("api", "Created subaccount " # Nat.toText(number) # ": " # name, ?msg.caller, []);
+        { number = number; name = name; subaccount = subaccountNumberToBlob(number) }
+    };
+
+    public shared (msg) func renameSubaccount(number: Nat, name: Text): async Bool {
+        assertPermission(msg.caller, T.TradingPermission.ManageSubaccounts);
+        var found = false;
+        namedSubaccounts := Array.map<(Nat, Text), (Nat, Text)>(namedSubaccounts, func((n, oldName)) {
+            if (n == number) { found := true; (n, name) } else { (n, oldName) }
+        });
+        if (found) { logEngine.logInfo("api", "Renamed subaccount " # Nat.toText(number) # " to " # name, ?msg.caller, []) };
+        found
+    };
+
+    public shared (msg) func deleteSubaccount(number: Nat): async Bool {
+        assertPermission(msg.caller, T.TradingPermission.ManageSubaccounts);
+        let existing = Array.find<(Nat, Text)>(namedSubaccounts, func((n, _)) { n == number });
+        switch (existing) {
+            case null { false };
+            case (?_) {
+                namedSubaccounts := Array.filter<(Nat, Text)>(namedSubaccounts, func((n, _)) { n != number });
+                logEngine.logInfo("api", "Deleted subaccount " # Nat.toText(number), ?msg.caller, []);
+                true
+            };
+        };
+    };
+
+    // ============================================
+    // PUBLIC API — BALANCES
+    // ============================================
+
+    public shared (msg) func getBalances(subaccountNumber: ?Nat): async [T.TokenBalance] {
+        assertPermission(msg.caller, T.TradingPermission.ViewPortfolio);
+        let subBlob = getSubaccountBlob(subaccountNumber);
+        let balances = Buffer.Buffer<T.TokenBalance>(tokenRegistry.size());
+        for (token in tokenRegistry.vals()) {
+            let bal = await getBalance(token.ledgerCanisterId, subBlob);
+            balances.add({ token = token.ledgerCanisterId; balance = bal });
+        };
+        Buffer.toArray(balances)
+    };
+
+    public shared (msg) func getAllBalances(): async [T.SubaccountBalances] {
+        assertPermission(msg.caller, T.TradingPermission.ViewPortfolio);
+        let result = Buffer.Buffer<T.SubaccountBalances>(namedSubaccounts.size() + 1);
+
+        // Main account (subaccount 0)
+        let mainBalances = Buffer.Buffer<T.TokenBalance>(tokenRegistry.size());
+        for (token in tokenRegistry.vals()) {
+            let bal = await getBalance(token.ledgerCanisterId, null);
+            mainBalances.add({ token = token.ledgerCanisterId; balance = bal });
+        };
+        result.add({ subaccountNumber = 0; name = "Main Account"; balances = Buffer.toArray(mainBalances) });
+
+        // Named subaccounts
+        for ((num, name) in namedSubaccounts.vals()) {
+            let subBlob = ?subaccountNumberToBlob(num);
+            let subBalances = Buffer.Buffer<T.TokenBalance>(tokenRegistry.size());
+            for (token in tokenRegistry.vals()) {
+                let bal = await getBalance(token.ledgerCanisterId, subBlob);
+                subBalances.add({ token = token.ledgerCanisterId; balance = bal });
+            };
+            result.add({ subaccountNumber = num; name = name; balances = Buffer.toArray(subBalances) });
+        };
+
+        Buffer.toArray(result)
+    };
+
+    // ============================================
+    // PUBLIC API — DEX
+    // ============================================
+
+    public shared (msg) func getQuote(dexId: ?Nat, inputToken: Principal, outputToken: Principal, amount: Nat): async [T.SwapQuote] {
+        assertPermission(msg.caller, T.TradingPermission.ViewPortfolio);
+        switch (dexId) {
+            case (?id) {
+                let q = if (id == T.DexId.ICPSwap) {
+                    await getICPSwapQuote(inputToken, outputToken, amount)
+                } else if (id == T.DexId.KongSwap) {
+                    await getKongQuote(inputToken, outputToken, amount)
+                } else { null };
+                switch (q) { case (?quote) { [quote] }; case null { [] } };
+            };
+            case null {
+                await getAllQuotes(inputToken, outputToken, amount)
+            };
+        }
+    };
+
+    public shared query (msg) func getEnabledDexes(): async [Nat] {
+        assertPermission(msg.caller, T.TradingPermission.ViewPortfolio);
+        enabledDexes
+    };
+
+    public shared (msg) func setEnabledDexes(dexIds: [Nat]): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageDexSettings);
+        enabledDexes := dexIds;
+        logEngine.logInfo("api", "Updated enabled DEXes: " # debug_show(dexIds), ?msg.caller, []);
+    };
+
+    public shared (msg) func setDefaultSlippage(bps: Nat): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageDexSettings);
+        defaultSlippageBps := bps;
+        logEngine.logInfo("api", "Set default slippage to " # Nat.toText(bps) # " bps", ?msg.caller, []);
+    };
+
+    public shared (msg) func setDefaultMaxPriceImpact(bps: Nat): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageDexSettings);
+        defaultMaxPriceImpactBps := bps;
+        logEngine.logInfo("api", "Set default max price impact to " # Nat.toText(bps) # " bps", ?msg.caller, []);
+    };
+
+    // ============================================
+    // PUBLIC API — TRADE ACTIONS
+    // ============================================
+
+    public shared query (msg) func getTradeActions(instanceId: Text): async [T.ActionConfig] {
+        assertPermission(msg.caller, T.TradingPermission.ManageTrades);
+        getTradeActionsForInstance(instanceId)
+    };
+
+    public shared (msg) func addTradeAction(instanceId: Text, config: T.ActionConfigInput): async Nat {
+        assertPermission(msg.caller, T.TradingPermission.ManageTrades);
+        let nextId = getTradeNextId(instanceId);
+        let action: T.ActionConfig = {
+            id = nextId;
+            actionType = config.actionType;
+            enabled = config.enabled;
+            inputToken = config.inputToken;
+            outputToken = config.outputToken;
+            minAmount = config.minAmount;
+            maxAmount = config.maxAmount;
+            preferredDex = config.preferredDex;
+            sourceSubaccount = config.sourceSubaccount;
+            targetSubaccount = config.targetSubaccount;
+            destinationOwner = config.destinationOwner;
+            destinationSubaccount = config.destinationSubaccount;
+            minBalance = config.minBalance;
+            maxBalance = config.maxBalance;
+            balanceDenominationToken = config.balanceDenominationToken;
+            minPrice = config.minPrice;
+            maxPrice = config.maxPrice;
+            priceDenominationToken = config.priceDenominationToken;
+            maxPriceImpactBps = config.maxPriceImpactBps;
+            maxSlippageBps = config.maxSlippageBps;
+            minFrequencySeconds = config.minFrequencySeconds;
+            maxFrequencySeconds = config.maxFrequencySeconds;
+            tradeSizeDenominationToken = config.tradeSizeDenominationToken;
+            lastExecutedAt = null;
+        };
+        setTradeActionsForInstance(instanceId, Array.append(getTradeActionsForInstance(instanceId), [action]));
+        setTradeNextId(instanceId, nextId + 1);
+        logEngine.logInfo("api", "Added trade action " # Nat.toText(nextId) # " to instance " # instanceId, ?msg.caller, []);
+        nextId
+    };
+
+    public shared (msg) func updateTradeAction(instanceId: Text, id: Nat, config: T.ActionConfigInput): async Bool {
+        assertPermission(msg.caller, T.TradingPermission.ManageTrades);
+        let actions = getTradeActionsForInstance(instanceId);
+        var found = false;
+        let updated = Array.map<T.ActionConfig, T.ActionConfig>(actions, func(a) {
+            if (a.id == id) {
+                found := true;
+                {
+                    id = id;
+                    actionType = config.actionType;
+                    enabled = config.enabled;
+                    inputToken = config.inputToken;
+                    outputToken = config.outputToken;
+                    minAmount = config.minAmount;
+                    maxAmount = config.maxAmount;
+                    preferredDex = config.preferredDex;
+                    sourceSubaccount = config.sourceSubaccount;
+                    targetSubaccount = config.targetSubaccount;
+                    destinationOwner = config.destinationOwner;
+                    destinationSubaccount = config.destinationSubaccount;
+                    minBalance = config.minBalance;
+                    maxBalance = config.maxBalance;
+                    balanceDenominationToken = config.balanceDenominationToken;
+                    minPrice = config.minPrice;
+                    maxPrice = config.maxPrice;
+                    priceDenominationToken = config.priceDenominationToken;
+                    maxPriceImpactBps = config.maxPriceImpactBps;
+                    maxSlippageBps = config.maxSlippageBps;
+                    minFrequencySeconds = config.minFrequencySeconds;
+                    maxFrequencySeconds = config.maxFrequencySeconds;
+                    tradeSizeDenominationToken = config.tradeSizeDenominationToken;
+                    lastExecutedAt = a.lastExecutedAt; // Preserve runtime state
+                }
+            } else { a }
+        });
+        if (found) {
+            setTradeActionsForInstance(instanceId, updated);
+            logEngine.logInfo("api", "Updated trade action " # Nat.toText(id), ?msg.caller, []);
+        };
+        found
+    };
+
+    public shared (msg) func removeTradeAction(instanceId: Text, id: Nat): async Bool {
+        assertPermission(msg.caller, T.TradingPermission.ManageTrades);
+        let actions = getTradeActionsForInstance(instanceId);
+        let filtered = Array.filter<T.ActionConfig>(actions, func(a) { a.id != id });
+        if (filtered.size() < actions.size()) {
+            setTradeActionsForInstance(instanceId, filtered);
+            logEngine.logInfo("api", "Removed trade action " # Nat.toText(id), ?msg.caller, []);
+            true
+        } else { false }
+    };
+
+    public shared (msg) func reorderTradeActions(instanceId: Text, actionIds: [Nat]): async Bool {
+        assertPermission(msg.caller, T.TradingPermission.ManageTrades);
+        let actions = getTradeActionsForInstance(instanceId);
+        let reordered = Buffer.Buffer<T.ActionConfig>(actions.size());
+        for (id in actionIds.vals()) {
+            let found = Array.find<T.ActionConfig>(actions, func(a) { a.id == id });
+            switch (found) {
+                case (?a) { reordered.add(a) };
+                case null {};
+            };
+        };
+        if (reordered.size() == actions.size()) {
+            setTradeActionsForInstance(instanceId, Buffer.toArray(reordered));
+            true
+        } else { false }
+    };
+
+    // ============================================
+    // PUBLIC API — MOVE FUNDS ACTIONS
+    // ============================================
+
+    public shared query (msg) func getMoveFundsActions(instanceId: Text): async [T.ActionConfig] {
+        assertPermission(msg.caller, T.TradingPermission.ManageTrades);
+        getMoveFundsActionsForInstance(instanceId)
+    };
+
+    public shared (msg) func addMoveFundsAction(instanceId: Text, config: T.ActionConfigInput): async Nat {
+        assertPermission(msg.caller, T.TradingPermission.ManageTrades);
+        // Validate: only action types 1, 2, 3 allowed
+        if (config.actionType == 0) { Debug.trap("Trade actions not allowed in Move Funds chore") };
+        let nextId = getMoveFundsNextId(instanceId);
+        let action: T.ActionConfig = {
+            id = nextId;
+            actionType = config.actionType;
+            enabled = config.enabled;
+            inputToken = config.inputToken;
+            outputToken = null; // No trading
+            minAmount = config.minAmount;
+            maxAmount = config.maxAmount;
+            preferredDex = null;
+            sourceSubaccount = config.sourceSubaccount;
+            targetSubaccount = config.targetSubaccount;
+            destinationOwner = config.destinationOwner;
+            destinationSubaccount = config.destinationSubaccount;
+            minBalance = config.minBalance;
+            maxBalance = config.maxBalance;
+            balanceDenominationToken = config.balanceDenominationToken;
+            minPrice = null;
+            maxPrice = null;
+            priceDenominationToken = null;
+            maxPriceImpactBps = null;
+            maxSlippageBps = null;
+            minFrequencySeconds = config.minFrequencySeconds;
+            maxFrequencySeconds = config.maxFrequencySeconds;
+            tradeSizeDenominationToken = null;
+            lastExecutedAt = null;
+        };
+        setMoveFundsActionsForInstance(instanceId, Array.append(getMoveFundsActionsForInstance(instanceId), [action]));
+        setMoveFundsNextId(instanceId, nextId + 1);
+        logEngine.logInfo("api", "Added move-funds action " # Nat.toText(nextId), ?msg.caller, []);
+        nextId
+    };
+
+    public shared (msg) func updateMoveFundsAction(instanceId: Text, id: Nat, config: T.ActionConfigInput): async Bool {
+        assertPermission(msg.caller, T.TradingPermission.ManageTrades);
+        if (config.actionType == 0) { Debug.trap("Trade actions not allowed in Move Funds chore") };
+        let actions = getMoveFundsActionsForInstance(instanceId);
+        var found = false;
+        let updated = Array.map<T.ActionConfig, T.ActionConfig>(actions, func(a) {
+            if (a.id == id) {
+                found := true;
+                { a with
+                    actionType = config.actionType;
+                    enabled = config.enabled;
+                    inputToken = config.inputToken;
+                    minAmount = config.minAmount;
+                    maxAmount = config.maxAmount;
+                    sourceSubaccount = config.sourceSubaccount;
+                    targetSubaccount = config.targetSubaccount;
+                    destinationOwner = config.destinationOwner;
+                    destinationSubaccount = config.destinationSubaccount;
+                    minBalance = config.minBalance;
+                    maxBalance = config.maxBalance;
+                    balanceDenominationToken = config.balanceDenominationToken;
+                    minFrequencySeconds = config.minFrequencySeconds;
+                    maxFrequencySeconds = config.maxFrequencySeconds;
+                }
+            } else { a }
+        });
+        if (found) { setMoveFundsActionsForInstance(instanceId, updated) };
+        found
+    };
+
+    public shared (msg) func removeMoveFundsAction(instanceId: Text, id: Nat): async Bool {
+        assertPermission(msg.caller, T.TradingPermission.ManageTrades);
+        let actions = getMoveFundsActionsForInstance(instanceId);
+        let filtered = Array.filter<T.ActionConfig>(actions, func(a) { a.id != id });
+        if (filtered.size() < actions.size()) {
+            setMoveFundsActionsForInstance(instanceId, filtered);
+            true
+        } else { false }
+    };
+
+    // ============================================
+    // PUBLIC API — REBALANCER
+    // ============================================
+
+    public shared query (msg) func getRebalanceTargets(instanceId: Text): async [T.RebalanceTarget] {
+        assertPermission(msg.caller, T.TradingPermission.ManageRebalancer);
+        getRebalTargets(instanceId)
+    };
+
+    public shared (msg) func setRebalanceTargets(instanceId: Text, targets: [T.RebalanceTarget]): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageRebalancer);
+        rebalanceTargets := setInMap(rebalanceTargets, instanceId, targets);
+        logEngine.logInfo("api", "Set rebalance targets for " # instanceId # ": " # Nat.toText(targets.size()) # " tokens", ?msg.caller, []);
+    };
+
+    public shared query (msg) func getRebalanceSettings(instanceId: Text): async T.RebalanceSettings {
+        assertPermission(msg.caller, T.TradingPermission.ManageRebalancer);
+        {
+            denominationToken = getRebalDenomToken(instanceId);
+            maxTradeSize = getRebalMaxTrade(instanceId);
+            minTradeSize = getRebalMinTrade(instanceId);
+            maxPriceImpactBps = getRebalMaxImpact(instanceId);
+            maxSlippageBps = getRebalMaxSlippage(instanceId);
+            thresholdBps = getRebalThreshold(instanceId);
+        }
+    };
+
+    public shared (msg) func setRebalanceDenominationToken(instanceId: Text, token: Principal): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageRebalancer);
+        rebalanceDenominationToken := setInMap(rebalanceDenominationToken, instanceId, token);
+    };
+
+    public shared (msg) func setRebalanceMaxTradeSize(instanceId: Text, amount: Nat): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageRebalancer);
+        rebalanceMaxTradeSize := setInMap(rebalanceMaxTradeSize, instanceId, amount);
+    };
+
+    public shared (msg) func setRebalanceMinTradeSize(instanceId: Text, amount: Nat): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageRebalancer);
+        rebalanceMinTradeSize := setInMap(rebalanceMinTradeSize, instanceId, amount);
+    };
+
+    public shared (msg) func setRebalanceMaxPriceImpactBps(instanceId: Text, bps: Nat): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageRebalancer);
+        rebalanceMaxPriceImpactBps := setInMap(rebalanceMaxPriceImpactBps, instanceId, bps);
+    };
+
+    public shared (msg) func setRebalanceMaxSlippageBps(instanceId: Text, bps: Nat): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageRebalancer);
+        rebalanceMaxSlippageBps := setInMap(rebalanceMaxSlippageBps, instanceId, bps);
+    };
+
+    public shared (msg) func setRebalanceThresholdBps(instanceId: Text, bps: Nat): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageRebalancer);
+        rebalanceThresholdBps := setInMap(rebalanceThresholdBps, instanceId, bps);
+    };
+
+    public shared (msg) func getPortfolioStatus(instanceId: Text): async T.PortfolioStatus {
+        assertPermission(msg.caller, T.TradingPermission.ViewPortfolio);
+        let targets = getRebalTargets(instanceId);
+        let denomToken = getRebalDenomToken(instanceId);
+
+        let tokenStatuses = Buffer.Buffer<T.PortfolioTokenStatus>(targets.size());
+        var totalValue: Nat = 0;
+
+        for (target in targets.vals()) {
+            let balance = await getBalance(target.token, null);
+            let value = if (target.token == denomToken) {
+                balance
+            } else {
+                let quoteOpt = await getBestQuote(target.token, denomToken, balance);
+                switch (quoteOpt) { case (?q) q.expectedOutput; case null 0 };
+            };
+            let symbol = switch (getTokenInfo(target.token)) {
+                case (?i) i.symbol;
+                case null Principal.toText(target.token);
+            };
+            tokenStatuses.add({
+                token = target.token;
+                symbol = symbol;
+                balance = balance;
+                valueInDenomination = value;
+                currentBps = 0; // Computed below
+                targetBps = target.targetBps;
+                deviationBps = 0; // Computed below
+            });
+            totalValue += value;
+        };
+
+        // Compute currentBps and deviationBps
+        let finalTokens = Array.map<T.PortfolioTokenStatus, T.PortfolioTokenStatus>(
+            Buffer.toArray(tokenStatuses),
+            func(ts) {
+                let currentBps = if (totalValue > 0) { (ts.valueInDenomination * 10000) / totalValue } else { 0 };
+                { ts with
+                    currentBps = currentBps;
+                    deviationBps = Int.abs(currentBps) - Int.abs(ts.targetBps);
+                }
+            }
+        );
+
+        {
+            denominationToken = denomToken;
+            totalValueInDenomination = totalValue;
+            tokens = finalTokens;
+        }
+    };
+
+    // ============================================
+    // PUBLIC API — DISTRIBUTION
+    // ============================================
+
+    public shared query (msg) func getDistributionLists(instanceId: Text): async [DistributionTypes.DistributionList] {
+        assertPermission(msg.caller, T.TradingPermission.ViewChores);
+        let ds = getDistSettings(instanceId);
+        ds.lists
+    };
+
+    public shared (msg) func addDistributionList(instanceId: Text, input: DistributionTypes.DistributionListInput): async Nat {
+        assertPermission(msg.caller, T.TradingPermission.ConfigureDistribution);
+        let ds = getDistSettings(instanceId);
+        let newId = ds.nextListId;
+        let newList: DistributionTypes.DistributionList = {
+            id = newId;
+            name = input.name;
+            sourceSubaccount = input.sourceSubaccount;
+            tokenLedgerCanisterId = input.tokenLedgerCanisterId;
+            thresholdAmount = input.thresholdAmount;
+            maxDistributionAmount = input.maxDistributionAmount;
+            targets = input.targets;
+        };
+        setDistSettings(instanceId, { lists = Array.append(ds.lists, [newList]); nextListId = newId + 1 });
+        logEngine.logInfo("api", "Added distribution list " # Nat.toText(newId), ?msg.caller, []);
+        newId
+    };
+
+    public shared (msg) func updateDistributionList(instanceId: Text, id: Nat, input: DistributionTypes.DistributionListInput): async () {
+        assertPermission(msg.caller, T.TradingPermission.ConfigureDistribution);
+        let ds = getDistSettings(instanceId);
+        let updated = Array.map<DistributionTypes.DistributionList, DistributionTypes.DistributionList>(ds.lists, func(l) {
+            if (l.id == id) {
+                { l with name = input.name; sourceSubaccount = input.sourceSubaccount; tokenLedgerCanisterId = input.tokenLedgerCanisterId; thresholdAmount = input.thresholdAmount; maxDistributionAmount = input.maxDistributionAmount; targets = input.targets }
+            } else { l }
+        });
+        setDistSettings(instanceId, { ds with lists = updated });
+    };
+
+    public shared (msg) func removeDistributionList(instanceId: Text, id: Nat): async () {
+        assertPermission(msg.caller, T.TradingPermission.ConfigureDistribution);
+        let ds = getDistSettings(instanceId);
+        setDistSettings(instanceId, { ds with lists = Array.filter<DistributionTypes.DistributionList>(ds.lists, func(l) { l.id != id }) });
+    };
+
+    // ============================================
+    // PUBLIC API — CHORE MANAGEMENT
+    // ============================================
+
+    public shared query (msg) func getChoreStatuses(): async [BotChoreTypes.ChoreStatus] {
+        assertPermission(msg.caller, T.TradingPermission.ViewChores);
+        choreEngine.getAllStatuses()
+    };
+
+    public shared query (msg) func getChoreStatus(choreId: Text): async ?BotChoreTypes.ChoreStatus {
+        assertPermission(msg.caller, T.TradingPermission.ViewChores);
+        choreEngine.getStatus(choreId)
+    };
+
+    public shared (msg) func createChoreInstance(typeId: Text, instanceId: Text, instanceLabel: Text): async Bool {
+        assertPermission(msg.caller, choreManagePermission(typeId));
+        choreEngine.createInstance(typeId, instanceId, instanceLabel)
+    };
+
+    public shared (msg) func deleteChoreInstance(instanceId: Text): async Bool {
+        assertPermission(msg.caller, choreManagePermission(instanceId));
+        choreEngine.deleteInstance(instanceId)
+    };
+
+    public shared (msg) func renameChoreInstance(instanceId: Text, newLabel: Text): async Bool {
+        assertPermission(msg.caller, choreManagePermission(instanceId));
+        choreEngine.renameInstance(instanceId, newLabel)
+    };
+
+    public shared query (msg) func listChoreInstances(typeIdFilter: ?Text): async [(Text, BotChoreTypes.ChoreInstanceInfo)] {
+        assertPermission(msg.caller, T.TradingPermission.ViewChores);
+        choreEngine.listInstances(typeIdFilter)
+    };
+
+    public shared (msg) func startChore(choreId: Text): async () {
+        assertPermission(msg.caller, choreManagePermission(choreId));
+        choreEngine.start<system>(choreId);
+        logEngine.logInfo("api", "Started chore: " # choreId, ?msg.caller, []);
+    };
+
+    public shared (msg) func scheduleStartChore(choreId: Text, timestampNanos: Int): async () {
+        assertPermission(msg.caller, choreManagePermission(choreId));
+        choreEngine.scheduleStart<system>(choreId, timestampNanos);
+        logEngine.logInfo("api", "Scheduled start for chore: " # choreId, ?msg.caller, []);
+    };
+
+    public shared (msg) func pauseChore(choreId: Text): async () {
+        assertPermission(msg.caller, choreManagePermission(choreId));
+        choreEngine.pause(choreId);
+        logEngine.logInfo("api", "Paused chore: " # choreId, ?msg.caller, []);
+    };
+
+    public shared (msg) func resumeChore(choreId: Text): async () {
+        assertPermission(msg.caller, choreManagePermission(choreId));
+        choreEngine.resume<system>(choreId);
+        logEngine.logInfo("api", "Resumed chore: " # choreId, ?msg.caller, []);
+    };
+
+    public shared (msg) func stopChore(choreId: Text): async () {
+        assertPermission(msg.caller, choreManagePermission(choreId));
+        choreEngine.stop(choreId);
+        logEngine.logInfo("api", "Stopped chore: " # choreId, ?msg.caller, []);
+    };
+
+    public shared (msg) func stopAllChores(): async () {
+        assertPermission(msg.caller, T.TradingPermission.FullPermissions);
+        choreEngine.stopAllChores();
+        logEngine.logInfo("api", "Stopped all chores", ?msg.caller, []);
+    };
+
+    public shared (msg) func triggerChore(choreId: Text): async () {
+        assertPermission(msg.caller, choreManagePermission(choreId));
+        choreEngine.trigger<system>(choreId);
+        logEngine.logInfo("api", "Triggered chore: " # choreId, ?msg.caller, []);
+    };
+
+    public shared (msg) func setChoreInterval(choreId: Text, seconds: Nat): async () {
+        assertPermission(msg.caller, choreManagePermission(choreId));
+        choreEngine.setInterval(choreId, seconds);
+        logEngine.logInfo("api", "Set interval for " # choreId # " to " # Nat.toText(seconds) # "s", ?msg.caller, []);
+    };
+
+    public shared (msg) func setChoreMaxInterval(choreId: Text, seconds: ?Nat): async () {
+        assertPermission(msg.caller, choreManagePermission(choreId));
+        choreEngine.setMaxInterval(choreId, seconds);
+    };
+
+    public shared (msg) func setChoreTaskTimeout(choreId: Text, seconds: Nat): async () {
+        assertPermission(msg.caller, choreManagePermission(choreId));
+        choreEngine.setTaskTimeout(choreId, seconds);
+    };
+
+    public shared (msg) func setChoreNextRun(choreId: Text, timestampNanos: Int): async () {
+        assertPermission(msg.caller, choreManagePermission(choreId));
+        choreEngine.setNextScheduledRun<system>(choreId, timestampNanos);
+    };
+
+    // ============================================
+    // PUBLIC API — LOGGING
+    // ============================================
+
+    public shared query (msg) func getLogs(filter: BotLogTypes.LogFilter): async BotLogTypes.LogResult {
+        assertPermission(msg.caller, T.TradingPermission.ViewLogs);
+        logEngine.getLogs(filter)
+    };
+
+    public shared query (msg) func getLogConfig(): async BotLogTypes.LogConfig {
+        assertPermission(msg.caller, T.TradingPermission.ViewLogs);
+        logEngine.getConfig()
+    };
+
+    public shared (msg) func setLogLevel(level: BotLogTypes.LogLevel): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageLogs);
+        logEngine.setLogLevel(level);
+        logEngine.logInfo("log", "Log level changed", ?msg.caller, []);
+    };
+
+    public shared (msg) func clearLogs(): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageLogs);
+        logEngine.clear();
+    };
+
+};
