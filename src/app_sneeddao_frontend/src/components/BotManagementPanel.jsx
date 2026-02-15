@@ -202,6 +202,7 @@ export default function BotManagementPanel({
     const [newInstanceLabel, setNewInstanceLabel] = useState('');
     const [renamingInstance, setRenamingInstance] = useState(null);
     const [renameLabel, setRenameLabel] = useState('');
+    const chorePollingRef = useRef(null); // Interval ID for post-action status polling
 
     // Log
     const [logEntries, setLogEntries] = useState([]);
@@ -462,6 +463,52 @@ export default function BotManagementPanel({
             if (!silent) setLoadingChores(false);
         }
     }, [canisterId, identity, getReadyBotActor, choreActiveTab]);
+
+    /**
+     * Start polling chore statuses after an action that triggers a run
+     * (triggerChore, startChore, resumeChore, scheduleStartChore).
+     * Polls every 2 seconds. Stops automatically after 120s or when
+     * no conductor/task is running.
+     */
+    const startChorePolling = useCallback(() => {
+        // Clear any existing polling
+        if (chorePollingRef.current) clearInterval(chorePollingRef.current);
+        let elapsed = 0;
+        const POLL_INTERVAL = 2000;
+        const MAX_POLL = 120_000;
+        chorePollingRef.current = setInterval(async () => {
+            elapsed += POLL_INTERVAL;
+            if (elapsed > MAX_POLL) {
+                clearInterval(chorePollingRef.current);
+                chorePollingRef.current = null;
+                return;
+            }
+            try {
+                const bot = await getReadyBotActor();
+                if (!bot) return;
+                const statuses = await bot.getChoreStatuses();
+                setChoreStatuses(statuses);
+                // Stop polling when no chore is actively running
+                const anyActive = statuses.some(s => {
+                    const cond = s.conductorStatus && Object.keys(s.conductorStatus)[0];
+                    const task = s.taskStatus && Object.keys(s.taskStatus)[0];
+                    return cond === 'Running' || cond === 'Polling' || task === 'Running';
+                });
+                if (!anyActive && elapsed >= POLL_INTERVAL * 2) {
+                    // Give it at least 2 polls before stopping (to catch the transition)
+                    clearInterval(chorePollingRef.current);
+                    chorePollingRef.current = null;
+                }
+            } catch { /* Silently ignore polling errors */ }
+        }, POLL_INTERVAL);
+    }, [getReadyBotActor]);
+
+    // Cleanup polling on unmount
+    useEffect(() => {
+        return () => {
+            if (chorePollingRef.current) clearInterval(chorePollingRef.current);
+        };
+    }, []);
 
     // Load log data
     const loadLogData = useCallback(async (filterOverride, silent) => {
@@ -1780,7 +1827,7 @@ export default function BotManagementPanel({
                                                                                             setChoreSuccess('Next run time updated.');
                                                                                             const el = document.getElementById(`next-run-picker-${chore.choreId}`);
                                                                                             if (el) el.style.display = 'none';
-                                                                                            setTimeout(() => loadChoreData(true), 2500);
+                                                                                            await loadChoreData(true);
                                                                                         } catch (err) {
                                                                                             setChoreError('Failed to set next run: ' + err.message);
                                                                                         } finally {
@@ -1858,7 +1905,8 @@ export default function BotManagementPanel({
                                                                                     const bot = await getReadyBotActor();
                                                                                     await bot.startChore(chore.choreId);
                                                                                     setChoreSuccess('Chore started! Running now and scheduled for next interval.');
-                                                                                    setTimeout(() => loadChoreData(true), 2000);
+                                                                                    await loadChoreData(true);
+                                                                                    startChorePolling();
                                                                                 } catch (err) { setChoreError('Failed to start: ' + err.message); }
                                                                                 finally { setSavingChore(false); }
                                                                             }}
@@ -1914,7 +1962,8 @@ export default function BotManagementPanel({
                                                                                 const bot = await getReadyBotActor();
                                                                                 await bot.resumeChore(chore.choreId);
                                                                                 setChoreSuccess('Chore resumed! Schedule re-activated.');
-                                                                                setTimeout(() => loadChoreData(true), 2000);
+                                                                                await loadChoreData(true);
+                                                                                startChorePolling();
                                                                             } catch (err) { setChoreError('Failed to resume: ' + err.message); }
                                                                             finally { setSavingChore(false); }
                                                                         }}
@@ -1952,7 +2001,8 @@ export default function BotManagementPanel({
                                                                                 setChoreSuccess(isStopped
                                                                                     ? 'Chore triggered once. It will run without enabling the schedule.'
                                                                                     : 'Chore triggered manually. It will start running shortly.');
-                                                                                setTimeout(() => loadChoreData(true), 2000);
+                                                                                await loadChoreData(true);
+                                                                                startChorePolling();
                                                                             } catch (err) { setChoreError('Failed to trigger: ' + err.message); }
                                                                             finally { setSavingChore(false); }
                                                                         }}
@@ -1985,7 +2035,8 @@ export default function BotManagementPanel({
                                                                                 setChoreSuccess('Chore scheduled! First run at ' + new Date(selectedTime).toLocaleString());
                                                                                 const el = document.getElementById(`schedule-start-panel-${chore.choreId}`);
                                                                                 if (el) el.style.display = 'none';
-                                                                                setTimeout(() => loadChoreData(true), 2000);
+                                                                                await loadChoreData(true);
+                                                                                startChorePolling();
                                                                             } catch (err) { setChoreError('Failed to schedule start: ' + err.message); }
                                                                             finally { setSavingChore(false); }
                                                                         }}
