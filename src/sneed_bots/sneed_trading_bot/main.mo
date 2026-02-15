@@ -622,13 +622,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case null { return #Err("No pool canister for ICPSwap swap") };
         };
 
-        let inputInfo = switch (getTokenInfo(quote.inputToken)) {
-            case (?i) i;
-            case null { return #Err("Input token not in registry") };
+        let inputInfo = try { await getTokenInfoOrFetch(quote.inputToken) } catch (e) {
+            return #Err("Failed to get input token info: " # Error.message(e));
         };
-        let outputInfo = switch (getTokenInfo(quote.outputToken)) {
-            case (?i) i;
-            case null { return #Err("Output token not in registry") };
+        let outputInfo = try { await getTokenInfoOrFetch(quote.outputToken) } catch (e) {
+            return #Err("Failed to get output token info: " # Error.message(e));
         };
 
         let zfo = isZeroForOne(quote.inputToken, quote.outputToken);
@@ -685,9 +683,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     /// Execute a swap on KongSwap using ICRC-1 path.
     /// (Transfer to Kong canister, then swap with block index)
     func executeKongSwapSwap(quote: T.SwapQuote, slippageBps: Nat): async T.SwapResult {
-        let inputInfo = switch (getTokenInfo(quote.inputToken)) {
-            case (?i) i;
-            case null { return #Err("Input token not in registry") };
+        let inputInfo = try { await getTokenInfoOrFetch(quote.inputToken) } catch (e) {
+            return #Err("Failed to get input token info: " # Error.message(e));
         };
 
         let effectiveInput = quote.effectiveInputAmount;
@@ -870,7 +867,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         };
 
         // Clamp to available balance (minus fees)
-        let inputFee = switch (getTokenInfo(action.inputToken)) { case (?i) i.fee; case null 0 };
+        let inputFee = try { (await getTokenInfoOrFetch(action.inputToken)).fee } catch (_) { 0 };
         let maxAffordable = if (balance > inputFee * 3) { balance - inputFee * 3 } else { 0 };
         let actualTradeSize = Nat.min(tradeSize, maxAffordable);
 
