@@ -490,6 +490,151 @@ module {
     };
 
     // ============================================
+    // TRADE LOG
+    // ============================================
+
+    /// Status of a trade/action execution attempt.
+    public type TradeStatus = {
+        #Success;
+        #Failed;
+        #Skipped;       // Conditions not met (balance, price, etc.)
+    };
+
+    /// A single trade log entry — records every attempted trade, deposit,
+    /// withdraw, or send by the bot, whether from a trade chore, rebalancer,
+    /// or move-funds chore.
+    public type TradeLogEntry = {
+        id: Nat;
+        timestamp: Int;
+
+        // Source identification
+        choreId: ?Text;            // Instance ID of the chore that triggered this (null if manual)
+        choreTypeId: ?Text;        // "trade", "rebalance", "move-funds", "distribute-funds"
+        actionId: ?Nat;            // Action ID within the chore (null for rebalancer trades)
+
+        // Action details
+        actionType: Nat;           // 0=Trade, 1=Deposit, 2=Withdraw, 3=Send
+        inputToken: Principal;
+        outputToken: ?Principal;
+        inputAmount: Nat;
+        outputAmount: ?Nat;        // Actual output received (null if failed/skipped)
+
+        // Pricing (Trade only)
+        priceE8s: ?Nat;            // Execution price (output per 1 input * 1e8)
+        priceImpactBps: ?Nat;
+        slippageBps: ?Nat;
+        dexId: ?Nat;               // 0=ICPSwap, 1=KongSwap
+
+        // Result
+        status: TradeStatus;
+        errorMessage: ?Text;
+        txId: ?Nat;                // Transfer/swap block index or tx ID
+
+        // Destination (Send/Withdraw)
+        destinationOwner: ?Principal;
+    };
+
+    /// Query filter for the trade log.
+    public type TradeLogQuery = {
+        startId: ?Nat;             // Pagination: start from this ID (inclusive)
+        limit: ?Nat;               // Max entries (default 50)
+        choreId: ?Text;            // Filter by chore instance
+        choreTypeId: ?Text;        // Filter by chore type
+        actionType: ?Nat;          // Filter by action type
+        inputToken: ?Principal;    // Filter by input token
+        outputToken: ?Principal;   // Filter by output token
+        status: ?TradeStatus;      // Filter by status
+        fromTime: ?Int;            // Include entries after this timestamp
+        toTime: ?Int;              // Include entries before this timestamp
+    };
+
+    /// Result of a trade log query.
+    public type TradeLogResult = {
+        entries: [TradeLogEntry];
+        totalCount: Nat;           // Total matching (before pagination)
+        hasMore: Bool;
+    };
+
+    // ============================================
+    // PORTFOLIO SNAPSHOT LOG
+    // ============================================
+
+    /// Balance and price snapshot for a single token.
+    public type TokenSnapshot = {
+        token: Principal;
+        symbol: Text;
+        decimals: Nat8;
+        balance: Nat;              // Raw token units
+
+        // Prices (all scaled to 1e8 per 1 token)
+        priceIcpE8s: ?Nat;
+        priceUsdE8s: ?Nat;
+        priceDenomE8s: ?Nat;       // In user's denomination token
+
+        // Computed values
+        valueIcpE8s: ?Nat;
+        valueUsdE8s: ?Nat;
+        valueDenomE8s: ?Nat;
+    };
+
+    /// Snapshot phase — taken before or after a trade.
+    public type SnapshotPhase = {
+        #Before;
+        #After;
+    };
+
+    /// A complete portfolio snapshot at a point in time.
+    public type PortfolioSnapshot = {
+        id: Nat;
+        timestamp: Int;
+        trigger: Text;             // Human-readable trigger description
+        tradeLogId: ?Nat;          // Link to the trade log entry that triggered this
+        phase: SnapshotPhase;
+        denominationToken: ?Principal;
+        totalValueIcpE8s: ?Nat;
+        totalValueUsdE8s: ?Nat;
+        totalValueDenomE8s: ?Nat;
+        tokens: [TokenSnapshot];
+    };
+
+    /// Query filter for portfolio snapshots.
+    public type PortfolioSnapshotQuery = {
+        startId: ?Nat;
+        limit: ?Nat;               // Default 20
+        tradeLogId: ?Nat;          // Filter by linked trade
+        phase: ?SnapshotPhase;
+        fromTime: ?Int;
+        toTime: ?Int;
+    };
+
+    /// Result of a portfolio snapshot query.
+    public type PortfolioSnapshotResult = {
+        entries: [PortfolioSnapshot];
+        totalCount: Nat;
+        hasMore: Bool;
+    };
+
+    // ============================================
+    // LOGGING SETTINGS
+    // ============================================
+
+    /// Master logging settings for the bot.
+    /// Controls whether trade log and portfolio snapshot log are active.
+    public type LoggingSettings = {
+        tradeLogEnabled: Bool;          // Default: true
+        portfolioLogEnabled: Bool;      // Default: true
+        maxTradeLogEntries: Nat;        // Circular buffer size (default: 10_000)
+        maxPortfolioLogEntries: Nat;    // Circular buffer size (default: 5_000)
+    };
+
+    /// Per-chore logging overrides.
+    /// null values mean "use the master setting".
+    public type ChoreLoggingOverrides = {
+        tradeLogEnabled: ?Bool;
+        portfolioLogEnabled: ?Bool;
+    };
+
+    // ============================================
     // IC MANAGEMENT CANISTER TYPES
     // ============================================
 

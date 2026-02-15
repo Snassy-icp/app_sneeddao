@@ -338,6 +338,119 @@ export const idlFactory = ({ IDL }) => {
     });
 
     // ==========================================
+    // Trade Log types
+    // ==========================================
+    const TradeStatus = IDL.Variant({
+        Success: IDL.Null,
+        Failed: IDL.Null,
+        Skipped: IDL.Null,
+    });
+
+    const TradeLogEntry = IDL.Record({
+        id: IDL.Nat,
+        timestamp: IDL.Int,
+        choreId: IDL.Opt(IDL.Text),
+        choreTypeId: IDL.Opt(IDL.Text),
+        actionId: IDL.Opt(IDL.Nat),
+        actionType: IDL.Nat,
+        inputToken: IDL.Principal,
+        outputToken: IDL.Opt(IDL.Principal),
+        inputAmount: IDL.Nat,
+        outputAmount: IDL.Opt(IDL.Nat),
+        priceE8s: IDL.Opt(IDL.Nat),
+        priceImpactBps: IDL.Opt(IDL.Nat),
+        slippageBps: IDL.Opt(IDL.Nat),
+        dexId: IDL.Opt(IDL.Nat),
+        status: TradeStatus,
+        errorMessage: IDL.Opt(IDL.Text),
+        txId: IDL.Opt(IDL.Nat),
+        destinationOwner: IDL.Opt(IDL.Principal),
+    });
+
+    const TradeLogQuery = IDL.Record({
+        startId: IDL.Opt(IDL.Nat),
+        limit: IDL.Opt(IDL.Nat),
+        choreId: IDL.Opt(IDL.Text),
+        choreTypeId: IDL.Opt(IDL.Text),
+        actionType: IDL.Opt(IDL.Nat),
+        inputToken: IDL.Opt(IDL.Principal),
+        outputToken: IDL.Opt(IDL.Principal),
+        status: IDL.Opt(TradeStatus),
+        fromTime: IDL.Opt(IDL.Int),
+        toTime: IDL.Opt(IDL.Int),
+    });
+
+    const TradeLogResult = IDL.Record({
+        entries: IDL.Vec(TradeLogEntry),
+        totalCount: IDL.Nat,
+        hasMore: IDL.Bool,
+    });
+
+    // ==========================================
+    // Portfolio Snapshot types
+    // ==========================================
+    const SnapshotPhase = IDL.Variant({
+        Before: IDL.Null,
+        After: IDL.Null,
+    });
+
+    const TokenSnapshot = IDL.Record({
+        token: IDL.Principal,
+        symbol: IDL.Text,
+        decimals: IDL.Nat8,
+        balance: IDL.Nat,
+        priceIcpE8s: IDL.Opt(IDL.Nat),
+        priceUsdE8s: IDL.Opt(IDL.Nat),
+        priceDenomE8s: IDL.Opt(IDL.Nat),
+        valueIcpE8s: IDL.Opt(IDL.Nat),
+        valueUsdE8s: IDL.Opt(IDL.Nat),
+        valueDenomE8s: IDL.Opt(IDL.Nat),
+    });
+
+    const PortfolioSnapshot = IDL.Record({
+        id: IDL.Nat,
+        timestamp: IDL.Int,
+        trigger: IDL.Text,
+        tradeLogId: IDL.Opt(IDL.Nat),
+        phase: SnapshotPhase,
+        denominationToken: IDL.Opt(IDL.Principal),
+        totalValueIcpE8s: IDL.Opt(IDL.Nat),
+        totalValueUsdE8s: IDL.Opt(IDL.Nat),
+        totalValueDenomE8s: IDL.Opt(IDL.Nat),
+        tokens: IDL.Vec(TokenSnapshot),
+    });
+
+    const PortfolioSnapshotQuery = IDL.Record({
+        startId: IDL.Opt(IDL.Nat),
+        limit: IDL.Opt(IDL.Nat),
+        tradeLogId: IDL.Opt(IDL.Nat),
+        phase: IDL.Opt(SnapshotPhase),
+        fromTime: IDL.Opt(IDL.Int),
+        toTime: IDL.Opt(IDL.Int),
+    });
+
+    const PortfolioSnapshotResult = IDL.Record({
+        entries: IDL.Vec(PortfolioSnapshot),
+        totalCount: IDL.Nat,
+        hasMore: IDL.Bool,
+    });
+
+    // ==========================================
+    // Logging Settings types
+    // ==========================================
+    const LoggingSettings = IDL.Record({
+        tradeLogEnabled: IDL.Bool,
+        portfolioLogEnabled: IDL.Bool,
+        maxTradeLogEntries: IDL.Nat,
+        maxPortfolioLogEntries: IDL.Nat,
+    });
+
+    const ChoreLoggingOverrides = IDL.Record({
+        tradeLogEnabled: IDL.Opt(IDL.Bool),
+        portfolioLogEnabled: IDL.Opt(IDL.Bool),
+    });
+
+    // ==========================================
     // Service definition
     // ==========================================
     return IDL.Service({
@@ -432,11 +545,28 @@ export const idlFactory = ({ IDL }) => {
         setChoreTaskTimeout: IDL.Func([IDL.Text, IDL.Nat], [], []),
         setChoreNextRun: IDL.Func([IDL.Text, IDL.Int], [], []),
 
-        // Logging
+        // Bot Log (general)
         getLogs: IDL.Func([LogFilter], [LogResult], ['query']),
         getLogConfig: IDL.Func([], [LogConfig], ['query']),
         setLogLevel: IDL.Func([LogLevel], [], []),
         clearLogs: IDL.Func([], [], []),
+
+        // Trade Log
+        getTradeLog: IDL.Func([TradeLogQuery], [TradeLogResult], ['query']),
+        getTradeLogStats: IDL.Func([], [IDL.Record({ totalEntries: IDL.Nat, nextId: IDL.Nat })], ['query']),
+        clearTradeLog: IDL.Func([], [], []),
+
+        // Portfolio Snapshot Log
+        getPortfolioSnapshots: IDL.Func([PortfolioSnapshotQuery], [PortfolioSnapshotResult], ['query']),
+        getPortfolioSnapshotStats: IDL.Func([], [IDL.Record({ totalEntries: IDL.Nat, nextId: IDL.Nat })], ['query']),
+        clearPortfolioSnapshots: IDL.Func([], [], []),
+
+        // Logging Settings
+        getLoggingSettings: IDL.Func([], [LoggingSettings], ['query']),
+        setLoggingSettings: IDL.Func([LoggingSettings], [], []),
+        getChoreLoggingOverrides: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Text, ChoreLoggingOverrides))], ['query']),
+        setChoreLoggingOverride: IDL.Func([IDL.Text, ChoreLoggingOverrides], [], []),
+        removeChoreLoggingOverride: IDL.Func([IDL.Text], [], []),
     });
 };
 

@@ -201,25 +201,25 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [saving, setSaving] = useState(false);
-    const [adding, setAdding] = useState(false);
+
+    // Form mode: null = list view, 'add' = adding new, { id: N } = editing action N
+    const [formMode, setFormMode] = useState(null);
     const [showConditions, setShowConditions] = useState(false);
 
-    // New action form state
-    const [newActionType, setNewActionType] = useState(allowedTypes[0]);
-    const [newInputToken, setNewInputToken] = useState('');
-    const [newOutputToken, setNewOutputToken] = useState('');
-    const [newMinAmount, setNewMinAmount] = useState('');
-    const [newMaxAmount, setNewMaxAmount] = useState('');
-    const [newEnabled, setNewEnabled] = useState(true);
-    // Condition fields
-    const [newMinBalance, setNewMinBalance] = useState('');
-    const [newMaxBalance, setNewMaxBalance] = useState('');
-    const [newMinPrice, setNewMinPrice] = useState('');
-    const [newMaxPrice, setNewMaxPrice] = useState('');
-    const [newMaxPriceImpactBps, setNewMaxPriceImpactBps] = useState('');
-    const [newMaxSlippageBps, setNewMaxSlippageBps] = useState('');
-    // Destination fields (for Send/Withdraw/Deposit)
-    const [newDestOwner, setNewDestOwner] = useState('');
+    // Form fields (shared between add and edit modes)
+    const [fActionType, setFActionType] = useState(allowedTypes[0]);
+    const [fInputToken, setFInputToken] = useState('');
+    const [fOutputToken, setFOutputToken] = useState('');
+    const [fMinAmount, setFMinAmount] = useState('');
+    const [fMaxAmount, setFMaxAmount] = useState('');
+    const [fEnabled, setFEnabled] = useState(true);
+    const [fMinBalance, setFMinBalance] = useState('');
+    const [fMaxBalance, setFMaxBalance] = useState('');
+    const [fMinPrice, setFMinPrice] = useState('');
+    const [fMaxPrice, setFMaxPrice] = useState('');
+    const [fMaxPriceImpactBps, setFMaxPriceImpactBps] = useState('');
+    const [fMaxSlippageBps, setFMaxSlippageBps] = useState('');
+    const [fDestOwner, setFDestOwner] = useState('');
 
     // Collect all unique token principals from actions for metadata resolution
     const actionTokenIds = React.useMemo(() => {
@@ -232,10 +232,9 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                 ids.add(out);
             }
         }
-        // Also include the currently selected input token for decimal info
-        if (newInputToken) ids.add(newInputToken);
+        if (fInputToken) ids.add(fInputToken);
         return [...ids];
-    }, [actions, newInputToken]);
+    }, [actions, fInputToken]);
     const tokenMeta = useTokenMetadata(actionTokenIds, identity);
 
     const getSymbol = (principal) => {
@@ -262,50 +261,101 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
 
     useEffect(() => { loadActions(); }, [loadActions]);
 
+    // Helper: extract optional Candid value
+    const optVal = (arr) => arr?.length > 0 ? arr[0] : null;
+
+    const principalToStr = (p) => typeof p === 'string' ? p : p?.toText?.() || String(p);
+
     const resetForm = () => {
-        setNewInputToken(''); setNewOutputToken(''); setNewMinAmount(''); setNewMaxAmount('');
-        setNewMinBalance(''); setNewMaxBalance(''); setNewMinPrice(''); setNewMaxPrice('');
-        setNewMaxPriceImpactBps(''); setNewMaxSlippageBps(''); setNewDestOwner('');
-        setShowConditions(false); setNewEnabled(true);
+        setFActionType(allowedTypes[0]); setFInputToken(''); setFOutputToken('');
+        setFMinAmount(''); setFMaxAmount(''); setFEnabled(true);
+        setFMinBalance(''); setFMaxBalance(''); setFMinPrice(''); setFMaxPrice('');
+        setFMaxPriceImpactBps(''); setFMaxSlippageBps(''); setFDestOwner('');
+        setShowConditions(false);
     };
 
-    const handleAdd = async () => {
-        if (!newInputToken) { setError('Input token is required.'); return; }
-        if (newActionType === ACTION_TYPE_TRADE && !newOutputToken) { setError('Output token is required for trades.'); return; }
+    const openAddForm = () => {
+        resetForm();
+        setFormMode('add');
+        setError(''); setSuccess('');
+    };
+
+    const openEditForm = (action) => {
+        const inputStr = principalToStr(action.inputToken);
+        const inputDec = getDecimals(inputStr);
+        setFActionType(Number(action.actionType));
+        setFInputToken(inputStr);
+        setFOutputToken(optVal(action.outputToken) ? principalToStr(optVal(action.outputToken)) : '');
+        setFMinAmount(Number(action.minAmount) ? formatTokenAmount(action.minAmount, inputDec) : '');
+        setFMaxAmount(Number(action.maxAmount) ? formatTokenAmount(action.maxAmount, inputDec) : '');
+        setFEnabled(action.enabled);
+        setFMinBalance(optVal(action.minBalance) != null ? formatTokenAmount(optVal(action.minBalance), inputDec) : '');
+        setFMaxBalance(optVal(action.maxBalance) != null ? formatTokenAmount(optVal(action.maxBalance), inputDec) : '');
+        setFMinPrice(optVal(action.minPrice) != null ? String(Number(optVal(action.minPrice))) : '');
+        setFMaxPrice(optVal(action.maxPrice) != null ? String(Number(optVal(action.maxPrice))) : '');
+        setFMaxPriceImpactBps(optVal(action.maxPriceImpactBps) != null ? String(Number(optVal(action.maxPriceImpactBps))) : '');
+        setFMaxSlippageBps(optVal(action.maxSlippageBps) != null ? String(Number(optVal(action.maxSlippageBps))) : '');
+        setFDestOwner(optVal(action.destinationOwner) ? principalToStr(optVal(action.destinationOwner)) : '');
+        // Auto-expand conditions if any condition fields are set
+        const hasConditions = optVal(action.minBalance) != null || optVal(action.maxBalance) != null ||
+            optVal(action.minPrice) != null || optVal(action.maxPrice) != null ||
+            optVal(action.maxPriceImpactBps) != null || optVal(action.maxSlippageBps) != null;
+        setShowConditions(hasConditions);
+        setFormMode({ id: Number(action.id) });
+        setError(''); setSuccess('');
+    };
+
+    const closeForm = () => {
+        setFormMode(null);
+        resetForm();
+    };
+
+    /** Build an ActionConfigInput from the current form state */
+    const buildConfig = () => {
+        const inputDecimals = getDecimals(fInputToken);
+        return {
+            actionType: BigInt(fActionType),
+            enabled: fEnabled,
+            inputToken: Principal.fromText(fInputToken),
+            outputToken: fActionType === ACTION_TYPE_TRADE && fOutputToken ? [Principal.fromText(fOutputToken)] : [],
+            minAmount: fMinAmount ? BigInt(parseTokenAmount(fMinAmount, inputDecimals)) : BigInt(0),
+            maxAmount: fMaxAmount ? BigInt(parseTokenAmount(fMaxAmount, inputDecimals)) : BigInt(0),
+            preferredDex: [],
+            sourceSubaccount: [],
+            targetSubaccount: [],
+            destinationOwner: fDestOwner.trim() ? [Principal.fromText(fDestOwner.trim())] : [],
+            destinationSubaccount: [],
+            minBalance: fMinBalance ? [BigInt(parseTokenAmount(fMinBalance, inputDecimals))] : [],
+            maxBalance: fMaxBalance ? [BigInt(parseTokenAmount(fMaxBalance, inputDecimals))] : [],
+            balanceDenominationToken: [],
+            minPrice: fMinPrice ? [BigInt(fMinPrice)] : [],
+            maxPrice: fMaxPrice ? [BigInt(fMaxPrice)] : [],
+            priceDenominationToken: [],
+            maxPriceImpactBps: fMaxPriceImpactBps ? [BigInt(fMaxPriceImpactBps)] : [],
+            maxSlippageBps: fMaxSlippageBps ? [BigInt(fMaxSlippageBps)] : [],
+            minFrequencySeconds: [],
+            maxFrequencySeconds: [],
+            tradeSizeDenominationToken: [],
+        };
+    };
+
+    const handleSave = async () => {
+        if (!fInputToken) { setError('Input token is required.'); return; }
+        if (fActionType === ACTION_TYPE_TRADE && !fOutputToken) { setError('Output token is required for trades.'); return; }
         setSaving(true); setError(''); setSuccess('');
         try {
             const bot = await getReadyBotActor();
-            const inputDecimals = getDecimals(newInputToken);
-            const config = {
-                actionType: BigInt(newActionType),
-                enabled: newEnabled,
-                inputToken: Principal.fromText(newInputToken),
-                outputToken: newActionType === ACTION_TYPE_TRADE && newOutputToken ? [Principal.fromText(newOutputToken)] : [],
-                minAmount: newMinAmount ? BigInt(parseTokenAmount(newMinAmount, inputDecimals)) : BigInt(0),
-                maxAmount: newMaxAmount ? BigInt(parseTokenAmount(newMaxAmount, inputDecimals)) : BigInt(0),
-                preferredDex: [],
-                sourceSubaccount: [],
-                targetSubaccount: [],
-                destinationOwner: newDestOwner.trim() ? [Principal.fromText(newDestOwner.trim())] : [],
-                destinationSubaccount: [],
-                minBalance: newMinBalance ? [BigInt(parseTokenAmount(newMinBalance, inputDecimals))] : [],
-                maxBalance: newMaxBalance ? [BigInt(parseTokenAmount(newMaxBalance, inputDecimals))] : [],
-                balanceDenominationToken: [],
-                minPrice: newMinPrice ? [BigInt(newMinPrice)] : [],
-                maxPrice: newMaxPrice ? [BigInt(newMaxPrice)] : [],
-                priceDenominationToken: [],
-                maxPriceImpactBps: newMaxPriceImpactBps ? [BigInt(newMaxPriceImpactBps)] : [],
-                maxSlippageBps: newMaxSlippageBps ? [BigInt(newMaxSlippageBps)] : [],
-                minFrequencySeconds: [],
-                maxFrequencySeconds: [],
-                tradeSizeDenominationToken: [],
-            };
-            await bot[addFn](instanceId, config);
-            setSuccess('Action added.');
-            setAdding(false);
-            resetForm();
+            const config = buildConfig();
+            if (formMode === 'add') {
+                await bot[addFn](instanceId, config);
+                setSuccess('Action added.');
+            } else {
+                await bot[updateFn](instanceId, BigInt(formMode.id), config);
+                setSuccess('Action updated.');
+            }
+            closeForm();
             await loadActions();
-        } catch (err) { setError('Failed to add action: ' + err.message); }
+        } catch (err) { setError(`Failed to ${formMode === 'add' ? 'add' : 'update'} action: ` + err.message); }
         finally { setSaving(false); }
     };
 
@@ -315,6 +365,7 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
             const bot = await getReadyBotActor();
             await bot[removeFn](instanceId, BigInt(actionId));
             setSuccess('Action removed.');
+            if (formMode && formMode.id === actionId) closeForm();
             await loadActions();
         } catch (err) { setError('Failed to remove: ' + err.message); }
         finally { setSaving(false); }
@@ -355,10 +406,115 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
         finally { setSaving(false); }
     };
 
-    // Helper to format an opt value (Candid optional = array of 0 or 1)
-    const optVal = (arr) => arr?.length > 0 ? arr[0] : null;
-
     const labelStyle = { fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' };
+
+    /** Shared form JSX (used for both add and edit) */
+    const renderForm = () => {
+        const isEditing = formMode !== 'add';
+        const tokenSymLabel = fInputToken && tokenMeta[fInputToken] ? ` (${tokenMeta[fInputToken].symbol})` : '';
+        return (
+            <div style={{ padding: '14px', background: `${accentColor}06`, borderRadius: '8px', border: `1px solid ${accentColor}20`, marginTop: '10px' }}>
+                {isEditing && (
+                    <div style={{ fontSize: '0.8rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '10px' }}>
+                        Editing Action #{formMode.id}
+                    </div>
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
+                    <div>
+                        <label style={labelStyle}>Type</label>
+                        <select value={fActionType} onChange={(e) => setFActionType(Number(e.target.value))} style={{ ...inputStyle, width: '100%', appearance: 'auto' }}>
+                            {allowedTypes.map(t => <option key={t} value={t}>{ACTION_TYPE_LABELS[t]}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label style={labelStyle}>Input Token</label>
+                        <TokenSelector
+                            value={fInputToken}
+                            onChange={setFInputToken}
+                            onSelectToken={cacheTokenMeta}
+                            allowCustom={true}
+                            placeholder="Select input token..."
+                        />
+                    </div>
+                    {fActionType === ACTION_TYPE_TRADE && (
+                        <div>
+                            <label style={labelStyle}>Output Token</label>
+                            <TokenSelector
+                                value={fOutputToken}
+                                onChange={setFOutputToken}
+                                onSelectToken={cacheTokenMeta}
+                                allowCustom={true}
+                                placeholder="Select output token..."
+                            />
+                        </div>
+                    )}
+                    <div>
+                        <label style={labelStyle}>Min Amount{tokenSymLabel}</label>
+                        <input value={fMinAmount} onChange={(e) => setFMinAmount(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="0.0" />
+                    </div>
+                    <div>
+                        <label style={labelStyle}>Max Amount{tokenSymLabel}</label>
+                        <input value={fMaxAmount} onChange={(e) => setFMaxAmount(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="0.0" />
+                    </div>
+                    {(fActionType === ACTION_TYPE_SEND || fActionType === ACTION_TYPE_WITHDRAW || fActionType === ACTION_TYPE_DEPOSIT) && (
+                        <div>
+                            <label style={labelStyle}>Destination Owner (principal)</label>
+                            <input value={fDestOwner} onChange={(e) => setFDestOwner(e.target.value)} style={{ ...inputStyle, width: '100%' }} placeholder="Principal ID" />
+                        </div>
+                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '20px' }}>
+                        <input type="checkbox" checked={fEnabled} onChange={(e) => setFEnabled(e.target.checked)} id={`action-enabled-${instanceId}-${formMode === 'add' ? 'new' : formMode.id}`} />
+                        <label htmlFor={`action-enabled-${instanceId}-${formMode === 'add' ? 'new' : formMode.id}`} style={{ fontSize: '0.8rem', color: theme.colors.secondaryText }}>Enabled</label>
+                    </div>
+                </div>
+
+                {/* Conditions toggle */}
+                <div style={{ marginTop: '12px', borderTop: `1px solid ${theme.colors.border}`, paddingTop: '10px' }}>
+                    <button
+                        onClick={() => setShowConditions(!showConditions)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '500', color: accentColor, padding: 0, display: 'flex', alignItems: 'center', gap: '4px' }}
+                    >
+                        {showConditions ? '▾' : '▸'} Conditions (optional)
+                    </button>
+                    {showConditions && (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px', marginTop: '10px' }}>
+                            <div>
+                                <label style={labelStyle}>Min Input Balance{tokenSymLabel}</label>
+                                <input value={fMinBalance} onChange={(e) => setFMinBalance(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="Only run if balance ≥" />
+                            </div>
+                            <div>
+                                <label style={labelStyle}>Max Input Balance{tokenSymLabel}</label>
+                                <input value={fMaxBalance} onChange={(e) => setFMaxBalance(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="Only run if balance ≤" />
+                            </div>
+                            <div>
+                                <label style={labelStyle}>Min Price (raw)</label>
+                                <input value={fMinPrice} onChange={(e) => setFMinPrice(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" placeholder="Skip if price below" />
+                            </div>
+                            <div>
+                                <label style={labelStyle}>Max Price (raw)</label>
+                                <input value={fMaxPrice} onChange={(e) => setFMaxPrice(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" placeholder="Skip if price above" />
+                            </div>
+                            <div>
+                                <label style={labelStyle}>Max Price Impact (bps)</label>
+                                <input value={fMaxPriceImpactBps} onChange={(e) => setFMaxPriceImpactBps(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" placeholder="e.g. 100 = 1%" />
+                            </div>
+                            <div>
+                                <label style={labelStyle}>Max Slippage (bps)</label>
+                                <input value={fMaxSlippageBps} onChange={(e) => setFMaxSlippageBps(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" placeholder="e.g. 50 = 0.5%" />
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                    <button onClick={handleSave} disabled={saving} style={{ ...buttonStyle, background: `linear-gradient(135deg, ${accentColor}, ${accentColor}cc)`, color: '#fff', border: 'none', opacity: saving ? 0.6 : 1 }}>
+                        {isEditing ? <><FaSave style={{ marginRight: '4px', fontSize: '0.7rem' }} /> Save Changes</> : <><FaPlus style={{ marginRight: '4px', fontSize: '0.7rem' }} /> Add Action</>}
+                    </button>
+                    <button onClick={closeForm} style={{ ...secondaryButtonStyle }}>Cancel</button>
+                </div>
+            </div>
+        );
+    };
 
     return (
         <div style={cardStyle}>
@@ -372,7 +528,7 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                 <div style={{ textAlign: 'center', padding: '16px', color: theme.colors.secondaryText, fontSize: '0.85rem' }}>Loading actions...</div>
             ) : (
                 <>
-                    {actions.length === 0 && !adding && (
+                    {actions.length === 0 && !formMode && (
                         <div style={{ textAlign: 'center', padding: '16px', color: theme.colors.mutedText, fontSize: '0.85rem', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
                             No actions configured yet.
                         </div>
@@ -381,151 +537,70 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                     {actions.map((action) => {
                         const inputSym = getSymbol(action.inputToken);
                         const inputDec = getDecimals(action.inputToken);
+                        const isBeingEdited = formMode && formMode !== 'add' && formMode.id === Number(action.id);
                         return (
-                            <div key={Number(action.id)} style={{
-                                padding: '12px', marginBottom: '8px',
-                                background: theme.colors.primaryBg, borderRadius: '8px',
-                                border: `1px solid ${action.enabled ? accentColor + '30' : theme.colors.border}`,
-                                opacity: action.enabled ? 1 : 0.6,
-                            }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                                    <div>
-                                        <span style={{ fontSize: '0.8rem', fontWeight: '600', color: theme.colors.primaryText }}>
-                                            #{Number(action.id)} — {ACTION_TYPE_LABELS[Number(action.actionType)] || `Type ${Number(action.actionType)}`}
-                                        </span>
-                                        <span style={{ marginLeft: '8px', fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: action.enabled ? '#22c55e20' : '#6b728020', color: action.enabled ? '#22c55e' : '#6b7280' }}>
-                                            {action.enabled ? 'Enabled' : 'Disabled'}
-                                        </span>
+                            <div key={Number(action.id)}>
+                                <div style={{
+                                    padding: '12px', marginBottom: isBeingEdited ? '0' : '8px',
+                                    background: theme.colors.primaryBg, borderRadius: isBeingEdited ? '8px 8px 0 0' : '8px',
+                                    border: `1px solid ${isBeingEdited ? accentColor + '40' : action.enabled ? accentColor + '30' : theme.colors.border}`,
+                                    borderBottom: isBeingEdited ? 'none' : undefined,
+                                    opacity: action.enabled ? 1 : 0.6,
+                                }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                                        <div>
+                                            <span style={{ fontSize: '0.8rem', fontWeight: '600', color: theme.colors.primaryText }}>
+                                                #{Number(action.id)} — {ACTION_TYPE_LABELS[Number(action.actionType)] || `Type ${Number(action.actionType)}`}
+                                            </span>
+                                            <span style={{ marginLeft: '8px', fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: action.enabled ? '#22c55e20' : '#6b728020', color: action.enabled ? '#22c55e' : '#6b7280' }}>
+                                                {action.enabled ? 'Enabled' : 'Disabled'}
+                                            </span>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '6px' }}>
+                                            {!isBeingEdited && (
+                                                <button onClick={() => openEditForm(action)} disabled={saving || (formMode && formMode !== 'add')}
+                                                    style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px' }}
+                                                ><FaEdit style={{ fontSize: '0.6rem', marginRight: '3px' }} />Edit</button>
+                                            )}
+                                            <button onClick={() => handleToggle(action)} disabled={saving}
+                                                style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px' }}
+                                            >{action.enabled ? 'Disable' : 'Enable'}</button>
+                                            <button onClick={() => handleRemove(Number(action.id))} disabled={saving}
+                                                style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px', color: '#ef4444', borderColor: '#ef444440' }}
+                                            ><FaTrash style={{ fontSize: '0.6rem' }} /></button>
+                                        </div>
                                     </div>
-                                    <div style={{ display: 'flex', gap: '6px' }}>
-                                        <button onClick={() => handleToggle(action)} disabled={saving}
-                                            style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px' }}
-                                        >{action.enabled ? 'Disable' : 'Enable'}</button>
-                                        <button onClick={() => handleRemove(Number(action.id))} disabled={saving}
-                                            style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px', color: '#ef4444', borderColor: '#ef444440' }}
-                                        ><FaTrash style={{ fontSize: '0.6rem' }} /></button>
-                                    </div>
-                                </div>
-                                <div style={{ marginTop: '8px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '6px', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
-                                    <div><strong>Input:</strong> {inputSym}</div>
-                                    {action.outputToken?.length > 0 && <div><strong>Output:</strong> {getSymbol(action.outputToken[0])}</div>}
-                                    <div><strong>Min:</strong> {formatTokenAmount(action.minAmount, inputDec)} {inputSym}</div>
-                                    <div><strong>Max:</strong> {formatTokenAmount(action.maxAmount, inputDec)} {inputSym}</div>
-                                    {optVal(action.destinationOwner) && <div><strong>Dest:</strong> {shortPrincipal(optVal(action.destinationOwner))}</div>}
-                                    {optVal(action.minBalance) != null && <div><strong>Min Bal:</strong> {formatTokenAmount(optVal(action.minBalance), inputDec)} {inputSym}</div>}
-                                    {optVal(action.maxBalance) != null && <div><strong>Max Bal:</strong> {formatTokenAmount(optVal(action.maxBalance), inputDec)} {inputSym}</div>}
-                                    {optVal(action.minPrice) != null && <div><strong>Min Price:</strong> {Number(optVal(action.minPrice)).toLocaleString()}</div>}
-                                    {optVal(action.maxPrice) != null && <div><strong>Max Price:</strong> {Number(optVal(action.maxPrice)).toLocaleString()}</div>}
-                                    {optVal(action.maxPriceImpactBps) != null && <div><strong>Max Impact:</strong> {Number(optVal(action.maxPriceImpactBps))} bps</div>}
-                                    {optVal(action.maxSlippageBps) != null && <div><strong>Max Slippage:</strong> {Number(optVal(action.maxSlippageBps))} bps</div>}
-                                    {action.lastExecutedAt?.length > 0 && (
-                                        <div><strong>Last run:</strong> {new Date(Number(action.lastExecutedAt[0]) / 1_000_000).toLocaleString()}</div>
+                                    {!isBeingEdited && (
+                                        <div style={{ marginTop: '8px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '6px', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
+                                            <div><strong>Input:</strong> {inputSym}</div>
+                                            {action.outputToken?.length > 0 && <div><strong>Output:</strong> {getSymbol(action.outputToken[0])}</div>}
+                                            <div><strong>Min:</strong> {formatTokenAmount(action.minAmount, inputDec)} {inputSym}</div>
+                                            <div><strong>Max:</strong> {formatTokenAmount(action.maxAmount, inputDec)} {inputSym}</div>
+                                            {optVal(action.destinationOwner) && <div><strong>Dest:</strong> {shortPrincipal(optVal(action.destinationOwner))}</div>}
+                                            {optVal(action.minBalance) != null && <div><strong>Min Bal:</strong> {formatTokenAmount(optVal(action.minBalance), inputDec)} {inputSym}</div>}
+                                            {optVal(action.maxBalance) != null && <div><strong>Max Bal:</strong> {formatTokenAmount(optVal(action.maxBalance), inputDec)} {inputSym}</div>}
+                                            {optVal(action.minPrice) != null && <div><strong>Min Price:</strong> {Number(optVal(action.minPrice)).toLocaleString()}</div>}
+                                            {optVal(action.maxPrice) != null && <div><strong>Max Price:</strong> {Number(optVal(action.maxPrice)).toLocaleString()}</div>}
+                                            {optVal(action.maxPriceImpactBps) != null && <div><strong>Max Impact:</strong> {Number(optVal(action.maxPriceImpactBps))} bps</div>}
+                                            {optVal(action.maxSlippageBps) != null && <div><strong>Max Slippage:</strong> {Number(optVal(action.maxSlippageBps))} bps</div>}
+                                            {action.lastExecutedAt?.length > 0 && (
+                                                <div><strong>Last run:</strong> {new Date(Number(action.lastExecutedAt[0]) / 1_000_000).toLocaleString()}</div>
+                                            )}
+                                        </div>
                                     )}
                                 </div>
+                                {/* Inline edit form directly below the action card */}
+                                {isBeingEdited && renderForm()}
                             </div>
                         );
                     })}
 
-                    {/* Add Action Form */}
-                    {adding ? (
-                        <div style={{ padding: '14px', background: `${accentColor}06`, borderRadius: '8px', border: `1px solid ${accentColor}20`, marginTop: '10px' }}>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
-                                <div>
-                                    <label style={labelStyle}>Type</label>
-                                    <select value={newActionType} onChange={(e) => setNewActionType(Number(e.target.value))} style={{ ...inputStyle, width: '100%', appearance: 'auto' }}>
-                                        {allowedTypes.map(t => <option key={t} value={t}>{ACTION_TYPE_LABELS[t]}</option>)}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label style={labelStyle}>Input Token</label>
-                                    <TokenSelector
-                                        value={newInputToken}
-                                        onChange={setNewInputToken}
-                                        onSelectToken={cacheTokenMeta}
-                                        allowCustom={true}
-                                        placeholder="Select input token..."
-                                    />
-                                </div>
-                                {newActionType === ACTION_TYPE_TRADE && (
-                                    <div>
-                                        <label style={labelStyle}>Output Token</label>
-                                        <TokenSelector
-                                            value={newOutputToken}
-                                            onChange={setNewOutputToken}
-                                            onSelectToken={cacheTokenMeta}
-                                            allowCustom={true}
-                                            placeholder="Select output token..."
-                                        />
-                                    </div>
-                                )}
-                                <div>
-                                    <label style={labelStyle}>Min Amount{newInputToken && tokenMeta[newInputToken] ? ` (${tokenMeta[newInputToken].symbol})` : ''}</label>
-                                    <input value={newMinAmount} onChange={(e) => setNewMinAmount(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="0.0" />
-                                </div>
-                                <div>
-                                    <label style={labelStyle}>Max Amount{newInputToken && tokenMeta[newInputToken] ? ` (${tokenMeta[newInputToken].symbol})` : ''}</label>
-                                    <input value={newMaxAmount} onChange={(e) => setNewMaxAmount(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="0.0" />
-                                </div>
-                                {/* Destination owner for Send/Withdraw/Deposit */}
-                                {(newActionType === ACTION_TYPE_SEND || newActionType === ACTION_TYPE_WITHDRAW || newActionType === ACTION_TYPE_DEPOSIT) && (
-                                    <div>
-                                        <label style={labelStyle}>Destination Owner (principal)</label>
-                                        <input value={newDestOwner} onChange={(e) => setNewDestOwner(e.target.value)} style={{ ...inputStyle, width: '100%' }} placeholder="Principal ID" />
-                                    </div>
-                                )}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '20px' }}>
-                                    <input type="checkbox" checked={newEnabled} onChange={(e) => setNewEnabled(e.target.checked)} id={`new-action-enabled-${instanceId}`} />
-                                    <label htmlFor={`new-action-enabled-${instanceId}`} style={{ fontSize: '0.8rem', color: theme.colors.secondaryText }}>Enabled</label>
-                                </div>
-                            </div>
+                    {/* Add Action Form (at bottom) */}
+                    {formMode === 'add' && renderForm()}
 
-                            {/* Conditions toggle */}
-                            <div style={{ marginTop: '12px', borderTop: `1px solid ${theme.colors.border}`, paddingTop: '10px' }}>
-                                <button
-                                    onClick={() => setShowConditions(!showConditions)}
-                                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '500', color: accentColor, padding: 0, display: 'flex', alignItems: 'center', gap: '4px' }}
-                                >
-                                    {showConditions ? '▾' : '▸'} Conditions (optional)
-                                </button>
-                                {showConditions && (
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px', marginTop: '10px' }}>
-                                        <div>
-                                            <label style={labelStyle}>Min Input Balance{newInputToken && tokenMeta[newInputToken] ? ` (${tokenMeta[newInputToken].symbol})` : ''}</label>
-                                            <input value={newMinBalance} onChange={(e) => setNewMinBalance(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="Only run if balance ≥" />
-                                        </div>
-                                        <div>
-                                            <label style={labelStyle}>Max Input Balance{newInputToken && tokenMeta[newInputToken] ? ` (${tokenMeta[newInputToken].symbol})` : ''}</label>
-                                            <input value={newMaxBalance} onChange={(e) => setNewMaxBalance(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="Only run if balance ≤" />
-                                        </div>
-                                        <div>
-                                            <label style={labelStyle}>Min Price (raw)</label>
-                                            <input value={newMinPrice} onChange={(e) => setNewMinPrice(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" placeholder="Skip if price below" />
-                                        </div>
-                                        <div>
-                                            <label style={labelStyle}>Max Price (raw)</label>
-                                            <input value={newMaxPrice} onChange={(e) => setNewMaxPrice(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" placeholder="Skip if price above" />
-                                        </div>
-                                        <div>
-                                            <label style={labelStyle}>Max Price Impact (bps)</label>
-                                            <input value={newMaxPriceImpactBps} onChange={(e) => setNewMaxPriceImpactBps(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" placeholder="e.g. 100 = 1%" />
-                                        </div>
-                                        <div>
-                                            <label style={labelStyle}>Max Slippage (bps)</label>
-                                            <input value={newMaxSlippageBps} onChange={(e) => setNewMaxSlippageBps(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" placeholder="e.g. 50 = 0.5%" />
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                                <button onClick={handleAdd} disabled={saving} style={{ ...buttonStyle, background: `linear-gradient(135deg, ${accentColor}, ${accentColor}cc)`, color: '#fff', border: 'none', opacity: saving ? 0.6 : 1 }}>
-                                    <FaPlus style={{ marginRight: '4px', fontSize: '0.7rem' }} /> Add Action
-                                </button>
-                                <button onClick={() => { setAdding(false); resetForm(); }} style={{ ...secondaryButtonStyle }}>Cancel</button>
-                            </div>
-                        </div>
-                    ) : (
-                        <button onClick={() => { setAdding(true); setError(''); setSuccess(''); }} style={{ ...secondaryButtonStyle, marginTop: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {/* Add button (only when not in any form mode) */}
+                    {!formMode && (
+                        <button onClick={openAddForm} style={{ ...secondaryButtonStyle, marginTop: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <FaPlus style={{ fontSize: '0.7rem' }} /> Add Action
                         </button>
                     )}
@@ -1026,6 +1101,525 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
 }
 
 // ============================================
+// ACTION_TYPE_LABELS lookup for trade log
+// ============================================
+const TRADE_STATUS_LABELS = { Success: 'Success', Failed: 'Failed', Skipped: 'Skipped' };
+const TRADE_STATUS_COLORS = { Success: '#22c55e', Failed: '#ef4444', Skipped: '#f59e0b' };
+const DEX_LABELS = { 0: 'ICPSwap', 1: 'KongSwap' };
+
+// ============================================
+// Trade Log Viewer
+// ============================================
+function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
+    const { identity } = useAuth();
+    const [entries, setEntries] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [stats, setStats] = useState(null);
+    const [query, setQuery] = useState({ startId: [], limit: [50], choreId: [], choreTypeId: [], actionType: [], inputToken: [], outputToken: [], status: [], fromTime: [], toTime: [] });
+    const [hasMore, setHasMore] = useState(false);
+    const [filterStatus, setFilterStatus] = useState('');
+    const [filterChoreType, setFilterChoreType] = useState('');
+
+    // Collect token IDs from entries for metadata resolution
+    const entryTokenIds = React.useMemo(() => {
+        const ids = new Set();
+        for (const e of entries) {
+            ids.add(typeof e.inputToken === 'string' ? e.inputToken : e.inputToken?.toText?.() || String(e.inputToken));
+            if (e.outputToken?.length > 0) {
+                ids.add(typeof e.outputToken[0] === 'string' ? e.outputToken[0] : e.outputToken[0]?.toText?.() || String(e.outputToken[0]));
+            }
+        }
+        return [...ids];
+    }, [entries]);
+    const tokenMeta = useTokenMetadata(entryTokenIds, identity);
+
+    const getSym = (p) => {
+        const key = typeof p === 'string' ? p : p?.toText?.() || String(p);
+        return tokenMeta[key]?.symbol || shortPrincipal(key);
+    };
+    const getDec = (p) => {
+        const key = typeof p === 'string' ? p : p?.toText?.() || String(p);
+        return tokenMeta[key]?.decimals ?? 8;
+    };
+
+    const loadData = useCallback(async (q) => {
+        try {
+            const bot = await getReadyBotActor();
+            if (!bot) return;
+            const [result, st] = await Promise.all([
+                bot.getTradeLog(q || query),
+                bot.getTradeLogStats(),
+            ]);
+            setEntries(result.entries);
+            setHasMore(result.hasMore);
+            setStats(st);
+        } catch (err) {
+            setError('Failed to load trade log: ' + err.message);
+        } finally {
+            setLoading(false);
+        }
+    }, [getReadyBotActor, query]);
+
+    useEffect(() => { loadData(); }, [loadData]);
+
+    const applyFilters = () => {
+        const q = {
+            startId: [], limit: [50],
+            choreId: [], choreTypeId: filterChoreType ? [filterChoreType] : [],
+            actionType: [], inputToken: [], outputToken: [],
+            status: filterStatus ? [{ [filterStatus]: null }] : [],
+            fromTime: [], toTime: [],
+        };
+        setQuery(q);
+        setLoading(true);
+        loadData(q);
+    };
+
+    const cardStyle = {
+        background: theme.colors.cardGradient,
+        borderRadius: '12px',
+        border: `1px solid ${theme.colors.border}`,
+        padding: '16px',
+    };
+    const inputStyle = {
+        background: theme.colors.inputBg,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '8px',
+        padding: '6px 10px',
+        color: theme.colors.primaryText,
+        fontSize: '0.8rem',
+    };
+
+    const optVal = (arr) => arr?.length > 0 ? arr[0] : null;
+
+    return (
+        <div style={cardStyle}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                <h3 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '0.95rem', fontWeight: '600' }}>Trade Log</h3>
+                {stats && <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>{Number(stats.totalEntries)} entries</span>}
+            </div>
+
+            {/* Filters */}
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} style={{ ...inputStyle, appearance: 'auto', minWidth: '100px' }}>
+                    <option value="">All statuses</option>
+                    <option value="Success">Success</option>
+                    <option value="Failed">Failed</option>
+                    <option value="Skipped">Skipped</option>
+                </select>
+                <select value={filterChoreType} onChange={(e) => setFilterChoreType(e.target.value)} style={{ ...inputStyle, appearance: 'auto', minWidth: '120px' }}>
+                    <option value="">All chore types</option>
+                    <option value="trade">Trade</option>
+                    <option value="rebalance">Rebalance</option>
+                    <option value="move-funds">Move Funds</option>
+                    <option value="distribute-funds">Distribute</option>
+                </select>
+                <button onClick={applyFilters} style={{ ...inputStyle, cursor: 'pointer', background: `${accentColor}15`, border: `1px solid ${accentColor}30`, color: accentColor, fontWeight: '500' }}>Filter</button>
+            </div>
+
+            {error && <div style={{ padding: '8px 12px', background: '#ef444415', border: '1px solid #ef444430', borderRadius: '8px', color: '#ef4444', fontSize: '0.8rem', marginBottom: '10px' }}>{error}</div>}
+
+            {loading ? (
+                <div style={{ textAlign: 'center', padding: '20px', color: theme.colors.secondaryText, fontSize: '0.85rem' }}>Loading trade log...</div>
+            ) : entries.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '20px', color: theme.colors.mutedText, fontSize: '0.85rem', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+                    No trade log entries yet. Entries are recorded when chores execute trades.
+                </div>
+            ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {entries.map((e) => {
+                        const statusKey = Object.keys(e.status || {})[0] || 'Failed';
+                        const inputDec = getDec(e.inputToken);
+                        const outputDec = e.outputToken?.length > 0 ? getDec(e.outputToken[0]) : 8;
+                        return (
+                            <div key={Number(e.id)} style={{
+                                padding: '10px 12px', background: theme.colors.primaryBg, borderRadius: '8px',
+                                border: `1px solid ${theme.colors.border}`, fontSize: '0.78rem',
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap', gap: '4px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontWeight: '600', color: theme.colors.primaryText }}>#{Number(e.id)}</span>
+                                        <span style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: '600',
+                                            background: (TRADE_STATUS_COLORS[statusKey] || '#6b7280') + '20',
+                                            color: TRADE_STATUS_COLORS[statusKey] || '#6b7280',
+                                        }}>{TRADE_STATUS_LABELS[statusKey] || statusKey}</span>
+                                        <span style={{ color: theme.colors.mutedText }}>{ACTION_TYPE_LABELS[Number(e.actionType)] || `Type ${Number(e.actionType)}`}</span>
+                                    </div>
+                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.7rem' }}>{new Date(Number(e.timestamp) / 1_000_000).toLocaleString()}</span>
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '4px', color: theme.colors.secondaryText }}>
+                                    <div><strong>In:</strong> {formatTokenAmount(e.inputAmount, inputDec)} {getSym(e.inputToken)}</div>
+                                    {e.outputToken?.length > 0 && <div><strong>Out:</strong> {optVal(e.outputAmount) != null ? formatTokenAmount(optVal(e.outputAmount), outputDec) : '—'} {getSym(e.outputToken[0])}</div>}
+                                    {optVal(e.priceE8s) != null && <div><strong>Price:</strong> {formatTokenAmount(optVal(e.priceE8s), 8)}</div>}
+                                    {optVal(e.dexId) != null && <div><strong>DEX:</strong> {DEX_LABELS[Number(optVal(e.dexId))] || `DEX ${Number(optVal(e.dexId))}`}</div>}
+                                    {optVal(e.priceImpactBps) != null && <div><strong>Impact:</strong> {Number(optVal(e.priceImpactBps))} bps</div>}
+                                    {optVal(e.choreId) && <div><strong>Chore:</strong> {optVal(e.choreId)}</div>}
+                                    {optVal(e.actionId) != null && <div><strong>Action:</strong> #{Number(optVal(e.actionId))}</div>}
+                                    {optVal(e.errorMessage) && <div style={{ color: '#ef4444', gridColumn: '1 / -1' }}><strong>Error:</strong> {optVal(e.errorMessage)}</div>}
+                                </div>
+                            </div>
+                        );
+                    })}
+                    {hasMore && (
+                        <button onClick={() => {
+                            const lastId = entries[entries.length - 1]?.id;
+                            const nextQ = { ...query, startId: lastId != null ? [Number(lastId) + 1] : [] };
+                            setQuery(nextQ); setLoading(true); loadData(nextQ);
+                        }} style={{ ...inputStyle, cursor: 'pointer', textAlign: 'center', marginTop: '4px', background: `${accentColor}10`, color: accentColor, fontWeight: '500', border: `1px solid ${accentColor}30` }}>Load More...</button>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ============================================
+// Portfolio Snapshot Viewer
+// ============================================
+function PortfolioSnapshotViewer({ getReadyBotActor, theme, accentColor }) {
+    const [snapshots, setSnapshots] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [stats, setStats] = useState(null);
+    const [hasMore, setHasMore] = useState(false);
+    const [expandedId, setExpandedId] = useState(null);
+
+    const loadData = useCallback(async () => {
+        try {
+            const bot = await getReadyBotActor();
+            if (!bot) return;
+            const [result, st] = await Promise.all([
+                bot.getPortfolioSnapshots({ startId: [], limit: [20], tradeLogId: [], phase: [], fromTime: [], toTime: [] }),
+                bot.getPortfolioSnapshotStats(),
+            ]);
+            setSnapshots(result.entries);
+            setHasMore(result.hasMore);
+            setStats(st);
+        } catch (err) {
+            setError('Failed to load portfolio snapshots: ' + err.message);
+        } finally {
+            setLoading(false);
+        }
+    }, [getReadyBotActor]);
+
+    useEffect(() => { loadData(); }, [loadData]);
+
+    const optVal = (arr) => arr?.length > 0 ? arr[0] : null;
+
+    const cardStyle = {
+        background: theme.colors.cardGradient,
+        borderRadius: '12px',
+        border: `1px solid ${theme.colors.border}`,
+        padding: '16px',
+    };
+
+    return (
+        <div style={cardStyle}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <h3 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '0.95rem', fontWeight: '600' }}>Portfolio Snapshots</h3>
+                {stats && <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>{Number(stats.totalEntries)} snapshots</span>}
+            </div>
+
+            {error && <div style={{ padding: '8px 12px', background: '#ef444415', border: '1px solid #ef444430', borderRadius: '8px', color: '#ef4444', fontSize: '0.8rem', marginBottom: '10px' }}>{error}</div>}
+
+            {loading ? (
+                <div style={{ textAlign: 'center', padding: '20px', color: theme.colors.secondaryText, fontSize: '0.85rem' }}>Loading snapshots...</div>
+            ) : snapshots.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '20px', color: theme.colors.mutedText, fontSize: '0.85rem', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+                    No portfolio snapshots yet. Snapshots are taken before and after trades.
+                </div>
+            ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {snapshots.map((snap) => {
+                        const phaseKey = Object.keys(snap.phase || {})[0] || '';
+                        const isExpanded = expandedId === Number(snap.id);
+                        return (
+                            <div key={Number(snap.id)} style={{
+                                padding: '10px 12px', background: theme.colors.primaryBg, borderRadius: '8px',
+                                border: `1px solid ${theme.colors.border}`, fontSize: '0.78rem',
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                                    onClick={() => setExpandedId(isExpanded ? null : Number(snap.id))}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontWeight: '600', color: theme.colors.primaryText }}>#{Number(snap.id)}</span>
+                                        <span style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: '600',
+                                            background: phaseKey === 'Before' ? '#3b82f620' : '#22c55e20',
+                                            color: phaseKey === 'Before' ? '#3b82f6' : '#22c55e',
+                                        }}>{phaseKey}</span>
+                                        <span style={{ color: theme.colors.secondaryText }}>{snap.trigger}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        {optVal(snap.totalValueIcpE8s) != null && <span style={{ color: theme.colors.secondaryText }}>{formatTokenAmount(optVal(snap.totalValueIcpE8s), 8)} ICP</span>}
+                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.7rem' }}>{new Date(Number(snap.timestamp) / 1_000_000).toLocaleString()}</span>
+                                        <span style={{ color: theme.colors.mutedText }}>{isExpanded ? '▾' : '▸'}</span>
+                                    </div>
+                                </div>
+                                {isExpanded && snap.tokens?.length > 0 && (
+                                    <div style={{ marginTop: '8px', borderTop: `1px solid ${theme.colors.border}`, paddingTop: '8px' }}>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+                                            <thead>
+                                                <tr style={{ color: theme.colors.mutedText, textAlign: 'left' }}>
+                                                    <th style={{ padding: '2px 8px' }}>Token</th>
+                                                    <th style={{ padding: '2px 8px', textAlign: 'right' }}>Balance</th>
+                                                    <th style={{ padding: '2px 8px', textAlign: 'right' }}>ICP Price</th>
+                                                    <th style={{ padding: '2px 8px', textAlign: 'right' }}>USD Price</th>
+                                                    <th style={{ padding: '2px 8px', textAlign: 'right' }}>ICP Value</th>
+                                                    <th style={{ padding: '2px 8px', textAlign: 'right' }}>USD Value</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {snap.tokens.map((tok, i) => (
+                                                    <tr key={i} style={{ color: theme.colors.secondaryText, borderTop: `1px solid ${theme.colors.border}08` }}>
+                                                        <td style={{ padding: '3px 8px', fontWeight: '500' }}>{tok.symbol || shortPrincipal(tok.token)}</td>
+                                                        <td style={{ padding: '3px 8px', textAlign: 'right' }}>{formatTokenAmount(tok.balance, tok.decimals)}</td>
+                                                        <td style={{ padding: '3px 8px', textAlign: 'right' }}>{optVal(tok.priceIcpE8s) != null ? formatTokenAmount(optVal(tok.priceIcpE8s), 8) : '—'}</td>
+                                                        <td style={{ padding: '3px 8px', textAlign: 'right' }}>{optVal(tok.priceUsdE8s) != null ? formatTokenAmount(optVal(tok.priceUsdE8s), 8) : '—'}</td>
+                                                        <td style={{ padding: '3px 8px', textAlign: 'right' }}>{optVal(tok.valueIcpE8s) != null ? formatTokenAmount(optVal(tok.valueIcpE8s), 8) : '—'}</td>
+                                                        <td style={{ padding: '3px 8px', textAlign: 'right' }}>{optVal(tok.valueUsdE8s) != null ? formatTokenAmount(optVal(tok.valueUsdE8s), 8) : '—'}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                    {hasMore && (
+                        <div style={{ textAlign: 'center', padding: '8px', color: theme.colors.mutedText, fontSize: '0.78rem' }}>
+                            More snapshots available (pagination coming soon)
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ============================================
+// Logging Settings Panel
+// ============================================
+function LoggingSettingsPanel({ getReadyBotActor, theme, accentColor, choreStatuses }) {
+    const [settings, setSettings] = useState(null);
+    const [overrides, setOverrides] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+    const [saving, setSaving] = useState(false);
+
+    const loadData = useCallback(async () => {
+        try {
+            const bot = await getReadyBotActor();
+            if (!bot) return;
+            const [s, o] = await Promise.all([
+                bot.getLoggingSettings(),
+                bot.getChoreLoggingOverrides(),
+            ]);
+            setSettings(s);
+            setOverrides(o);
+        } catch (err) {
+            setError('Failed to load logging settings: ' + err.message);
+        } finally {
+            setLoading(false);
+        }
+    }, [getReadyBotActor]);
+
+    useEffect(() => { loadData(); }, [loadData]);
+
+    const handleToggleMaster = async (field) => {
+        if (!settings) return;
+        setSaving(true); setError(''); setSuccess('');
+        try {
+            const bot = await getReadyBotActor();
+            const updated = { ...settings, [field]: !settings[field] };
+            await bot.setLoggingSettings(updated);
+            setSettings(updated);
+            setSuccess(`${field === 'tradeLogEnabled' ? 'Trade' : 'Portfolio'} logging ${!settings[field] ? 'enabled' : 'disabled'}.`);
+            setTimeout(() => setSuccess(''), 3000);
+        } catch (err) { setError('Failed to update: ' + err.message); }
+        finally { setSaving(false); }
+    };
+
+    const handleChoreOverride = async (choreId, field, value) => {
+        setSaving(true); setError(''); setSuccess('');
+        try {
+            const bot = await getReadyBotActor();
+            // Find existing override for this chore
+            const existing = overrides.find(([id]) => id === choreId);
+            const current = existing ? existing[1] : { tradeLogEnabled: [], portfolioLogEnabled: [] };
+            const updated = { ...current, [field]: value === null ? [] : [value] };
+            await bot.setChoreLoggingOverride(choreId, updated);
+            setSuccess(`Override updated for ${choreId}.`);
+            setTimeout(() => setSuccess(''), 3000);
+            await loadData();
+        } catch (err) { setError('Failed to set override: ' + err.message); }
+        finally { setSaving(false); }
+    };
+
+    const cardStyle = {
+        background: theme.colors.cardGradient,
+        borderRadius: '12px',
+        border: `1px solid ${theme.colors.border}`,
+        padding: '16px',
+    };
+
+    const optVal = (arr) => arr?.length > 0 ? arr[0] : null;
+
+    const toggleBtnStyle = (isOn) => ({
+        padding: '4px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: '500',
+        border: `1px solid ${isOn ? '#22c55e40' : '#ef444440'}`,
+        background: isOn ? '#22c55e15' : '#ef444415',
+        color: isOn ? '#22c55e' : '#ef4444',
+        opacity: saving ? 0.6 : 1,
+    });
+
+    return (
+        <div style={cardStyle}>
+            <h3 style={{ color: theme.colors.primaryText, margin: '0 0 12px 0', fontSize: '0.95rem', fontWeight: '600' }}>Logging Settings</h3>
+            <p style={{ margin: '0 0 12px 0', fontSize: '0.82rem', color: theme.colors.secondaryText, lineHeight: '1.5' }}>
+                Control what gets logged. Master toggles apply globally. Per-chore overrides let you enable or disable logging for specific chores.
+            </p>
+
+            {error && <div style={{ padding: '8px 12px', background: '#ef444415', border: '1px solid #ef444430', borderRadius: '8px', color: '#ef4444', fontSize: '0.8rem', marginBottom: '10px' }}>{error}</div>}
+            {success && <div style={{ padding: '8px 12px', background: '#22c55e15', border: '1px solid #22c55e30', borderRadius: '8px', color: '#22c55e', fontSize: '0.8rem', marginBottom: '10px' }}>{success}</div>}
+
+            {loading ? (
+                <div style={{ textAlign: 'center', padding: '20px', color: theme.colors.secondaryText, fontSize: '0.85rem' }}>Loading settings...</div>
+            ) : settings && (
+                <>
+                    {/* Master settings */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                        <div style={{ padding: '12px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+                            <div style={{ fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '6px' }}>Trade Log</div>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <span style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>Max entries: {Number(settings.maxTradeLogEntries).toLocaleString()}</span>
+                                <button disabled={saving} onClick={() => handleToggleMaster('tradeLogEnabled')} style={toggleBtnStyle(settings.tradeLogEnabled)}>
+                                    {settings.tradeLogEnabled ? 'ON' : 'OFF'}
+                                </button>
+                            </div>
+                        </div>
+                        <div style={{ padding: '12px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+                            <div style={{ fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '6px' }}>Portfolio Snapshots</div>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <span style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>Max entries: {Number(settings.maxPortfolioLogEntries).toLocaleString()}</span>
+                                <button disabled={saving} onClick={() => handleToggleMaster('portfolioLogEnabled')} style={toggleBtnStyle(settings.portfolioLogEnabled)}>
+                                    {settings.portfolioLogEnabled ? 'ON' : 'OFF'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Per-chore overrides */}
+                    {choreStatuses && choreStatuses.length > 0 && (
+                        <div>
+                            <div style={{ fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '8px' }}>Per-Chore Overrides</div>
+                            <div style={{ fontSize: '0.75rem', color: theme.colors.mutedText, marginBottom: '8px' }}>
+                                "Use Master" means the chore follows the master toggle above.
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                {choreStatuses.map((chore) => {
+                                    const override = overrides.find(([id]) => id === chore.choreId);
+                                    const tradeOvr = override ? optVal(override[1].tradeLogEnabled) : null;
+                                    const portfolioOvr = override ? optVal(override[1].portfolioLogEnabled) : null;
+                                    return (
+                                        <div key={chore.choreId} style={{
+                                            padding: '8px 12px', background: theme.colors.primaryBg, borderRadius: '8px',
+                                            border: `1px solid ${theme.colors.border}`, fontSize: '0.78rem',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px',
+                                        }}>
+                                            <span style={{ fontWeight: '500', color: theme.colors.primaryText, minWidth: '150px' }}>{chore.instanceLabel || chore.choreId}</span>
+                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                <span style={{ color: theme.colors.mutedText, fontSize: '0.7rem' }}>Trade:</span>
+                                                <select value={tradeOvr === null ? '' : tradeOvr ? 'on' : 'off'} disabled={saving}
+                                                    onChange={(e) => handleChoreOverride(chore.choreId, 'tradeLogEnabled', e.target.value === '' ? null : e.target.value === 'on')}
+                                                    style={{ fontSize: '0.72rem', padding: '2px 4px', background: theme.colors.inputBg, border: `1px solid ${theme.colors.border}`, borderRadius: '4px', color: theme.colors.primaryText, appearance: 'auto' }}
+                                                >
+                                                    <option value="">Use Master</option>
+                                                    <option value="on">ON</option>
+                                                    <option value="off">OFF</option>
+                                                </select>
+                                                <span style={{ color: theme.colors.mutedText, fontSize: '0.7rem', marginLeft: '6px' }}>Portfolio:</span>
+                                                <select value={portfolioOvr === null ? '' : portfolioOvr ? 'on' : 'off'} disabled={saving}
+                                                    onChange={(e) => handleChoreOverride(chore.choreId, 'portfolioLogEnabled', e.target.value === '' ? null : e.target.value === 'on')}
+                                                    style={{ fontSize: '0.72rem', padding: '2px 4px', background: theme.colors.inputBg, border: `1px solid ${theme.colors.border}`, borderRadius: '4px', color: theme.colors.primaryText, appearance: 'auto' }}
+                                                >
+                                                    <option value="">Use Master</option>
+                                                    <option value="on">ON</option>
+                                                    <option value="off">OFF</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+                </>
+            )}
+        </div>
+    );
+}
+
+// ============================================
+// Trading Bot Logs Section (combines trade log, portfolio snapshots, logging settings)
+// ============================================
+function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, identity }) {
+    const [activeTab, setActiveTab] = useState('trade');
+    const [choreStatuses, setChoreStatuses] = useState([]);
+    const agentRef = useRef(null);
+    const actorRef = useRef(null);
+
+    const getReadyBotActor = useCallback(async () => {
+        if (actorRef.current) return actorRef.current;
+        const { HttpAgent } = await import('@dfinity/agent');
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const host = isLocal ? 'http://localhost:4943' : 'https://ic0.app';
+        const agent = HttpAgent.createSync({ identity, host });
+        if (isLocal) await agent.fetchRootKey();
+        agentRef.current = agent;
+        const actor = createBotActorFn(canisterId, { agent });
+        actorRef.current = actor;
+        return actor;
+    }, [canisterId, identity, createBotActorFn]);
+
+    // Load chore statuses for the logging settings per-chore overrides
+    useEffect(() => {
+        (async () => {
+            try {
+                const bot = await getReadyBotActor();
+                if (bot?.getChoreStatuses) {
+                    const statuses = await bot.getChoreStatuses();
+                    setChoreStatuses(statuses);
+                }
+            } catch (_) {}
+        })();
+    }, [getReadyBotActor]);
+
+    const tabStyle = (active) => ({
+        padding: '6px 16px', cursor: 'pointer', fontSize: '0.82rem', fontWeight: '500',
+        borderBottom: `2px solid ${active ? accentColor : 'transparent'}`,
+        color: active ? accentColor : theme.colors.secondaryText,
+        background: 'none', border: 'none', borderRadius: 0,
+    });
+
+    return (
+        <div style={{ marginTop: '16px' }}>
+            {/* Tab bar */}
+            <div style={{ display: 'flex', gap: '4px', marginBottom: '12px', borderBottom: `1px solid ${theme.colors.border}`, paddingBottom: '0' }}>
+                <button onClick={() => setActiveTab('trade')} style={tabStyle(activeTab === 'trade')}>Trade Log</button>
+                <button onClick={() => setActiveTab('snapshots')} style={tabStyle(activeTab === 'snapshots')}>Portfolio Snapshots</button>
+                <button onClick={() => setActiveTab('settings')} style={tabStyle(activeTab === 'settings')}>Logging Settings</button>
+            </div>
+
+            {activeTab === 'trade' && <TradeLogViewer getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
+            {activeTab === 'snapshots' && <PortfolioSnapshotViewer getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
+            {activeTab === 'settings' && <LoggingSettingsPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} choreStatuses={choreStatuses} />}
+        </div>
+    );
+}
+
+// ============================================
 // Custom chore configuration renderer (dispatches to real components)
 // ============================================
 function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, getReadyBotActor, theme, accentColor, cardStyle, inputStyle, buttonStyle, secondaryButtonStyle }) {
@@ -1170,21 +1764,30 @@ export default function TradingBot() {
                         </p>
                     </div>
                 ) : (
-                    <BotManagementPanel
-                        canisterId={canisterId}
-                        createBotActor={createBotActor}
-                        accentColor={ACCENT}
-                        accentColorSecondary={ACCENT_SECONDARY}
-                        botName="Trading Bot"
-                        botIcon={<FaChartLine style={{ color: ACCENT, fontSize: '16px' }} />}
-                        appId={APP_ID}
-                        permissionLabels={PERMISSION_LABELS}
-                        permissionDescriptions={PERMISSION_DESCRIPTIONS}
-                        multiInstanceChoreTypes={MULTI_INSTANCE_CHORE_TYPES}
-                        renderChoreConfig={renderTradingBotChoreConfig}
-                        identity={identity}
-                        isAuthenticated={isAuthenticated}
-                    />
+                    <>
+                        <BotManagementPanel
+                            canisterId={canisterId}
+                            createBotActor={createBotActor}
+                            accentColor={ACCENT}
+                            accentColorSecondary={ACCENT_SECONDARY}
+                            botName="Trading Bot"
+                            botIcon={<FaChartLine style={{ color: ACCENT, fontSize: '16px' }} />}
+                            appId={APP_ID}
+                            permissionLabels={PERMISSION_LABELS}
+                            permissionDescriptions={PERMISSION_DESCRIPTIONS}
+                            multiInstanceChoreTypes={MULTI_INSTANCE_CHORE_TYPES}
+                            renderChoreConfig={renderTradingBotChoreConfig}
+                            identity={identity}
+                            isAuthenticated={isAuthenticated}
+                        />
+                        <TradingBotLogs
+                            canisterId={canisterId}
+                            createBotActorFn={createBotActor}
+                            theme={theme}
+                            accentColor={ACCENT}
+                            identity={identity}
+                        />
+                    </>
                 )}
             </div>
         </div>

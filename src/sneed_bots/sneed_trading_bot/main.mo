@@ -81,6 +81,25 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     var botLogLevel: Nat = 3; // Info
     var botLogMaxEntries: Nat = 10_000;
 
+    // Trade Log
+    var tradeLogEntries: [T.TradeLogEntry] = [];
+    var tradeLogNextId: Nat = 0;
+
+    // Portfolio Snapshot Log
+    var portfolioSnapshots: [T.PortfolioSnapshot] = [];
+    var portfolioSnapshotNextId: Nat = 0;
+
+    // Logging Settings (master)
+    var loggingSettings: T.LoggingSettings = {
+        tradeLogEnabled = true;
+        portfolioLogEnabled = true;
+        maxTradeLogEntries = 10_000;
+        maxPortfolioLogEntries = 5_000;
+    };
+
+    // Per-chore logging overrides: choreId -> overrides
+    var choreLoggingOverrides: [(Text, T.ChoreLoggingOverrides)] = [];
+
     // ============================================
     // PER-INSTANCE SETTINGS HELPERS
     // ============================================
@@ -2277,6 +2296,272 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     public shared (msg) func clearLogs(): async () {
         assertPermission(msg.caller, T.TradingPermission.ManageLogs);
         logEngine.clear();
+    };
+
+    // ============================================
+    // TRADE LOG — INTERNAL HELPERS
+    // ============================================
+
+    /// Append a trade log entry (called internally by chore conductors).
+    /// Respects master and per-chore logging settings.
+    /// Returns the assigned entry ID (or null if logging was disabled).
+    func appendTradeLog(entry: {
+        choreId: ?Text;
+        choreTypeId: ?Text;
+        actionId: ?Nat;
+        actionType: Nat;
+        inputToken: Principal;
+        outputToken: ?Principal;
+        inputAmount: Nat;
+        outputAmount: ?Nat;
+        priceE8s: ?Nat;
+        priceImpactBps: ?Nat;
+        slippageBps: ?Nat;
+        dexId: ?Nat;
+        status: T.TradeStatus;
+        errorMessage: ?Text;
+        txId: ?Nat;
+        destinationOwner: ?Principal;
+    }): ?Nat {
+        // Check master setting
+        if (not loggingSettings.tradeLogEnabled) { return null };
+        // Check per-chore override
+        switch (entry.choreId) {
+            case (?cid) {
+                for ((id, ovr) in choreLoggingOverrides.vals()) {
+                    if (id == cid) {
+                        switch (ovr.tradeLogEnabled) {
+                            case (?false) { return null };
+                            case (_) {};
+                        };
+                    };
+                };
+            };
+            case (null) {};
+        };
+
+        let id = tradeLogNextId;
+        tradeLogNextId += 1;
+        let full: T.TradeLogEntry = {
+            id = id;
+            timestamp = Time.now();
+            choreId = entry.choreId;
+            choreTypeId = entry.choreTypeId;
+            actionId = entry.actionId;
+            actionType = entry.actionType;
+            inputToken = entry.inputToken;
+            outputToken = entry.outputToken;
+            inputAmount = entry.inputAmount;
+            outputAmount = entry.outputAmount;
+            priceE8s = entry.priceE8s;
+            priceImpactBps = entry.priceImpactBps;
+            slippageBps = entry.slippageBps;
+            dexId = entry.dexId;
+            status = entry.status;
+            errorMessage = entry.errorMessage;
+            txId = entry.txId;
+            destinationOwner = entry.destinationOwner;
+        };
+        let buf = Buffer.fromArray<T.TradeLogEntry>(tradeLogEntries);
+        buf.add(full);
+        // Trim circular buffer
+        if (buf.size() > loggingSettings.maxTradeLogEntries) {
+            let excess = buf.size() - loggingSettings.maxTradeLogEntries : Nat;
+            let trimmed = Buffer.Buffer<T.TradeLogEntry>(loggingSettings.maxTradeLogEntries);
+            var i = excess;
+            while (i < buf.size()) {
+                trimmed.add(buf.get(i));
+                i += 1;
+            };
+            tradeLogEntries := Buffer.toArray(trimmed);
+        } else {
+            tradeLogEntries := Buffer.toArray(buf);
+        };
+        ?id
+    };
+
+    /// Append a portfolio snapshot (called internally).
+    /// Respects master and per-chore logging settings.
+    func appendPortfolioSnapshot(entry: {
+        trigger: Text;
+        tradeLogId: ?Nat;
+        phase: T.SnapshotPhase;
+        choreId: ?Text;
+        denominationToken: ?Principal;
+        totalValueIcpE8s: ?Nat;
+        totalValueUsdE8s: ?Nat;
+        totalValueDenomE8s: ?Nat;
+        tokens: [T.TokenSnapshot];
+    }): ?Nat {
+        if (not loggingSettings.portfolioLogEnabled) { return null };
+        // Check per-chore override
+        switch (entry.choreId) {
+            case (?cid) {
+                for ((id, ovr) in choreLoggingOverrides.vals()) {
+                    if (id == cid) {
+                        switch (ovr.portfolioLogEnabled) {
+                            case (?false) { return null };
+                            case (_) {};
+                        };
+                    };
+                };
+            };
+            case (null) {};
+        };
+
+        let id = portfolioSnapshotNextId;
+        portfolioSnapshotNextId += 1;
+        let full: T.PortfolioSnapshot = {
+            id = id;
+            timestamp = Time.now();
+            trigger = entry.trigger;
+            tradeLogId = entry.tradeLogId;
+            phase = entry.phase;
+            denominationToken = entry.denominationToken;
+            totalValueIcpE8s = entry.totalValueIcpE8s;
+            totalValueUsdE8s = entry.totalValueUsdE8s;
+            totalValueDenomE8s = entry.totalValueDenomE8s;
+            tokens = entry.tokens;
+        };
+        let buf = Buffer.fromArray<T.PortfolioSnapshot>(portfolioSnapshots);
+        buf.add(full);
+        if (buf.size() > loggingSettings.maxPortfolioLogEntries) {
+            let excess = buf.size() - loggingSettings.maxPortfolioLogEntries : Nat;
+            let trimmed = Buffer.Buffer<T.PortfolioSnapshot>(loggingSettings.maxPortfolioLogEntries);
+            var i = excess;
+            while (i < buf.size()) {
+                trimmed.add(buf.get(i));
+                i += 1;
+            };
+            portfolioSnapshots := Buffer.toArray(trimmed);
+        } else {
+            portfolioSnapshots := Buffer.toArray(buf);
+        };
+        ?id
+    };
+
+    // ============================================
+    // PUBLIC API — TRADE LOG
+    // ============================================
+
+    func matchTradeLogEntry(e: T.TradeLogEntry, q: T.TradeLogQuery): Bool {
+        switch (q.startId) { case (?s) { if (e.id < s) return false }; case null {} };
+        switch (q.fromTime) { case (?t) { if (e.timestamp < t) return false }; case null {} };
+        switch (q.toTime) { case (?t) { if (e.timestamp > t) return false }; case null {} };
+        switch (q.actionType) { case (?a) { if (e.actionType != a) return false }; case null {} };
+        switch (q.inputToken) { case (?t) { if (e.inputToken != t) return false }; case null {} };
+        switch (q.choreId) {
+            case (?c) { switch (e.choreId) { case (?ec) { if (ec != c) return false }; case null { return false } } };
+            case null {};
+        };
+        switch (q.choreTypeId) {
+            case (?c) { switch (e.choreTypeId) { case (?ec) { if (ec != c) return false }; case null { return false } } };
+            case null {};
+        };
+        switch (q.outputToken) {
+            case (?t) { switch (e.outputToken) { case (?eo) { if (eo != t) return false }; case null { return false } } };
+            case null {};
+        };
+        switch (q.status) { case (?s) { if (e.status != s) return false }; case null {} };
+        true
+    };
+
+    public shared query (msg) func getTradeLog(q: T.TradeLogQuery): async T.TradeLogResult {
+        assertPermission(msg.caller, T.TradingPermission.ViewLogs);
+
+        let limit = switch (q.limit) { case (?l) l; case null 50 };
+        let filtered = Array.filter<T.TradeLogEntry>(tradeLogEntries, func(e: T.TradeLogEntry): Bool { matchTradeLogEntry(e, q) });
+        let totalCount = filtered.size();
+        let page = if (totalCount <= limit) { filtered } else {
+            Array.tabulate<T.TradeLogEntry>(limit, func(i: Nat): T.TradeLogEntry { filtered[i] })
+        };
+        { entries = page; totalCount = totalCount; hasMore = totalCount > limit }
+    };
+
+    public shared query (msg) func getTradeLogStats(): async { totalEntries: Nat; nextId: Nat } {
+        assertPermission(msg.caller, T.TradingPermission.ViewLogs);
+        { totalEntries = tradeLogEntries.size(); nextId = tradeLogNextId }
+    };
+
+    public shared (msg) func clearTradeLog(): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageLogs);
+        tradeLogEntries := [];
+        logEngine.logInfo("trade-log", "Trade log cleared", ?msg.caller, []);
+    };
+
+    // ============================================
+    // PUBLIC API — PORTFOLIO SNAPSHOT LOG
+    // ============================================
+
+    func matchPortfolioSnapshot(e: T.PortfolioSnapshot, q: T.PortfolioSnapshotQuery): Bool {
+        switch (q.startId) { case (?s) { if (e.id < s) return false }; case null {} };
+        switch (q.fromTime) { case (?t) { if (e.timestamp < t) return false }; case null {} };
+        switch (q.toTime) { case (?t) { if (e.timestamp > t) return false }; case null {} };
+        switch (q.tradeLogId) {
+            case (?tid) { switch (e.tradeLogId) { case (?etid) { if (etid != tid) return false }; case null { return false } } };
+            case null {};
+        };
+        switch (q.phase) { case (?p) { if (e.phase != p) return false }; case null {} };
+        true
+    };
+
+    public shared query (msg) func getPortfolioSnapshots(q: T.PortfolioSnapshotQuery): async T.PortfolioSnapshotResult {
+        assertPermission(msg.caller, T.TradingPermission.ViewLogs);
+
+        let limit = switch (q.limit) { case (?l) l; case null 20 };
+        let filtered = Array.filter<T.PortfolioSnapshot>(portfolioSnapshots, func(e: T.PortfolioSnapshot): Bool { matchPortfolioSnapshot(e, q) });
+        let totalCount = filtered.size();
+        let page = if (totalCount <= limit) { filtered } else {
+            Array.tabulate<T.PortfolioSnapshot>(limit, func(i: Nat): T.PortfolioSnapshot { filtered[i] })
+        };
+        { entries = page; totalCount = totalCount; hasMore = totalCount > limit }
+    };
+
+    public shared query (msg) func getPortfolioSnapshotStats(): async { totalEntries: Nat; nextId: Nat } {
+        assertPermission(msg.caller, T.TradingPermission.ViewLogs);
+        { totalEntries = portfolioSnapshots.size(); nextId = portfolioSnapshotNextId }
+    };
+
+    public shared (msg) func clearPortfolioSnapshots(): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageLogs);
+        portfolioSnapshots := [];
+        logEngine.logInfo("portfolio-log", "Portfolio snapshot log cleared", ?msg.caller, []);
+    };
+
+    // ============================================
+    // PUBLIC API — LOGGING SETTINGS
+    // ============================================
+
+    public shared query (msg) func getLoggingSettings(): async T.LoggingSettings {
+        assertPermission(msg.caller, T.TradingPermission.ViewLogs);
+        loggingSettings
+    };
+
+    public shared (msg) func setLoggingSettings(settings: T.LoggingSettings): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageLogs);
+        loggingSettings := settings;
+        logEngine.logInfo("settings", "Logging settings updated", ?msg.caller, []);
+    };
+
+    public shared query (msg) func getChoreLoggingOverrides(): async [(Text, T.ChoreLoggingOverrides)] {
+        assertPermission(msg.caller, T.TradingPermission.ViewLogs);
+        choreLoggingOverrides
+    };
+
+    public shared (msg) func setChoreLoggingOverride(choreId: Text, overrides: T.ChoreLoggingOverrides): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageLogs);
+        let buf = Buffer.fromArray<(Text, T.ChoreLoggingOverrides)>(
+            Array.filter<(Text, T.ChoreLoggingOverrides)>(choreLoggingOverrides, func(e: (Text, T.ChoreLoggingOverrides)): Bool { e.0 != choreId })
+        );
+        buf.add((choreId, overrides));
+        choreLoggingOverrides := Buffer.toArray(buf);
+        logEngine.logInfo("settings", "Chore logging override set for " # choreId, ?msg.caller, []);
+    };
+
+    public shared (msg) func removeChoreLoggingOverride(choreId: Text): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageLogs);
+        choreLoggingOverrides := Array.filter<(Text, T.ChoreLoggingOverrides)>(choreLoggingOverrides, func(e: (Text, T.ChoreLoggingOverrides)): Bool { e.0 != choreId });
+        logEngine.logInfo("settings", "Chore logging override removed for " # choreId, ?msg.caller, []);
     };
 
 };
