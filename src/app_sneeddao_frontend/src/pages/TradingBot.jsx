@@ -1195,6 +1195,10 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
     const [hasMore, setHasMore] = useState(false);
     const [filterStatus, setFilterStatus] = useState('');
     const [filterChoreType, setFilterChoreType] = useState('');
+    const [expandedId, setExpandedId] = useState(null);
+    // Cache of snapshots keyed by tradeLogId: { before: snapshot|null, after: snapshot|null }
+    const [snapCache, setSnapCache] = useState({});
+    const [snapLoading, setSnapLoading] = useState({});
 
     // Collect token IDs from entries for metadata resolution
     const entryTokenIds = React.useMemo(() => {
@@ -1238,6 +1242,54 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
 
     useEffect(() => { loadData(); }, [loadData]);
 
+    // Fetch snapshots for a trade log entry when expanded
+    const loadSnapshots = useCallback(async (tradeLogId, choreId, timestamp) => {
+        if (snapCache[tradeLogId] || snapLoading[tradeLogId]) return;
+        setSnapLoading(prev => ({ ...prev, [tradeLogId]: true }));
+        try {
+            const bot = await getReadyBotActor();
+            if (!bot) return;
+            // Fetch after-snapshot linked by tradeLogId, and also all snapshots
+            // in a time window around the trade to find the before-snapshot
+            const timeWindow = 120_000_000_000; // 2 minutes in nanoseconds
+            const ts = BigInt(timestamp);
+            const result = await bot.getPortfolioSnapshots({
+                startId: [], limit: [20], tradeLogId: [],
+                phase: [], fromTime: [ts - BigInt(timeWindow)], toTime: [ts + BigInt(timeWindow)],
+            });
+            // Find after-snapshot (linked by tradeLogId)
+            let afterSnap = null;
+            let beforeSnap = null;
+            for (const snap of result.entries) {
+                const snapTradeLogId = snap.tradeLogId?.length > 0 ? Number(snap.tradeLogId[0]) : null;
+                const phaseKey = Object.keys(snap.phase || {})[0] || '';
+                if (snapTradeLogId === tradeLogId && phaseKey === 'After') {
+                    afterSnap = snap;
+                }
+                // Before-snapshot: same choreId, phase=Before, just before the trade
+                if (phaseKey === 'Before' && !beforeSnap) {
+                    const snapChoreId = snap.choreId?.length > 0 ? snap.choreId[0] : null;
+                    const snapChoreStr = typeof snapChoreId === 'string' ? snapChoreId : snapChoreId?.toText?.() || String(snapChoreId);
+                    if (snapChoreStr === choreId && Number(snap.timestamp) <= Number(timestamp)) {
+                        beforeSnap = snap;
+                    }
+                }
+            }
+            // If we didn't find the before via time window, take the closest Before snapshot
+            if (!beforeSnap) {
+                const befores = result.entries
+                    .filter(s => Object.keys(s.phase || {})[0] === 'Before' && Number(s.timestamp) <= Number(timestamp))
+                    .sort((a, b) => Number(b.timestamp) - Number(a.timestamp));
+                if (befores.length > 0) beforeSnap = befores[0];
+            }
+            setSnapCache(prev => ({ ...prev, [tradeLogId]: { before: beforeSnap, after: afterSnap } }));
+        } catch (err) {
+            console.error('Failed to load snapshots for trade', tradeLogId, err);
+        } finally {
+            setSnapLoading(prev => ({ ...prev, [tradeLogId]: false }));
+        }
+    }, [getReadyBotActor, snapCache, snapLoading]);
+
     const applyFilters = () => {
         const q = {
             startId: [], limit: [50],
@@ -1248,6 +1300,7 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
         };
         setQuery(q);
         setLoading(true);
+        setSnapCache({});
         loadData(q);
     };
 
@@ -1267,6 +1320,67 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
     };
 
     const optVal = (arr) => arr?.length > 0 ? arr[0] : null;
+
+    // Render a compact snapshot comparison for a trade entry
+    const renderSnapshotDiff = (tradeId) => {
+        const cached = snapCache[tradeId];
+        if (!cached) return snapLoading[tradeId] ? <div style={{ fontSize: '0.72rem', color: theme.colors.mutedText, padding: '6px 0' }}>Loading snapshots...</div> : null;
+        const { before, after } = cached;
+        if (!before && !after) return <div style={{ fontSize: '0.72rem', color: theme.colors.mutedText, padding: '6px 0' }}>No snapshots available for this trade.</div>;
+
+        // Build a merged token list from both snapshots
+        const tokenMap = new Map();
+        const addTokens = (snap, key) => {
+            if (!snap?.tokens) return;
+            for (const t of snap.tokens) {
+                const tid = typeof t.token === 'string' ? t.token : t.token?.toText?.() || String(t.token);
+                if (!tokenMap.has(tid)) tokenMap.set(tid, { symbol: t.symbol, decimals: Number(t.decimals) });
+                tokenMap.get(tid)[key] = t;
+            }
+        };
+        addTokens(before, 'before');
+        addTokens(after, 'after');
+
+        return (
+            <div style={{ marginTop: '8px', borderTop: `1px solid ${theme.colors.border}`, paddingTop: '8px' }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: '600', color: theme.colors.secondaryText, marginBottom: '4px' }}>Portfolio Snapshot</div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem' }}>
+                    <thead>
+                        <tr style={{ color: theme.colors.mutedText, textAlign: 'left' }}>
+                            <th style={{ padding: '2px 6px' }}>Token</th>
+                            <th style={{ padding: '2px 6px', textAlign: 'right' }}>Before</th>
+                            <th style={{ padding: '2px 6px', textAlign: 'right' }}>After</th>
+                            <th style={{ padding: '2px 6px', textAlign: 'right' }}>Change</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {[...tokenMap.entries()].map(([tid, info]) => {
+                            const dec = info.decimals;
+                            const bBal = info.before?.balance != null ? Number(info.before.balance) : null;
+                            const aBal = info.after?.balance != null ? Number(info.after.balance) : null;
+                            const diff = (bBal != null && aBal != null) ? aBal - bBal : null;
+                            const diffColor = diff > 0 ? '#22c55e' : diff < 0 ? '#ef4444' : theme.colors.secondaryText;
+                            const diffPrefix = diff > 0 ? '+' : '';
+                            return (
+                                <tr key={tid} style={{ borderTop: `1px solid ${theme.colors.border}10` }}>
+                                    <td style={{ padding: '3px 6px', color: theme.colors.primaryText, fontWeight: '500' }}>{info.symbol}</td>
+                                    <td style={{ padding: '3px 6px', textAlign: 'right', color: theme.colors.secondaryText }}>
+                                        {bBal != null ? formatTokenAmount(bBal, dec) : '—'}
+                                    </td>
+                                    <td style={{ padding: '3px 6px', textAlign: 'right', color: theme.colors.secondaryText }}>
+                                        {aBal != null ? formatTokenAmount(aBal, dec) : '—'}
+                                    </td>
+                                    <td style={{ padding: '3px 6px', textAlign: 'right', color: diffColor, fontWeight: diff ? '600' : '400' }}>
+                                        {diff != null ? `${diffPrefix}${formatTokenAmount(Math.abs(diff), dec)}` : '—'}
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+        );
+    };
 
     return (
         <div style={cardStyle}>
@@ -1307,12 +1421,29 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
                         const statusKey = Object.keys(e.status || {})[0] || 'Failed';
                         const inputDec = getDec(e.inputToken);
                         const outputDec = e.outputToken?.length > 0 ? getDec(e.outputToken[0]) : 8;
+                        const isSwap = Number(e.actionType) === 0;
+                        const isExpanded = expandedId === Number(e.id);
+                        // Format price as human-readable output/input
+                        const priceE8s = optVal(e.priceE8s);
+                        const humanPrice = priceE8s != null && outputDec != null ? (Number(priceE8s) / (10 ** outputDec)) : null;
+                        const outSym = e.outputToken?.length > 0 ? getSym(e.outputToken[0]) : '';
+                        const inSym = getSym(e.inputToken);
                         return (
                             <div key={Number(e.id)} style={{
                                 padding: '10px 12px', background: theme.colors.primaryBg, borderRadius: '8px',
-                                border: `1px solid ${theme.colors.border}`, fontSize: '0.78rem',
+                                border: `1px solid ${isExpanded ? accentColor + '40' : theme.colors.border}`, fontSize: '0.78rem',
                             }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap', gap: '4px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap', gap: '4px',
+                                    cursor: isSwap ? 'pointer' : 'default' }}
+                                    onClick={() => {
+                                        if (!isSwap) return;
+                                        const newId = isExpanded ? null : Number(e.id);
+                                        setExpandedId(newId);
+                                        if (newId != null) {
+                                            loadSnapshots(Number(e.id), optVal(e.choreId) ? (typeof optVal(e.choreId) === 'string' ? optVal(e.choreId) : optVal(e.choreId)?.toText?.() || '') : '', e.timestamp);
+                                        }
+                                    }}
+                                >
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                         <span style={{ fontWeight: '600', color: theme.colors.primaryText }}>#{Number(e.id)}</span>
                                         <span style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: '600',
@@ -1320,19 +1451,21 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
                                             color: TRADE_STATUS_COLORS[statusKey] || '#6b7280',
                                         }}>{TRADE_STATUS_LABELS[statusKey] || statusKey}</span>
                                         <span style={{ color: theme.colors.mutedText }}>{ACTION_TYPE_LABELS[Number(e.actionType)] || `Type ${Number(e.actionType)}`}</span>
+                                        {isSwap && <span style={{ color: theme.colors.mutedText, fontSize: '0.7rem' }}>{isExpanded ? '▾' : '▸'}</span>}
                                     </div>
                                     <span style={{ color: theme.colors.mutedText, fontSize: '0.7rem' }}>{new Date(Number(e.timestamp) / 1_000_000).toLocaleString()}</span>
                                 </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '4px', color: theme.colors.secondaryText }}>
-                                    <div><strong>In:</strong> {formatTokenAmount(e.inputAmount, inputDec)} {getSym(e.inputToken)}</div>
-                                    {e.outputToken?.length > 0 && <div><strong>Out:</strong> {optVal(e.outputAmount) != null ? formatTokenAmount(optVal(e.outputAmount), outputDec) : '—'} {getSym(e.outputToken[0])}</div>}
-                                    {optVal(e.priceE8s) != null && <div><strong>Price:</strong> {formatTokenAmount(optVal(e.priceE8s), 8)}</div>}
+                                    <div><strong>In:</strong> {formatTokenAmount(e.inputAmount, inputDec)} {inSym}</div>
+                                    {e.outputToken?.length > 0 && <div><strong>Out:</strong> {optVal(e.outputAmount) != null ? formatTokenAmount(optVal(e.outputAmount), outputDec) : '—'} {outSym}</div>}
+                                    {humanPrice != null && <div><strong>Price:</strong> {humanPrice.toLocaleString(undefined, { maximumSignificantDigits: 6 })} {outSym}/{inSym}</div>}
                                     {optVal(e.dexId) != null && <div><strong>DEX:</strong> {DEX_LABELS[Number(optVal(e.dexId))] || `DEX ${Number(optVal(e.dexId))}`}</div>}
                                     {optVal(e.priceImpactBps) != null && <div><strong>Impact:</strong> {Number(optVal(e.priceImpactBps))} bps</div>}
                                     {optVal(e.choreId) && <div><strong>Chore:</strong> {optVal(e.choreId)}</div>}
                                     {optVal(e.actionId) != null && <div><strong>Action:</strong> #{Number(optVal(e.actionId))}</div>}
                                     {optVal(e.errorMessage) && <div style={{ color: '#ef4444', gridColumn: '1 / -1' }}><strong>Error:</strong> {optVal(e.errorMessage)}</div>}
                                 </div>
+                                {isExpanded && renderSnapshotDiff(Number(e.id))}
                             </div>
                         );
                     })}
