@@ -250,7 +250,7 @@ export const idlFactory = ({ IDL }) => {
         logLevel: LogLevel,
         maxEntries: IDL.Nat,
         entryCount: IDL.Nat,
-        nextEntryId: IDL.Nat,
+        nextId: IDL.Nat,
     });
 
     // ==========================================
