@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars, FaComments, FaUnlock, FaCrown, FaGift, FaBrain, FaKey, FaHandPaper, FaBell, FaEnvelope, FaCoins, FaSync, FaVoteYea, FaCloudDownloadAlt, FaBolt, FaExclamationTriangle } from 'react-icons/fa';
+import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars, FaComments, FaUnlock, FaCrown, FaGift, FaBrain, FaKey, FaHandPaper, FaBell, FaEnvelope, FaCoins, FaSync, FaVoteYea, FaCloudDownloadAlt, FaBolt, FaExclamationTriangle, FaCubes } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { headerStyles } from '../styles/HeaderStyles';
@@ -551,6 +551,16 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'About', path: '/sneedex' }
             ]
         },
+        'Sneedapp': {
+            icon: <FaCubes size={18} />,
+            displayName: 'Sneedapp',
+            defaultPath: '/sneedapp',
+            subMenu: [
+                { name: 'Browse Apps', path: '/sneedapp' },
+                { name: 'ICP Staking Bot', path: '/create_icp_neuron' },
+                { name: 'My Canisters', path: '/apps' },
+            ]
+        },
         'Liquid Staking': {
             icon: <FaTint size={18} />,
             displayName: 'Liquid Staking',
@@ -609,6 +619,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Names', path: '/admin/names' },
                 { name: 'Projects', path: '/admin/projects' },
                 { name: 'SneedLock', path: '/admin/sneedlock' },
+                { name: 'Sneedapp', path: '/admin/sneedapp' },
                 { name: 'Sneedex', path: '/admin/sneedex' },
                 { name: 'SNS Jailbreak', path: '/admin/sns_jailbreak' }
             ]
