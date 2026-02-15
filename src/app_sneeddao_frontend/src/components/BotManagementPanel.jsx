@@ -17,7 +17,7 @@
  *   permissionDescriptions – { key: description } map (optional overrides)
  *   multiInstanceChoreTypes – string[] of chore types supporting multi-instance
  *   renderChoreConfig  – (props) => ReactNode — custom per-chore configuration
- *       props: { chore, config, choreId, choreTypeId, instanceId, botActor,
+ *       props: { chore, config, choreId, choreTypeId, instanceId, getReadyBotActor,
  *                savingChore, setSavingChore, choreError, setChoreError, choreSuccess, setChoreSuccess,
  *                loadChoreData, theme, accentColor, cardStyle, inputStyle, buttonStyle, secondaryButtonStyle }
  *   identity           – Current user identity (from useAuth)
@@ -202,9 +202,13 @@ export default function BotManagementPanel({
         return new HttpAgent({ identity, host });
     }, [identity]);
 
-    const getBotActor = useCallback(() => {
+    // Create a ready-to-use bot actor (with root key fetched for local dev)
+    const getReadyBotActor = useCallback(async () => {
         if (!canisterId || !identity) return null;
         const agent = getAgent();
+        if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+            await agent.fetchRootKey();
+        }
         return createBotActor(canisterId, { agent });
     }, [canisterId, identity, createBotActor, getAgent]);
 
@@ -309,18 +313,14 @@ export default function BotManagementPanel({
     const loadBotVersion = useCallback(async () => {
         if (!canisterId || !identity) return;
         try {
-            const bot = getBotActor();
+            const bot = await getReadyBotActor();
             if (!bot) return;
-            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                const agent = getAgent();
-                await agent.fetchRootKey();
-            }
             const version = await bot.getVersion();
             setBotVersion(`${Number(version.major)}.${Number(version.minor)}.${Number(version.patch)}`);
         } catch {
             // Old bots may not have getVersion
         }
-    }, [canisterId, identity, getBotActor, getAgent]);
+    }, [canisterId, identity, getReadyBotActor]);
 
     // Load official versions from factory (for version verification)
     const loadOfficialVersions = useCallback(async () => {
@@ -340,18 +340,14 @@ export default function BotManagementPanel({
     const fetchUserPermissions = useCallback(async () => {
         if (!canisterId || !identity) return;
         try {
-            const bot = getBotActor();
+            const bot = await getReadyBotActor();
             if (!bot) return;
-            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                const agent = getAgent();
-                await agent.fetchRootKey();
-            }
             const perms = await bot.callerPermissions();
             setUserPermissions(new Set(perms.map(p => Object.keys(p)[0])));
         } catch {
             setUserPermissions(new Set());
         }
-    }, [canisterId, identity, getBotActor, getAgent]);
+    }, [canisterId, identity, getReadyBotActor]);
 
     // Load botkey permissions
     const loadHotkeyPermissions = useCallback(async () => {
@@ -359,12 +355,8 @@ export default function BotManagementPanel({
         setLoadingPermissions(true);
         setPermissionError('');
         try {
-            const bot = getBotActor();
+            const bot = await getReadyBotActor();
             if (!bot) return;
-            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                const agent = getAgent();
-                await agent.fetchRootKey();
-            }
             const [types, principals] = await Promise.all([
                 bot.listPermissionTypes(),
                 bot.getHotkeyPermissions(),
@@ -381,23 +373,25 @@ export default function BotManagementPanel({
         } finally {
             setLoadingPermissions(false);
         }
-    }, [canisterId, identity, getBotActor, getAgent]);
+    }, [canisterId, identity, getReadyBotActor]);
 
     // Load chore data
     const loadChoreData = useCallback(async (silent) => {
         if (!canisterId || !identity) return;
         if (!silent) { setLoadingChores(true); setChoreError(''); }
         try {
-            const bot = getBotActor();
+            const bot = await getReadyBotActor();
             if (!bot) return;
-            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                const agent = getAgent();
-                await agent.fetchRootKey();
+            const statuses = await bot.getChoreStatuses();
+            // getChoreConfigs may not exist on all bot versions — gracefully fallback
+            let configs = [];
+            try {
+                if (bot.getChoreConfigs) {
+                    configs = await bot.getChoreConfigs();
+                }
+            } catch {
+                // Method doesn't exist on this bot version — that's OK
             }
-            const [statuses, configs] = await Promise.all([
-                bot.getChoreStatuses(),
-                bot.getChoreConfigs ? bot.getChoreConfigs() : Promise.resolve([]),
-            ]);
             setChoreStatuses(statuses);
             setChoreConfigs(configs);
             // Set initial active tab
@@ -409,7 +403,7 @@ export default function BotManagementPanel({
         } finally {
             if (!silent) setLoadingChores(false);
         }
-    }, [canisterId, identity, getBotActor, getAgent, choreActiveTab]);
+    }, [canisterId, identity, getReadyBotActor, choreActiveTab]);
 
     // Load log data
     const loadLogData = useCallback(async (filterOverride, silent) => {
@@ -417,12 +411,8 @@ export default function BotManagementPanel({
         if (!silent) setLoadingLogs(true);
         setLogError('');
         try {
-            const bot = getBotActor();
+            const bot = await getReadyBotActor();
             if (!bot) return;
-            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                const agent = getAgent();
-                await agent.fetchRootKey();
-            }
             const f = filterOverride || logFilter;
             const [result, config] = await Promise.all([
                 bot.getLogs(f),
@@ -437,7 +427,7 @@ export default function BotManagementPanel({
         } finally {
             if (!silent) setLoadingLogs(false);
         }
-    }, [canisterId, identity, getBotActor, getAgent, logFilter]);
+    }, [canisterId, identity, getReadyBotActor, logFilter]);
 
     // ==========================================
     // EFFECTS
@@ -612,10 +602,7 @@ export default function BotManagementPanel({
         if (!newHotkeyPrincipal.trim() || selectedPerms.length === 0) return;
         setSavingPermissions(true); setPermissionError('');
         try {
-            const bot = getBotActor();
-            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                const agent = getAgent(); await agent.fetchRootKey();
-            }
+            const bot = await getReadyBotActor();
             const principal = Principal.fromText(newHotkeyPrincipal.trim());
             const result = await bot.addHotkeyPermissions(principal, selectedPerms);
             if ('Ok' in result) {
@@ -637,10 +624,7 @@ export default function BotManagementPanel({
         if (toAdd.length === 0 && toRemove.length === 0) { setEditingPrincipal(null); return; }
         setSavingPermissions(true); setPermissionError('');
         try {
-            const bot = getBotActor();
-            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                const agent = getAgent(); await agent.fetchRootKey();
-            }
+            const bot = await getReadyBotActor();
             const principal = Principal.fromText(principalText);
             if (toAdd.length > 0) await bot.addHotkeyPermissions(principal, toAdd);
             if (toRemove.length > 0) await bot.removeHotkeyPermissions(principal, toRemove);
@@ -654,10 +638,7 @@ export default function BotManagementPanel({
     const handleRemoveHotkeyPrincipal = async (principalText) => {
         setSavingPermissions(true); setPermissionError('');
         try {
-            const bot = getBotActor();
-            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                const agent = getAgent(); await agent.fetchRootKey();
-            }
+            const bot = await getReadyBotActor();
             const result = await bot.removeHotkey(Principal.fromText(principalText));
             if ('Ok' in result) {
                 setPermissionSuccess('Botkey removed');
@@ -672,10 +653,7 @@ export default function BotManagementPanel({
     const choreAction = async (actionFn) => {
         setSavingChore(true); setChoreError('');
         try {
-            const bot = getBotActor();
-            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                const agent = getAgent(); await agent.fetchRootKey();
-            }
+            const bot = await getReadyBotActor();
             await actionFn(bot);
             await loadChoreData(true);
         } catch (err) { setChoreError(err.message); }
@@ -1312,7 +1290,7 @@ export default function BotManagementPanel({
                                                                 chore, config, choreId: chore.choreId,
                                                                 choreTypeId: chore.choreTypeId || chore.choreId,
                                                                 instanceId: chore.choreId,
-                                                                botActor: getBotActor(),
+                                                                getReadyBotActor,
                                                                 savingChore, setSavingChore,
                                                                 choreError, setChoreError, choreSuccess, setChoreSuccess,
                                                                 loadChoreData: () => loadChoreData(true),
@@ -1418,7 +1396,7 @@ export default function BotManagementPanel({
                                                         <select value={Object.keys(logConfig.logLevel)[0]}
                                                             onChange={async (e) => {
                                                                 setSavingLogConfig(true);
-                                                                try { const bot = getBotActor(); await bot.setLogLevel({ [e.target.value]: null }); setLogSuccess(`Log level set to ${e.target.value}`); setTimeout(() => setLogSuccess(''), 3000); loadLogData(undefined, true); }
+                                                                try { const bot = await getReadyBotActor(); await bot.setLogLevel({ [e.target.value]: null }); setLogSuccess(`Log level set to ${e.target.value}`); setTimeout(() => setLogSuccess(''), 3000); loadLogData(undefined, true); }
                                                                 catch (err) { setLogError('Failed: ' + err.message); }
                                                                 finally { setSavingLogConfig(false); }
                                                             }}
@@ -1429,7 +1407,7 @@ export default function BotManagementPanel({
                                                         <button onClick={async () => {
                                                             if (!window.confirm('Clear all log entries?')) return;
                                                             setSavingLogConfig(true);
-                                                            try { const bot = getBotActor(); await bot.clearLogs(); setLogSuccess('Logs cleared'); setTimeout(() => setLogSuccess(''), 3000); loadLogData(); }
+                                                            try { const bot = await getReadyBotActor(); await bot.clearLogs(); setLogSuccess('Logs cleared'); setTimeout(() => setLogSuccess(''), 3000); loadLogData(); }
                                                             catch (err) { setLogError('Failed: ' + err.message); }
                                                             finally { setSavingLogConfig(false); }
                                                         }} disabled={savingLogConfig}

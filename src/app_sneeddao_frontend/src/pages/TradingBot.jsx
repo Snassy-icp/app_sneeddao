@@ -69,7 +69,7 @@ const PERMISSION_DESCRIPTIONS = {
 const MULTI_INSTANCE_CHORE_TYPES = ['trade', 'move-funds', 'distribute-funds', 'rebalance'];
 
 // Custom chore configuration renderer
-function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, botActor, theme, accentColor, cardStyle, inputStyle, buttonStyle, secondaryButtonStyle }) {
+function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, getReadyBotActor, theme, accentColor, cardStyle, inputStyle, buttonStyle, secondaryButtonStyle }) {
     // Different config panels per chore type
     switch (choreTypeId) {
         case 'trade':
