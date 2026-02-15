@@ -1496,14 +1496,14 @@ function PortfolioSnapshotViewer({ getReadyBotActor, theme, accentColor }) {
     const [error, setError] = useState('');
     const [stats, setStats] = useState(null);
     const [hasMore, setHasMore] = useState(false);
-    const [expandedId, setExpandedId] = useState(null);
+    const [expandedKey, setExpandedKey] = useState(null);
 
     const loadData = useCallback(async () => {
         try {
             const bot = await getReadyBotActor();
             if (!bot) return;
             const [result, st] = await Promise.all([
-                bot.getPortfolioSnapshots({ startId: [], limit: [20], tradeLogId: [], phase: [], fromTime: [], toTime: [] }),
+                bot.getPortfolioSnapshots({ startId: [], limit: [100], tradeLogId: [], phase: [], fromTime: [], toTime: [] }),
                 bot.getPortfolioSnapshotStats(),
             ]);
             setSnapshots(result.entries);
@@ -1519,12 +1519,224 @@ function PortfolioSnapshotViewer({ getReadyBotActor, theme, accentColor }) {
     useEffect(() => { loadData(); }, [loadData]);
 
     const optVal = (arr) => arr?.length > 0 ? arr[0] : null;
+    const getPhase = (snap) => Object.keys(snap.phase || {})[0] || '';
+    const getChoreId = (snap) => {
+        const c = snap.choreId?.length > 0 ? snap.choreId[0] : null;
+        return c ? (typeof c === 'string' ? c : c?.toText?.() || String(c)) : '';
+    };
+
+    // Group snapshots into paired (before+after) and unpaired items.
+    // Matching: same choreId, trigger text shares the same "Trade N" prefix, Before timestamp < After timestamp.
+    const pairedItems = React.useMemo(() => {
+        const items = [];
+        const used = new Set();
+
+        // Extract the action key from trigger (e.g., "Trade 0 pre-swap" → "Trade 0")
+        const actionKey = (trigger) => {
+            const m = (trigger || '').match(/^(Trade \d+)/);
+            return m ? m[1] : null;
+        };
+
+        // Index After snapshots by choreId + actionKey for quick lookup
+        const afterIndex = new Map();
+        for (const snap of snapshots) {
+            if (getPhase(snap) === 'After') {
+                const key = getChoreId(snap) + '|' + actionKey(snap.trigger);
+                if (!afterIndex.has(key)) afterIndex.set(key, []);
+                afterIndex.get(key).push(snap);
+            }
+        }
+
+        // Walk through Before snapshots and find matching After
+        for (const snap of snapshots) {
+            if (getPhase(snap) !== 'Before') continue;
+            const key = getChoreId(snap) + '|' + actionKey(snap.trigger);
+            const afters = afterIndex.get(key);
+            if (afters) {
+                // Find closest After with timestamp > this Before's timestamp
+                let bestAfter = null;
+                let bestDist = Infinity;
+                for (const a of afters) {
+                    if (used.has(Number(a.id))) continue;
+                    const dist = Number(a.timestamp) - Number(snap.timestamp);
+                    if (dist > 0 && dist < bestDist) { bestDist = dist; bestAfter = a; }
+                }
+                if (bestAfter) {
+                    items.push({ type: 'pair', before: snap, after: bestAfter, key: `pair-${Number(snap.id)}` });
+                    used.add(Number(snap.id));
+                    used.add(Number(bestAfter.id));
+                }
+            }
+        }
+
+        // Add any unmatched snapshots as singles
+        for (const snap of snapshots) {
+            if (!used.has(Number(snap.id))) {
+                items.push({ type: 'single', snap, key: `single-${Number(snap.id)}` });
+                used.add(Number(snap.id));
+            }
+        }
+
+        // Sort by timestamp descending (newest first), using the Before timestamp for pairs
+        items.sort((a, b) => {
+            const tsA = a.type === 'pair' ? Number(a.before.timestamp) : Number(a.snap.timestamp);
+            const tsB = b.type === 'pair' ? Number(b.before.timestamp) : Number(b.snap.timestamp);
+            return tsB - tsA;
+        });
+
+        return items;
+    }, [snapshots]);
 
     const cardStyle = {
         background: theme.colors.cardGradient,
         borderRadius: '12px',
         border: `1px solid ${theme.colors.border}`,
         padding: '16px',
+    };
+
+    const renderPairedItem = (before, after, itemKey) => {
+        const isExpanded = expandedKey === itemKey;
+        const trigger = (before?.trigger || after?.trigger || '').replace(/ pre-swap| post-swap/, '');
+        const ts = new Date(Number((before || after).timestamp) / 1_000_000).toLocaleString();
+
+        // Merge tokens from both snapshots
+        const tokenMap = new Map();
+        const addTokens = (snap, phase) => {
+            if (!snap?.tokens) return;
+            for (const t of snap.tokens) {
+                const tid = typeof t.token === 'string' ? t.token : t.token?.toText?.() || String(t.token);
+                if (!tokenMap.has(tid)) tokenMap.set(tid, { symbol: t.symbol, decimals: Number(t.decimals) });
+                tokenMap.get(tid)[phase] = t;
+            }
+        };
+        addTokens(before, 'before');
+        addTokens(after, 'after');
+
+        const rows = [...tokenMap.entries()];
+
+        return (
+            <div key={itemKey} style={{
+                padding: '10px 12px', background: theme.colors.primaryBg, borderRadius: '8px',
+                border: `1px solid ${isExpanded ? accentColor + '30' : theme.colors.border}`, fontSize: '0.78rem',
+            }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                    onClick={() => setExpandedKey(isExpanded ? null : itemKey)}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: '600',
+                            background: `${accentColor}20`, color: accentColor,
+                        }}>Before / After</span>
+                        <span style={{ color: theme.colors.secondaryText }}>{trigger}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ color: theme.colors.mutedText, fontSize: '0.7rem' }}>{ts}</span>
+                        <span style={{ color: theme.colors.mutedText }}>{isExpanded ? '▾' : '▸'}</span>
+                    </div>
+                </div>
+                {isExpanded && rows.length > 0 && (
+                    <div style={{ marginTop: '8px', borderTop: `1px solid ${theme.colors.border}`, paddingTop: '8px' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem' }}>
+                            <thead>
+                                <tr style={{ color: theme.colors.mutedText, textAlign: 'left' }}>
+                                    <th style={{ padding: '2px 6px' }}>Token</th>
+                                    <th style={{ padding: '2px 6px', textAlign: 'right' }}>Before</th>
+                                    <th style={{ padding: '2px 6px', textAlign: 'right' }}>After</th>
+                                    <th style={{ padding: '2px 6px', textAlign: 'right' }}>Change</th>
+                                    <th style={{ padding: '2px 6px', textAlign: 'right' }}>USD Change</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {rows.map(([tid, info]) => {
+                                    const dec = info.decimals;
+                                    const scale = 10 ** dec;
+                                    const bBal = info.before?.balance != null ? Number(info.before.balance) : null;
+                                    const aBal = info.after?.balance != null ? Number(info.after.balance) : null;
+                                    const diff = (bBal != null && aBal != null) ? aBal - bBal : null;
+                                    const diffColor = diff > 0 ? '#22c55e' : diff < 0 ? '#ef4444' : theme.colors.secondaryText;
+                                    const diffPrefix = diff > 0 ? '+' : '';
+                                    const snapForPrice = info.after || info.before;
+                                    const usdP = optVal(snapForPrice?.priceUsdE8s);
+                                    const usdPNum = usdP != null ? Number(usdP) : null;
+                                    let usdChange = null;
+                                    if (diff != null && usdPNum != null && usdPNum > 0) {
+                                        usdChange = (diff / scale) * (usdPNum / scale);
+                                    }
+                                    return (
+                                        <tr key={tid} style={{ borderTop: `1px solid ${theme.colors.border}20` }}>
+                                            <td style={{ padding: '3px 6px', color: theme.colors.primaryText, fontWeight: '500' }}>{info.symbol}</td>
+                                            <td style={{ padding: '3px 6px', textAlign: 'right', color: theme.colors.secondaryText, fontFamily: 'monospace', fontSize: '0.7rem' }}>
+                                                {bBal != null ? formatTokenAmount(bBal, dec) : '—'}
+                                            </td>
+                                            <td style={{ padding: '3px 6px', textAlign: 'right', color: theme.colors.secondaryText, fontFamily: 'monospace', fontSize: '0.7rem' }}>
+                                                {aBal != null ? formatTokenAmount(aBal, dec) : '—'}
+                                            </td>
+                                            <td style={{ padding: '3px 6px', textAlign: 'right', color: diffColor, fontWeight: '600', fontFamily: 'monospace', fontSize: '0.7rem' }}>
+                                                {diff != null ? `${diffPrefix}${formatTokenAmount(Math.abs(diff), dec)}` : '—'}
+                                            </td>
+                                            <td style={{ padding: '3px 6px', textAlign: 'right', color: usdChange != null ? (usdChange >= 0 ? '#22c55e' : '#ef4444') : theme.colors.mutedText, fontSize: '0.7rem' }}>
+                                                {usdChange != null ? `${usdChange >= 0 ? '+' : ''}$${Math.abs(usdChange).toFixed(2)}` : '—'}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    const renderSingleItem = (snap, itemKey) => {
+        const isExpanded = expandedKey === itemKey;
+        const phaseKey = getPhase(snap);
+        const ts = new Date(Number(snap.timestamp) / 1_000_000).toLocaleString();
+
+        return (
+            <div key={itemKey} style={{
+                padding: '10px 12px', background: theme.colors.primaryBg, borderRadius: '8px',
+                border: `1px solid ${theme.colors.border}`, fontSize: '0.78rem',
+            }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                    onClick={() => setExpandedKey(isExpanded ? null : itemKey)}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontWeight: '600', color: theme.colors.primaryText }}>#{Number(snap.id)}</span>
+                        <span style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: '600',
+                            background: phaseKey === 'Before' ? '#3b82f620' : '#22c55e20',
+                            color: phaseKey === 'Before' ? '#3b82f6' : '#22c55e',
+                        }}>{phaseKey || 'Snapshot'}</span>
+                        <span style={{ color: theme.colors.secondaryText }}>{snap.trigger}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ color: theme.colors.mutedText, fontSize: '0.7rem' }}>{ts}</span>
+                        <span style={{ color: theme.colors.mutedText }}>{isExpanded ? '▾' : '▸'}</span>
+                    </div>
+                </div>
+                {isExpanded && snap.tokens?.length > 0 && (
+                    <div style={{ marginTop: '8px', borderTop: `1px solid ${theme.colors.border}`, paddingTop: '8px' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem' }}>
+                            <thead>
+                                <tr style={{ color: theme.colors.mutedText, textAlign: 'left' }}>
+                                    <th style={{ padding: '2px 6px' }}>Token</th>
+                                    <th style={{ padding: '2px 6px', textAlign: 'right' }}>Balance</th>
+                                    <th style={{ padding: '2px 6px', textAlign: 'right' }}>ICP Value</th>
+                                    <th style={{ padding: '2px 6px', textAlign: 'right' }}>USD Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {snap.tokens.map((tok, i) => (
+                                    <tr key={i} style={{ color: theme.colors.secondaryText, borderTop: `1px solid ${theme.colors.border}10` }}>
+                                        <td style={{ padding: '3px 6px', fontWeight: '500' }}>{tok.symbol || shortPrincipal(tok.token)}</td>
+                                        <td style={{ padding: '3px 6px', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.7rem' }}>{formatTokenAmount(tok.balance, tok.decimals)}</td>
+                                        <td style={{ padding: '3px 6px', textAlign: 'right', fontSize: '0.7rem' }}>{optVal(tok.valueIcpE8s) != null ? formatTokenAmount(optVal(tok.valueIcpE8s), 8) + ' ICP' : '—'}</td>
+                                        <td style={{ padding: '3px 6px', textAlign: 'right', fontSize: '0.7rem' }}>{optVal(tok.valueUsdE8s) != null ? '$' + formatTokenAmount(optVal(tok.valueUsdE8s), 8) : '—'}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+        );
     };
 
     return (
@@ -1538,70 +1750,19 @@ function PortfolioSnapshotViewer({ getReadyBotActor, theme, accentColor }) {
 
             {loading ? (
                 <div style={{ textAlign: 'center', padding: '20px', color: theme.colors.secondaryText, fontSize: '0.85rem' }}>Loading snapshots...</div>
-            ) : snapshots.length === 0 ? (
+            ) : pairedItems.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '20px', color: theme.colors.mutedText, fontSize: '0.85rem', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
                     No portfolio snapshots yet. Snapshots are taken before and after trades.
                 </div>
             ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {snapshots.map((snap) => {
-                        const phaseKey = Object.keys(snap.phase || {})[0] || '';
-                        const isExpanded = expandedId === Number(snap.id);
-                        return (
-                            <div key={Number(snap.id)} style={{
-                                padding: '10px 12px', background: theme.colors.primaryBg, borderRadius: '8px',
-                                border: `1px solid ${theme.colors.border}`, fontSize: '0.78rem',
-                            }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
-                                    onClick={() => setExpandedId(isExpanded ? null : Number(snap.id))}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <span style={{ fontWeight: '600', color: theme.colors.primaryText }}>#{Number(snap.id)}</span>
-                                        <span style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: '600',
-                                            background: phaseKey === 'Before' ? '#3b82f620' : '#22c55e20',
-                                            color: phaseKey === 'Before' ? '#3b82f6' : '#22c55e',
-                                        }}>{phaseKey}</span>
-                                        <span style={{ color: theme.colors.secondaryText }}>{snap.trigger}</span>
-                                    </div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        {optVal(snap.totalValueIcpE8s) != null && <span style={{ color: theme.colors.secondaryText }}>{formatTokenAmount(optVal(snap.totalValueIcpE8s), 8)} ICP</span>}
-                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.7rem' }}>{new Date(Number(snap.timestamp) / 1_000_000).toLocaleString()}</span>
-                                        <span style={{ color: theme.colors.mutedText }}>{isExpanded ? '▾' : '▸'}</span>
-                                    </div>
-                                </div>
-                                {isExpanded && snap.tokens?.length > 0 && (
-                                    <div style={{ marginTop: '8px', borderTop: `1px solid ${theme.colors.border}`, paddingTop: '8px' }}>
-                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
-                                            <thead>
-                                                <tr style={{ color: theme.colors.mutedText, textAlign: 'left' }}>
-                                                    <th style={{ padding: '2px 8px' }}>Token</th>
-                                                    <th style={{ padding: '2px 8px', textAlign: 'right' }}>Balance</th>
-                                                    <th style={{ padding: '2px 8px', textAlign: 'right' }}>ICP Price</th>
-                                                    <th style={{ padding: '2px 8px', textAlign: 'right' }}>USD Price</th>
-                                                    <th style={{ padding: '2px 8px', textAlign: 'right' }}>ICP Value</th>
-                                                    <th style={{ padding: '2px 8px', textAlign: 'right' }}>USD Value</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {snap.tokens.map((tok, i) => (
-                                                    <tr key={i} style={{ color: theme.colors.secondaryText, borderTop: `1px solid ${theme.colors.border}08` }}>
-                                                        <td style={{ padding: '3px 8px', fontWeight: '500' }}>{tok.symbol || shortPrincipal(tok.token)}</td>
-                                                        <td style={{ padding: '3px 8px', textAlign: 'right' }}>{formatTokenAmount(tok.balance, tok.decimals)}</td>
-                                                        <td style={{ padding: '3px 8px', textAlign: 'right' }}>{optVal(tok.priceIcpE8s) != null ? formatTokenAmount(optVal(tok.priceIcpE8s), 8) : '—'}</td>
-                                                        <td style={{ padding: '3px 8px', textAlign: 'right' }}>{optVal(tok.priceUsdE8s) != null ? formatTokenAmount(optVal(tok.priceUsdE8s), 8) : '—'}</td>
-                                                        <td style={{ padding: '3px 8px', textAlign: 'right' }}>{optVal(tok.valueIcpE8s) != null ? formatTokenAmount(optVal(tok.valueIcpE8s), 8) : '—'}</td>
-                                                        <td style={{ padding: '3px 8px', textAlign: 'right' }}>{optVal(tok.valueUsdE8s) != null ? formatTokenAmount(optVal(tok.valueUsdE8s), 8) : '—'}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                )}
-                            </div>
-                        );
+                    {pairedItems.map((item) => {
+                        if (item.type === 'pair') return renderPairedItem(item.before, item.after, item.key);
+                        return renderSingleItem(item.snap, item.key);
                     })}
                     {hasMore && (
                         <div style={{ textAlign: 'center', padding: '8px', color: theme.colors.mutedText, fontSize: '0.78rem' }}>
-                            More snapshots available (pagination coming soon)
+                            More snapshots available...
                         </div>
                     )}
                 </div>
