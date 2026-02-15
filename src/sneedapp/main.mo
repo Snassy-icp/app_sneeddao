@@ -94,6 +94,133 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // Premium membership cache (stable Map - no preupgrade/postupgrade needed)
     var premiumCache = PremiumClient.emptyCache();
 
+    // ============================================
+    // MULTI-APP TYPES
+    // ============================================
+
+    type AppInfo = {
+        appId: Text;
+        name: Text;
+        description: Text;
+        iconUrl: ?Text;
+        mintPriceE8s: Nat64;
+        premiumMintPriceE8s: Nat64;
+        viewUrl: ?Text;       // URL with CANISTER_ID placeholder
+        manageUrl: ?Text;     // URL with CANISTER_ID placeholder
+        mintUrl: ?Text;       // Custom minting page URL (null = generic)
+        createdAt: Int;
+        enabled: Bool;
+    };
+
+    type AppVersion = {
+        major: Nat;
+        minor: Nat;
+        patch: Nat;
+        wasmHash: Text;       // SHA256 hex hash (set by admin)
+        wasmUrl: ?Text;       // External download URL
+        sourceUrl: ?Text;     // Source code URL
+        releaseNotes: Text;   // Markdown release notes
+        releaseDate: Int;     // Timestamp
+        wasmSize: Nat;        // Size of WASM blob (0 if not uploaded)
+    };
+
+    type AppVersionInfo = {
+        major: Nat;
+        minor: Nat;
+        patch: Nat;
+        wasmHash: Text;
+        wasmUrl: ?Text;
+        sourceUrl: ?Text;
+        releaseNotes: Text;
+        releaseDate: Int;
+        wasmSize: Nat;
+        hasWasm: Bool;
+    };
+
+    type AppVersionInput = {
+        major: Nat;
+        minor: Nat;
+        patch: Nat;
+        wasmHash: Text;       // Admin-provided hash
+        wasmUrl: ?Text;
+        sourceUrl: ?Text;
+        releaseNotes: Text;
+        releaseDate: Int;
+    };
+
+    type MintLogEntry = {
+        index: Nat;
+        canisterId: Principal;
+        minter: Principal;
+        appId: Text;
+        versionMajor: Nat;
+        versionMinor: Nat;
+        versionPatch: Nat;
+        mintedAt: Int;
+        icpPaidE8s: Nat64;
+        wasPremium: Bool;
+    };
+
+    type MintLogQuery = {
+        startIndex: ?Nat;
+        limit: ?Nat;
+        appIdFilter: ?Text;
+        minterFilter: ?Principal;
+        fromTime: ?Int;
+        toTime: ?Int;
+    };
+
+    type MintLogResult = {
+        entries: [MintLogEntry];
+        totalCount: Nat;
+        hasMore: Bool;
+    };
+
+    type UserCanisterEntry = {
+        canisterId: Principal;
+        appId: Text;          // "" for legacy/unknown
+    };
+
+    type MintResult = {
+        #Ok: { canisterId: Principal; accountId: T.AccountIdentifier };
+        #Err: MintError;
+    };
+
+    type MintError = {
+        #AppNotFound;
+        #AppDisabled;
+        #VersionNotFound;
+        #NoWasmForVersion;
+        #InsufficientPayment: { required: Nat64; provided: Nat64 };
+        #InsufficientCycles;
+        #CanisterCreationFailed: Text;
+        #TransferFailed: Text;
+    };
+
+    // ============================================
+    // MULTI-APP STATE
+    // ============================================
+
+    // App Registry
+    var apps: [AppInfo] = [];
+
+    // App Versions (metadata only - WASM blobs stored separately)
+    var appVersions: [(Text, [AppVersion])] = [];
+
+    // WASM blobs for app versions, keyed by "appId:major.minor.patch"
+    var appVersionWasmsStable: [(Text, Blob)] = [];
+    transient var appVersionWasmsMap = HashMap.HashMap<Text, Blob>(10, Text.equal, Text.hash);
+
+    // Immutable Mint Log
+    var mintLog: [MintLogEntry] = [];
+    var mintLogNextIndex: Nat = 0;
+    var mintLogIndexStable: [(Principal, Nat)] = [];
+    transient var mintLogIndexMap = HashMap.HashMap<Principal, Nat>(10, Principal.equal, Principal.hash);
+
+    // Enhanced User Wallet (replaces userRegistrations)
+    var userWalletStable: [(Principal, [UserCanisterEntry])] = [];
+    transient var userWalletMap = HashMap.HashMap<Principal, [UserCanisterEntry]>(10, Principal.equal, Principal.hash);
+
     // IC Management canister (for updating controllers after spawning)
     transient let ic: T.ManagementCanister = actor("aaaaa-aa");
     
@@ -108,16 +235,18 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // ============================================
 
     system func preupgrade() {
-        // Save new userRegistrations to stable storage
+        // Save old userRegistrations (kept for safety/rollback)
         userRegistrationsStable := Iter.toArray(userRegistrations.entries());
         // Save authorized callers
         authorizedForCallersStable := Iter.toArray(authorizedForCallers.keys());
-        // Note: premiumCache uses stable Map, no need to save
-        // Note: We no longer save to managersStable (deprecated)
+        // Save multi-app state
+        appVersionWasmsStable := Iter.toArray(appVersionWasmsMap.entries());
+        mintLogIndexStable := Iter.toArray(mintLogIndexMap.entries());
+        userWalletStable := Iter.toArray(userWalletMap.entries());
     };
 
     system func postupgrade() {
-        // First, restore userRegistrations from stable storage (if any)
+        // Restore old userRegistrations from stable storage (if any)
         userRegistrations := HashMap.fromIter(userRegistrationsStable.vals(), userRegistrationsStable.size(), Principal.equal, Principal.hash);
         userRegistrationsStable := [];
         
@@ -127,30 +256,167 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         };
         authorizedForCallersStable := [];
         
+        // Restore multi-app state
+        appVersionWasmsMap := HashMap.fromIter(appVersionWasmsStable.vals(), appVersionWasmsStable.size(), Text.equal, Text.hash);
+        appVersionWasmsStable := [];
+        mintLogIndexMap := HashMap.fromIter(mintLogIndexStable.vals(), mintLogIndexStable.size(), Principal.equal, Principal.hash);
+        mintLogIndexStable := [];
+        userWalletMap := HashMap.fromIter(userWalletStable.vals(), userWalletStable.size(), Principal.equal, Principal.hash);
+        userWalletStable := [];
+        
         // Clean expired entries from premium cache (stable Map persists automatically)
         PremiumClient.cleanCache(premiumCache);
         
-        // Migration: If there's data in old managersStable, migrate it to userRegistrations
+        // Migration: If there's data in old managersStable, migrate it to userWalletMap
         if (managersStable.size() > 0) {
             for ((canisterId, info) in managersStable.vals()) {
-                // Add this canister to the owner's list
-                let owner = info.owner;
-                switch (userRegistrations.get(owner)) {
-                    case null {
-                        userRegistrations.put(owner, [canisterId]);
-                    };
-                    case (?existingList) {
-                        // Check if already in the list (avoid duplicates)
-                        let alreadyExists = Array.find<Principal>(existingList, func(p) { Principal.equal(p, canisterId) });
-                        if (alreadyExists == null) {
-                            userRegistrations.put(owner, Array.append(existingList, [canisterId]));
-                        };
-                    };
-                };
+                walletAdd(info.owner, canisterId, "icp-staking-bot");
             };
-            // Clear old stable storage after migration
             managersStable := [];
         };
+        
+        // Migration: Migrate old userRegistrations into userWalletMap
+        for ((owner, canisterIds) in userRegistrations.entries()) {
+            for (canisterId in canisterIds.vals()) {
+                walletAdd(owner, canisterId, "icp-staking-bot");
+            };
+        };
+        // Note: We keep userRegistrations populated for backward compat during this upgrade cycle.
+        // Future upgrades can clear it once the migration is confirmed.
+    };
+
+    // ============================================
+    // MULTI-APP HELPER FUNCTIONS
+    // ============================================
+
+    // -- Wallet Helpers --
+
+    func walletAdd(user: Principal, canisterId: Principal, appId: Text) {
+        let entry: UserCanisterEntry = { canisterId = canisterId; appId = appId };
+        switch (userWalletMap.get(user)) {
+            case null {
+                userWalletMap.put(user, [entry]);
+            };
+            case (?existing) {
+                let found = Array.find<UserCanisterEntry>(existing, func(e) { Principal.equal(e.canisterId, canisterId) });
+                if (found == null) {
+                    userWalletMap.put(user, Array.append(existing, [entry]));
+                };
+            };
+        };
+    };
+
+    func walletRemove(user: Principal, canisterId: Principal): Bool {
+        switch (userWalletMap.get(user)) {
+            case null { false };
+            case (?existing) {
+                let newList = Array.filter<UserCanisterEntry>(existing, func(e) { not Principal.equal(e.canisterId, canisterId) });
+                if (newList.size() == existing.size()) { return false };
+                if (newList.size() == 0) {
+                    userWalletMap.delete(user);
+                } else {
+                    userWalletMap.put(user, newList);
+                };
+                true;
+            };
+        };
+    };
+
+    func walletGetEntries(user: Principal): [UserCanisterEntry] {
+        switch (userWalletMap.get(user)) {
+            case null { [] };
+            case (?list) { list };
+        };
+    };
+
+    func walletGetCanisterIds(user: Principal): [Principal] {
+        Array.map<UserCanisterEntry, Principal>(walletGetEntries(user), func(e) { e.canisterId });
+    };
+
+    // -- App Version Helpers --
+
+    func makeVersionKey(appId: Text, major: Nat, minor: Nat, patch: Nat): Text {
+        appId # ":" # Nat.toText(major) # "." # Nat.toText(minor) # "." # Nat.toText(patch);
+    };
+
+    func getAppById(appId: Text): ?AppInfo {
+        Array.find<AppInfo>(apps, func(a) { a.appId == appId });
+    };
+
+    func getVersionsForApp(appId: Text): [AppVersion] {
+        for (pair in appVersions.vals()) {
+            if (pair.0 == appId) return pair.1;
+        };
+        [];
+    };
+
+    func setVersionsForApp(appId: Text, versions: [AppVersion]) {
+        var found = false;
+        appVersions := Array.map<(Text, [AppVersion]), (Text, [AppVersion])>(
+            appVersions,
+            func(pair) {
+                if (pair.0 == appId) {
+                    found := true;
+                    (pair.0, versions);
+                } else {
+                    pair;
+                };
+            }
+        );
+        if (not found and versions.size() > 0) {
+            appVersions := Array.append(appVersions, [(appId, versions)]);
+        };
+    };
+
+    func versionToInfo(v: AppVersion, appId: Text): AppVersionInfo {
+        {
+            major = v.major;
+            minor = v.minor;
+            patch = v.patch;
+            wasmHash = v.wasmHash;
+            wasmUrl = v.wasmUrl;
+            sourceUrl = v.sourceUrl;
+            releaseNotes = v.releaseNotes;
+            releaseDate = v.releaseDate;
+            wasmSize = v.wasmSize;
+            hasWasm = appVersionWasmsMap.get(makeVersionKey(appId, v.major, v.minor, v.patch)) != null;
+        };
+    };
+
+    func findVersion(appId: Text, major: Nat, minor: Nat, patch: Nat): ?AppVersion {
+        let versions = getVersionsForApp(appId);
+        Array.find<AppVersion>(versions, func(v) { v.major == major and v.minor == minor and v.patch == patch });
+    };
+
+    func getLatestVersionWithWasm(appId: Text): ?AppVersion {
+        let versions = getVersionsForApp(appId);
+        for (v in versions.vals()) {
+            let key = makeVersionKey(appId, v.major, v.minor, v.patch);
+            if (appVersionWasmsMap.get(key) != null) {
+                return ?v;
+            };
+        };
+        null;
+    };
+
+    // -- Mint Log Helpers --
+
+    func addMintLogEntry(canisterId: Principal, minter: Principal, appId: Text, major: Nat, minor: Nat, patch: Nat, icpPaidE8s: Nat64, wasPremium: Bool) {
+        let entry: MintLogEntry = {
+            index = mintLogNextIndex;
+            canisterId = canisterId;
+            minter = minter;
+            appId = appId;
+            versionMajor = major;
+            versionMinor = minor;
+            versionPatch = patch;
+            mintedAt = Time.now();
+            icpPaidE8s = icpPaidE8s;
+            wasPremium = wasPremium;
+        };
+        mintLog := Array.append(mintLog, [entry]);
+        mintLogIndexMap.put(canisterId, mintLogNextIndex);
+        mintLogNextIndex += 1;
     };
 
     // ============================================
@@ -742,16 +1008,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             // Compute the account ID for the new canister
             let accountId = computeAccountId(canisterId, null);
 
-            // Register the manager to the caller's bookmarks
+            // Register the manager to the caller's wallet
             let createdAt = Time.now();
-            switch (userRegistrations.get(caller)) {
-                case null {
-                    userRegistrations.put(caller, [canisterId]);
-                };
-                case (?existingList) {
-                    userRegistrations.put(caller, Array.append(existingList, [canisterId]));
-                };
-            };
+            walletAdd(caller, canisterId, "icp-staking-bot");
             
             // Add to creation log
             let logEntry: T.CreationLogEntry = {
@@ -788,6 +1047,15 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             totalCyclesReceivedFromCmc += trackedCyclesReceivedFromCmc;
             totalCyclesSpentOnCreation += trackedCyclesSpentOnCreation;
 
+            // Bridge: Record in immutable mint log
+            let isPremiumMember: Bool = switch (sneedPremiumCanisterId) {
+                case null { false };
+                case (?premCanisterId) {
+                    await* PremiumClient.isPremium(premiumCache, premCanisterId, caller);
+                };
+            };
+            addMintLogEntry(canisterId, caller, "icp-staking-bot", currentVersion.major, currentVersion.minor, currentVersion.patch, trackedIcpPaidE8s, isPremiumMember);
+
             #Ok({
                 canisterId = canisterId;
                 accountId = accountId;
@@ -804,43 +1072,41 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     };
 
     // Get all manager canister IDs registered by the caller (bookmarks)
+    // Backward compatible: returns canister IDs from both old and new storage
     public query ({ caller }) func getMyManagers(): async [Principal] {
-        switch (userRegistrations.get(caller)) {
-            case null { [] };
-            case (?list) { list };
-        };
+        walletGetCanisterIds(caller);
     };
 
     // DEPRECATED: Get manager info by canister ID
-    // With the new bookmark system, this doesn't return useful data
-    // Use the manager canister's own methods to get its info
     public query func getManagerByCanisterId(_canisterId: Principal): async ?T.ManagerInfo {
-        null; // No longer tracked centrally
+        null;
     };
 
     // Get all manager canister IDs registered by a specific owner
     public query func getManagersByOwner(owner: Principal): async [Principal] {
-        switch (userRegistrations.get(owner)) {
-            case null { [] };
-            case (?list) { list };
-        };
+        walletGetCanisterIds(owner);
     };
 
     // Get all registrations (admin only) - returns owner -> canister IDs mapping
     public query ({ caller }) func getAllRegistrations(): async [(Principal, [Principal])] {
         assert(isAdmin(caller));
-        Iter.toArray(userRegistrations.entries());
+        let buf = Buffer.Buffer<(Principal, [Principal])>(userWalletMap.size());
+        for ((owner, entries) in userWalletMap.entries()) {
+            let ids = Array.map<UserCanisterEntry, Principal>(entries, func(e) { e.canisterId });
+            buf.add((owner, ids));
+        };
+        Buffer.toArray(buf);
     };
 
     // Get total number of unique users with registrations
     public query func getRegisteredUserCount(): async Nat {
-        userRegistrations.size();
+        userWalletMap.size();
     };
     
     // Get total number of registrations across all users
     public query func getTotalRegistrationCount(): async Nat {
         var count = 0;
-        for ((_, list) in userRegistrations.entries()) {
+        for ((_, list) in userWalletMap.entries()) {
             count += list.size();
         };
         count;
@@ -849,7 +1115,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // BACKWARD COMPAT: Alias for getTotalRegistrationCount
     public query func getManagerCount(): async Nat {
         var count = 0;
-        for ((_, list) in userRegistrations.entries()) {
+        for ((_, list) in userWalletMap.entries()) {
             count += list.size();
         };
         count;
@@ -863,91 +1129,37 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     };
 
     // ============================================
-    // MANAGER REGISTRATION (bookmarks - multiple users can register the same canister)
+    // MANAGER REGISTRATION (bookmarks - now backed by userWalletMap)
     // ============================================
 
     // Register a manager canister to the caller's bookmarks
     // Anyone can register any canister - we don't verify ownership
-    // Multiple users can register the same canister (it's just a bookmark)
     public shared ({ caller }) func registerManager(canisterId: Principal): async { #Ok; #Err: Text } {
-        switch (userRegistrations.get(caller)) {
-            case null {
-                // First registration for this user
-                userRegistrations.put(caller, [canisterId]);
-                #Ok;
-            };
-            case (?existingList) {
-                // Check if already in the list
-                let alreadyExists = Array.find<Principal>(existingList, func(p) { Principal.equal(p, canisterId) });
-                if (alreadyExists != null) {
-                    // Already registered, no-op
-                    return #Ok;
-                };
-                // Add to the list
-                userRegistrations.put(caller, Array.append(existingList, [canisterId]));
-                #Ok;
-            };
-        };
+        walletAdd(caller, canisterId, "");
+        #Ok;
     };
 
     // Deregister a manager canister from the caller's bookmarks
     public shared ({ caller }) func deregisterManager(canisterId: Principal): async { #Ok; #Err: Text } {
-        switch (userRegistrations.get(caller)) {
-            case null {
-                #Err("You have no registered canisters");
-            };
-            case (?existingList) {
-                let newList = Array.filter<Principal>(existingList, func(p) { not Principal.equal(p, canisterId) });
-                if (newList.size() == existingList.size()) {
-                    return #Err("Canister is not in your registered list");
-                };
-                if (newList.size() == 0) {
-                    userRegistrations.delete(caller);
-                } else {
-                    userRegistrations.put(caller, newList);
-                };
-                #Ok;
-            };
+        if (walletRemove(caller, canisterId)) {
+            #Ok;
+        } else {
+            #Err("Canister is not in your registered list");
         };
     };
 
     // Transfer a manager canister registration from the caller to a new owner
-    // This removes from caller's bookmarks and adds to newOwner's bookmarks
-    // This does NOT change canister controllers - the caller should do that separately
     public shared ({ caller }) func transferManager(canisterId: Principal, newOwner: Principal): async { #Ok; #Err: Text } {
-        // First, check if caller has this canister registered
-        switch (userRegistrations.get(caller)) {
+        // Find the entry to get its appId
+        let entries = walletGetEntries(caller);
+        let found = Array.find<UserCanisterEntry>(entries, func(e) { Principal.equal(e.canisterId, canisterId) });
+        switch (found) {
             case null {
-                return #Err("You have no registered canisters");
+                #Err("Canister is not in your registered list");
             };
-            case (?callerList) {
-                let exists = Array.find<Principal>(callerList, func(p) { Principal.equal(p, canisterId) });
-                if (exists == null) {
-                    return #Err("Canister is not in your registered list");
-                };
-                
-                // Remove from caller's list
-                let newCallerList = Array.filter<Principal>(callerList, func(p) { not Principal.equal(p, canisterId) });
-                if (newCallerList.size() == 0) {
-                    userRegistrations.delete(caller);
-                } else {
-                    userRegistrations.put(caller, newCallerList);
-                };
-                
-                // Add to new owner's list
-                switch (userRegistrations.get(newOwner)) {
-                    case null {
-                        userRegistrations.put(newOwner, [canisterId]);
-                    };
-                    case (?ownerList) {
-                        // Check if already in new owner's list
-                        let alreadyExists = Array.find<Principal>(ownerList, func(p) { Principal.equal(p, canisterId) });
-                        if (alreadyExists == null) {
-                            userRegistrations.put(newOwner, Array.append(ownerList, [canisterId]));
-                        };
-                    };
-                };
-                
+            case (?entry) {
+                ignore walletRemove(caller, canisterId);
+                walletAdd(newOwner, canisterId, entry.appId);
                 #Ok;
             };
         };
@@ -979,37 +1191,622 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     public shared ({ caller }) func registerManagerFor(user: Principal, canisterId: Principal): async { #Ok; #Err: Text } {
         if (not isAuthorizedForCaller(caller)) { return #Err("Not authorized"); };
         if (Principal.isAnonymous(user)) { return #Err("Cannot register for anonymous"); };
-        
-        switch (userRegistrations.get(user)) {
-            case null {
-                userRegistrations.put(user, [canisterId]);
-                #Ok;
-            };
-            case (?existingList) {
-                let alreadyExists = Array.find<Principal>(existingList, func(p) { Principal.equal(p, canisterId) });
-                if (alreadyExists != null) { return #Ok; };
-                userRegistrations.put(user, Array.append(existingList, [canisterId]));
-                #Ok;
-            };
-        };
+        walletAdd(user, canisterId, "");
+        #Ok;
     };
     
     // Deregister a manager canister from a user's bookmarks (callable by authorized canisters)
     public shared ({ caller }) func deregisterManagerFor(user: Principal, canisterId: Principal): async { #Ok; #Err: Text } {
         if (not isAuthorizedForCaller(caller)) { return #Err("Not authorized"); };
         if (Principal.isAnonymous(user)) { return #Err("Cannot deregister for anonymous"); };
-        
-        switch (userRegistrations.get(user)) {
-            case null { #Ok; }; // Nothing to remove
-            case (?existingList) {
-                let newList = Array.filter<Principal>(existingList, func(p) { not Principal.equal(p, canisterId) });
-                if (newList.size() == 0) {
-                    userRegistrations.delete(user);
-                } else {
-                    userRegistrations.put(user, newList);
+        ignore walletRemove(user, canisterId);
+        #Ok;
+    };
+
+    // ============================================
+    // MULTI-APP: APP REGISTRY
+    // ============================================
+
+    // Get all apps (public)
+    public query func getApps(): async [AppInfo] {
+        apps;
+    };
+
+    // Get single app by ID (public)
+    public query func getApp(appId: Text): async ?AppInfo {
+        getAppById(appId);
+    };
+
+    // Add a new app (admin only)
+    public shared ({ caller }) func addApp(app: AppInfo): async () {
+        assert(isAdminOrGovernance(caller));
+        // Check for duplicate appId
+        let existing = getAppById(app.appId);
+        assert(existing == null); // appId must be unique
+        apps := Array.append(apps, [app]);
+    };
+
+    // Update an existing app (admin only)
+    public shared ({ caller }) func updateApp(appId: Text, app: AppInfo): async () {
+        assert(isAdminOrGovernance(caller));
+        assert(app.appId == appId); // Can't change appId
+        apps := Array.map<AppInfo, AppInfo>(apps, func(a) {
+            if (a.appId == appId) { app } else { a };
+        });
+    };
+
+    // Remove an app (admin only)
+    public shared ({ caller }) func removeApp(appId: Text): async () {
+        assert(isAdmin(caller));
+        apps := Array.filter<AppInfo>(apps, func(a) { a.appId != appId });
+    };
+
+    // Enable/disable minting for an app (admin only)
+    public shared ({ caller }) func setAppEnabled(appId: Text, enabled: Bool): async () {
+        assert(isAdminOrGovernance(caller));
+        apps := Array.map<AppInfo, AppInfo>(apps, func(a) {
+            if (a.appId == appId) {
+                {
+                    appId = a.appId;
+                    name = a.name;
+                    description = a.description;
+                    iconUrl = a.iconUrl;
+                    mintPriceE8s = a.mintPriceE8s;
+                    premiumMintPriceE8s = a.premiumMintPriceE8s;
+                    viewUrl = a.viewUrl;
+                    manageUrl = a.manageUrl;
+                    mintUrl = a.mintUrl;
+                    createdAt = a.createdAt;
+                    enabled = enabled;
                 };
-                #Ok;
+            } else { a };
+        });
+    };
+
+    // Set pricing for an app (admin only)
+    public shared ({ caller }) func setAppPricing(appId: Text, mintPrice: Nat64, premiumMintPrice: Nat64): async () {
+        assert(isAdminOrGovernance(caller));
+        apps := Array.map<AppInfo, AppInfo>(apps, func(a) {
+            if (a.appId == appId) {
+                {
+                    appId = a.appId;
+                    name = a.name;
+                    description = a.description;
+                    iconUrl = a.iconUrl;
+                    mintPriceE8s = mintPrice;
+                    premiumMintPriceE8s = premiumMintPrice;
+                    viewUrl = a.viewUrl;
+                    manageUrl = a.manageUrl;
+                    mintUrl = a.mintUrl;
+                    createdAt = a.createdAt;
+                    enabled = a.enabled;
+                };
+            } else { a };
+        });
+    };
+
+    // ============================================
+    // MULTI-APP: APP VERSIONS
+    // ============================================
+
+    // Get all versions for an app (public, no WASM blobs)
+    public query func getAppVersions(appId: Text): async [AppVersionInfo] {
+        let versions = getVersionsForApp(appId);
+        Array.map<AppVersion, AppVersionInfo>(versions, func(v) { versionToInfo(v, appId) });
+    };
+
+    // Get a specific version (public, no WASM blob)
+    public query func getAppVersion(appId: Text, major: Nat, minor: Nat, patch: Nat): async ?AppVersionInfo {
+        switch (findVersion(appId, major, minor, patch)) {
+            case null { null };
+            case (?v) { ?versionToInfo(v, appId) };
+        };
+    };
+
+    // Get the latest version that has a WASM blob (public)
+    public query func getLatestAppVersion(appId: Text): async ?AppVersionInfo {
+        switch (getLatestVersionWithWasm(appId)) {
+            case null { null };
+            case (?v) { ?versionToInfo(v, appId) };
+        };
+    };
+
+    // Check if a version has a WASM blob (public)
+    public query func hasAppVersionWasm(appId: Text, major: Nat, minor: Nat, patch: Nat): async Bool {
+        appVersionWasmsMap.get(makeVersionKey(appId, major, minor, patch)) != null;
+    };
+
+    // Add a new version (admin only) - inserted at the beginning (newest first)
+    public shared ({ caller }) func addAppVersion(appId: Text, input: AppVersionInput): async () {
+        assert(isAdminOrGovernance(caller));
+        // Ensure app exists
+        assert(getAppById(appId) != null);
+        let version: AppVersion = {
+            major = input.major;
+            minor = input.minor;
+            patch = input.patch;
+            wasmHash = input.wasmHash;
+            wasmUrl = input.wasmUrl;
+            sourceUrl = input.sourceUrl;
+            releaseNotes = input.releaseNotes;
+            releaseDate = input.releaseDate;
+            wasmSize = 0;
+        };
+        let existing = getVersionsForApp(appId);
+        // Check for duplicate version number
+        let dup = Array.find<AppVersion>(existing, func(v) { v.major == input.major and v.minor == input.minor and v.patch == input.patch });
+        assert(dup == null);
+        // Prepend (newest first)
+        setVersionsForApp(appId, Array.append([version], existing));
+    };
+
+    // Update version metadata (admin only) - does NOT change WASM blob
+    public shared ({ caller }) func updateAppVersion(appId: Text, major: Nat, minor: Nat, patch: Nat, input: AppVersionInput): async () {
+        assert(isAdminOrGovernance(caller));
+        let versions = getVersionsForApp(appId);
+        let key = makeVersionKey(appId, major, minor, patch);
+        let currentWasmSize = switch (appVersionWasmsMap.get(key)) {
+            case null { 0 };
+            case (?blob) { blob.size() };
+        };
+        setVersionsForApp(appId, Array.map<AppVersion, AppVersion>(versions, func(v) {
+            if (v.major == major and v.minor == minor and v.patch == patch) {
+                {
+                    major = input.major;
+                    minor = input.minor;
+                    patch = input.patch;
+                    wasmHash = input.wasmHash;
+                    wasmUrl = input.wasmUrl;
+                    sourceUrl = input.sourceUrl;
+                    releaseNotes = input.releaseNotes;
+                    releaseDate = input.releaseDate;
+                    wasmSize = currentWasmSize;
+                };
+            } else { v };
+        }));
+    };
+
+    // Remove a version (admin only)
+    public shared ({ caller }) func removeAppVersion(appId: Text, major: Nat, minor: Nat, patch: Nat): async () {
+        assert(isAdmin(caller));
+        let versions = getVersionsForApp(appId);
+        setVersionsForApp(appId, Array.filter<AppVersion>(versions, func(v) {
+            not (v.major == major and v.minor == minor and v.patch == patch);
+        }));
+        // Also remove WASM blob if any
+        let key = makeVersionKey(appId, major, minor, patch);
+        appVersionWasmsMap.delete(key);
+    };
+
+    // Upload WASM blob for a version (admin only)
+    public shared ({ caller }) func uploadAppVersionWasm(appId: Text, major: Nat, minor: Nat, patch: Nat, wasm: Blob): async () {
+        assert(isAdminOrGovernance(caller));
+        // Ensure version exists
+        assert(findVersion(appId, major, minor, patch) != null);
+        let key = makeVersionKey(appId, major, minor, patch);
+        appVersionWasmsMap.put(key, wasm);
+        // Update wasmSize in version metadata
+        let versions = getVersionsForApp(appId);
+        setVersionsForApp(appId, Array.map<AppVersion, AppVersion>(versions, func(v) {
+            if (v.major == major and v.minor == minor and v.patch == patch) {
+                {
+                    major = v.major;
+                    minor = v.minor;
+                    patch = v.patch;
+                    wasmHash = v.wasmHash;
+                    wasmUrl = v.wasmUrl;
+                    sourceUrl = v.sourceUrl;
+                    releaseNotes = v.releaseNotes;
+                    releaseDate = v.releaseDate;
+                    wasmSize = wasm.size();
+                };
+            } else { v };
+        }));
+    };
+
+    // Clear WASM blob for a version to free memory (admin only)
+    public shared ({ caller }) func clearAppVersionWasm(appId: Text, major: Nat, minor: Nat, patch: Nat): async () {
+        assert(isAdminOrGovernance(caller));
+        let key = makeVersionKey(appId, major, minor, patch);
+        appVersionWasmsMap.delete(key);
+        // Update wasmSize to 0
+        let versions = getVersionsForApp(appId);
+        setVersionsForApp(appId, Array.map<AppVersion, AppVersion>(versions, func(v) {
+            if (v.major == major and v.minor == minor and v.patch == patch) {
+                {
+                    major = v.major;
+                    minor = v.minor;
+                    patch = v.patch;
+                    wasmHash = v.wasmHash;
+                    wasmUrl = v.wasmUrl;
+                    sourceUrl = v.sourceUrl;
+                    releaseNotes = v.releaseNotes;
+                    releaseDate = v.releaseDate;
+                    wasmSize = 0;
+                };
+            } else { v };
+        }));
+    };
+
+    // ============================================
+    // MULTI-APP: IMMUTABLE MINT LOG
+    // ============================================
+
+    // Query mint log with filtering and paging (public)
+    public query func getMintLog(params: MintLogQuery): async MintLogResult {
+        let startIndex = switch (params.startIndex) { case null { 0 }; case (?s) { s } };
+        let limit = switch (params.limit) { case null { 50 }; case (?l) { if (l > 100) { 100 } else { l } } };
+        
+        let filtered = Array.filter<MintLogEntry>(mintLog, func(entry) {
+            switch (params.appIdFilter) {
+                case (?appId) { if (entry.appId != appId) { return false } };
+                case null {};
             };
+            switch (params.minterFilter) {
+                case (?minter) { if (not Principal.equal(entry.minter, minter)) { return false } };
+                case null {};
+            };
+            switch (params.fromTime) {
+                case (?from) { if (entry.mintedAt < from) { return false } };
+                case null {};
+            };
+            switch (params.toTime) {
+                case (?to) { if (entry.mintedAt > to) { return false } };
+                case null {};
+            };
+            true;
+        });
+        
+        let totalCount = filtered.size();
+        let buf = Buffer.Buffer<MintLogEntry>(limit);
+        var idx: Nat = 0;
+        var count: Nat = 0;
+        for (entry in filtered.vals()) {
+            if (idx >= startIndex and count < limit) {
+                buf.add(entry);
+                count += 1;
+            };
+            idx += 1;
+        };
+        
+        {
+            entries = Buffer.toArray(buf);
+            totalCount = totalCount;
+            hasMore = (startIndex + count) < totalCount;
+        };
+    };
+
+    // Get a specific mint log entry by index
+    public query func getMintLogEntry(index: Nat): async ?MintLogEntry {
+        if (index < mintLog.size()) { ?mintLog[index] } else { null };
+    };
+
+    // Lookup a minted canister by canister ID (fast, O(1))
+    public query func lookupMintedCanister(canisterId: Principal): async ?MintLogEntry {
+        switch (mintLogIndexMap.get(canisterId)) {
+            case null { null };
+            case (?index) {
+                if (index < mintLog.size()) { ?mintLog[index] } else { null };
+            };
+        };
+    };
+
+    // Quick check if a canister was minted by us
+    public query func wasMintedByUs(canisterId: Principal): async Bool {
+        mintLogIndexMap.get(canisterId) != null;
+    };
+
+    // Get total mint log count
+    public query func getMintLogCount(): async Nat {
+        mintLog.size();
+    };
+
+    // Get mint log count for a specific app
+    public query func getMintLogCountForApp(appId: Text): async Nat {
+        var count = 0;
+        for (entry in mintLog.vals()) {
+            if (entry.appId == appId) { count += 1 };
+        };
+        count;
+    };
+
+    // ============================================
+    // MULTI-APP: ENHANCED USER WALLET
+    // ============================================
+
+    // Get caller's full wallet (with app info)
+    public query ({ caller }) func getMyWallet(): async [UserCanisterEntry] {
+        walletGetEntries(caller);
+    };
+
+    // Get caller's wallet filtered by app
+    public query ({ caller }) func getMyWalletForApp(appId: Text): async [UserCanisterEntry] {
+        Array.filter<UserCanisterEntry>(walletGetEntries(caller), func(e) { e.appId == appId });
+    };
+
+    // Register a canister to the caller's wallet with app info
+    public shared ({ caller }) func registerCanister(canisterId: Principal, appId: Text): async { #Ok; #Err: Text } {
+        walletAdd(caller, canisterId, appId);
+        #Ok;
+    };
+
+    // Deregister a canister from the caller's wallet
+    public shared ({ caller }) func deregisterCanister(canisterId: Principal): async { #Ok; #Err: Text } {
+        if (walletRemove(caller, canisterId)) { #Ok } else { #Err("Canister not found in wallet") };
+    };
+
+    // Register a canister for another user (authorized callers only)
+    public shared ({ caller }) func registerCanisterFor(user: Principal, canisterId: Principal, appId: Text): async { #Ok; #Err: Text } {
+        if (not isAuthorizedForCaller(caller)) { return #Err("Not authorized") };
+        if (Principal.isAnonymous(user)) { return #Err("Cannot register for anonymous") };
+        walletAdd(user, canisterId, appId);
+        #Ok;
+    };
+
+    // Deregister a canister for another user (authorized callers only)
+    public shared ({ caller }) func deregisterCanisterFor(user: Principal, canisterId: Principal): async { #Ok; #Err: Text } {
+        if (not isAuthorizedForCaller(caller)) { return #Err("Not authorized") };
+        if (Principal.isAnonymous(user)) { return #Err("Cannot deregister for anonymous") };
+        ignore walletRemove(user, canisterId);
+        #Ok;
+    };
+
+    // Get wallet entries for a specific user (admin only)
+    public query ({ caller }) func getUserWallet(user: Principal): async [UserCanisterEntry] {
+        assert(isAdmin(caller));
+        walletGetEntries(user);
+    };
+
+    // Get all wallet entries (admin only)
+    public query ({ caller }) func getAllWallets(): async [(Principal, [UserCanisterEntry])] {
+        assert(isAdmin(caller));
+        Iter.toArray(userWalletMap.entries());
+    };
+
+    // ============================================
+    // MULTI-APP: GENERIC MINTING
+    // ============================================
+
+    // Mint a canister for any app
+    // If version is null, uses latest version with WASM blob
+    public shared ({ caller }) func mintCanister(
+        appId: Text,
+        versionMajor: ?Nat,
+        versionMinor: ?Nat,
+        versionPatch: ?Nat
+    ): async MintResult {
+        // 1. Validate app
+        let app = switch (getAppById(appId)) {
+            case null { return #Err(#AppNotFound) };
+            case (?a) { a };
+        };
+        if (not app.enabled) { return #Err(#AppDisabled) };
+
+        // 2. Resolve version
+        let version = switch (versionMajor, versionMinor, versionPatch) {
+            case (?maj, ?min, ?pat) {
+                switch (findVersion(appId, maj, min, pat)) {
+                    case null { return #Err(#VersionNotFound) };
+                    case (?v) { v };
+                };
+            };
+            case _ {
+                switch (getLatestVersionWithWasm(appId)) {
+                    case null { return #Err(#NoWasmForVersion) };
+                    case (?v) { v };
+                };
+            };
+        };
+
+        // 3. Get WASM blob
+        let wasmKey = makeVersionKey(appId, version.major, version.minor, version.patch);
+        let wasm = switch (appVersionWasmsMap.get(wasmKey)) {
+            case null { return #Err(#NoWasmForVersion) };
+            case (?w) { w };
+        };
+
+        // 4. Check cycles
+        if (Cycles.balance() < canisterCreationCycles) {
+            return #Err(#InsufficientCycles);
+        };
+
+        // Track financial metrics
+        var trackedIcpPaidE8s: Nat64 = 0;
+        var trackedIcpForCyclesE8s: Nat64 = 0;
+        var trackedIcpProfitE8s: Nat64 = 0;
+        var trackedIcpTransferFeesE8s: Nat64 = 0;
+        var trackedCyclesReceivedFromCmc: Nat = 0;
+        let cyclesBalanceBefore = Cycles.balance();
+        var wasPremium = false;
+
+        // 5. Process payment
+        if (paymentRequired) {
+            let userSubaccount = principalToSubaccount(caller);
+            
+            let isPremiumMember: Bool = switch (sneedPremiumCanisterId) {
+                case null { false };
+                case (?premCanisterId) {
+                    await* PremiumClient.isPremium(premiumCache, premCanisterId, caller);
+                };
+            };
+            wasPremium := isPremiumMember;
+            
+            let applicableFeeE8s: Nat64 = if (isPremiumMember) {
+                app.premiumMintPriceE8s;
+            } else {
+                app.mintPriceE8s;
+            };
+            
+            let userBalance = await ledger.icrc1_balance_of({
+                owner = Principal.fromActor(this);
+                subaccount = ?userSubaccount;
+            });
+            
+            if (userBalance < Nat64.toNat(applicableFeeE8s)) {
+                return #Err(#InsufficientPayment({
+                    required = applicableFeeE8s;
+                    provided = Nat64.fromNat(userBalance);
+                }));
+            };
+            
+            trackedIcpPaidE8s := applicableFeeE8s;
+            
+            let icpForCycles = await calculateIcpForCycles(targetCyclesAmount);
+            let actualIcpForCycles: Nat64 = if (icpForCycles > 0) { icpForCycles } else { 2_000_000 };
+            trackedIcpForCyclesE8s := actualIcpForCycles;
+            
+            let feeAmount: Nat64 = if (applicableFeeE8s > actualIcpForCycles + T.ICP_FEE * 2) {
+                applicableFeeE8s - actualIcpForCycles - T.ICP_FEE * 2;
+            } else { 0 };
+            trackedIcpProfitE8s := feeAmount;
+            trackedIcpTransferFeesE8s := T.ICP_FEE * 2;
+            
+            // Transfer ICP for cycles to factory's main account
+            if (actualIcpForCycles > 0) {
+                let cyclesTransfer = await ledger.icrc1_transfer({
+                    to = { owner = Principal.fromActor(this); subaccount = null };
+                    fee = ?Nat64.toNat(T.ICP_FEE);
+                    memo = null;
+                    from_subaccount = ?userSubaccount;
+                    created_at_time = null;
+                    amount = Nat64.toNat(actualIcpForCycles);
+                });
+                switch (cyclesTransfer) {
+                    case (#Err(_)) { return #Err(#TransferFailed("Failed to transfer ICP for cycles")) };
+                    case (#Ok(_)) {};
+                };
+            };
+            
+            // Transfer remaining ICP to fee destination
+            if (feeAmount > 0) {
+                let feeTransfer = await ledger.icrc1_transfer({
+                    to = feeDestination;
+                    fee = ?Nat64.toNat(T.ICP_FEE);
+                    memo = null;
+                    from_subaccount = ?userSubaccount;
+                    created_at_time = null;
+                    amount = Nat64.toNat(feeAmount);
+                });
+                switch (feeTransfer) {
+                    case (#Err(_)) {}; // Log but don't fail
+                    case (#Ok(_)) {};
+                };
+            };
+            
+            // Top up factory with cycles
+            if (actualIcpForCycles > 0) {
+                let topUpResult = await* topUpSelfWithCycles(actualIcpForCycles);
+                switch (topUpResult) {
+                    case (#Err(_)) {};
+                    case (#Ok(cyclesReceived)) {
+                        trackedCyclesReceivedFromCmc := cyclesReceived;
+                    };
+                };
+            };
+        };
+
+        // 6. Create canister
+        try {
+            let factoryPrincipal = Principal.fromActor(this);
+            
+            let createResult = await (with cycles = canisterCreationCycles) ic.create_canister({
+                settings = ?{
+                    controllers = ?[caller, factoryPrincipal];
+                    compute_allocation = null;
+                    memory_allocation = null;
+                    freezing_threshold = null;
+                };
+            });
+            
+            let newCanisterId = createResult.canister_id;
+
+            let emptyArgs: Blob = "\44\49\44\4c\00\00";
+            await ic.install_code({
+                mode = #install;
+                canister_id = newCanisterId;
+                wasm_module = wasm;
+                arg = emptyArgs;
+            });
+            
+            await ic.update_settings({
+                canister_id = newCanisterId;
+                settings = {
+                    controllers = ?[caller];
+                    compute_allocation = null;
+                    memory_allocation = null;
+                    freezing_threshold = null;
+                };
+            });
+
+            let cyclesBalanceAfter = Cycles.balance();
+            let accountId = computeAccountId(newCanisterId, null);
+
+            // Record in wallet
+            walletAdd(caller, newCanisterId, appId);
+
+            // Record in immutable mint log
+            addMintLogEntry(newCanisterId, caller, appId, version.major, version.minor, version.patch, trackedIcpPaidE8s, wasPremium);
+
+            // Record in old creation log too (for backward compat)
+            let createdAt = Time.now();
+            let logEntry: T.CreationLogEntry = {
+                canisterId = newCanisterId;
+                caller = caller;
+                createdAt = createdAt;
+                index = creationLogNextIndex;
+            };
+            creationLog := Array.append(creationLog, [logEntry]);
+            creationLogNextIndex += 1;
+            
+            let financialEntry: T.FinancialLogEntry = {
+                canisterId = newCanisterId;
+                index = financialLogNextIndex;
+                createdAt = createdAt;
+                icpPaidE8s = trackedIcpPaidE8s;
+                icpForCyclesE8s = trackedIcpForCyclesE8s;
+                icpProfitE8s = trackedIcpProfitE8s;
+                icpTransferFeesE8s = trackedIcpTransferFeesE8s;
+                cyclesReceivedFromCmc = trackedCyclesReceivedFromCmc;
+                cyclesSpentOnCreation = canisterCreationCycles;
+                cyclesBalanceBefore = cyclesBalanceBefore;
+                cyclesBalanceAfter = cyclesBalanceAfter;
+            };
+            financialLog := Array.append(financialLog, [financialEntry]);
+            financialLogNextIndex += 1;
+            
+            totalIcpPaidE8s += Nat64.toNat(trackedIcpPaidE8s);
+            totalIcpForCyclesE8s += Nat64.toNat(trackedIcpForCyclesE8s);
+            totalIcpProfitE8s += Nat64.toNat(trackedIcpProfitE8s);
+            totalIcpTransferFeesE8s += Nat64.toNat(trackedIcpTransferFeesE8s);
+            totalCyclesReceivedFromCmc += trackedCyclesReceivedFromCmc;
+            totalCyclesSpentOnCreation += canisterCreationCycles;
+
+            #Ok({
+                canisterId = newCanisterId;
+                accountId = accountId;
+            });
+        } catch (e) {
+            #Err(#CanisterCreationFailed(Error.message(e)));
+        };
+    };
+
+    // Get pricing info for an app (convenience method)
+    public func getAppMintPrice(appId: Text, user: Principal): async { regular: Nat64; premium: Nat64; applicable: Nat64; isPremium: Bool } {
+        let app = switch (getAppById(appId)) {
+            case null { return { regular = 0: Nat64; premium = 0: Nat64; applicable = 0: Nat64; isPremium = false } };
+            case (?a) { a };
+        };
+        let isPremiumMember: Bool = switch (sneedPremiumCanisterId) {
+            case null { false };
+            case (?canisterId) {
+                await* PremiumClient.isPremium(premiumCache, canisterId, user);
+            };
+        };
+        {
+            regular = app.mintPriceE8s;
+            premium = app.premiumMintPriceE8s;
+            applicable = if (isPremiumMember) { app.premiumMintPriceE8s } else { app.mintPriceE8s };
+            isPremium = isPremiumMember;
         };
     };
 
