@@ -567,6 +567,10 @@ export const idlFactory = ({ IDL }) => {
         getChoreLoggingOverrides: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Text, ChoreLoggingOverrides))], ['query']),
         setChoreLoggingOverride: IDL.Func([IDL.Text, ChoreLoggingOverrides], [], []),
         removeChoreLoggingOverride: IDL.Func([IDL.Text], [], []),
+
+        // Metadata Staleness
+        getMetadataStaleness: IDL.Func([], [IDL.Nat], ['query']),
+        setMetadataStaleness: IDL.Func([IDL.Nat], [], []),
     });
 };
 

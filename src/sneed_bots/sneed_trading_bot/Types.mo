@@ -490,6 +490,28 @@ module {
     };
 
     // ============================================
+    // CACHES (transient, for chore pipeline phases)
+    // ============================================
+
+    /// Cached token metadata with fetch timestamp.
+    /// Used by the metadata-refresh preparatory task so that subsequent
+    /// tasks can rely on fresh data without re-fetching.
+    public type CachedTokenMeta = {
+        entry: TokenRegistryEntry;
+        fetchedAt: Int;             // Time.now() when fetched
+    };
+
+    /// Cached swap quote/price with fetch timestamp.
+    /// Populated by the price-fetch preparatory task, consumed by
+    /// trade execution and rebalancer valuation within the same run.
+    public type CachedPrice = {
+        inputToken: Principal;
+        outputToken: Principal;
+        quote: SwapQuote;
+        fetchedAt: Int;
+    };
+
+    // ============================================
     // TRADE LOG
     // ============================================
 

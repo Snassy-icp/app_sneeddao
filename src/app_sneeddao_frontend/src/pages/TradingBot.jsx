@@ -1403,6 +1403,8 @@ function PortfolioSnapshotViewer({ getReadyBotActor, theme, accentColor }) {
 function LoggingSettingsPanel({ getReadyBotActor, theme, accentColor, choreStatuses }) {
     const [settings, setSettings] = useState(null);
     const [overrides, setOverrides] = useState([]);
+    const [metaStaleness, setMetaStaleness] = useState(null);
+    const [metaInput, setMetaInput] = useState('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
@@ -1412,14 +1414,18 @@ function LoggingSettingsPanel({ getReadyBotActor, theme, accentColor, choreStatu
         try {
             const bot = await getReadyBotActor();
             if (!bot) return;
-            const [s, o] = await Promise.all([
+            const [s, o, ms] = await Promise.all([
                 bot.getLoggingSettings(),
                 bot.getChoreLoggingOverrides(),
+                bot.getMetadataStaleness ? bot.getMetadataStaleness() : Promise.resolve(3600n),
             ]);
             setSettings(s);
             setOverrides(o);
+            const staleSec = Number(ms);
+            setMetaStaleness(staleSec);
+            setMetaInput(String(staleSec));
         } catch (err) {
-            setError('Failed to load logging settings: ' + err.message);
+            setError('Failed to load settings: ' + err.message);
         } finally {
             setLoading(false);
         }
@@ -1457,6 +1463,20 @@ function LoggingSettingsPanel({ getReadyBotActor, theme, accentColor, choreStatu
         finally { setSaving(false); }
     };
 
+    const handleSaveStaleness = async () => {
+        const val = parseInt(metaInput, 10);
+        if (isNaN(val) || val < 0) { setError('Staleness must be a non-negative number of seconds.'); return; }
+        setSaving(true); setError(''); setSuccess('');
+        try {
+            const bot = await getReadyBotActor();
+            await bot.setMetadataStaleness(BigInt(val));
+            setMetaStaleness(val);
+            setSuccess('Metadata staleness updated to ' + val + 's.');
+            setTimeout(() => setSuccess(''), 3000);
+        } catch (err) { setError('Failed to update staleness: ' + err.message); }
+        finally { setSaving(false); }
+    };
+
     const cardStyle = {
         background: theme.colors.cardGradient,
         borderRadius: '12px',
@@ -1474,9 +1494,46 @@ function LoggingSettingsPanel({ getReadyBotActor, theme, accentColor, choreStatu
         opacity: saving ? 0.6 : 1,
     });
 
+    const formatDuration = (secs) => {
+        if (secs >= 86400) return `${(secs / 86400).toFixed(1)} days`;
+        if (secs >= 3600) return `${(secs / 3600).toFixed(1)} hours`;
+        if (secs >= 60) return `${(secs / 60).toFixed(0)} min`;
+        return `${secs}s`;
+    };
+
     return (
         <div style={cardStyle}>
-            <h3 style={{ color: theme.colors.primaryText, margin: '0 0 12px 0', fontSize: '0.95rem', fontWeight: '600' }}>Logging Settings</h3>
+            <h3 style={{ color: theme.colors.primaryText, margin: '0 0 12px 0', fontSize: '0.95rem', fontWeight: '600' }}>Bot &amp; Logging Settings</h3>
+
+            {/* Metadata Staleness Setting */}
+            <div style={{ padding: '12px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}`, marginBottom: '16px' }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '4px' }}>Token Metadata Staleness</div>
+                <p style={{ margin: '0 0 8px 0', fontSize: '0.75rem', color: theme.colors.mutedText, lineHeight: '1.4' }}>
+                    How old cached token metadata (symbol, decimals, fees) can be before it's re-fetched at the start of each chore run. Lower values mean fresher data but more network calls.
+                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                        type="number" min="0" step="60"
+                        value={metaInput}
+                        onChange={(e) => setMetaInput(e.target.value)}
+                        disabled={saving || loading}
+                        style={{ width: '100px', padding: '4px 8px', fontSize: '0.8rem', background: theme.colors.inputBg, border: `1px solid ${theme.colors.border}`, borderRadius: '6px', color: theme.colors.primaryText }}
+                    />
+                    <span style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>seconds</span>
+                    {metaStaleness != null && <span style={{ fontSize: '0.72rem', color: theme.colors.mutedText }}>({formatDuration(metaStaleness)})</span>}
+                    <button
+                        disabled={saving || metaInput === String(metaStaleness)}
+                        onClick={handleSaveStaleness}
+                        style={{
+                            padding: '4px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: '500',
+                            border: `1px solid ${accentColor}40`, background: `${accentColor}15`, color: accentColor,
+                            opacity: saving || metaInput === String(metaStaleness) ? 0.5 : 1,
+                        }}
+                    >Save</button>
+                </div>
+            </div>
+
+            <h4 style={{ color: theme.colors.primaryText, margin: '0 0 8px 0', fontSize: '0.88rem', fontWeight: '600' }}>Logging</h4>
             <p style={{ margin: '0 0 12px 0', fontSize: '0.82rem', color: theme.colors.secondaryText, lineHeight: '1.5' }}>
                 Control what gets logged. Master toggles apply globally. Per-chore overrides let you enable or disable logging for specific chores.
             </p>

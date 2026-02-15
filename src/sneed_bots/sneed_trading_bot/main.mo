@@ -100,6 +100,25 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     // Per-chore logging overrides: choreId -> overrides
     var choreLoggingOverrides: [(Text, T.ChoreLoggingOverrides)] = [];
 
+    // Metadata staleness threshold (seconds). Metadata older than this is re-fetched.
+    var metadataStalenessSeconds: Nat = 3600; // 1 hour
+
+    // ============================================
+    // TRANSIENT CACHES (cleared on canister upgrade)
+    // ============================================
+
+    // Token metadata cache: Principal -> { entry, fetchedAt }
+    transient var _tokenMetaCache: [(Principal, T.CachedTokenMeta)] = [];
+
+    // Price/quote cache: pairKey -> { inputToken, outputToken, quote, fetchedAt }
+    transient var _priceCache: [(Text, T.CachedPrice)] = [];
+
+    // Preparatory task progress tracking (per chore instance)
+    transient var _prep_metaIndex: [(Text, Nat)] = [];
+    transient var _prep_priceIndex: [(Text, Nat)] = [];
+    transient var _trade_phase: [(Text, Nat)] = []; // 0=metadata, 1=prices, 2=actions
+    transient var _rebal_phase: [(Text, Nat)] = []; // 0=metadata, 1=prices, 2=execute
+
     // ============================================
     // PER-INSTANCE SETTINGS HELPERS
     // ============================================
@@ -417,26 +436,86 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         Array.find<T.TokenRegistryEntry>(tokenRegistry, func(e) { e.ledgerCanisterId == token })
     };
 
-    /// Get token info from registry, or fetch metadata from the ledger on-the-fly.
-    /// This ensures quotes and trades work even if tokens aren't pre-registered.
-    func getTokenInfoOrFetch(token: Principal): async T.TokenRegistryEntry {
-        switch (getTokenInfo(token)) {
-            case (?entry) { entry };
-            case null {
-                let ledger = getLedger(token);
-                let fee = await ledger.icrc1_fee();
-                let decimals = await ledger.icrc1_decimals();
-                let symbol = await ledger.icrc1_symbol();
-                let entry: T.TokenRegistryEntry = {
-                    ledgerCanisterId = token;
-                    symbol = symbol;
-                    decimals = decimals;
-                    fee = fee;
-                };
-                logEngine.logDebug("dex", "Fetched metadata for unregistered token " # symbol # " (" # Principal.toText(token) # "): fee=" # Nat.toText(fee) # " decimals=" # Nat8.toText(decimals), null, []);
-                entry
+    // ============================================
+    // CACHE HELPERS
+    // ============================================
+
+    /// Get cached token metadata (returns null if missing or stale).
+    func getCachedMeta(token: Principal): ?T.TokenRegistryEntry {
+        let now = Time.now();
+        let stalenessNanos = metadataStalenessSeconds * 1_000_000_000;
+        for ((p, cached) in _tokenMetaCache.vals()) {
+            if (p == token and (now - cached.fetchedAt) < stalenessNanos) {
+                return ?cached.entry;
             };
-        }
+        };
+        null
+    };
+
+    /// Store token metadata in the transient cache.
+    func setCachedMeta(token: Principal, entry: T.TokenRegistryEntry) {
+        let cached: T.CachedTokenMeta = { entry = entry; fetchedAt = Time.now() };
+        var found = false;
+        let updated = Array.map<(Principal, T.CachedTokenMeta), (Principal, T.CachedTokenMeta)>(
+            _tokenMetaCache,
+            func((p, c)) { if (p == token) { found := true; (p, cached) } else { (p, c) } }
+        );
+        _tokenMetaCache := if (found) updated else Array.append(updated, [(token, cached)]);
+    };
+
+    /// Get a cached price/quote for a token pair (returns null if not cached).
+    func getCachedQuote(inputToken: Principal, outputToken: Principal): ?T.SwapQuote {
+        let key = pairKey(inputToken, outputToken);
+        for ((k, cached) in _priceCache.vals()) {
+            if (k == key) return ?cached.quote;
+        };
+        null
+    };
+
+    /// Store a price/quote in the transient cache.
+    func setCachedQuote(inputToken: Principal, outputToken: Principal, quote: T.SwapQuote) {
+        let key = pairKey(inputToken, outputToken);
+        let cached: T.CachedPrice = { inputToken = inputToken; outputToken = outputToken; quote = quote; fetchedAt = Time.now() };
+        var found = false;
+        let updated = Array.map<(Text, T.CachedPrice), (Text, T.CachedPrice)>(
+            _priceCache,
+            func((k, c)) { if (k == key) { found := true; (k, cached) } else { (k, c) } }
+        );
+        _priceCache := if (found) updated else Array.append(updated, [(key, cached)]);
+    };
+
+    /// Clear the price cache (called at the start of each chore run).
+    func clearPriceCache() {
+        _priceCache := [];
+    };
+
+    /// Get token info from registry, then metadata cache, then fetch on-the-fly.
+    /// Results are stored in the metadata cache for future lookups.
+    func getTokenInfoOrFetch(token: Principal): async T.TokenRegistryEntry {
+        // 1. Check token registry first (user-managed, always authoritative)
+        switch (getTokenInfo(token)) {
+            case (?entry) { return entry };
+            case null {};
+        };
+        // 2. Check transient metadata cache (with staleness)
+        switch (getCachedMeta(token)) {
+            case (?entry) { return entry };
+            case null {};
+        };
+        // 3. Fetch from ledger and cache
+        let ledger = getLedger(token);
+        let fee = await ledger.icrc1_fee();
+        let decimals = await ledger.icrc1_decimals();
+        let symbol = await ledger.icrc1_symbol();
+        let entry: T.TokenRegistryEntry = {
+            ledgerCanisterId = token;
+            symbol = symbol;
+            decimals = decimals;
+            fee = fee;
+        };
+        setCachedMeta(token, entry);
+        logEngine.logDebug("dex", "Fetched metadata for " # symbol # " (" # Principal.toText(token) # "): fee=" # Nat.toText(fee) # " decimals=" # Nat8.toText(decimals), null, []);
+        entry
     };
 
     /// Check if a DEX is enabled.
@@ -876,9 +955,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             return false;
         };
 
-        // Get quote
-        let quoteOpt = switch (action.preferredDex) {
+        // Get quote — check price cache first, then fetch fresh
+        let quoteOpt: ?T.SwapQuote = switch (action.preferredDex) {
             case (?dexId) {
+                // User specified a DEX — always get a fresh quote for the actual trade size
                 if (dexId == T.DexId.ICPSwap) {
                     await getICPSwapQuote(action.inputToken, outputToken, actualTradeSize)
                 } else if (dexId == T.DexId.KongSwap) {
@@ -886,7 +966,22 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 } else { null }
             };
             case null {
-                await getBestQuote(action.inputToken, outputToken, actualTradeSize)
+                // No preferred DEX — use cached quote's DEX if available, otherwise getBestQuote
+                switch (getCachedQuote(action.inputToken, outputToken)) {
+                    case (?cachedQ) {
+                        // Re-fetch a quote on the same DEX but with actual trade size
+                        if (cachedQ.dexId == T.DexId.ICPSwap) {
+                            await getICPSwapQuote(action.inputToken, outputToken, actualTradeSize)
+                        } else if (cachedQ.dexId == T.DexId.KongSwap) {
+                            await getKongQuote(action.inputToken, outputToken, actualTradeSize)
+                        } else {
+                            await getBestQuote(action.inputToken, outputToken, actualTradeSize)
+                        }
+                    };
+                    case null {
+                        await getBestQuote(action.inputToken, outputToken, actualTradeSize)
+                    };
+                }
             };
         };
 
@@ -1118,15 +1213,26 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         for (target in targets.vals()) {
             let balance = await getBalance(target.token, null); // Main account
 
-            // Get value in denomination token
+            // Get value in denomination token — use cached price if available
             let value = if (target.token == denomToken) {
                 balance
             } else {
-                // Get spot price: how much denomToken per 1 unit of this token
-                let quoteOpt = await getBestQuote(target.token, denomToken, balance);
-                switch (quoteOpt) {
-                    case (?q) { q.expectedOutput };
-                    case null { 0 }; // Can't price this token, treat as 0
+                // Try cached quote first (populated by price-fetch phase)
+                switch (getCachedQuote(target.token, denomToken)) {
+                    case (?cachedQ) {
+                        // Scale cached price to actual balance: (balance * cachedQ.expectedOutput) / cachedQ.inputAmount
+                        if (cachedQ.inputAmount > 0) {
+                            (balance * cachedQ.expectedOutput) / cachedQ.inputAmount
+                        } else { 0 }
+                    };
+                    case null {
+                        // Fallback: fetch a fresh quote (should rarely happen after pipeline)
+                        let quoteOpt = await getBestQuote(target.token, denomToken, balance);
+                        switch (quoteOpt) {
+                            case (?q) { q.expectedOutput };
+                            case null { 0 };
+                        };
+                    };
                 };
             };
 
@@ -1219,7 +1325,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         let maxTrade = getRebalMaxTrade(instanceId);
         let minTrade = getRebalMinTrade(instanceId);
 
-        let fee = switch (getTokenInfo(sellToken.token)) { case (?i) i.fee; case null 0 };
+        let fee = switch (getTokenInfo(sellToken.token)) {
+            case (?i) i.fee;
+            case null { switch (getCachedMeta(sellToken.token)) { case (?e) e.fee; case null 0 } };
+        };
         let maxAffordable = if (sellToken.balance > fee * 3) { sellToken.balance - fee * 3 } else { 0 };
         let tradeSize = Nat.min(maxTrade, Nat.min(maxAffordable, sellToken.balance / 4)); // Don't sell more than 25% at once
 
@@ -1357,6 +1466,157 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     };
 
     // ============================================
+    // PREPARATORY TASKS — METADATA & PRICE CACHING
+    // ============================================
+
+    /// Get batch index progress for a preparatory task instance.
+    func _prepGetIndex(map: [(Text, Nat)], key: Text): Nat {
+        for ((k, v) in map.vals()) { if (k == key) return v };
+        0
+    };
+
+    /// Set batch index progress for a preparatory task instance.
+    func _prepSetIndex(map: [(Text, Nat)], key: Text, idx: Nat): [(Text, Nat)] {
+        var found = false;
+        let updated = Array.map<(Text, Nat), (Text, Nat)>(map,
+            func((k, v)) { if (k == key) { found := true; (k, idx) } else { (k, v) } }
+        );
+        if (found) updated else Array.append(updated, [(key, idx)])
+    };
+
+    /// Build a task function that refreshes token metadata in batches of 10.
+    /// Returns #Continue while more tokens remain, #Done when all are fresh.
+    func _makeRefreshMetadataTask(taskKey: Text, tokens: [Principal]): () -> async BotChoreTypes.TaskAction {
+        func(): async BotChoreTypes.TaskAction {
+            let startIdx = _prepGetIndex(_prep_metaIndex, taskKey);
+            let batchEnd = Nat.min(startIdx + 10, tokens.size());
+            var i = startIdx;
+            while (i < batchEnd) {
+                let token = tokens[i];
+                // Check registry first, then cache with staleness
+                switch (getTokenInfo(token)) {
+                    case (?_) {}; // Already in registry, skip
+                    case null {
+                        switch (getCachedMeta(token)) {
+                            case (?_) {}; // Fresh in cache, skip
+                            case null {
+                                // Fetch from ledger and cache
+                                try {
+                                    ignore await getTokenInfoOrFetch(token);
+                                } catch (e) {
+                                    logEngine.logWarning("prep", "Failed to fetch metadata for " # Principal.toText(token) # ": " # Error.message(e), null, []);
+                                };
+                            };
+                        };
+                    };
+                };
+                i += 1;
+            };
+            _prep_metaIndex := _prepSetIndex(_prep_metaIndex, taskKey, batchEnd);
+            if (batchEnd >= tokens.size()) {
+                // Clean up index tracking
+                _prep_metaIndex := Array.filter<(Text, Nat)>(_prep_metaIndex, func((k, _)) { k != taskKey });
+                #Done
+            } else {
+                #Continue
+            }
+        }
+    };
+
+    /// Build a task function that fetches price quotes in batches of 10.
+    /// Returns #Continue while more pairs remain, #Done when all are fetched.
+    func _makeFetchPricesTask(taskKey: Text, pairs: [(Principal, Principal)]): () -> async BotChoreTypes.TaskAction {
+        func(): async BotChoreTypes.TaskAction {
+            let startIdx = _prepGetIndex(_prep_priceIndex, taskKey);
+            let batchEnd = Nat.min(startIdx + 10, pairs.size());
+            var i = startIdx;
+            while (i < batchEnd) {
+                let (inputToken, outputToken) = pairs[i];
+                // Skip if we already have a cached quote for this pair
+                switch (getCachedQuote(inputToken, outputToken)) {
+                    case (?_) {};
+                    case null {
+                        try {
+                            // Use a reference amount of 1 full token unit for price discovery
+                            let info = await getTokenInfoOrFetch(inputToken);
+                            let oneUnit = Nat.pow(10, Nat8.toNat(info.decimals));
+                            let quoteOpt = await getBestQuote(inputToken, outputToken, oneUnit);
+                            switch (quoteOpt) {
+                                case (?q) { setCachedQuote(inputToken, outputToken, q) };
+                                case null {
+                                    logEngine.logWarning("prep", "No quote for " # Principal.toText(inputToken) # " -> " # Principal.toText(outputToken), null, []);
+                                };
+                            };
+                        } catch (e) {
+                            logEngine.logWarning("prep", "Price fetch failed for pair: " # Error.message(e), null, []);
+                        };
+                    };
+                };
+                i += 1;
+            };
+            _prep_priceIndex := _prepSetIndex(_prep_priceIndex, taskKey, batchEnd);
+            if (batchEnd >= pairs.size()) {
+                _prep_priceIndex := Array.filter<(Text, Nat)>(_prep_priceIndex, func((k, _)) { k != taskKey });
+                #Done
+            } else {
+                #Continue
+            }
+        }
+    };
+
+    /// Collect all unique token principals from a list of trade actions.
+    func _collectTokens(actions: [T.ActionConfig]): [Principal] {
+        let buf = Buffer.Buffer<Principal>(actions.size() * 2);
+        for (a in actions.vals()) {
+            var found = false;
+            for (t in buf.vals()) { if (t == a.inputToken) { found := true } };
+            if (not found) { buf.add(a.inputToken) };
+            switch (a.outputToken) {
+                case (?ot) {
+                    found := false;
+                    for (t in buf.vals()) { if (t == ot) { found := true } };
+                    if (not found) { buf.add(ot) };
+                };
+                case null {};
+            };
+        };
+        Buffer.toArray(buf)
+    };
+
+    /// Collect all unique (input, output) token pairs from trade actions.
+    func _collectPairs(actions: [T.ActionConfig]): [(Principal, Principal)] {
+        let buf = Buffer.Buffer<(Principal, Principal)>(actions.size());
+        for (a in actions.vals()) {
+            switch (a.outputToken) {
+                case (?ot) {
+                    let key = pairKey(a.inputToken, ot);
+                    var found = false;
+                    for ((i, o) in buf.vals()) { if (pairKey(i, o) == key) { found := true } };
+                    if (not found) { buf.add((a.inputToken, ot)) };
+                };
+                case null {};
+            };
+        };
+        Buffer.toArray(buf)
+    };
+
+    /// Get/set the phase for a chore instance.
+    func _getPhase(phases: [(Text, Nat)], id: Text): Nat {
+        for ((k, v) in phases.vals()) { if (k == id) return v };
+        0
+    };
+    func _setPhase(phases: [(Text, Nat)], id: Text, phase: Nat): [(Text, Nat)] {
+        var found = false;
+        let updated = Array.map<(Text, Nat), (Text, Nat)>(phases,
+            func((k, v)) { if (k == id) { found := true; (k, phase) } else { (k, v) } }
+        );
+        if (found) updated else Array.append(updated, [(id, phase)])
+    };
+    func _clearPhase(phases: [(Text, Nat)], id: Text): [(Text, Nat)] {
+        Array.filter<(Text, Nat)>(phases, func((k, _)) { k != id })
+    };
+
+    // ============================================
     // CHORE CONDUCTOR — TRADE CHORE
     // ============================================
 
@@ -1432,30 +1692,106 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
                 let instanceId = ctx.choreId;
                 let src = "chore:" # instanceId;
+                let phase = _getPhase(_trade_phase, instanceId);
 
                 if (ctx.isTaskRunning) { return #ContinueIn(10) };
 
-                switch (ctx.lastCompletedTask) {
-                    case null {
-                        // First invocation: load enabled actions
-                        let allActions = getTradeActionsForInstance(instanceId);
-                        let enabledActions = Array.filter<T.ActionConfig>(allActions, func(a) { a.enabled });
-                        _trade_setState(instanceId, { actions = enabledActions; index = 0 });
+                // Phase 0: Initialize and start metadata refresh
+                if (phase == 0) {
+                    switch (ctx.lastCompletedTask) {
+                        case null {
+                            // First invocation: load enabled actions and start metadata refresh
+                            let allActions = getTradeActionsForInstance(instanceId);
+                            let enabledActions = Array.filter<T.ActionConfig>(allActions, func(a) { a.enabled });
+                            _trade_setState(instanceId, { actions = enabledActions; index = 0 });
 
-                        logEngine.logInfo(src, "Starting: " # Nat.toText(enabledActions.size()) # " enabled actions", null, []);
+                            logEngine.logInfo(src, "Starting: " # Nat.toText(enabledActions.size()) # " enabled actions", null, []);
+                            if (enabledActions.size() == 0) {
+                                _trade_phase := _clearPhase(_trade_phase, instanceId);
+                                return #Done;
+                            };
 
-                        if (enabledActions.size() == 0) { return #Done };
-                        _trade_startCurrentTask(instanceId);
-                        return #ContinueIn(10);
+                            // Clear price cache for this run
+                            clearPriceCache();
+
+                            let tokens = _collectTokens(enabledActions);
+                            if (tokens.size() > 0) {
+                                let taskKey = "trade-meta-" # instanceId;
+                                let taskFn = _makeRefreshMetadataTask(taskKey, tokens);
+                                choreEngine.setPendingTask(instanceId, taskKey, taskFn);
+                                logEngine.logDebug(src, "Phase 0: refreshing metadata for " # Nat.toText(tokens.size()) # " tokens", null, []);
+                                return #ContinueIn(5);
+                            } else {
+                                // No tokens to refresh, skip to phase 1
+                                _trade_phase := _setPhase(_trade_phase, instanceId, 1);
+                                return #ContinueIn(0);
+                            };
+                        };
+                        case (?_) {
+                            // Metadata refresh completed, advance to phase 1
+                            _trade_phase := _setPhase(_trade_phase, instanceId, 1);
+                            logEngine.logDebug(src, "Phase 0 complete: metadata refreshed", null, []);
+                            return #ContinueIn(0);
+                        };
                     };
-                    case (?_) {
+                };
+
+                // Phase 1: Fetch prices for all pairs
+                if (phase == 1) {
+                    switch (ctx.lastCompletedTask) {
+                        case (?prevTask) {
+                            // Only enter phase 1 from phase 0 completion or initial
+                            if (Text.startsWith(prevTask.taskId, #text("trade-meta-")) or Text.startsWith(prevTask.taskId, #text("trade-prices-"))) {
+                                // If prevTask is a price task that completed, advance to phase 2
+                                if (Text.startsWith(prevTask.taskId, #text("trade-prices-"))) {
+                                    _trade_phase := _setPhase(_trade_phase, instanceId, 2);
+                                    logEngine.logDebug(src, "Phase 1 complete: prices fetched", null, []);
+                                    return #ContinueIn(0);
+                                };
+                            };
+                        };
+                        case null {};
+                    };
+
+                    // Start price fetching task
+                    let st = _trade_getState(instanceId);
+                    let pairs = _collectPairs(st.actions);
+                    if (pairs.size() > 0) {
+                        let taskKey = "trade-prices-" # instanceId;
+                        let taskFn = _makeFetchPricesTask(taskKey, pairs);
+                        choreEngine.setPendingTask(instanceId, taskKey, taskFn);
+                        logEngine.logDebug(src, "Phase 1: fetching prices for " # Nat.toText(pairs.size()) # " pairs", null, []);
+                        return #ContinueIn(5);
+                    } else {
+                        _trade_phase := _setPhase(_trade_phase, instanceId, 2);
+                        return #ContinueIn(0);
+                    };
+                };
+
+                // Phase 2: Execute trade actions one by one
+                switch (ctx.lastCompletedTask) {
+                    case (?prevTask) {
+                        // Check if previous was a price task (entering phase 2) or a trade action
+                        if (Text.startsWith(prevTask.taskId, #text("trade-prices-")) or Text.startsWith(prevTask.taskId, #text("trade-meta-"))) {
+                            // Just entered phase 2, start first action
+                            _trade_startCurrentTask(instanceId);
+                            return #ContinueIn(10);
+                        };
+
+                        // A trade action completed, advance to next
                         let st = _trade_getState(instanceId);
                         let nextIdx = st.index + 1;
                         _trade_setState(instanceId, { st with index = nextIdx });
                         if (nextIdx >= st.actions.size()) {
                             logEngine.logInfo(src, "Completed: all actions processed", null, []);
+                            _trade_phase := _clearPhase(_trade_phase, instanceId);
                             return #Done;
                         };
+                        _trade_startCurrentTask(instanceId);
+                        return #ContinueIn(10);
+                    };
+                    case null {
+                        // Shouldn't reach here in phase 2 without a completed task, but handle gracefully
                         _trade_startCurrentTask(instanceId);
                         return #ContinueIn(10);
                     };
@@ -1473,12 +1809,120 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             defaultTaskTimeoutSeconds = 600; // 10 minutes
             conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
                 let instanceId = ctx.choreId;
+                let src = "chore:" # instanceId;
+                let phase = _getPhase(_rebal_phase, instanceId);
 
                 if (ctx.isTaskRunning) { return #ContinueIn(10) };
 
+                // Phase 0: Initialize and start metadata refresh
+                if (phase == 0) {
+                    switch (ctx.lastCompletedTask) {
+                        case null {
+                            let targets = getRebalTargets(instanceId);
+                            if (targets.size() == 0) {
+                                logEngine.logInfo(src, "Rebalance skipped: no targets configured", null, []);
+                                _rebal_phase := _clearPhase(_rebal_phase, instanceId);
+                                return #Done;
+                            };
+
+                            // Clear price cache for this run
+                            clearPriceCache();
+
+                            // Collect all unique tokens: targets + denomination token
+                            let denomToken = getRebalDenomToken(instanceId);
+                            let buf = Buffer.Buffer<Principal>(targets.size() + 1);
+                            var denomFound = false;
+                            for (t in targets.vals()) {
+                                var dup = false;
+                                for (existing in buf.vals()) { if (existing == t.token) { dup := true } };
+                                if (not dup) { buf.add(t.token) };
+                                if (t.token == denomToken) { denomFound := true };
+                            };
+                            if (not denomFound) { buf.add(denomToken) };
+                            let tokens = Buffer.toArray(buf);
+
+                            if (tokens.size() > 0) {
+                                let taskKey = "rebal-meta-" # instanceId;
+                                let taskFn = _makeRefreshMetadataTask(taskKey, tokens);
+                                choreEngine.setPendingTask(instanceId, taskKey, taskFn);
+                                logEngine.logDebug(src, "Phase 0: refreshing metadata for " # Nat.toText(tokens.size()) # " tokens", null, []);
+                                return #ContinueIn(5);
+                            } else {
+                                _rebal_phase := _setPhase(_rebal_phase, instanceId, 1);
+                                return #ContinueIn(0);
+                            };
+                        };
+                        case (?_) {
+                            // Metadata refresh completed, advance to phase 1
+                            _rebal_phase := _setPhase(_rebal_phase, instanceId, 1);
+                            logEngine.logDebug(src, "Phase 0 complete: metadata refreshed", null, []);
+                            return #ContinueIn(0);
+                        };
+                    };
+                };
+
+                // Phase 1: Fetch prices for valuation pairs
+                if (phase == 1) {
+                    switch (ctx.lastCompletedTask) {
+                        case (?prevTask) {
+                            if (Text.startsWith(prevTask.taskId, #text("rebal-prices-"))) {
+                                // Price fetch completed, advance to phase 2
+                                _rebal_phase := _setPhase(_rebal_phase, instanceId, 2);
+                                logEngine.logDebug(src, "Phase 1 complete: prices fetched", null, []);
+                                return #ContinueIn(0);
+                            };
+                        };
+                        case null {};
+                    };
+
+                    // Build price pairs: each target token vs denomination token
+                    let targets = getRebalTargets(instanceId);
+                    let denomToken = getRebalDenomToken(instanceId);
+                    let pairBuf = Buffer.Buffer<(Principal, Principal)>(targets.size());
+                    for (t in targets.vals()) {
+                        if (t.token != denomToken) {
+                            let key = pairKey(t.token, denomToken);
+                            var dup = false;
+                            for ((i, o) in pairBuf.vals()) { if (pairKey(i, o) == key) { dup := true } };
+                            if (not dup) { pairBuf.add((t.token, denomToken)) };
+                        };
+                    };
+                    let pairs = Buffer.toArray(pairBuf);
+
+                    if (pairs.size() > 0) {
+                        let taskKey = "rebal-prices-" # instanceId;
+                        let taskFn = _makeFetchPricesTask(taskKey, pairs);
+                        choreEngine.setPendingTask(instanceId, taskKey, taskFn);
+                        logEngine.logDebug(src, "Phase 1: fetching prices for " # Nat.toText(pairs.size()) # " pairs", null, []);
+                        return #ContinueIn(5);
+                    } else {
+                        _rebal_phase := _setPhase(_rebal_phase, instanceId, 2);
+                        return #ContinueIn(0);
+                    };
+                };
+
+                // Phase 2: Execute rebalance using cached prices
                 switch (ctx.lastCompletedTask) {
+                    case (?prevTask) {
+                        if (Text.startsWith(prevTask.taskId, #text("rebal-prices-")) or Text.startsWith(prevTask.taskId, #text("rebal-meta-"))) {
+                            // Just entered phase 2, start the rebalance task
+                            let taskFn = func(): async BotChoreTypes.TaskAction {
+                                try {
+                                    ignore await executeRebalance(instanceId);
+                                    #Done
+                                } catch (e) {
+                                    #Error("Rebalance failed: " # Error.message(e))
+                                }
+                            };
+                            choreEngine.setPendingTask(instanceId, "rebalance-exec-" # Nat.toText(Int.abs(Time.now())), taskFn);
+                            return #ContinueIn(15);
+                        };
+                        // Rebalance execution completed
+                        _rebal_phase := _clearPhase(_rebal_phase, instanceId);
+                        return #Done;
+                    };
                     case null {
-                        // Start a single rebalance task
+                        // Shouldn't reach phase 2 without a completed task; start rebalance anyway
                         let taskFn = func(): async BotChoreTypes.TaskAction {
                             try {
                                 ignore await executeRebalance(instanceId);
@@ -1487,11 +1931,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                                 #Error("Rebalance failed: " # Error.message(e))
                             }
                         };
-                        choreEngine.setPendingTask(instanceId, "rebalance-" # Nat.toText(Int.abs(Time.now())), taskFn);
+                        choreEngine.setPendingTask(instanceId, "rebalance-exec-" # Nat.toText(Int.abs(Time.now())), taskFn);
                         return #ContinueIn(15);
-                    };
-                    case (?_) {
-                        return #Done;
                     };
                 };
             };
@@ -2599,6 +3040,24 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         assertPermission(msg.caller, T.TradingPermission.ManageLogs);
         choreLoggingOverrides := Array.filter<(Text, T.ChoreLoggingOverrides)>(choreLoggingOverrides, func(e: (Text, T.ChoreLoggingOverrides)): Bool { e.0 != choreId });
         logEngine.logInfo("settings", "Chore logging override removed for " # choreId, ?msg.caller, []);
+    };
+
+    // ============================================
+    // PUBLIC API — METADATA STALENESS
+    // ============================================
+
+    /// Get the current metadata staleness threshold (seconds).
+    public shared query (msg) func getMetadataStaleness(): async Nat {
+        assertPermission(msg.caller, T.TradingPermission.ViewPortfolio);
+        metadataStalenessSeconds
+    };
+
+    /// Set the metadata staleness threshold (seconds). Metadata older than
+    /// this will be re-fetched at the start of each chore run.
+    public shared (msg) func setMetadataStaleness(seconds: Nat): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageDexSettings);
+        metadataStalenessSeconds := seconds;
+        logEngine.logInfo("settings", "Metadata staleness set to " # Nat.toText(seconds) # "s", ?msg.caller, []);
     };
 
 };
