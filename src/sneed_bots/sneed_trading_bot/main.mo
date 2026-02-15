@@ -951,6 +951,147 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     };
 
     // ============================================
+    // PORTFOLIO SNAPSHOT — INTERNAL HELPERS
+    // ============================================
+
+    /// Append a portfolio snapshot (called internally).
+    /// Respects master and per-chore logging settings.
+    func appendPortfolioSnapshot(entry: {
+        trigger: Text;
+        tradeLogId: ?Nat;
+        phase: T.SnapshotPhase;
+        choreId: ?Text;
+        denominationToken: ?Principal;
+        totalValueIcpE8s: ?Nat;
+        totalValueUsdE8s: ?Nat;
+        totalValueDenomE8s: ?Nat;
+        tokens: [T.TokenSnapshot];
+    }): ?Nat {
+        if (not loggingSettings.portfolioLogEnabled) { return null };
+        // Check per-chore override
+        switch (entry.choreId) {
+            case (?cid) {
+                for ((id, ovr) in choreLoggingOverrides.vals()) {
+                    if (id == cid) {
+                        switch (ovr.portfolioLogEnabled) {
+                            case (?false) { return null };
+                            case (_) {};
+                        };
+                    };
+                };
+            };
+            case (null) {};
+        };
+
+        let id = portfolioSnapshotNextId;
+        portfolioSnapshotNextId += 1;
+        let full: T.PortfolioSnapshot = {
+            id = id;
+            timestamp = Time.now();
+            trigger = entry.trigger;
+            tradeLogId = entry.tradeLogId;
+            phase = entry.phase;
+            denominationToken = entry.denominationToken;
+            totalValueIcpE8s = entry.totalValueIcpE8s;
+            totalValueUsdE8s = entry.totalValueUsdE8s;
+            totalValueDenomE8s = entry.totalValueDenomE8s;
+            tokens = entry.tokens;
+        };
+        let buf = Buffer.fromArray<T.PortfolioSnapshot>(portfolioSnapshots);
+        buf.add(full);
+        if (buf.size() > loggingSettings.maxPortfolioLogEntries) {
+            let excess = buf.size() - loggingSettings.maxPortfolioLogEntries : Nat;
+            let trimmed = Buffer.Buffer<T.PortfolioSnapshot>(loggingSettings.maxPortfolioLogEntries);
+            var i = excess;
+            while (i < buf.size()) {
+                trimmed.add(buf.get(i));
+                i += 1;
+            };
+            portfolioSnapshots := Buffer.toArray(trimmed);
+        } else {
+            portfolioSnapshots := Buffer.toArray(buf);
+        };
+        ?id
+    };
+
+    /// Take token snapshots for a list of tokens. Uses cached metadata and prices.
+    /// Returns TokenSnapshot array.
+    func takeTokenSnapshots(tokens: [Principal]): async [T.TokenSnapshot] {
+        let snaps = Buffer.Buffer<T.TokenSnapshot>(tokens.size());
+        for (token in tokens.vals()) {
+            let balance = await getBalance(token, null); // Main account
+            let meta = getCachedMeta(token);
+            let symbol = switch (meta) { case (?m) m.symbol; case null { switch (getTokenInfo(token)) { case (?i) i.symbol; case null "?" } } };
+            let decimals: Nat8 = switch (meta) { case (?m) m.decimals; case null { switch (getTokenInfo(token)) { case (?i) i.decimals; case null 8 } } };
+
+            // Try to get price info from cached quotes (ICP as common denom)
+            let icpToken = Principal.fromText("ryjl3-tyaaa-aaaaa-aaaba-cai");
+            let priceIcpE8s: ?Nat = if (token == icpToken) {
+                // 1 ICP = 1 ICP, expressed as 10^8 (since spotPriceE8s = humanPrice * 10^outputDecimals)
+                ?(10 ** Nat8.toNat(decimals))
+            } else {
+                switch (getCachedQuote(token, icpToken)) {
+                    case (?q) {
+                        if (q.inputAmount > 0) {
+                            ?((q.expectedOutput * (10 ** Nat8.toNat(decimals))) / q.inputAmount)
+                        } else { null }
+                    };
+                    case null { null };
+                };
+            };
+
+            let valueIcpE8s: ?Nat = switch (priceIcpE8s) {
+                case (?p) { ?((balance * p) / (10 ** Nat8.toNat(decimals))) };
+                case null { null };
+            };
+
+            snaps.add({
+                token = token;
+                symbol = symbol;
+                decimals = decimals;
+                balance = balance;
+                priceIcpE8s = priceIcpE8s;
+                priceUsdE8s = null;
+                priceDenomE8s = null;
+                valueIcpE8s = valueIcpE8s;
+                valueUsdE8s = null;
+                valueDenomE8s = null;
+            });
+        };
+        Buffer.toArray(snaps)
+    };
+
+    /// Create a level-3 task function that takes a portfolio snapshot for given tokens.
+    /// Used as before/after trade snapshot tasks in the chore pipeline.
+    func _makeSnapshotTaskFn(tokens: [Principal], phase: T.SnapshotPhase, instanceId: Text, actionId: Nat): () -> async BotChoreTypes.TaskAction {
+        func(): async BotChoreTypes.TaskAction {
+            try {
+                let snaps = await takeTokenSnapshots(tokens);
+                let trigger = switch (phase) {
+                    case (#Before) { "Trade " # Nat.toText(actionId) # " pre-swap" };
+                    case (#After) { "Trade " # Nat.toText(actionId) # " post-swap" };
+                };
+                ignore appendPortfolioSnapshot({
+                    trigger = trigger;
+                    tradeLogId = null;
+                    phase = phase;
+                    choreId = ?instanceId;
+                    denominationToken = null;
+                    totalValueIcpE8s = null;
+                    totalValueUsdE8s = null;
+                    totalValueDenomE8s = null;
+                    tokens = snaps;
+                });
+                #Done
+            } catch (e) {
+                // Don't fail the whole chore for a snapshot error
+                logEngine.logWarning("chore:" # instanceId, "Snapshot failed: " # Error.message(e), null, []);
+                #Done
+            }
+        }
+    };
+
+    // ============================================
     // TRADE ACTION EXECUTION
     // ============================================
 
@@ -1900,8 +2041,19 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         let st = _trade_getState(instanceId);
         if (st.index < st.actions.size()) {
             let action = st.actions[st.index];
-            let taskFn = _trade_makeTaskFn(action, instanceId, true);
-            choreEngine.setPendingTask(instanceId, "trade-action-" # Nat.toText(action.id), taskFn);
+            // For trade swaps (actionType 0), start with a pre-trade snapshot task
+            if (action.actionType == 0) {
+                let tokens = switch (action.outputToken) {
+                    case (?out) { [action.inputToken, out] };
+                    case null { [action.inputToken] };
+                };
+                let taskFn = _makeSnapshotTaskFn(tokens, #Before, instanceId, action.id);
+                choreEngine.setPendingTask(instanceId, "trade-snap-before-" # Nat.toText(action.id), taskFn);
+            } else {
+                // Non-swap actions go straight to execution
+                let taskFn = _trade_makeTaskFn(action, instanceId, true);
+                choreEngine.setPendingTask(instanceId, "trade-action-" # Nat.toText(action.id), taskFn);
+            };
         };
     };
 
@@ -1998,7 +2150,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                                 logEngine.logInfo(src, "Phase 1: fetching prices for " # Nat.toText(pairs.size()) # " pairs", null, []);
                                 return #ContinueIn(5);
                             };
-                            // No pairs → start first trade action
+                            // No pairs → start first trade task
                             _trade_startCurrentTask(instanceId);
                             return #ContinueIn(10);
                         };
@@ -2010,7 +2162,37 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             return #ContinueIn(10);
                         };
 
-                        // A trade action completed → advance to next
+                        // Pre-trade snapshot completed → start the actual trade action
+                        if (Text.startsWith(prevTask.taskId, #text("trade-snap-before-"))) {
+                            let st = _trade_getState(instanceId);
+                            if (st.index < st.actions.size()) {
+                                let action = st.actions[st.index];
+                                let taskFn = _trade_makeTaskFn(action, instanceId, true);
+                                choreEngine.setPendingTask(instanceId, "trade-action-" # Nat.toText(action.id), taskFn);
+                            };
+                            return #ContinueIn(5);
+                        };
+
+                        // Trade action completed → start post-trade snapshot (for swaps) or advance
+                        if (Text.startsWith(prevTask.taskId, #text("trade-action-"))) {
+                            let st = _trade_getState(instanceId);
+                            if (st.index < st.actions.size()) {
+                                let action = st.actions[st.index];
+                                if (action.actionType == 0) {
+                                    // Swap action: schedule post-trade snapshot
+                                    let tokens = switch (action.outputToken) {
+                                        case (?out) { [action.inputToken, out] };
+                                        case null { [action.inputToken] };
+                                    };
+                                    let taskFn = _makeSnapshotTaskFn(tokens, #After, instanceId, action.id);
+                                    choreEngine.setPendingTask(instanceId, "trade-snap-after-" # Nat.toText(action.id), taskFn);
+                                    return #ContinueIn(5);
+                                };
+                            };
+                            // Non-swap action: fall through to advance
+                        };
+
+                        // Post-trade snapshot completed OR non-swap action completed → advance to next
                         let st = _trade_getState(instanceId);
                         let nextIdx = st.index + 1;
                         _trade_setState(instanceId, { st with index = nextIdx });
@@ -2987,66 +3169,6 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     public shared (msg) func clearLogs(): async () {
         assertPermission(msg.caller, T.TradingPermission.ManageLogs);
         logEngine.clear();
-    };
-
-    /// Append a portfolio snapshot (called internally).
-    /// Respects master and per-chore logging settings.
-    func appendPortfolioSnapshot(entry: {
-        trigger: Text;
-        tradeLogId: ?Nat;
-        phase: T.SnapshotPhase;
-        choreId: ?Text;
-        denominationToken: ?Principal;
-        totalValueIcpE8s: ?Nat;
-        totalValueUsdE8s: ?Nat;
-        totalValueDenomE8s: ?Nat;
-        tokens: [T.TokenSnapshot];
-    }): ?Nat {
-        if (not loggingSettings.portfolioLogEnabled) { return null };
-        // Check per-chore override
-        switch (entry.choreId) {
-            case (?cid) {
-                for ((id, ovr) in choreLoggingOverrides.vals()) {
-                    if (id == cid) {
-                        switch (ovr.portfolioLogEnabled) {
-                            case (?false) { return null };
-                            case (_) {};
-                        };
-                    };
-                };
-            };
-            case (null) {};
-        };
-
-        let id = portfolioSnapshotNextId;
-        portfolioSnapshotNextId += 1;
-        let full: T.PortfolioSnapshot = {
-            id = id;
-            timestamp = Time.now();
-            trigger = entry.trigger;
-            tradeLogId = entry.tradeLogId;
-            phase = entry.phase;
-            denominationToken = entry.denominationToken;
-            totalValueIcpE8s = entry.totalValueIcpE8s;
-            totalValueUsdE8s = entry.totalValueUsdE8s;
-            totalValueDenomE8s = entry.totalValueDenomE8s;
-            tokens = entry.tokens;
-        };
-        let buf = Buffer.fromArray<T.PortfolioSnapshot>(portfolioSnapshots);
-        buf.add(full);
-        if (buf.size() > loggingSettings.maxPortfolioLogEntries) {
-            let excess = buf.size() - loggingSettings.maxPortfolioLogEntries : Nat;
-            let trimmed = Buffer.Buffer<T.PortfolioSnapshot>(loggingSettings.maxPortfolioLogEntries);
-            var i = excess;
-            while (i < buf.size()) {
-                trimmed.add(buf.get(i));
-                i += 1;
-            };
-            portfolioSnapshots := Buffer.toArray(trimmed);
-        } else {
-            portfolioSnapshots := Buffer.toArray(buf);
-        };
-        ?id
     };
 
     // ============================================

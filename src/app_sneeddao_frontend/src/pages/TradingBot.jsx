@@ -220,6 +220,8 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
     const [fMaxPriceImpactBps, setFMaxPriceImpactBps] = useState('');
     const [fMaxSlippageBps, setFMaxSlippageBps] = useState('');
     const [fDestOwner, setFDestOwner] = useState('');
+    // Price direction toggle: 'output_per_input' means "SNEED per ICP", 'input_per_output' means "ICP per SNEED"
+    const [fPriceDirection, setFPriceDirection] = useState('output_per_input');
 
     // Collect all unique token principals from actions for metadata resolution
     const actionTokenIds = React.useMemo(() => {
@@ -233,8 +235,9 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
             }
         }
         if (fInputToken) ids.add(fInputToken);
+        if (fOutputToken) ids.add(fOutputToken);
         return [...ids];
-    }, [actions, fInputToken]);
+    }, [actions, fInputToken, fOutputToken]);
     const tokenMeta = useTokenMetadata(actionTokenIds, identity);
 
     const getSymbol = (principal) => {
@@ -245,6 +248,37 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
         const key = typeof principal === 'string' ? principal : principal?.toText?.() || String(principal);
         return tokenMeta[key]?.decimals ?? 8;
     };
+
+    // Price conversion helpers.
+    // Backend stores spotPriceE8s = humanOutputPerInput * 10^outputDecimals
+    // direction: 'output_per_input' (native) or 'input_per_output' (inverse)
+    const e8sToHumanPrice = (e8sVal, outputDec, direction) => {
+        if (!e8sVal || e8sVal === 0n) return '';
+        const raw = typeof e8sVal === 'bigint' ? e8sVal : BigInt(e8sVal);
+        const divisor = 10 ** outputDec;
+        const nativePrice = Number(raw) / divisor;
+        if (direction === 'input_per_output') {
+            return nativePrice > 0 ? (1 / nativePrice) : 0;
+        }
+        return nativePrice;
+    };
+    const humanPriceToE8s = (humanVal, outputDec, direction) => {
+        if (!humanVal || humanVal === '' || Number(humanVal) === 0) return null;
+        const num = Number(humanVal);
+        const multiplier = 10 ** outputDec;
+        if (direction === 'input_per_output') {
+            // inverse: native = 1 / human
+            return BigInt(Math.round((1 / num) * multiplier));
+        }
+        return BigInt(Math.round(num * multiplier));
+    };
+    // Label helpers for price direction
+    const inputSym = fInputToken ? getSymbol(fInputToken) : 'Input';
+    const outputSym = fOutputToken ? getSymbol(fOutputToken) : 'Output';
+    const priceLabel = fPriceDirection === 'output_per_input'
+        ? `${outputSym} per ${inputSym}`
+        : `${inputSym} per ${outputSym}`;
+    const outputDec = fOutputToken ? getDecimals(fOutputToken) : 8;
 
     const loadActions = useCallback(async () => {
         try {
@@ -271,6 +305,7 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
         setFMinAmount(''); setFMaxAmount(''); setFEnabled(true);
         setFMinBalance(''); setFMaxBalance(''); setFMinPrice(''); setFMaxPrice('');
         setFMaxPriceImpactBps(''); setFMaxSlippageBps(''); setFDestOwner('');
+        setFPriceDirection('output_per_input');
         setShowConditions(false);
     };
 
@@ -291,8 +326,11 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
         setFEnabled(action.enabled);
         setFMinBalance(optVal(action.minBalance) != null ? formatTokenAmount(optVal(action.minBalance), inputDec) : '');
         setFMaxBalance(optVal(action.maxBalance) != null ? formatTokenAmount(optVal(action.maxBalance), inputDec) : '');
-        setFMinPrice(optVal(action.minPrice) != null ? String(Number(optVal(action.minPrice))) : '');
-        setFMaxPrice(optVal(action.maxPrice) != null ? String(Number(optVal(action.maxPrice))) : '');
+        // Convert e8s prices to human-readable (default direction: output per input)
+        const outDec = getDecimals(optVal(action.outputToken) ? principalToStr(optVal(action.outputToken)) : '');
+        setFPriceDirection('output_per_input');
+        setFMinPrice(optVal(action.minPrice) != null ? String(e8sToHumanPrice(optVal(action.minPrice), outDec, 'output_per_input')) : '');
+        setFMaxPrice(optVal(action.maxPrice) != null ? String(e8sToHumanPrice(optVal(action.maxPrice), outDec, 'output_per_input')) : '');
         setFMaxPriceImpactBps(optVal(action.maxPriceImpactBps) != null ? String(Number(optVal(action.maxPriceImpactBps))) : '');
         setFMaxSlippageBps(optVal(action.maxSlippageBps) != null ? String(Number(optVal(action.maxSlippageBps))) : '');
         setFDestOwner(optVal(action.destinationOwner) ? principalToStr(optVal(action.destinationOwner)) : '');
@@ -328,8 +366,8 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
             minBalance: fMinBalance ? [BigInt(parseTokenAmount(fMinBalance, inputDecimals))] : [],
             maxBalance: fMaxBalance ? [BigInt(parseTokenAmount(fMaxBalance, inputDecimals))] : [],
             balanceDenominationToken: [],
-            minPrice: fMinPrice ? [BigInt(fMinPrice)] : [],
-            maxPrice: fMaxPrice ? [BigInt(fMaxPrice)] : [],
+            minPrice: (() => { const v = humanPriceToE8s(fMinPrice, outputDec, fPriceDirection); return v != null ? [v] : []; })(),
+            maxPrice: (() => { const v = humanPriceToE8s(fMaxPrice, outputDec, fPriceDirection); return v != null ? [v] : []; })(),
             priceDenominationToken: [],
             maxPriceImpactBps: fMaxPriceImpactBps ? [BigInt(fMaxPriceImpactBps)] : [],
             maxSlippageBps: fMaxSlippageBps ? [BigInt(fMaxSlippageBps)] : [],
@@ -486,13 +524,38 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                                 <label style={labelStyle}>Max Input Balance{tokenSymLabel}</label>
                                 <input value={fMaxBalance} onChange={(e) => setFMaxBalance(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="Only run if balance ≤" />
                             </div>
+                            {fActionType === ACTION_TYPE_TRADE && fOutputToken && (
+                                <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                    <label style={{ ...labelStyle, margin: 0 }}>Price direction:</label>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const newDir = fPriceDirection === 'output_per_input' ? 'input_per_output' : 'output_per_input';
+                                            // Invert and swap: old min → new max, old max → new min
+                                            const oldMin = fMinPrice ? Number(fMinPrice) : null;
+                                            const oldMax = fMaxPrice ? Number(fMaxPrice) : null;
+                                            setFMinPrice(oldMax && oldMax > 0 ? String(1 / oldMax) : '');
+                                            setFMaxPrice(oldMin && oldMin > 0 ? String(1 / oldMin) : '');
+                                            setFPriceDirection(newDir);
+                                        }}
+                                        style={{
+                                            ...secondaryButtonStyle,
+                                            fontSize: '0.7rem',
+                                            padding: '2px 8px',
+                                            fontWeight: fPriceDirection ? '600' : '400',
+                                        }}
+                                    >
+                                        ⇆ {priceLabel}
+                                    </button>
+                                </div>
+                            )}
                             <div>
-                                <label style={labelStyle}>Min Price (raw)</label>
-                                <input value={fMinPrice} onChange={(e) => setFMinPrice(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" placeholder="Skip if price below" />
+                                <label style={labelStyle}>Min Price ({priceLabel})</label>
+                                <input value={fMinPrice} onChange={(e) => setFMinPrice(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder={`Skip if price below`} />
                             </div>
                             <div>
-                                <label style={labelStyle}>Max Price (raw)</label>
-                                <input value={fMaxPrice} onChange={(e) => setFMaxPrice(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" placeholder="Skip if price above" />
+                                <label style={labelStyle}>Max Price ({priceLabel})</label>
+                                <input value={fMaxPrice} onChange={(e) => setFMaxPrice(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder={`Skip if price above`} />
                             </div>
                             <div>
                                 <label style={labelStyle}>Max Price Impact (bps)</label>
@@ -579,8 +642,20 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                                             {optVal(action.destinationOwner) && <div><strong>Dest:</strong> {shortPrincipal(optVal(action.destinationOwner))}</div>}
                                             {optVal(action.minBalance) != null && <div><strong>Min Bal:</strong> {formatTokenAmount(optVal(action.minBalance), inputDec)} {inputSym}</div>}
                                             {optVal(action.maxBalance) != null && <div><strong>Max Bal:</strong> {formatTokenAmount(optVal(action.maxBalance), inputDec)} {inputSym}</div>}
-                                            {optVal(action.minPrice) != null && <div><strong>Min Price:</strong> {Number(optVal(action.minPrice)).toLocaleString()}</div>}
-                                            {optVal(action.maxPrice) != null && <div><strong>Max Price:</strong> {Number(optVal(action.maxPrice)).toLocaleString()}</div>}
+                                            {optVal(action.minPrice) != null && (() => {
+                                                const outKey = action.outputToken?.length > 0 ? (typeof action.outputToken[0] === 'string' ? action.outputToken[0] : action.outputToken[0]?.toText?.() || String(action.outputToken[0])) : '';
+                                                const outD = getDecimals(outKey);
+                                                const outS = outKey ? getSymbol(outKey) : 'Output';
+                                                const hp = e8sToHumanPrice(optVal(action.minPrice), outD, 'output_per_input');
+                                                return <div><strong>Min Price:</strong> {typeof hp === 'number' ? hp.toLocaleString(undefined, { maximumSignificantDigits: 6 }) : hp} {outS}/{inputSym}</div>;
+                                            })()}
+                                            {optVal(action.maxPrice) != null && (() => {
+                                                const outKey = action.outputToken?.length > 0 ? (typeof action.outputToken[0] === 'string' ? action.outputToken[0] : action.outputToken[0]?.toText?.() || String(action.outputToken[0])) : '';
+                                                const outD = getDecimals(outKey);
+                                                const outS = outKey ? getSymbol(outKey) : 'Output';
+                                                const hp = e8sToHumanPrice(optVal(action.maxPrice), outD, 'output_per_input');
+                                                return <div><strong>Max Price:</strong> {typeof hp === 'number' ? hp.toLocaleString(undefined, { maximumSignificantDigits: 6 }) : hp} {outS}/{inputSym}</div>;
+                                            })()}
                                             {optVal(action.maxPriceImpactBps) != null && <div><strong>Max Impact:</strong> {Number(optVal(action.maxPriceImpactBps))} bps</div>}
                                             {optVal(action.maxSlippageBps) != null && <div><strong>Max Slippage:</strong> {Number(optVal(action.maxSlippageBps))} bps</div>}
                                             {action.lastExecutedAt?.length > 0 && (
