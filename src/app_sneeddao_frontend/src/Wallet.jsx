@@ -51,7 +51,7 @@ import { getCachedRewards, setCachedRewards } from './hooks/useRewardsCache';
 import { getCachedLocks, setCachedLocks } from './hooks/useLocksCache';
 import priceService from './services/PriceService';
 import ConsolidateModal from './ConsolidateModal';
-import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
+import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
 import { useNaming } from './NamingContext';

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../AuthContext';
 import { useAdminCheck } from '../../hooks/useAdminCheck';
-import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
+import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
 import Header from '../../components/Header';
 import { useTheme } from '../../contexts/ThemeContext';
 import { Principal } from '@dfinity/principal';

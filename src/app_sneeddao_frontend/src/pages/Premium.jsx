@@ -16,7 +16,7 @@ import {
 } from '../utils/SneedPremiumUtils';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { createActor as createSneedexActor, canisterId as SNEEDEX_CANISTER_ID } from 'declarations/sneedex';
-import { createActor as createNeuronManagerFactoryActor, canisterId as NEURON_MANAGER_FACTORY_CANISTER_ID } from 'declarations/sneed_icp_neuron_manager_factory';
+import { createActor as createNeuronManagerFactoryActor, canisterId as NEURON_MANAGER_FACTORY_CANISTER_ID } from 'declarations/sneedapp';
 import { createActor as createForumActor, canisterId as FORUM_CANISTER_ID } from 'declarations/sneed_sns_forum';
 import { createActor as createSmsActor, canisterId as SMS_CANISTER_ID } from 'declarations/sneed_sms';
 import { createActor as createBackendActor, canisterId as BACKEND_CANISTER_ID } from 'declarations/app_sneeddao_backend';

@@ -21,7 +21,7 @@ import { createActor as createForumActor, canisterId as forumCanisterId } from '
 import { createActor as createSmsActor, canisterId as smsCanisterId } from 'declarations/sneed_sms';
 import { createActor as createPremiumActor, canisterId as premiumCanisterId } from 'declarations/sneed_premium';
 import { createActor as createSneedexActorDecl, canisterId as sneedexCanisterId } from 'declarations/sneedex';
-import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
+import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'declarations/rll';
 
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';

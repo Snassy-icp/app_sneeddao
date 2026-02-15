@@ -6,7 +6,7 @@ import Header from '../../components/Header';
 import { FaChartLine, FaDollarSign, FaSync, FaExclamationTriangle, FaCoins, FaCrown, FaLock, FaStore, FaCube, FaUnlock } from 'react-icons/fa';
 
 // Canister imports
-import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
+import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
 import { createActor as createSneedexActor, canisterId as sneedexCanisterId } from 'declarations/sneedex';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
 import { createSneedPremiumActor } from '../../utils/SneedPremiumUtils';

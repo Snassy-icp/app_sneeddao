@@ -8,7 +8,7 @@ import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'declarations/rll';
 import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
-import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
+import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { getTokenLogo, get_token_conversion_rate, get_token_icp_rate, get_available, get_available_backend } from '../utils/TokenUtils';

@@ -20,7 +20,7 @@ import { createActor as createBackendActor, canisterId as backendCanisterId } fr
 import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
 import { createActor as createSmsActor, canisterId as smsCanisterId } from 'declarations/sneed_sms';
 import { createActor as createPremiumActor, canisterId as premiumCanisterId } from 'declarations/sneed_premium';
-import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
+import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
 import { createActor as createSneedexActorDecl, canisterId as sneedexCanisterId } from 'declarations/sneedex';
 import { canisterId as rllCanisterId } from 'declarations/rll';
 

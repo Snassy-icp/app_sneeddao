@@ -15,7 +15,7 @@ import { useNaming } from '../NamingContext';
 import { FaPlus, FaTrash, FaCube, FaSpinner, FaChevronDown, FaChevronRight, FaBrain, FaFolder, FaFolderOpen, FaEdit, FaCheck, FaTimes, FaCrown, FaLock, FaStar, FaArrowRight, FaWallet, FaQuestionCircle, FaBox, FaExclamationTriangle, FaBolt } from 'react-icons/fa';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
 import { useNavigate } from 'react-router-dom';
-import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
+import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
 import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings, getCanisterManagerSettings } from '../utils/NeuronManagerSettings';
 import { buildSnsCanisterToRootMap, fetchSnsCyclesFromRoot, getSnsById } from '../utils/SnsUtils';
