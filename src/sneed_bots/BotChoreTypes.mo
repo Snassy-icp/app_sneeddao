@@ -259,6 +259,18 @@ module {
         instanceLabel: Text;    // User-facing name for this instance (e.g., "ETH Trade #1")
     };
 
+    /// Public-facing summary of a registered chore type (without the conduct closure).
+    /// Returned by the engine's listChoreTypes() so the frontend can discover
+    /// multi-instance types that may not yet have any instances.
+    public type ChoreTypeInfo = {
+        id: Text;
+        name: Text;
+        description: Text;
+        defaultIntervalSeconds: Nat;
+        defaultMaxIntervalSeconds: ?Nat;
+        instanceCount: Nat;     // How many instances of this type currently exist
+    };
+
     // ============================================
     // STATE ACCESSOR (bridge to bot's stable vars)
     // ============================================

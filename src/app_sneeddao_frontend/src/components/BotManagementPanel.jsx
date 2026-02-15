@@ -27,12 +27,15 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
+import { createActor as createLedgerActor } from 'external/icrc1_ledger';
+import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import PrincipalInput from './PrincipalInput';
+import TokenSelector from './TokenSelector';
 import { getNeuronManagerSettings, getCyclesColor } from '../utils/NeuronManagerSettings';
-import { FaRobot, FaChevronUp, FaChevronDown, FaShieldAlt } from 'react-icons/fa';
+import { FaRobot, FaChevronUp, FaChevronDown, FaShieldAlt, FaGasPump } from 'react-icons/fa';
 import StatusLamp, {
     LAMP_OFF, LAMP_OK, LAMP_ACTIVE, LAMP_WARN, LAMP_ERROR,
     LAMP_COLORS, LAMP_LABELS, CHORE_DEADLINES,
@@ -96,6 +99,27 @@ function formatCycles(cycles) {
     if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
     if (n >= 1e6) return `${(n / 1e6).toFixed(0)}M`;
     return n.toLocaleString();
+}
+
+const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
+const E8S = 100_000_000;
+const ICP_FEE = 10_000; // 0.0001 ICP
+const TOP_UP_MEMO = new Uint8Array([0x54, 0x50, 0x55, 0x50, 0x00, 0x00, 0x00, 0x00]);
+
+function formatIcp(e8s) {
+    if (e8s === null || e8s === undefined) return '...';
+    const icp = e8s / E8S;
+    if (icp >= 1000) return icp.toFixed(2);
+    if (icp >= 1) return icp.toFixed(4);
+    return icp.toFixed(8);
+}
+
+function principalToSubaccount(principal) {
+    const bytes = principal.toUint8Array();
+    const subaccount = new Uint8Array(32);
+    subaccount[0] = bytes.length;
+    subaccount.set(bytes, 1);
+    return subaccount;
 }
 
 export default function BotManagementPanel({
@@ -165,6 +189,7 @@ export default function BotManagementPanel({
     // Chores
     const [choreStatuses, setChoreStatuses] = useState([]);
     const [choreConfigs, setChoreConfigs] = useState([]);
+    const [choreTypes, setChoreTypes] = useState([]);
     const [loadingChores, setLoadingChores] = useState(false);
     const [choreError, setChoreError] = useState('');
     const [choreSuccess, setChoreSuccess] = useState('');
@@ -192,6 +217,30 @@ export default function BotManagementPanel({
     const [savingLogConfig, setSavingLogConfig] = useState(false);
     const [logAutoRefresh, setLogAutoRefresh] = useState(false);
     const logAutoRefreshRef = useRef(null);
+
+    // Cycles top-up
+    const [topUpAmount, setTopUpAmount] = useState('');
+    const [conversionRate, setConversionRate] = useState(null);
+    const [showTopUpSection, setShowTopUpSection] = useState(false);
+    const [toppingUp, setToppingUp] = useState(false);
+    const [topUpSuccessDialog, setTopUpSuccessDialog] = useState(null);
+    const [userIcpBalance, setUserIcpBalance] = useState(null);
+    const [topUpError, setTopUpError] = useState('');
+
+    // Withdraw tokens
+    const [withdrawAmount, setWithdrawAmount] = useState('');
+    const [withdrawDestination, setWithdrawDestination] = useState('');
+    const [withdrawTokenLedger, setWithdrawTokenLedger] = useState('ryjl3-tyaaa-aaaaa-aaaba-cai');
+    const [withdrawTokenBalance, setWithdrawTokenBalance] = useState(null);
+    const [withdrawTokenSymbol, setWithdrawTokenSymbol] = useState('ICP');
+    const [withdrawTokenDecimals, setWithdrawTokenDecimals] = useState(8);
+    const [withdrawTokenFee, setWithdrawTokenFee] = useState(10000);
+    const [customLedgerInput, setCustomLedgerInput] = useState('');
+    const [useCustomLedger, setUseCustomLedger] = useState(false);
+    const [withdrawSectionExpanded, setWithdrawSectionExpanded] = useState(false);
+    const [withdrawing, setWithdrawing] = useState(false);
+    const [withdrawError, setWithdrawError] = useState('');
+    const [withdrawSuccess, setWithdrawSuccess] = useState('');
 
     // ==========================================
     // HELPERS
@@ -365,9 +414,12 @@ export default function BotManagementPanel({
             setHotkeyPrincipals(principals);
             setBotkeysSupported(true);
         } catch (err) {
+            console.warn('loadHotkeyPermissions error:', err);
             if (err.message?.includes('has no query') || err.message?.includes('is not a function')) {
                 setBotkeysSupported(false);
             } else {
+                // Still mark as supported so the error message is visible in the UI
+                setBotkeysSupported(true);
                 setPermissionError('Failed to load permissions: ' + err.message);
             }
         } finally {
@@ -386,17 +438,23 @@ export default function BotManagementPanel({
             // getChoreConfigs may not exist on all bot versions — gracefully fallback
             let configs = [];
             try {
-                if (bot.getChoreConfigs) {
-                    configs = await bot.getChoreConfigs();
-                }
-            } catch {
-                // Method doesn't exist on this bot version — that's OK
-            }
+                if (bot.getChoreConfigs) configs = await bot.getChoreConfigs();
+            } catch { /* Method doesn't exist on this bot version — that's OK */ }
+            // getChoreTypes may not exist on older bot versions — gracefully fallback
+            let types = [];
+            try {
+                if (bot.getChoreTypes) types = await bot.getChoreTypes();
+            } catch { /* Method doesn't exist on this bot version — that's OK */ }
             setChoreStatuses(statuses);
             setChoreConfigs(configs);
-            // Set initial active tab
-            if (!choreActiveTab && statuses.length > 0) {
-                setChoreActiveTab(statuses[0].choreTypeId || statuses[0].choreId);
+            setChoreTypes(types);
+            // Set initial active tab — prefer types list, fallback to statuses
+            if (!choreActiveTab) {
+                if (types.length > 0) {
+                    setChoreActiveTab(types[0].id);
+                } else if (statuses.length > 0) {
+                    setChoreActiveTab(statuses[0].choreTypeId || statuses[0].choreId);
+                }
             }
         } catch (err) {
             if (!silent) setChoreError('Failed to load chore data: ' + err.message);
@@ -429,6 +487,64 @@ export default function BotManagementPanel({
         }
     }, [canisterId, identity, getReadyBotActor, logFilter]);
 
+    // Fetch ICP to cycles conversion rate from CMC
+    const fetchConversionRate = useCallback(async () => {
+        try {
+            const host = 'https://ic0.app';
+            const agent = HttpAgent.createSync({ host });
+            const cmc = createCmcActor(CMC_CANISTER_ID, { agent });
+            const response = await cmc.get_icp_xdr_conversion_rate();
+            const xdrPerIcp = Number(response.data.xdr_permyriad_per_icp) / 10000;
+            const cyclesPerIcp = xdrPerIcp * 1_000_000_000_000;
+            setConversionRate({ xdrPerIcp, cyclesPerIcp, timestamp: Number(response.data.timestamp_seconds) });
+        } catch (err) {
+            console.error('Error fetching conversion rate:', err);
+        }
+    }, []);
+
+    // Fetch user ICP balance
+    const fetchUserBalance = useCallback(async (agentOverride) => {
+        if (!identity) return;
+        try {
+            const agent = agentOverride || getAgent();
+            if (!agentOverride && process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const ledger = createLedgerActor(ICP_LEDGER_CANISTER_ID, { agent });
+            const balance = await ledger.icrc1_balance_of({
+                owner: identity.getPrincipal(),
+                subaccount: [],
+            });
+            setUserIcpBalance(Number(balance));
+        } catch (err) {
+            console.error('Error fetching user ICP balance:', err);
+        }
+    }, [identity, getAgent]);
+
+    // Fetch token balance for withdraw section
+    const fetchWithdrawTokenBalance = useCallback(async (ledgerId) => {
+        if (!ledgerId || !canisterId) return;
+        try {
+            const ledgerActor = createLedgerActor(ledgerId, { agentOptions: { identity } });
+            const [balance, symbol, decimals, fee] = await Promise.all([
+                ledgerActor.icrc1_balance_of({ owner: Principal.fromText(canisterId), subaccount: [] }),
+                ledgerActor.icrc1_symbol(),
+                ledgerActor.icrc1_decimals(),
+                ledgerActor.icrc1_fee(),
+            ]);
+            setWithdrawTokenBalance(balance);
+            setWithdrawTokenSymbol(symbol);
+            setWithdrawTokenDecimals(decimals);
+            setWithdrawTokenFee(Number(fee));
+        } catch (err) {
+            console.error('Error fetching token balance:', err);
+            setWithdrawTokenBalance(null);
+            setWithdrawTokenSymbol('Unknown');
+            setWithdrawTokenDecimals(8);
+            setWithdrawTokenFee(0);
+        }
+    }, [canisterId, identity]);
+
     // ==========================================
     // EFFECTS
     // ==========================================
@@ -438,8 +554,11 @@ export default function BotManagementPanel({
             loadBotVersion();
             loadOfficialVersions();
             fetchUserPermissions();
+            fetchConversionRate();
+            fetchUserBalance();
+            loadChoreData();
         }
-    }, [isAuthenticated, identity, canisterId, loadCanisterStatus, loadBotVersion, loadOfficialVersions, fetchUserPermissions]);
+    }, [isAuthenticated, identity, canisterId, loadCanisterStatus, loadBotVersion, loadOfficialVersions, fetchUserPermissions, fetchConversionRate, fetchUserBalance, loadChoreData]);
 
     useEffect(() => {
         if (activeTab === 'permissions' && expanded) loadHotkeyPermissions();
@@ -479,6 +598,13 @@ export default function BotManagementPanel({
         }
         return () => { if (choreTickRef.current) { clearInterval(choreTickRef.current); choreTickRef.current = null; } };
     }, [choreStatuses]);
+
+    // Fetch token balance when selected token changes (only when withdraw section expanded)
+    useEffect(() => {
+        if (!withdrawSectionExpanded) return;
+        const ledgerId = useCustomLedger ? customLedgerInput : withdrawTokenLedger;
+        if (ledgerId) fetchWithdrawTokenBalance(ledgerId);
+    }, [withdrawTokenLedger, customLedgerInput, useCustomLedger, fetchWithdrawTokenBalance, withdrawSectionExpanded]);
 
     // ==========================================
     // VERSION MATCHING
@@ -660,6 +786,109 @@ export default function BotManagementPanel({
         finally { setSavingChore(false); }
     };
 
+    // Estimated cycles from ICP amount
+    const estimatedCycles = () => {
+        if (!topUpAmount || !conversionRate) return null;
+        const icpAmount = parseFloat(topUpAmount);
+        if (isNaN(icpAmount) || icpAmount <= 0) return null;
+        return icpAmount * conversionRate.cyclesPerIcp;
+    };
+
+    // Handle cycles top-up
+    const handleCyclesTopUp = async () => {
+        if (!identity || !canisterId || !topUpAmount) return;
+        const icpAmount = parseFloat(topUpAmount);
+        if (isNaN(icpAmount) || icpAmount <= 0) { setTopUpError('Please enter a valid ICP amount'); return; }
+        const amountE8s = BigInt(Math.floor(icpAmount * E8S));
+        const totalNeeded = amountE8s + BigInt(ICP_FEE);
+        if (userIcpBalance === null || BigInt(userIcpBalance) < totalNeeded) {
+            setTopUpError(`Insufficient ICP balance. You have ${formatIcp(userIcpBalance)} ICP, need ${(Number(totalNeeded) / E8S).toFixed(4)} ICP (including fee)`);
+            return;
+        }
+        setToppingUp(true); setTopUpError('');
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://ic0.app' : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') await agent.fetchRootKey();
+            const canisterPrincipal = Principal.fromText(canisterId);
+            const cmcPrincipal = Principal.fromText(CMC_CANISTER_ID);
+            // Step 1: Transfer ICP to CMC with canister's subaccount
+            const ledger = createLedgerActor(ICP_LEDGER_CANISTER_ID, { agent });
+            const subaccount = principalToSubaccount(canisterPrincipal);
+            const transferResult = await ledger.icrc1_transfer({
+                to: { owner: cmcPrincipal, subaccount: [subaccount] },
+                amount: amountE8s,
+                fee: [BigInt(ICP_FEE)],
+                memo: [TOP_UP_MEMO],
+                from_subaccount: [],
+                created_at_time: [],
+            });
+            if ('Err' in transferResult) {
+                const err = transferResult.Err;
+                if ('InsufficientFunds' in err) throw new Error(`Insufficient funds: ${formatIcp(Number(err.InsufficientFunds.balance))} ICP available`);
+                throw new Error(`Transfer failed: ${JSON.stringify(err)}`);
+            }
+            const blockIndex = transferResult.Ok;
+            // Step 2: Notify CMC to mint cycles
+            const cmcHost = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://ic0.app' : host;
+            const cmcAgent = HttpAgent.createSync({ host: cmcHost, identity });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') await cmcAgent.fetchRootKey();
+            const cmc = createCmcActor(CMC_CANISTER_ID, { agent: cmcAgent });
+            const notifyResult = await cmc.notify_top_up({ block_index: blockIndex, canister_id: canisterPrincipal });
+            if ('Err' in notifyResult) {
+                const err = notifyResult.Err;
+                if ('Refunded' in err) throw new Error(`Top-up refunded: ${err.Refunded.reason}`);
+                else if ('InvalidTransaction' in err) throw new Error(`Invalid transaction: ${err.InvalidTransaction}`);
+                else if ('Other' in err) throw new Error(`CMC error: ${err.Other.error_message}`);
+                else if ('Processing' in err) throw new Error('Transaction is still being processed. Please try again in a moment.');
+                throw new Error(`Unknown CMC error: ${JSON.stringify(err)}`);
+            }
+            const cyclesAdded = Number(notifyResult.Ok);
+            setTopUpSuccessDialog({ cyclesAdded, icpSpent: icpAmount });
+            setTopUpAmount('');
+            setShowTopUpSection(false);
+            loadCanisterStatus();
+            fetchUserBalance(agent);
+        } catch (err) {
+            console.error('Cycles top-up error:', err);
+            setTopUpError(`Top-up failed: ${err.message || 'Unknown error'}`);
+        } finally { setToppingUp(false); }
+    };
+
+    // Handle withdraw token
+    const handleWithdrawToken = async () => {
+        if (!withdrawAmount || parseFloat(withdrawAmount) <= 0) { setWithdrawError('Please enter a valid amount'); return; }
+        if (!withdrawDestination) { setWithdrawError('Please enter a destination principal'); return; }
+        const ledgerId = useCustomLedger ? customLedgerInput : withdrawTokenLedger;
+        if (!ledgerId) { setWithdrawError('Please select a token or enter a ledger principal'); return; }
+        if (useCustomLedger) {
+            try { Principal.fromText(customLedgerInput); }
+            catch { setWithdrawError('Invalid ledger principal'); return; }
+        }
+        setWithdrawing(true); setWithdrawError(''); setWithdrawSuccess('');
+        try {
+            const bot = await getReadyBotActor();
+            const amount = BigInt(Math.floor(parseFloat(withdrawAmount) * Math.pow(10, withdrawTokenDecimals)));
+            const destination = { owner: Principal.fromText(withdrawDestination), subaccount: [] };
+            let result;
+            if (ledgerId === ICP_LEDGER_CANISTER_ID) {
+                result = await bot.withdrawIcp(amount, destination);
+            } else {
+                result = await bot.withdrawToken(Principal.fromText(ledgerId), amount, destination);
+            }
+            if ('Ok' in result) {
+                setWithdrawSuccess(`Withdrew ${withdrawAmount} ${withdrawTokenSymbol}! Block height: ${result.Ok.transfer_block_height.toString()}`);
+                setWithdrawAmount('');
+                fetchWithdrawTokenBalance(ledgerId);
+            } else {
+                setWithdrawError('Failed: ' + JSON.stringify(result.Err || result));
+            }
+        } catch (err) {
+            console.error('Error withdrawing token:', err);
+            setWithdrawError(`Withdraw failed: ${err.message || 'Unknown error'}`);
+        } finally { setWithdrawing(false); }
+    };
+
     // ==========================================
     // RENDER
     // ==========================================
@@ -669,6 +898,35 @@ export default function BotManagementPanel({
 
     return (
         <div style={{ marginBottom: '1.25rem' }}>
+            {/* Top-Up Success Dialog */}
+            {topUpSuccessDialog && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px',
+                }}>
+                    <div style={{
+                        backgroundColor: theme.colors.cardBackground || theme.colors.background,
+                        borderRadius: '16px', padding: '32px', maxWidth: '400px', width: '100%',
+                        border: `1px solid ${theme.colors.border}`, textAlign: 'center',
+                        boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
+                    }}>
+                        <div style={{ fontSize: '3rem', marginBottom: '16px' }}>⚡</div>
+                        <h3 style={{ color: theme.colors.primaryText, margin: '0 0 8px 0', fontSize: '1.2rem' }}>Cycles Added!</h3>
+                        <div style={{ marginBottom: '20px' }}>
+                            <div style={{ marginBottom: '8px' }}>
+                                <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>Cycles received: </span>
+                                <span style={{ color: theme.colors.success || '#22c55e', fontWeight: '700', fontSize: '0.95rem' }}>+{formatCycles(topUpSuccessDialog.cyclesAdded)}</span>
+                            </div>
+                            <div>
+                                <span style={{ color: theme.colors.mutedText, fontSize: '0.85rem' }}>ICP spent: </span>
+                                <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.95rem' }}>{topUpSuccessDialog.icpSpent.toFixed(4)} ICP</span>
+                            </div>
+                        </div>
+                        <button onClick={() => setTopUpSuccessDialog(null)} style={{ ...buttonStyle, width: '100%' }}>Close</button>
+                    </div>
+                </div>
+            )}
             {/* Section Header */}
             <button
                 onClick={() => setExpanded(!expanded)}
@@ -900,6 +1158,173 @@ export default function BotManagementPanel({
                                     </div>
                                 </div>
                             )}
+
+                            {/* Cycles Top-Up Card */}
+                            <div style={cardStyle}>
+                                <div style={{
+                                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                    marginBottom: showTopUpSection ? '1rem' : '0',
+                                    flexWrap: 'wrap', gap: '0.75rem',
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                        <div style={{
+                                            width: '40px', height: '40px', borderRadius: '10px',
+                                            background: `linear-gradient(135deg, ${accent}25, ${accent}10)`,
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                                        }}>
+                                            <FaGasPump style={{ color: accent, fontSize: '16px' }} />
+                                        </div>
+                                        <div>
+                                            <h3 style={{ color: theme.colors.primaryText, margin: '0 0 2px 0', fontSize: '1rem', fontWeight: '600' }}>Top Up Cycles</h3>
+                                            <p style={{ color: theme.colors.mutedText, fontSize: '0.8rem', margin: 0 }}>Convert ICP to cycles for this canister</p>
+                                        </div>
+                                    </div>
+                                    <button onClick={() => setShowTopUpSection(!showTopUpSection)}
+                                        style={{ ...(showTopUpSection ? secondaryButtonStyle : buttonStyle), padding: '0.5rem 1rem', fontSize: '0.85rem' }}>
+                                        {showTopUpSection ? 'Cancel' : '⛽ Add Cycles'}
+                                    </button>
+                                </div>
+                                {showTopUpSection && (
+                                    <div>
+                                        {/* User ICP Balance */}
+                                        <div style={{
+                                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                            marginBottom: '12px', padding: '10px 12px',
+                                            backgroundColor: theme.colors.tertiaryBg || theme.colors.secondaryBg, borderRadius: '6px',
+                                        }}>
+                                            <span style={{ color: theme.colors.mutedText, fontSize: '13px' }}>Your ICP Balance:</span>
+                                            <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '14px' }}>{formatIcp(userIcpBalance)} ICP</span>
+                                        </div>
+                                        {/* Conversion Rate Info */}
+                                        {conversionRate && (
+                                            <div style={{ marginBottom: '12px', padding: '10px 12px', backgroundColor: `${accent}10`, borderRadius: '6px', fontSize: '12px', color: theme.colors.mutedText }}>
+                                                <strong style={{ color: theme.colors.primaryText }}>Current Rate:</strong> 1 ICP ≈ {formatCycles(conversionRate.cyclesPerIcp)} cycles
+                                            </div>
+                                        )}
+                                        {/* Amount Input */}
+                                        <div style={{ marginBottom: '12px' }}>
+                                            <label style={{ display: 'block', color: theme.colors.mutedText, fontSize: '12px', marginBottom: '6px' }}>Amount (ICP)</label>
+                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                <input type="text" inputMode="decimal" value={topUpAmount} onChange={(e) => setTopUpAmount(e.target.value)}
+                                                    placeholder="0.0" disabled={toppingUp} style={inputStyle} />
+                                                <button onClick={() => {
+                                                    if (userIcpBalance) {
+                                                        const maxAmount = Math.max(0, (userIcpBalance - ICP_FEE * 2) / E8S);
+                                                        setTopUpAmount(maxAmount.toFixed(4));
+                                                    }
+                                                }} disabled={toppingUp || !userIcpBalance}
+                                                    style={{ ...secondaryButtonStyle, padding: '10px 12px' }}>MAX</button>
+                                            </div>
+                                        </div>
+                                        {/* Estimated Cycles */}
+                                        {estimatedCycles() && (
+                                            <div style={{
+                                                marginBottom: '16px', padding: '12px',
+                                                backgroundColor: `${theme.colors.success || '#22c55e'}15`, borderRadius: '6px',
+                                                border: `1px solid ${theme.colors.success || '#22c55e'}30`, textAlign: 'center',
+                                            }}>
+                                                <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '4px' }}>Estimated Cycles to Add</div>
+                                                <div style={{ color: theme.colors.success || '#22c55e', fontSize: '20px', fontWeight: '700' }}>~{formatCycles(estimatedCycles())}</div>
+                                            </div>
+                                        )}
+                                        {/* Error */}
+                                        {topUpError && <div style={{ marginBottom: '12px', padding: '8px 12px', background: `${theme.colors.error || '#ef4444'}15`, borderRadius: '6px', color: theme.colors.error || '#ef4444', fontSize: '12px' }}>{topUpError}</div>}
+                                        {/* Top Up Button */}
+                                        <button onClick={handleCyclesTopUp} disabled={toppingUp || !topUpAmount || parseFloat(topUpAmount) <= 0}
+                                            style={{
+                                                ...buttonStyle, width: '100%',
+                                                opacity: (toppingUp || !topUpAmount || parseFloat(topUpAmount) <= 0) ? 0.6 : 1,
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                                            }}>
+                                            {toppingUp ? '⏳ Processing...' : (<><FaGasPump /> Top Up Canister</>)}
+                                        </button>
+                                        <p style={{ color: theme.colors.mutedText, fontSize: '11px', marginTop: '10px', marginBottom: 0, textAlign: 'center' }}>
+                                            Converts ICP to cycles via the Cycles Minting Canister (CMC). A small ICP fee (0.0001) applies.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Withdraw Tokens Card - only for principals with WithdrawFunds permission */}
+                            {hasPermission('WithdrawFunds') && (
+                                <div style={cardStyle}>
+                                    <button onClick={() => setWithdrawSectionExpanded(!withdrawSectionExpanded)}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                            width: '100%', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left',
+                                        }}>
+                                        <div>
+                                            <h3 style={{ color: theme.colors.primaryText, margin: '0 0 5px 0' }}>💸 Withdraw Tokens</h3>
+                                            <p style={{ color: theme.colors.mutedText, fontSize: '12px', margin: 0 }}>
+                                                Withdraw ICP or any ICRC1 token from this canister
+                                            </p>
+                                        </div>
+                                        <span style={{
+                                            color: theme.colors.mutedText, fontSize: '18px',
+                                            transform: withdrawSectionExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                                            transition: 'transform 0.2s ease',
+                                        }}>▼</span>
+                                    </button>
+                                    {withdrawSectionExpanded && (
+                                        <div style={{ marginTop: '15px' }}>
+                                            {/* Token Selection */}
+                                            <div style={{ marginBottom: '15px' }}>
+                                                <label style={{ color: theme.colors.mutedText, fontSize: '11px', display: 'block', marginBottom: '6px' }}>Select Token</label>
+                                                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
+                                                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', color: theme.colors.primaryText, fontSize: '13px', cursor: 'pointer' }}>
+                                                        <input type="radio" checked={!useCustomLedger} onChange={() => { setUseCustomLedger(false); setWithdrawTokenLedger(ICP_LEDGER_CANISTER_ID); }} style={{ margin: 0 }} />
+                                                        From list
+                                                    </label>
+                                                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', color: theme.colors.primaryText, fontSize: '13px', cursor: 'pointer' }}>
+                                                        <input type="radio" checked={useCustomLedger} onChange={() => setUseCustomLedger(true)} style={{ margin: 0 }} />
+                                                        Custom ledger
+                                                    </label>
+                                                </div>
+                                                {!useCustomLedger ? (
+                                                    <TokenSelector value={withdrawTokenLedger} onChange={(ledgerId) => setWithdrawTokenLedger(ledgerId)} placeholder="Select a token..." />
+                                                ) : (
+                                                    <input type="text" value={customLedgerInput} onChange={(e) => setCustomLedgerInput(e.target.value)}
+                                                        style={inputStyle} placeholder="Enter ledger canister principal" />
+                                                )}
+                                            </div>
+                                            {/* Token Balance */}
+                                            <div style={{
+                                                background: `${accent}10`, padding: '10px', borderRadius: '6px', marginBottom: '12px',
+                                                fontSize: '12px', color: theme.colors.mutedText,
+                                            }}>
+                                                Available: <strong style={{ color: theme.colors.primaryText }}>
+                                                    {withdrawTokenBalance !== null
+                                                        ? `${(Number(withdrawTokenBalance) / Math.pow(10, withdrawTokenDecimals)).toFixed(withdrawTokenDecimals > 4 ? 4 : withdrawTokenDecimals)} ${withdrawTokenSymbol}`
+                                                        : 'Loading...'}
+                                                </strong>
+                                            </div>
+                                            {/* Amount and Destination */}
+                                            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                                                <div style={{ flex: 1, minWidth: '120px' }}>
+                                                    <label style={{ color: theme.colors.mutedText, fontSize: '11px', display: 'block', marginBottom: '4px' }}>Amount ({withdrawTokenSymbol})</label>
+                                                    <input type="text" inputMode="decimal" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)}
+                                                        style={inputStyle} placeholder="Amount to withdraw" />
+                                                </div>
+                                                <div style={{ flex: 2, minWidth: '200px' }}>
+                                                    <label style={{ color: theme.colors.mutedText, fontSize: '11px', display: 'block', marginBottom: '4px' }}>Destination Principal</label>
+                                                    <input type="text" value={withdrawDestination} onChange={(e) => setWithdrawDestination(e.target.value)}
+                                                        style={inputStyle} placeholder="Principal ID" />
+                                                </div>
+                                                <button onClick={handleWithdrawToken}
+                                                    disabled={withdrawing || withdrawTokenBalance === null || withdrawTokenBalance === BigInt(0)}
+                                                    style={{ ...buttonStyle, opacity: (withdrawing || withdrawTokenBalance === null || withdrawTokenBalance === BigInt(0)) ? 0.6 : 1 }}>
+                                                    {withdrawing ? '⏳...' : '💸 Withdraw'}
+                                                </button>
+                                            </div>
+                                            <p style={{ color: theme.colors.mutedText, fontSize: '11px', marginTop: '8px', marginBottom: 0 }}>
+                                                Fee: {(withdrawTokenFee / Math.pow(10, withdrawTokenDecimals)).toFixed(withdrawTokenDecimals > 4 ? 4 : withdrawTokenDecimals)} {withdrawTokenSymbol}
+                                            </p>
+                                            {withdrawError && <div style={{ marginTop: '8px', padding: '8px 12px', background: `${theme.colors.error || '#ef4444'}15`, borderRadius: '6px', color: theme.colors.error || '#ef4444', fontSize: '12px' }}>{withdrawError}</div>}
+                                            {withdrawSuccess && <div style={{ marginTop: '8px', padding: '8px 12px', background: `${theme.colors.success || '#22c55e'}15`, borderRadius: '6px', color: theme.colors.success || '#22c55e', fontSize: '12px' }}>✅ {withdrawSuccess}</div>}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -1111,9 +1536,17 @@ export default function BotManagementPanel({
                                     })()}
 
                                     {/* Chore Type Tabs & Instances */}
-                                    {choreStatuses.length > 0 && (() => {
+                                    {(choreStatuses.length > 0 || choreTypes.length > 0) && (() => {
                                         const choreTypeMap = {};
                                         const choreTypeOrder = [];
+                                        // Populate from choreTypes first (preserves registered order, includes zero-instance types)
+                                        choreTypes.forEach(ct => {
+                                            if (!choreTypeMap[ct.id]) {
+                                                choreTypeMap[ct.id] = { typeId: ct.id, typeName: ct.name, description: ct.description, instances: [] };
+                                                choreTypeOrder.push(ct.id);
+                                            }
+                                        });
+                                        // Add instance data from choreStatuses
                                         choreStatuses.forEach(chore => {
                                             const tid = chore.choreTypeId || chore.choreId;
                                             if (!choreTypeMap[tid]) { choreTypeMap[tid] = { typeId: tid, typeName: chore.choreName, instances: [] }; choreTypeOrder.push(tid); }
@@ -1187,6 +1620,42 @@ export default function BotManagementPanel({
                                                                     else { setChoreError('Failed to create instance.'); }
                                                                 })}>Create</button>
                                                             <button style={{ ...secondaryButtonStyle }} onClick={() => setCreatingInstance(false)}>Cancel</button>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Empty type — no instances yet, offer to create one */}
+                                                {instances.length === 0 && activeType && (
+                                                    <div style={cardStyle}>
+                                                        <div style={{ textAlign: 'center', padding: '1.5rem 1rem' }}>
+                                                            <div style={{ fontSize: '2rem', marginBottom: '12px' }}>📦</div>
+                                                            <h3 style={{ color: theme.colors.primaryText, margin: '0 0 8px 0', fontSize: '1rem' }}>
+                                                                No {activeType.typeName} instances yet
+                                                            </h3>
+                                                            <p style={{ color: theme.colors.secondaryText, fontSize: '0.85rem', margin: '0 0 16px 0', lineHeight: '1.5' }}>
+                                                                {activeType.description || `Create your first ${activeType.typeName} instance to get started.`}
+                                                            </p>
+                                                            {!creatingInstance ? (
+                                                                <button
+                                                                    onClick={() => { setCreatingInstance(true); setNewInstanceLabel(''); }}
+                                                                    style={{ ...buttonStyle, background: accent }}>
+                                                                    + Create {activeType.typeName} Instance
+                                                                </button>
+                                                            ) : (
+                                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}>
+                                                                    <input type="text" value={newInstanceLabel} onChange={e => setNewInstanceLabel(e.target.value)}
+                                                                        placeholder="Instance name" style={{ ...inputStyle, maxWidth: '250px' }} autoFocus />
+                                                                    <button style={{ ...buttonStyle, background: accent, opacity: !newInstanceLabel.trim() || savingChore ? 0.5 : 1 }}
+                                                                        disabled={!newInstanceLabel.trim() || savingChore}
+                                                                        onClick={() => choreAction(async (bot) => {
+                                                                            const instId = activeTypeId + '-' + Date.now().toString(36);
+                                                                            const ok = await bot.createChoreInstance(activeTypeId, instId, newInstanceLabel.trim());
+                                                                            if (ok) { setChoreSuccess(`Created "${newInstanceLabel.trim()}"`); setCreatingInstance(false); setChoreActiveInstance(instId); }
+                                                                            else { setChoreError('Failed to create instance.'); }
+                                                                        })}>Create</button>
+                                                                    <button style={secondaryButtonStyle} onClick={() => setCreatingInstance(false)}>Cancel</button>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 )}
@@ -1304,7 +1773,7 @@ export default function BotManagementPanel({
                                         );
                                     })()}
 
-                                    {choreStatuses.length === 0 && (
+                                    {choreStatuses.length === 0 && choreTypes.length === 0 && (
                                         <div style={{ ...cardStyle, textAlign: 'center', color: theme.colors.secondaryText, fontSize: '0.85rem' }}>
                                             No chores configured for this bot.
                                         </div>

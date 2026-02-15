@@ -2110,6 +2110,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         choreEngine.getStatus(choreId)
     };
 
+    public shared query (msg) func getChoreTypes(): async [BotChoreTypes.ChoreTypeInfo] {
+        assertPermission(msg.caller, T.TradingPermission.ViewChores);
+        choreEngine.listChoreTypes()
+    };
+
     public shared (msg) func createChoreInstance(typeId: Text, instanceId: Text, instanceLabel: Text): async Bool {
         assertPermission(msg.caller, choreManagePermission(typeId));
         choreEngine.createInstance(typeId, instanceId, instanceLabel)

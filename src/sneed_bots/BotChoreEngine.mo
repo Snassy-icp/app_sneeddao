@@ -223,6 +223,31 @@ module {
             found
         };
 
+        /// List all registered chore types with metadata (without closures).
+        /// Includes types that have zero instances, so the frontend can offer "Create Instance".
+        public func listChoreTypes(): [BotChoreTypes.ChoreTypeInfo] {
+            let instances = stateAccessor.getInstances();
+            Array.map<BotChoreTypes.ChoreDefinition, BotChoreTypes.ChoreTypeInfo>(
+                Buffer.toArray(definitions),
+                func(def: BotChoreTypes.ChoreDefinition): BotChoreTypes.ChoreTypeInfo {
+                    let count = Array.size(
+                        Array.filter<(Text, BotChoreTypes.ChoreInstanceInfo)>(
+                            instances,
+                            func(entry: (Text, BotChoreTypes.ChoreInstanceInfo)): Bool { entry.1.typeId == def.id }
+                        )
+                    );
+                    {
+                        id = def.id;
+                        name = def.name;
+                        description = def.description;
+                        defaultIntervalSeconds = def.defaultIntervalSeconds;
+                        defaultMaxIntervalSeconds = def.defaultMaxIntervalSeconds;
+                        instanceCount = count;
+                    }
+                }
+            )
+        };
+
         /// List all instances, optionally filtered by typeId.
         public func listInstances(typeIdFilter: ?Text): [(Text, BotChoreTypes.ChoreInstanceInfo)] {
             let instances = stateAccessor.getInstances();

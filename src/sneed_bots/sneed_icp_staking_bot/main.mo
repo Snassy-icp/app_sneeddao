@@ -1497,6 +1497,12 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         choreEngine.getStatus(choreId)
     };
 
+    // Query: List all registered chore types (including those with zero instances)
+    public shared query ({ caller }) func getChoreTypes(): async [BotChoreTypes.ChoreTypeInfo] {
+        assertPermission(caller, T.NeuronPermission.ViewChores);
+        choreEngine.listChoreTypes()
+    };
+
     // Query: Get configs of all chores
     public shared query ({ caller }) func getChoreConfigs(): async [(Text, BotChoreTypes.ChoreConfig)] {
         assertPermission(caller, T.NeuronPermission.ViewChores);
