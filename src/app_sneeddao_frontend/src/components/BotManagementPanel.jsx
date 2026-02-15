@@ -36,6 +36,8 @@ import PrincipalInput from './PrincipalInput';
 import TokenSelector from './TokenSelector';
 import { getNeuronManagerSettings, getCyclesColor } from '../utils/NeuronManagerSettings';
 import { FaRobot, FaChevronUp, FaChevronDown, FaShieldAlt, FaGasPump } from 'react-icons/fa';
+import TokenIcon from './TokenIcon';
+import { getTokenMetadataSync, fetchAndCacheTokenMetadata } from '../hooks/useTokenCache';
 import StatusLamp, {
     LAMP_OFF, LAMP_OK, LAMP_ACTIVE, LAMP_WARN, LAMP_ERROR,
     LAMP_COLORS, LAMP_LABELS, CHORE_DEADLINES,
@@ -121,6 +123,35 @@ function principalToSubaccount(principal) {
     subaccount.set(bytes, 1);
     return subaccount;
 }
+
+// ============================================
+// LOG ENTRY ENHANCEMENT — token icons, formatted amounts, DEX names
+// ============================================
+
+const DEX_NAMES = { '0': 'ICPSwap', '1': 'KongSwap' };
+
+/** Shorten a principal for fallback display. */
+const shortPrincipal = (p) => {
+    const s = String(p);
+    return s.length > 20 ? s.slice(0, 8) + '…' + s.slice(-6) : s;
+};
+
+/** Format a raw amount (e8s etc.) to human-readable token units. */
+const formatLogAmount = (raw, decimals = 8) => {
+    const n = Number(raw);
+    if (isNaN(n) || n === 0) return String(raw);
+    const val = n / Math.pow(10, decimals);
+    // Use up to 6 decimal places, but at least enough to show a non-zero value
+    const maxFrac = Math.min(decimals, 8);
+    return val.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: maxFrac });
+};
+
+/** Known tag keys whose values are token principal IDs. */
+const TOKEN_TAG_KEYS = new Set(['inputToken', 'outputToken', 'token', 'ledger', 'ledgerId', 'tokenId']);
+/** Known tag keys whose values are raw token amounts. */
+const AMOUNT_TAG_KEYS = new Set(['inputAmount', 'outputAmount', 'amount', 'fee', 'balance']);
+/** Map amount tag to its paired token tag to determine decimals. */
+const AMOUNT_TO_TOKEN = { inputAmount: 'inputToken', outputAmount: 'outputToken', amount: 'token', fee: 'inputToken', balance: 'token' };
 
 export default function BotManagementPanel({
     canisterId,
@@ -218,6 +249,8 @@ export default function BotManagementPanel({
     const [savingLogConfig, setSavingLogConfig] = useState(false);
     const [logAutoRefresh, setLogAutoRefresh] = useState(false);
     const logAutoRefreshRef = useRef(null);
+    const [logTokenMeta, setLogTokenMeta] = useState({}); // principal → { symbol, decimals, ... }
+    const logTokenFetchedRef = useRef(new Set()); // Track already-fetched principals
 
     // Cycles top-up
     const [topUpAmount, setTopUpAmount] = useState('');
@@ -627,6 +660,43 @@ export default function BotManagementPanel({
         }
         return () => { if (logAutoRefreshRef.current) clearInterval(logAutoRefreshRef.current); };
     }, [logAutoRefresh, activeTab, loadLogData]);
+
+    // Auto-fetch token metadata for principals appearing in log entry tags
+    useEffect(() => {
+        if (activeTab !== 'log' || logEntries.length === 0) return;
+        const principals = new Set();
+        for (const entry of logEntries) {
+            for (const [k, v] of entry.tags) {
+                if (TOKEN_TAG_KEYS.has(k) && v && v.length > 10) principals.add(v);
+            }
+        }
+        if (principals.size === 0) return;
+        // Only fetch principals we haven't already fetched
+        const toFetch = [...principals].filter(p => !logTokenFetchedRef.current.has(p));
+        if (toFetch.length === 0) {
+            // Still populate state from sync cache for any we know about
+            const updates = {};
+            for (const p of principals) {
+                if (!logTokenMeta[p]) {
+                    const cached = getTokenMetadataSync(p);
+                    if (cached) updates[p] = cached;
+                }
+            }
+            if (Object.keys(updates).length > 0) setLogTokenMeta(prev => ({ ...prev, ...updates }));
+            return;
+        }
+        for (const p of toFetch) logTokenFetchedRef.current.add(p);
+        (async () => {
+            const results = {};
+            await Promise.all(toFetch.map(async (p) => {
+                try {
+                    const meta = getTokenMetadataSync(p) || await fetchAndCacheTokenMetadata(p, identity);
+                    if (meta) results[p] = meta;
+                } catch { /* ignore */ }
+            }));
+            if (Object.keys(results).length > 0) setLogTokenMeta(prev => ({ ...prev, ...results }));
+        })();
+    }, [activeTab, logEntries, identity]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Chore tick for imminent countdowns
     useEffect(() => {
@@ -2298,22 +2368,132 @@ export default function BotManagementPanel({
                                                     const levelColor = LOG_LEVEL_COLORS[levelKey] || '#6b7280';
                                                     const ts = new Date(Number(entry.timestamp) / 1_000_000);
                                                     const timeStr = ts.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+                                                    // Build a tag map for quick lookups
+                                                    const tagMap = {};
+                                                    for (const [k, v] of entry.tags) tagMap[k] = v;
+
+                                                    // --- Enhanced message: replace raw amounts, DEX ids, principals ---
+                                                    let enhancedMsg = entry.message;
+                                                    // Replace "DEX N" with DEX name
+                                                    enhancedMsg = enhancedMsg.replace(/\bDEX (\d+)\b/g, (_, id) => DEX_NAMES[id] || `DEX ${id}`);
+                                                    // Replace raw amounts in the message with formatted versions
+                                                    if (tagMap.inputAmount && tagMap.inputToken) {
+                                                        const dec = logTokenMeta[tagMap.inputToken]?.decimals ?? 8;
+                                                        const sym = logTokenMeta[tagMap.inputToken]?.symbol;
+                                                        const formatted = formatLogAmount(tagMap.inputAmount, dec);
+                                                        enhancedMsg = enhancedMsg.replace(tagMap.inputAmount, formatted + (sym ? ` ${sym}` : ''));
+                                                    }
+                                                    if (tagMap.outputAmount && tagMap.outputToken) {
+                                                        const dec = logTokenMeta[tagMap.outputToken]?.decimals ?? 8;
+                                                        const sym = logTokenMeta[tagMap.outputToken]?.symbol;
+                                                        const formatted = formatLogAmount(tagMap.outputAmount, dec);
+                                                        enhancedMsg = enhancedMsg.replace(tagMap.outputAmount, formatted + (sym ? ` ${sym}` : ''));
+                                                    }
+
+                                                    // --- Smart tag rendering ---
+                                                    const renderedTags = [];
+                                                    const skipKeys = new Set(); // Tags already rendered in rich format
+
+                                                    // Render token pair (inputToken → outputToken) as a single rich tag
+                                                    if (tagMap.inputToken) {
+                                                        const inId = tagMap.inputToken;
+                                                        const outId = tagMap.outputToken;
+                                                        const inMeta = logTokenMeta[inId];
+                                                        const outMeta = outId ? logTokenMeta[outId] : null;
+                                                        renderedTags.push(
+                                                            <span key="token-pair" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '1px 8px', borderRadius: '4px', fontSize: '0.7rem', background: `${accent}12`, color: theme.colors.primaryText }}>
+                                                                <TokenIcon canisterId={inId} size={14} />
+                                                                <span style={{ fontWeight: 600 }}>{inMeta?.symbol || shortPrincipal(inId)}</span>
+                                                                {outId && <>
+                                                                    <span style={{ color: theme.colors.mutedText, margin: '0 2px' }}>→</span>
+                                                                    <TokenIcon canisterId={outId} size={14} />
+                                                                    <span style={{ fontWeight: 600 }}>{outMeta?.symbol || shortPrincipal(outId)}</span>
+                                                                </>}
+                                                            </span>
+                                                        );
+                                                        skipKeys.add('inputToken');
+                                                        if (outId) skipKeys.add('outputToken');
+                                                    }
+
+                                                    // Render amounts with formatting
+                                                    if (tagMap.inputAmount) {
+                                                        const inId = tagMap.inputToken;
+                                                        const outId = tagMap.outputToken;
+                                                        const inDec = logTokenMeta[inId]?.decimals ?? 8;
+                                                        const inSym = logTokenMeta[inId]?.symbol || '';
+                                                        const outDec = outId ? (logTokenMeta[outId]?.decimals ?? 8) : 8;
+                                                        const outSym = outId ? (logTokenMeta[outId]?.symbol || '') : '';
+                                                        renderedTags.push(
+                                                            <span key="amounts" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '1px 8px', borderRadius: '4px', fontSize: '0.7rem', background: `${theme.colors.border}60`, color: theme.colors.primaryText, fontFamily: 'monospace' }}>
+                                                                {formatLogAmount(tagMap.inputAmount, inDec)}{inSym ? ` ${inSym}` : ''}
+                                                                {tagMap.outputAmount && <>
+                                                                    <span style={{ color: theme.colors.mutedText }}>→</span>
+                                                                    {formatLogAmount(tagMap.outputAmount, outDec)}{outSym ? ` ${outSym}` : ''}
+                                                                </>}
+                                                            </span>
+                                                        );
+                                                        skipKeys.add('inputAmount');
+                                                        skipKeys.add('outputAmount');
+                                                    }
+
+                                                    // Render dexId as DEX name
+                                                    if (tagMap.dexId != null) {
+                                                        const name = DEX_NAMES[tagMap.dexId];
+                                                        renderedTags.push(
+                                                            <span key="dex" style={{ padding: '1px 8px', borderRadius: '4px', fontSize: '0.7rem', background: `${theme.colors.border}60`, color: theme.colors.secondaryText }}>
+                                                                {name || `DEX ${tagMap.dexId}`}
+                                                            </span>
+                                                        );
+                                                        skipKeys.add('dexId');
+                                                    }
+
+                                                    // Render remaining tags as-is, but with token resolution for any token-like tags
+                                                    entry.tags.forEach(([k, v], i) => {
+                                                        if (skipKeys.has(k)) return;
+                                                        // Token-type tags not already handled
+                                                        if (TOKEN_TAG_KEYS.has(k) && v && v.length > 10) {
+                                                            const meta = logTokenMeta[v];
+                                                            renderedTags.push(
+                                                                <span key={`t-${i}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', background: `${theme.colors.border}60`, color: theme.colors.secondaryText }}>
+                                                                    <span style={{ opacity: 0.7 }}>{k}:</span>
+                                                                    <TokenIcon canisterId={v} size={13} />
+                                                                    <span>{meta?.symbol || shortPrincipal(v)}</span>
+                                                                </span>
+                                                            );
+                                                        } else if (AMOUNT_TAG_KEYS.has(k)) {
+                                                            // Format amount using paired token decimals
+                                                            const pairedKey = AMOUNT_TO_TOKEN[k];
+                                                            const pairedId = pairedKey ? tagMap[pairedKey] : null;
+                                                            const dec = pairedId && logTokenMeta[pairedId] ? logTokenMeta[pairedId].decimals : 8;
+                                                            const sym = pairedId && logTokenMeta[pairedId] ? logTokenMeta[pairedId].symbol : '';
+                                                            renderedTags.push(
+                                                                <span key={`t-${i}`} style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', background: `${theme.colors.border}60`, color: theme.colors.secondaryText, fontFamily: 'monospace' }}>
+                                                                    <span style={{ opacity: 0.7 }}>{k}:</span> {formatLogAmount(v, dec)}{sym ? ` ${sym}` : ''}
+                                                                </span>
+                                                            );
+                                                        } else {
+                                                            // Default: raw tag
+                                                            renderedTags.push(
+                                                                <span key={`t-${i}`} style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', background: `${theme.colors.border}60`, color: theme.colors.secondaryText }}>
+                                                                    <span style={{ opacity: 0.7 }}>{k}:</span> {v}
+                                                                </span>
+                                                            );
+                                                        }
+                                                    });
+
                                                     return (
                                                         <div key={Number(entry.id)} style={{ display: 'flex', flexDirection: 'column', gap: '2px', padding: '8px 12px', background: theme.colors.cardBackground || theme.colors.background, borderLeft: `3px solid ${levelColor}`, borderRadius: '4px', fontSize: '0.8rem' }}>
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                                                 <span style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: '600', background: `${levelColor}20`, color: levelColor, minWidth: '48px', textAlign: 'center' }}>{levelKey.toUpperCase()}</span>
                                                                 <span style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', background: `${accent}15`, color: accent }}>{entry.source}</span>
-                                                                <span style={{ color: theme.colors.primaryText, flex: 1 }}>{entry.message}</span>
+                                                                <span style={{ color: theme.colors.primaryText, flex: 1 }}>{enhancedMsg}</span>
                                                                 <span style={{ color: theme.colors.mutedText, fontSize: '0.7rem', whiteSpace: 'nowrap' }}>{timeStr}</span>
                                                                 <span style={{ color: theme.colors.mutedText, fontSize: '0.65rem', opacity: 0.6 }}>#{Number(entry.id)}</span>
                                                             </div>
-                                                            {entry.tags.length > 0 && (
-                                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginLeft: '56px' }}>
-                                                                    {entry.tags.map(([k, v], i) => (
-                                                                        <span key={i} style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', background: `${theme.colors.border}60`, color: theme.colors.secondaryText }}>
-                                                                            <span style={{ opacity: 0.7 }}>{k}:</span> {v}
-                                                                        </span>
-                                                                    ))}
+                                                            {renderedTags.length > 0 && (
+                                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginLeft: '56px', alignItems: 'center' }}>
+                                                                    {renderedTags}
                                                                 </div>
                                                             )}
                                                             {entry.caller.length > 0 && (
