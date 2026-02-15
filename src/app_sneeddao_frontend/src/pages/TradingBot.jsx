@@ -1195,10 +1195,8 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
     const [hasMore, setHasMore] = useState(false);
     const [filterStatus, setFilterStatus] = useState('');
     const [filterChoreType, setFilterChoreType] = useState('');
-    const [expandedId, setExpandedId] = useState(null);
-    // Cache of snapshots keyed by tradeLogId: { before: snapshot|null, after: snapshot|null }
-    const [snapCache, setSnapCache] = useState({});
-    const [snapLoading, setSnapLoading] = useState({});
+    // Snapshots indexed by tradeLogId: { before: snap|null, after: snap|null }
+    const [snapMap, setSnapMap] = useState({});
 
     // Collect token IDs from entries for metadata resolution
     const entryTokenIds = React.useMemo(() => {
@@ -1222,6 +1220,7 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
         return tokenMeta[key]?.decimals ?? 8;
     };
 
+    // Load trade entries + batch-fetch all related snapshots
     const loadData = useCallback(async (q) => {
         try {
             const bot = await getReadyBotActor();
@@ -1233,6 +1232,59 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
             setEntries(result.entries);
             setHasMore(result.hasMore);
             setStats(st);
+
+            // Batch-fetch snapshots in the time range of visible entries
+            if (result.entries.length > 0) {
+                const timestamps = result.entries.map(e => BigInt(e.timestamp));
+                const minTs = timestamps.reduce((a, b) => a < b ? a : b);
+                const maxTs = timestamps.reduce((a, b) => a > b ? a : b);
+                const pad = BigInt(300_000_000_000); // 5 min padding
+                try {
+                    const snapResult = await bot.getPortfolioSnapshots({
+                        startId: [], limit: [200], tradeLogId: [],
+                        phase: [], fromTime: [minTs - pad], toTime: [maxTs + pad],
+                    });
+                    // Index snapshots: after-snaps link by tradeLogId, before-snaps matched by proximity
+                    const newMap = {};
+                    const afterSnaps = [];
+                    const beforeSnaps = [];
+                    for (const snap of snapResult.entries) {
+                        const phaseKey = Object.keys(snap.phase || {})[0] || '';
+                        if (phaseKey === 'After') afterSnaps.push(snap);
+                        else if (phaseKey === 'Before') beforeSnaps.push(snap);
+                    }
+                    // Index after-snapshots by tradeLogId
+                    for (const snap of afterSnaps) {
+                        const tlid = snap.tradeLogId?.length > 0 ? Number(snap.tradeLogId[0]) : null;
+                        if (tlid != null) {
+                            if (!newMap[tlid]) newMap[tlid] = { before: null, after: null };
+                            newMap[tlid].after = snap;
+                        }
+                    }
+                    // For each trade entry, find the closest Before snapshot (same choreId, just before the trade)
+                    for (const entry of result.entries) {
+                        const eid = Number(entry.id);
+                        const eChore = entry.choreId?.length > 0 ? (typeof entry.choreId[0] === 'string' ? entry.choreId[0] : entry.choreId[0]?.toText?.() || '') : '';
+                        const eTs = Number(entry.timestamp);
+                        if (!newMap[eid]) newMap[eid] = { before: null, after: null };
+                        // Find closest Before with same choreId before this trade's timestamp
+                        let bestBefore = null;
+                        let bestDist = Infinity;
+                        for (const snap of beforeSnaps) {
+                            const sChore = snap.choreId?.length > 0 ? (typeof snap.choreId[0] === 'string' ? snap.choreId[0] : snap.choreId[0]?.toText?.() || '') : '';
+                            const sTs = Number(snap.timestamp);
+                            if (sChore === eChore && sTs <= eTs) {
+                                const dist = eTs - sTs;
+                                if (dist < bestDist) { bestDist = dist; bestBefore = snap; }
+                            }
+                        }
+                        newMap[eid].before = bestBefore;
+                    }
+                    setSnapMap(newMap);
+                } catch (snapErr) {
+                    console.error('Failed to load snapshots:', snapErr);
+                }
+            }
         } catch (err) {
             setError('Failed to load trade log: ' + err.message);
         } finally {
@@ -1241,54 +1293,6 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
     }, [getReadyBotActor, query]);
 
     useEffect(() => { loadData(); }, [loadData]);
-
-    // Fetch snapshots for a trade log entry when expanded
-    const loadSnapshots = useCallback(async (tradeLogId, choreId, timestamp) => {
-        if (snapCache[tradeLogId] || snapLoading[tradeLogId]) return;
-        setSnapLoading(prev => ({ ...prev, [tradeLogId]: true }));
-        try {
-            const bot = await getReadyBotActor();
-            if (!bot) return;
-            // Fetch after-snapshot linked by tradeLogId, and also all snapshots
-            // in a time window around the trade to find the before-snapshot
-            const timeWindow = 120_000_000_000; // 2 minutes in nanoseconds
-            const ts = BigInt(timestamp);
-            const result = await bot.getPortfolioSnapshots({
-                startId: [], limit: [20], tradeLogId: [],
-                phase: [], fromTime: [ts - BigInt(timeWindow)], toTime: [ts + BigInt(timeWindow)],
-            });
-            // Find after-snapshot (linked by tradeLogId)
-            let afterSnap = null;
-            let beforeSnap = null;
-            for (const snap of result.entries) {
-                const snapTradeLogId = snap.tradeLogId?.length > 0 ? Number(snap.tradeLogId[0]) : null;
-                const phaseKey = Object.keys(snap.phase || {})[0] || '';
-                if (snapTradeLogId === tradeLogId && phaseKey === 'After') {
-                    afterSnap = snap;
-                }
-                // Before-snapshot: same choreId, phase=Before, just before the trade
-                if (phaseKey === 'Before' && !beforeSnap) {
-                    const snapChoreId = snap.choreId?.length > 0 ? snap.choreId[0] : null;
-                    const snapChoreStr = typeof snapChoreId === 'string' ? snapChoreId : snapChoreId?.toText?.() || String(snapChoreId);
-                    if (snapChoreStr === choreId && Number(snap.timestamp) <= Number(timestamp)) {
-                        beforeSnap = snap;
-                    }
-                }
-            }
-            // If we didn't find the before via time window, take the closest Before snapshot
-            if (!beforeSnap) {
-                const befores = result.entries
-                    .filter(s => Object.keys(s.phase || {})[0] === 'Before' && Number(s.timestamp) <= Number(timestamp))
-                    .sort((a, b) => Number(b.timestamp) - Number(a.timestamp));
-                if (befores.length > 0) beforeSnap = befores[0];
-            }
-            setSnapCache(prev => ({ ...prev, [tradeLogId]: { before: beforeSnap, after: afterSnap } }));
-        } catch (err) {
-            console.error('Failed to load snapshots for trade', tradeLogId, err);
-        } finally {
-            setSnapLoading(prev => ({ ...prev, [tradeLogId]: false }));
-        }
-    }, [getReadyBotActor, snapCache, snapLoading]);
 
     const applyFilters = () => {
         const q = {
@@ -1300,7 +1304,7 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
         };
         setQuery(q);
         setLoading(true);
-        setSnapCache({});
+        setSnapMap({});
         loadData(q);
     };
 
@@ -1321,14 +1325,13 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
 
     const optVal = (arr) => arr?.length > 0 ? arr[0] : null;
 
-    // Render a compact snapshot comparison for a trade entry
-    const renderSnapshotDiff = (tradeId) => {
-        const cached = snapCache[tradeId];
-        if (!cached) return snapLoading[tradeId] ? <div style={{ fontSize: '0.72rem', color: theme.colors.mutedText, padding: '6px 0' }}>Loading snapshots...</div> : null;
-        const { before, after } = cached;
-        if (!before && !after) return <div style={{ fontSize: '0.72rem', color: theme.colors.mutedText, padding: '6px 0' }}>No snapshots available for this trade.</div>;
+    // Render inline snapshot balance changes for a trade entry
+    const renderBalanceChanges = (tradeId) => {
+        const snaps = snapMap[tradeId];
+        if (!snaps || (!snaps.before && !snaps.after)) return null;
+        const { before, after } = snaps;
 
-        // Build a merged token list from both snapshots
+        // Build merged token list
         const tokenMap = new Map();
         const addTokens = (snap, key) => {
             if (!snap?.tokens) return;
@@ -1341,9 +1344,11 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
         addTokens(before, 'before');
         addTokens(after, 'after');
 
+        const rows = [...tokenMap.entries()];
+        if (rows.length === 0) return null;
+
         return (
-            <div style={{ marginTop: '8px', borderTop: `1px solid ${theme.colors.border}`, paddingTop: '8px' }}>
-                <div style={{ fontSize: '0.72rem', fontWeight: '600', color: theme.colors.secondaryText, marginBottom: '4px' }}>Portfolio Snapshot</div>
+            <div style={{ marginTop: '8px', padding: '8px 10px', background: theme.colors.cardGradient, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem' }}>
                     <thead>
                         <tr style={{ color: theme.colors.mutedText, textAlign: 'left' }}>
@@ -1351,27 +1356,39 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
                             <th style={{ padding: '2px 6px', textAlign: 'right' }}>Before</th>
                             <th style={{ padding: '2px 6px', textAlign: 'right' }}>After</th>
                             <th style={{ padding: '2px 6px', textAlign: 'right' }}>Change</th>
+                            <th style={{ padding: '2px 6px', textAlign: 'right' }}>USD Value</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {[...tokenMap.entries()].map(([tid, info]) => {
+                        {rows.map(([tid, info]) => {
                             const dec = info.decimals;
+                            const scale = 10 ** dec;
                             const bBal = info.before?.balance != null ? Number(info.before.balance) : null;
                             const aBal = info.after?.balance != null ? Number(info.after.balance) : null;
                             const diff = (bBal != null && aBal != null) ? aBal - bBal : null;
                             const diffColor = diff > 0 ? '#22c55e' : diff < 0 ? '#ef4444' : theme.colors.secondaryText;
                             const diffPrefix = diff > 0 ? '+' : '';
+                            // USD value of the change (use after-snap price, or before if after unavailable)
+                            const snapForPrice = info.after || info.before;
+                            const usdPriceE8s = snapForPrice?.priceUsdE8s?.length > 0 ? Number(snapForPrice.priceUsdE8s[0]) : (snapForPrice?.priceUsdE8s != null && typeof snapForPrice.priceUsdE8s !== 'object' ? Number(snapForPrice.priceUsdE8s) : null);
+                            let usdChange = null;
+                            if (diff != null && usdPriceE8s != null && usdPriceE8s > 0) {
+                                usdChange = (diff / scale) * (usdPriceE8s / scale);
+                            }
                             return (
-                                <tr key={tid} style={{ borderTop: `1px solid ${theme.colors.border}10` }}>
+                                <tr key={tid} style={{ borderTop: `1px solid ${theme.colors.border}20` }}>
                                     <td style={{ padding: '3px 6px', color: theme.colors.primaryText, fontWeight: '500' }}>{info.symbol}</td>
-                                    <td style={{ padding: '3px 6px', textAlign: 'right', color: theme.colors.secondaryText }}>
+                                    <td style={{ padding: '3px 6px', textAlign: 'right', color: theme.colors.secondaryText, fontFamily: 'monospace', fontSize: '0.7rem' }}>
                                         {bBal != null ? formatTokenAmount(bBal, dec) : '—'}
                                     </td>
-                                    <td style={{ padding: '3px 6px', textAlign: 'right', color: theme.colors.secondaryText }}>
+                                    <td style={{ padding: '3px 6px', textAlign: 'right', color: theme.colors.secondaryText, fontFamily: 'monospace', fontSize: '0.7rem' }}>
                                         {aBal != null ? formatTokenAmount(aBal, dec) : '—'}
                                     </td>
-                                    <td style={{ padding: '3px 6px', textAlign: 'right', color: diffColor, fontWeight: diff ? '600' : '400' }}>
+                                    <td style={{ padding: '3px 6px', textAlign: 'right', color: diffColor, fontWeight: '600', fontFamily: 'monospace', fontSize: '0.7rem' }}>
                                         {diff != null ? `${diffPrefix}${formatTokenAmount(Math.abs(diff), dec)}` : '—'}
+                                    </td>
+                                    <td style={{ padding: '3px 6px', textAlign: 'right', color: usdChange != null ? (usdChange >= 0 ? '#22c55e' : '#ef4444') : theme.colors.mutedText, fontSize: '0.7rem' }}>
+                                        {usdChange != null ? `${usdChange >= 0 ? '+' : ''}$${Math.abs(usdChange).toFixed(2)}` : '—'}
                                     </td>
                                 </tr>
                             );
@@ -1422,7 +1439,6 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
                         const inputDec = getDec(e.inputToken);
                         const outputDec = e.outputToken?.length > 0 ? getDec(e.outputToken[0]) : 8;
                         const isSwap = Number(e.actionType) === 0;
-                        const isExpanded = expandedId === Number(e.id);
                         // Format price as human-readable output/input
                         const priceE8s = optVal(e.priceE8s);
                         const humanPrice = priceE8s != null && outputDec != null ? (Number(priceE8s) / (10 ** outputDec)) : null;
@@ -1431,19 +1447,9 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
                         return (
                             <div key={Number(e.id)} style={{
                                 padding: '10px 12px', background: theme.colors.primaryBg, borderRadius: '8px',
-                                border: `1px solid ${isExpanded ? accentColor + '40' : theme.colors.border}`, fontSize: '0.78rem',
+                                border: `1px solid ${theme.colors.border}`, fontSize: '0.78rem',
                             }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap', gap: '4px',
-                                    cursor: isSwap ? 'pointer' : 'default' }}
-                                    onClick={() => {
-                                        if (!isSwap) return;
-                                        const newId = isExpanded ? null : Number(e.id);
-                                        setExpandedId(newId);
-                                        if (newId != null) {
-                                            loadSnapshots(Number(e.id), optVal(e.choreId) ? (typeof optVal(e.choreId) === 'string' ? optVal(e.choreId) : optVal(e.choreId)?.toText?.() || '') : '', e.timestamp);
-                                        }
-                                    }}
-                                >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap', gap: '4px' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                         <span style={{ fontWeight: '600', color: theme.colors.primaryText }}>#{Number(e.id)}</span>
                                         <span style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: '600',
@@ -1451,7 +1457,6 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
                                             color: TRADE_STATUS_COLORS[statusKey] || '#6b7280',
                                         }}>{TRADE_STATUS_LABELS[statusKey] || statusKey}</span>
                                         <span style={{ color: theme.colors.mutedText }}>{ACTION_TYPE_LABELS[Number(e.actionType)] || `Type ${Number(e.actionType)}`}</span>
-                                        {isSwap && <span style={{ color: theme.colors.mutedText, fontSize: '0.7rem' }}>{isExpanded ? '▾' : '▸'}</span>}
                                     </div>
                                     <span style={{ color: theme.colors.mutedText, fontSize: '0.7rem' }}>{new Date(Number(e.timestamp) / 1_000_000).toLocaleString()}</span>
                                 </div>
@@ -1465,7 +1470,7 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
                                     {optVal(e.actionId) != null && <div><strong>Action:</strong> #{Number(optVal(e.actionId))}</div>}
                                     {optVal(e.errorMessage) && <div style={{ color: '#ef4444', gridColumn: '1 / -1' }}><strong>Error:</strong> {optVal(e.errorMessage)}</div>}
                                 </div>
-                                {isExpanded && renderSnapshotDiff(Number(e.id))}
+                                {isSwap && renderBalanceChanges(Number(e.id))}
                             </div>
                         );
                     })}

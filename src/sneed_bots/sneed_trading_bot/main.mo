@@ -1018,22 +1018,41 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     /// Returns TokenSnapshot array.
     func takeTokenSnapshots(tokens: [Principal]): async [T.TokenSnapshot] {
         let snaps = Buffer.Buffer<T.TokenSnapshot>(tokens.size());
+
+        let icpToken = Principal.fromText(T.ICP_LEDGER);
+        let ckusdcToken = Principal.fromText(T.CKUSDC_LEDGER);
+
+        // Try to get ICP→ckUSDC quote to derive USD values.
+        // ckUSDC has 6 decimals, so: icpUsdPrice = quote.expectedOutput * 1e6 / quote.inputAmount
+        // represents how many ckUSDC (6-dec) you get per 1 raw ICP (8-dec unit).
+        // We express priceUsdE8s similarly to priceIcpE8s: humanUsdPerToken * 10^tokenDecimals.
+        let icpPriceUsdE6: ?Nat = switch (getCachedQuote(icpToken, ckusdcToken)) {
+            case (?q) {
+                if (q.inputAmount > 0) {
+                    // This gives us: ckUSDC-raw per 1e8 ICP-raw
+                    // = USD (with 6 decimals) per 1 ICP
+                    ?((q.expectedOutput * 100_000_000) / q.inputAmount)
+                } else { null }
+            };
+            case null { null };
+        };
+
         for (token in tokens.vals()) {
             let balance = await getBalance(token, null); // Main account
             let meta = getCachedMeta(token);
             let symbol = switch (meta) { case (?m) m.symbol; case null { switch (getTokenInfo(token)) { case (?i) i.symbol; case null "?" } } };
             let decimals: Nat8 = switch (meta) { case (?m) m.decimals; case null { switch (getTokenInfo(token)) { case (?i) i.decimals; case null 8 } } };
+            let decNat = Nat8.toNat(decimals);
+            let scale = 10 ** decNat;
 
-            // Try to get price info from cached quotes (ICP as common denom)
-            let icpToken = Principal.fromText("ryjl3-tyaaa-aaaaa-aaaba-cai");
+            // ICP price: spotPriceE8s format = humanIcpPerToken * 10^tokenDecimals
             let priceIcpE8s: ?Nat = if (token == icpToken) {
-                // 1 ICP = 1 ICP, expressed as 10^8 (since spotPriceE8s = humanPrice * 10^outputDecimals)
-                ?(10 ** Nat8.toNat(decimals))
+                ?scale // 1 ICP = 1 ICP
             } else {
                 switch (getCachedQuote(token, icpToken)) {
                     case (?q) {
                         if (q.inputAmount > 0) {
-                            ?((q.expectedOutput * (10 ** Nat8.toNat(decimals))) / q.inputAmount)
+                            ?((q.expectedOutput * scale) / q.inputAmount)
                         } else { null }
                     };
                     case null { null };
@@ -1041,7 +1060,29 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             };
 
             let valueIcpE8s: ?Nat = switch (priceIcpE8s) {
-                case (?p) { ?((balance * p) / (10 ** Nat8.toNat(decimals))) };
+                case (?p) { ?((balance * p) / scale) };
+                case null { null };
+            };
+
+            // USD price: derive from ICP price * ICP/USD rate
+            // priceUsdE8s = humanUsdPerToken * 10^tokenDecimals
+            let priceUsdE8s: ?Nat = if (token == ckusdcToken) {
+                ?scale // 1 ckUSDC = $1
+            } else {
+                switch (priceIcpE8s, icpPriceUsdE6) {
+                    case (?icpP, ?usdRate) {
+                        // icpP = humanIcpPerToken * scale
+                        // usdRate = ckUSDC-raw per 1 ICP (6 dec)
+                        // humanUsdPerToken = (icpP / scale) * (usdRate / 1e6)
+                        // priceUsdE8s = humanUsdPerToken * scale = icpP * usdRate / 1e6
+                        ?((icpP * usdRate) / 1_000_000)
+                    };
+                    case (_, _) { null };
+                };
+            };
+
+            let valueUsdE8s: ?Nat = switch (priceUsdE8s) {
+                case (?p) { ?((balance * p) / scale) };
                 case null { null };
             };
 
@@ -1051,10 +1092,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 decimals = decimals;
                 balance = balance;
                 priceIcpE8s = priceIcpE8s;
-                priceUsdE8s = null;
+                priceUsdE8s = priceUsdE8s;
                 priceDenomE8s = null;
                 valueIcpE8s = valueIcpE8s;
-                valueUsdE8s = null;
+                valueUsdE8s = valueUsdE8s;
                 valueDenomE8s = null;
             });
         };
@@ -1983,38 +2024,63 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     };
 
     /// Collect all unique token principals from a list of trade actions.
+    /// Also includes ICP and ckUSDC for snapshot pricing.
     func _collectTokens(actions: [T.ActionConfig]): [Principal] {
-        let buf = Buffer.Buffer<Principal>(actions.size() * 2);
-        for (a in actions.vals()) {
+        let buf = Buffer.Buffer<Principal>(actions.size() * 2 + 2);
+        let addToken = func(token: Principal) {
             var found = false;
-            for (t in buf.vals()) { if (t == a.inputToken) { found := true } };
-            if (not found) { buf.add(a.inputToken) };
+            for (t in buf.vals()) { if (t == token) { found := true } };
+            if (not found) { buf.add(token) };
+        };
+        for (a in actions.vals()) {
+            addToken(a.inputToken);
             switch (a.outputToken) {
-                case (?ot) {
-                    found := false;
-                    for (t in buf.vals()) { if (t == ot) { found := true } };
-                    if (not found) { buf.add(ot) };
-                };
+                case (?ot) { addToken(ot) };
                 case null {};
             };
         };
+        // Ensure ICP and ckUSDC metadata are available for snapshot pricing
+        addToken(Principal.fromText(T.ICP_LEDGER));
+        addToken(Principal.fromText(T.CKUSDC_LEDGER));
         Buffer.toArray(buf)
     };
 
     /// Collect all unique (input, output) token pairs from trade actions.
+    /// Also adds supplementary pairs for portfolio snapshots:
+    ///  - token→ICP for any token not already paired with ICP (for ICP valuation)
+    ///  - ICP→ckUSDC (for USD valuation)
     func _collectPairs(actions: [T.ActionConfig]): [(Principal, Principal)] {
-        let buf = Buffer.Buffer<(Principal, Principal)>(actions.size());
+        let buf = Buffer.Buffer<(Principal, Principal)>(actions.size() + 4);
+        let icpToken = Principal.fromText(T.ICP_LEDGER);
+        let ckusdcToken = Principal.fromText(T.CKUSDC_LEDGER);
+
+        let addPair = func(inp: Principal, out: Principal) {
+            let key = pairKey(inp, out);
+            var found = false;
+            for ((i, o) in buf.vals()) { if (pairKey(i, o) == key) { found := true } };
+            if (not found) { buf.add((inp, out)) };
+        };
+
+        // Add all explicit trade pairs
         for (a in actions.vals()) {
             switch (a.outputToken) {
-                case (?ot) {
-                    let key = pairKey(a.inputToken, ot);
-                    var found = false;
-                    for ((i, o) in buf.vals()) { if (pairKey(i, o) == key) { found := true } };
-                    if (not found) { buf.add((a.inputToken, ot)) };
-                };
+                case (?ot) { addPair(a.inputToken, ot) };
                 case null {};
             };
         };
+
+        // Add token→ICP for any token not already paired with ICP
+        for (a in actions.vals()) {
+            if (a.inputToken != icpToken) { addPair(a.inputToken, icpToken) };
+            switch (a.outputToken) {
+                case (?ot) { if (ot != icpToken) { addPair(ot, icpToken) } };
+                case null {};
+            };
+        };
+
+        // Add ICP→ckUSDC for USD price derivation
+        addPair(icpToken, ckusdcToken);
+
         Buffer.toArray(buf)
     };
 
