@@ -1071,9 +1071,14 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     case (#Before) { "Trade " # Nat.toText(actionId) # " pre-swap" };
                     case (#After) { "Trade " # Nat.toText(actionId) # " post-swap" };
                 };
+                // For after-snapshots, link to the trade log entry produced by the trade task
+                let tradeLogId: ?Nat = switch (phase) {
+                    case (#After) { getFromMap(_trade_lastLogId, instanceId, null) };
+                    case (#Before) { null };
+                };
                 ignore appendPortfolioSnapshot({
                     trigger = trigger;
-                    tradeLogId = null;
+                    tradeLogId = tradeLogId;
                     phase = phase;
                     choreId = ?instanceId;
                     denominationToken = null;
@@ -1266,7 +1271,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     ("outputAmount", Nat.toText(r.amountOut)),
                     ("dexId", Nat.toText(quote.dexId)),
                 ]);
-                ignore appendTradeLog({
+                let logId = appendTradeLog({
                     choreId = ?instanceId;
                     choreTypeId = getInstanceTypeId(instanceId);
                     actionId = ?action.id;
@@ -1284,6 +1289,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     txId = r.txId;
                     destinationOwner = null;
                 });
+                // Store trade log ID so the after-snapshot task can link to it
+                _trade_lastLogId := setInMap(_trade_lastLogId, instanceId, logId);
                 true
             };
             case (#Err(e)) {
@@ -1291,7 +1298,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     ("actionId", Nat.toText(action.id)),
                     ("error", e),
                 ]);
-                ignore appendTradeLog({
+                let logId = appendTradeLog({
                     choreId = ?instanceId;
                     choreTypeId = getInstanceTypeId(instanceId);
                     actionId = ?action.id;
@@ -1309,6 +1316,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     txId = null;
                     destinationOwner = null;
                 });
+                // Store trade log ID so the after-snapshot task can link to it
+                _trade_lastLogId := setInMap(_trade_lastLogId, instanceId, logId);
                 false
             };
         };
@@ -2015,6 +2024,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
     // Transient per-instance state for trade conductor
     transient var _trade_state: [(Text, { actions: [T.ActionConfig]; index: Nat })] = [];
+    // Last trade log ID produced by executeTradeSwap, keyed by instanceId.
+    // Used by the after-snapshot task to link to the trade log entry.
+    transient var _trade_lastLogId: [(Text, ?Nat)] = [];
 
     func _trade_getState(instanceId: Text): { actions: [T.ActionConfig]; index: Nat } {
         getFromMap(_trade_state, instanceId, { actions = []; index = 0 })
