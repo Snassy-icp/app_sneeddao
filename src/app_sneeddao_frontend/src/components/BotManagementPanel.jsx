@@ -2267,7 +2267,7 @@ export default function BotManagementPanel({
                                                         <select value={Object.keys(logConfig.logLevel)[0]}
                                                             onChange={async (e) => {
                                                                 setSavingLogConfig(true);
-                                                                try { const bot = await getReadyBotActor(); await bot.setLogLevel({ [e.target.value]: null }); setLogSuccess(`Log level set to ${e.target.value}`); setTimeout(() => setLogSuccess(''), 3000); loadLogData(undefined, true); }
+                                                                try { const newLevel = e.target.value; const bot = await getReadyBotActor(); await bot.setLogLevel({ [newLevel]: null }); setLogConfig(prev => prev ? { ...prev, logLevel: { [newLevel]: null } } : prev); setLogSuccess(`Log level set to ${newLevel}`); setTimeout(() => setLogSuccess(''), 3000); loadLogData(undefined, true); }
                                                                 catch (err) { setLogError('Failed: ' + err.message); }
                                                                 finally { setSavingLogConfig(false); }
                                                             }}
