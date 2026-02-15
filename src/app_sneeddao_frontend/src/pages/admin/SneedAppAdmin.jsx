@@ -5,7 +5,7 @@ import { createActor as createFactoryActor, canisterId as factoryCanisterId } fr
 import Header from '../../components/Header';
 import { useTheme } from '../../contexts/ThemeContext';
 import { Principal } from '@dfinity/principal';
-import { FaSave, FaPlus, FaTrash, FaUpload, FaSpinner, FaCheckCircle, FaExclamationTriangle, FaEdit, FaTimes, FaSearch } from 'react-icons/fa';
+import { FaSave, FaPlus, FaTrash, FaUpload, FaSpinner, FaCheckCircle, FaExclamationTriangle, FaEdit, FaTimes, FaSearch, FaCloudDownloadAlt } from 'react-icons/fa';
 
 const appPrimary = '#06b6d4';
 const E8S = 100_000_000;
@@ -33,6 +33,8 @@ export default function SneedAppAdmin() {
     const [editVersionData, setEditVersionData] = useState({});
     const [wasmFile, setWasmFile] = useState(null);
     const [uploadingWasm, setUploadingWasm] = useState('');
+    const [downloadUploadWasm, setDownloadUploadWasm] = useState(''); // vKey being processed
+    const [downloadUploadStatus, setDownloadUploadStatus] = useState(''); // progress text
 
     // Mint log state
     const [mintLog, setMintLog] = useState([]);
@@ -251,6 +253,64 @@ export default function SneedAppAdmin() {
             showSuccess('WASM cleared');
             await loadVersions();
         } catch (e) { showError(e.message); }
+    };
+
+    const handleDownloadAndUploadWasm = async (v) => {
+        const vKey = `${Number(v.major)}.${Number(v.minor)}.${Number(v.patch)}`;
+        const wasmUrl = v.wasmUrl?.length > 0 ? v.wasmUrl[0] : (editingVersion === vKey && editVersionData.wasmUrl ? editVersionData.wasmUrl : '');
+        if (!wasmUrl) return;
+        setDownloadUploadWasm(vKey);
+        setDownloadUploadStatus('Downloading WASM...');
+        try {
+            const response = await fetch(wasmUrl);
+            if (!response.ok) throw new Error(`Download failed: HTTP ${response.status} ${response.statusText}`);
+            const contentLength = response.headers.get('content-length');
+            if (contentLength && !response.body) {
+                // No streaming support, just get the whole blob
+                setDownloadUploadStatus(`Downloading WASM (${(parseInt(contentLength) / 1024).toFixed(0)} KB)...`);
+            }
+            let bytes;
+            if (response.body && contentLength) {
+                // Stream with progress
+                const total = parseInt(contentLength);
+                const reader = response.body.getReader();
+                const chunks = [];
+                let received = 0;
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    chunks.push(value);
+                    received += value.length;
+                    const pct = Math.round((received / total) * 100);
+                    setDownloadUploadStatus(`Downloading WASM... ${pct}% (${(received / 1024).toFixed(0)} / ${(total / 1024).toFixed(0)} KB)`);
+                }
+                const allBytes = new Uint8Array(received);
+                let offset = 0;
+                for (const chunk of chunks) {
+                    allBytes.set(chunk, offset);
+                    offset += chunk.length;
+                }
+                bytes = allBytes;
+            } else {
+                const buf = await response.arrayBuffer();
+                bytes = new Uint8Array(buf);
+            }
+
+            // Validate WASM magic bytes
+            if (bytes.length < 4 || bytes[0] !== 0x00 || bytes[1] !== 0x61 || bytes[2] !== 0x73 || bytes[3] !== 0x6d) {
+                throw new Error('Invalid WASM file (bad magic bytes). The URL may not point to a valid .wasm file.');
+            }
+
+            setDownloadUploadStatus(`Uploading WASM to canister (${(bytes.length / 1024).toFixed(0)} KB)...`);
+            const factory = getFactory();
+            await factory.uploadAppVersionWasm(selectedAppId, v.major, v.minor, v.patch, bytes);
+            showSuccess(`WASM downloaded & uploaded for v${vKey} (${(bytes.length / 1024).toFixed(0)} KB)`);
+            await loadVersions();
+        } catch (e) {
+            showError('Download & upload failed: ' + e.message);
+        }
+        setDownloadUploadWasm('');
+        setDownloadUploadStatus('');
     };
 
     // Styles
@@ -567,18 +627,35 @@ export default function SneedAppAdmin() {
                                     )}
 
                                     {/* WASM Upload */}
-                                    <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                                         <input type="file" accept=".wasm" onChange={e => setWasmFile(e.target.files[0])} style={{ fontSize: 12, color: theme.colors.secondaryText }} />
-                                        <button onClick={() => handleUploadWasm(v)} disabled={!wasmFile || uploadingWasm === vKey}
+                                        <button onClick={() => handleUploadWasm(v)} disabled={!wasmFile || uploadingWasm === vKey || downloadUploadWasm === vKey}
                                             style={btnSm(appPrimary)}>
                                             {uploadingWasm === vKey ? <FaSpinner className="fa-spin" /> : <FaUpload />} Upload WASM
                                         </button>
+                                        {(v.wasmUrl?.length > 0 || (editingVersion === vKey && editVersionData.wasmUrl)) && (
+                                            <button onClick={() => handleDownloadAndUploadWasm(v)}
+                                                disabled={downloadUploadWasm === vKey || uploadingWasm === vKey}
+                                                style={btnSm('#8b5cf6')}>
+                                                {downloadUploadWasm === vKey ? <FaSpinner className="fa-spin" /> : <FaCloudDownloadAlt />} Download &amp; Upload
+                                            </button>
+                                        )}
                                         {v.hasWasm && (
                                             <button onClick={() => handleClearWasm(v)} style={btnSm('#ef4444')}>
                                                 <FaTimes /> Clear
                                             </button>
                                         )}
                                     </div>
+                                    {downloadUploadWasm === vKey && downloadUploadStatus && (
+                                        <div style={{
+                                            marginTop: 8, padding: '8px 12px', borderRadius: 6,
+                                            background: '#8b5cf620', border: '1px solid #8b5cf640',
+                                            color: '#8b5cf6', fontSize: 12,
+                                            display: 'flex', alignItems: 'center', gap: 8
+                                        }}>
+                                            <FaSpinner className="fa-spin" /> {downloadUploadStatus}
+                                        </div>
+                                    )}
                                 </div>
                             );
                         })}
