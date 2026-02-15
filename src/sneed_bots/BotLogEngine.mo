@@ -180,6 +180,12 @@ module {
 
         /// Query log entries with filtering and pagination.
         /// Returns entries in ascending ID order.
+        ///
+        /// When `startId` is provided (Some), returns up to `limit` matching entries
+        /// starting from that ID (forward scan — oldest first).
+        ///
+        /// When `startId` is absent (None), returns the **newest** `limit` matching
+        /// entries so the default view always shows the most recent activity.
         public func getLogs(filter: BotLogTypes.LogFilter): BotLogTypes.LogResult {
             let minLvl: Nat = switch (filter.minLevel) {
                 case (?l) { BotLogTypes.logLevelToNat(l) };
@@ -190,13 +196,30 @@ module {
                 case null { 100 };
             };
 
-            let matching = Buffer.Buffer<BotLogTypes.LogEntry>(limit);
-            var totalMatching: Nat = 0;
+            let hasStartId = switch (filter.startId) { case (?_) true; case null false };
 
+            // First pass: count total matching entries
+            var totalMatching: Nat = 0;
             for (entry in buf.vals()) {
                 if (matchesFilter(entry, minLvl, filter)) {
                     totalMatching += 1;
-                    if (matching.size() < limit) {
+                };
+            };
+
+            // Determine how many matching entries to skip.
+            // With explicit startId: start from the beginning (skip = 0).
+            // Without startId: skip to the tail so we return the NEWEST entries.
+            let skip: Nat = if (hasStartId) { 0 }
+                else { if (totalMatching > limit) { totalMatching - limit : Nat } else { 0 } };
+
+            // Second pass: collect entries
+            var skipped: Nat = 0;
+            let matching = Buffer.Buffer<BotLogTypes.LogEntry>(limit);
+            for (entry in buf.vals()) {
+                if (matchesFilter(entry, minLvl, filter)) {
+                    if (skipped < skip) {
+                        skipped += 1;
+                    } else if (matching.size() < limit) {
                         matching.add(entry);
                     };
                 };

@@ -1696,7 +1696,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             let taskKey = "trade-meta-" # instanceId;
                             let taskFn = _makeRefreshMetadataTask(taskKey, tokens);
                             choreEngine.setPendingTask(instanceId, taskKey, taskFn);
-                            logEngine.logDebug(src, "Phase 0: refreshing metadata for " # Nat.toText(tokens.size()) # " tokens", null, []);
+                            logEngine.logInfo(src, "Phase 0: refreshing metadata for " # Nat.toText(tokens.size()) # " tokens", null, []);
                             return #ContinueIn(5);
                         };
 
@@ -1706,7 +1706,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             let taskKey = "trade-prices-" # instanceId;
                             let taskFn = _makeFetchPricesTask(taskKey, pairs);
                             choreEngine.setPendingTask(instanceId, taskKey, taskFn);
-                            logEngine.logDebug(src, "Phase 1: fetching prices for " # Nat.toText(pairs.size()) # " pairs", null, []);
+                            logEngine.logInfo(src, "Phase 1: fetching prices for " # Nat.toText(pairs.size()) # " pairs", null, []);
                             return #ContinueIn(5);
                         };
 
@@ -1718,14 +1718,14 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     case (?prevTask) {
                         // Metadata refresh completed → start price fetch
                         if (Text.startsWith(prevTask.taskId, #text("trade-meta-"))) {
-                            logEngine.logDebug(src, "Phase 0 complete: metadata refreshed", null, []);
+                            logEngine.logInfo(src, "Phase 0 complete: metadata refreshed", null, []);
                             let st = _trade_getState(instanceId);
                             let pairs = _collectPairs(st.actions);
                             if (pairs.size() > 0) {
                                 let taskKey = "trade-prices-" # instanceId;
                                 let taskFn = _makeFetchPricesTask(taskKey, pairs);
                                 choreEngine.setPendingTask(instanceId, taskKey, taskFn);
-                                logEngine.logDebug(src, "Phase 1: fetching prices for " # Nat.toText(pairs.size()) # " pairs", null, []);
+                                logEngine.logInfo(src, "Phase 1: fetching prices for " # Nat.toText(pairs.size()) # " pairs", null, []);
                                 return #ContinueIn(5);
                             };
                             // No pairs → start first trade action
@@ -1735,7 +1735,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
                         // Price fetch completed → start executing trade actions
                         if (Text.startsWith(prevTask.taskId, #text("trade-prices-"))) {
-                            logEngine.logDebug(src, "Phase 1 complete: prices fetched", null, []);
+                            logEngine.logInfo(src, "Phase 1 complete: prices fetched", null, []);
                             _trade_startCurrentTask(instanceId);
                             return #ContinueIn(10);
                         };
@@ -1799,7 +1799,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             let taskKey = "rebal-meta-" # instanceId;
                             let taskFn = _makeRefreshMetadataTask(taskKey, tokens);
                             choreEngine.setPendingTask(instanceId, taskKey, taskFn);
-                            logEngine.logDebug(src, "Phase 0: refreshing metadata for " # Nat.toText(tokens.size()) # " tokens", null, []);
+                            logEngine.logInfo(src, "Phase 0: refreshing metadata for " # Nat.toText(tokens.size()) # " tokens", null, []);
                             return #ContinueIn(5);
                         };
 
@@ -1818,7 +1818,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             let taskKey = "rebal-prices-" # instanceId;
                             let taskFn = _makeFetchPricesTask(taskKey, pairs);
                             choreEngine.setPendingTask(instanceId, taskKey, taskFn);
-                            logEngine.logDebug(src, "Phase 1: fetching prices for " # Nat.toText(pairs.size()) # " pairs", null, []);
+                            logEngine.logInfo(src, "Phase 1: fetching prices for " # Nat.toText(pairs.size()) # " pairs", null, []);
                             return #ContinueIn(5);
                         };
 
@@ -1834,7 +1834,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     case (?prevTask) {
                         // Metadata refresh completed → start price fetch
                         if (Text.startsWith(prevTask.taskId, #text("rebal-meta-"))) {
-                            logEngine.logDebug(src, "Phase 0 complete: metadata refreshed", null, []);
+                            logEngine.logInfo(src, "Phase 0 complete: metadata refreshed", null, []);
                             let targets = getRebalTargets(instanceId);
                             let denomToken = getRebalDenomToken(instanceId);
                             let pairBuf = Buffer.Buffer<(Principal, Principal)>(targets.size());
@@ -1851,7 +1851,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                                 let taskKey = "rebal-prices-" # instanceId;
                                 let taskFn = _makeFetchPricesTask(taskKey, pairs);
                                 choreEngine.setPendingTask(instanceId, taskKey, taskFn);
-                                logEngine.logDebug(src, "Phase 1: fetching prices for " # Nat.toText(pairs.size()) # " pairs", null, []);
+                                logEngine.logInfo(src, "Phase 1: fetching prices for " # Nat.toText(pairs.size()) # " pairs", null, []);
                                 return #ContinueIn(5);
                             };
                             // No pairs → start rebalance directly
@@ -1865,7 +1865,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
                         // Price fetch completed → start rebalance execution
                         if (Text.startsWith(prevTask.taskId, #text("rebal-prices-"))) {
-                            logEngine.logDebug(src, "Phase 1 complete: prices fetched", null, []);
+                            logEngine.logInfo(src, "Phase 1 complete: prices fetched", null, []);
                             let taskFn = func(): async BotChoreTypes.TaskAction {
                                 try { ignore await executeRebalance(instanceId); #Done }
                                 catch (e) { #Error("Rebalance failed: " # Error.message(e)) }

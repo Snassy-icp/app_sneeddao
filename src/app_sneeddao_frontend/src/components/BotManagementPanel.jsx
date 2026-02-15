@@ -2333,16 +2333,30 @@ export default function BotManagementPanel({
 
                                         {/* Pagination */}
                                         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', marginTop: '10px', flexWrap: 'wrap' }}>
+                                            {/* "Newest" — go back to the default newest page (only when navigated away) */}
                                             {!isFirstPage && (
                                                 <button onClick={() => { const nf = { ...logFilter, startId: [] }; setLogFilter(nf); loadLogData(nf); }}
                                                     style={{ padding: '6px 14px', borderRadius: '8px', border: `1px solid ${theme.colors.border}`, background: 'transparent', color: theme.colors.primaryText, fontSize: '0.8rem', cursor: 'pointer' }}>
                                                     « Newest
                                                 </button>
                                             )}
-                                            {logHasMore && logEntries.length > 0 && (
+                                            {/* "Newer" — go forward (higher IDs) when on an older page */}
+                                            {!isFirstPage && logEntries.length > 0 && (
                                                 <button onClick={() => {
                                                     const lastEntry = logEntries[logEntries.length - 1];
                                                     const nf = { ...logFilter, startId: [BigInt(Number(lastEntry.id) + 1)] };
+                                                    setLogFilter(nf); loadLogData(nf);
+                                                }}
+                                                    style={{ padding: '6px 14px', borderRadius: '8px', border: `1px solid ${theme.colors.border}`, background: 'transparent', color: theme.colors.primaryText, fontSize: '0.8rem', cursor: 'pointer' }}>
+                                                    ‹ Newer
+                                                </button>
+                                            )}
+                                            {/* "Older" — go backward (lower IDs) when there are older entries */}
+                                            {logEntries.length > 0 && Number(logEntries[0].id) > 0 && (
+                                                <button onClick={() => {
+                                                    const firstEntry = logEntries[0];
+                                                    const newStart = Math.max(0, Number(firstEntry.id) - pageSize);
+                                                    const nf = { ...logFilter, startId: [BigInt(newStart)] };
                                                     setLogFilter(nf); loadLogData(nf);
                                                 }}
                                                     style={{ padding: '6px 14px', borderRadius: '8px', border: `1px solid ${theme.colors.border}`, background: 'transparent', color: theme.colors.primaryText, fontSize: '0.8rem', cursor: 'pointer' }}>
