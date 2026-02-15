@@ -116,8 +116,6 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     // Preparatory task progress tracking (per chore instance)
     transient var _prep_metaIndex: [(Text, Nat)] = [];
     transient var _prep_priceIndex: [(Text, Nat)] = [];
-    transient var _trade_phase: [(Text, Nat)] = []; // 0=metadata, 1=prices, 2=actions
-    transient var _rebal_phase: [(Text, Nat)] = []; // 0=metadata, 1=prices, 2=execute
 
     // ============================================
     // PER-INSTANCE SETTINGS HELPERS
@@ -1600,22 +1598,6 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         Buffer.toArray(buf)
     };
 
-    /// Get/set the phase for a chore instance.
-    func _getPhase(phases: [(Text, Nat)], id: Text): Nat {
-        for ((k, v) in phases.vals()) { if (k == id) return v };
-        0
-    };
-    func _setPhase(phases: [(Text, Nat)], id: Text, phase: Nat): [(Text, Nat)] {
-        var found = false;
-        let updated = Array.map<(Text, Nat), (Text, Nat)>(phases,
-            func((k, v)) { if (k == id) { found := true; (k, phase) } else { (k, v) } }
-        );
-        if (found) updated else Array.append(updated, [(id, phase)])
-    };
-    func _clearPhase(phases: [(Text, Nat)], id: Text): [(Text, Nat)] {
-        Array.filter<(Text, Nat)>(phases, func((k, _)) { k != id })
-    };
-
     // ============================================
     // CHORE CONDUCTOR — TRADE CHORE
     // ============================================
@@ -1692,106 +1674,80 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
                 let instanceId = ctx.choreId;
                 let src = "chore:" # instanceId;
-                let phase = _getPhase(_trade_phase, instanceId);
 
                 if (ctx.isTaskRunning) { return #ContinueIn(10) };
 
-                // Phase 0: Initialize and start metadata refresh
-                if (phase == 0) {
-                    switch (ctx.lastCompletedTask) {
-                        case null {
-                            // First invocation: load enabled actions and start metadata refresh
-                            let allActions = getTradeActionsForInstance(instanceId);
-                            let enabledActions = Array.filter<T.ActionConfig>(allActions, func(a) { a.enabled });
-                            _trade_setState(instanceId, { actions = enabledActions; index = 0 });
-
-                            logEngine.logInfo(src, "Starting: " # Nat.toText(enabledActions.size()) # " enabled actions", null, []);
-                            if (enabledActions.size() == 0) {
-                                _trade_phase := _clearPhase(_trade_phase, instanceId);
-                                return #Done;
-                            };
-
-                            // Clear price cache for this run
-                            clearPriceCache();
-
-                            let tokens = _collectTokens(enabledActions);
-                            if (tokens.size() > 0) {
-                                let taskKey = "trade-meta-" # instanceId;
-                                let taskFn = _makeRefreshMetadataTask(taskKey, tokens);
-                                choreEngine.setPendingTask(instanceId, taskKey, taskFn);
-                                logEngine.logDebug(src, "Phase 0: refreshing metadata for " # Nat.toText(tokens.size()) # " tokens", null, []);
-                                return #ContinueIn(5);
-                            } else {
-                                // No tokens to refresh, skip to phase 1
-                                _trade_phase := _setPhase(_trade_phase, instanceId, 1);
-                                return #ContinueIn(0);
-                            };
-                        };
-                        case (?_) {
-                            // Metadata refresh completed, advance to phase 1
-                            _trade_phase := _setPhase(_trade_phase, instanceId, 1);
-                            logEngine.logDebug(src, "Phase 0 complete: metadata refreshed", null, []);
-                            return #ContinueIn(0);
-                        };
-                    };
-                };
-
-                // Phase 1: Fetch prices for all pairs
-                if (phase == 1) {
-                    switch (ctx.lastCompletedTask) {
-                        case (?prevTask) {
-                            // Only enter phase 1 from phase 0 completion or initial
-                            if (Text.startsWith(prevTask.taskId, #text("trade-meta-")) or Text.startsWith(prevTask.taskId, #text("trade-prices-"))) {
-                                // If prevTask is a price task that completed, advance to phase 2
-                                if (Text.startsWith(prevTask.taskId, #text("trade-prices-"))) {
-                                    _trade_phase := _setPhase(_trade_phase, instanceId, 2);
-                                    logEngine.logDebug(src, "Phase 1 complete: prices fetched", null, []);
-                                    return #ContinueIn(0);
-                                };
-                            };
-                        };
-                        case null {};
-                    };
-
-                    // Start price fetching task
-                    let st = _trade_getState(instanceId);
-                    let pairs = _collectPairs(st.actions);
-                    if (pairs.size() > 0) {
-                        let taskKey = "trade-prices-" # instanceId;
-                        let taskFn = _makeFetchPricesTask(taskKey, pairs);
-                        choreEngine.setPendingTask(instanceId, taskKey, taskFn);
-                        logEngine.logDebug(src, "Phase 1: fetching prices for " # Nat.toText(pairs.size()) # " pairs", null, []);
-                        return #ContinueIn(5);
-                    } else {
-                        _trade_phase := _setPhase(_trade_phase, instanceId, 2);
-                        return #ContinueIn(0);
-                    };
-                };
-
-                // Phase 2: Execute trade actions one by one
                 switch (ctx.lastCompletedTask) {
+                    case null {
+                        // First invocation: load enabled actions and start metadata refresh
+                        let allActions = getTradeActionsForInstance(instanceId);
+                        let enabledActions = Array.filter<T.ActionConfig>(allActions, func(a) { a.enabled });
+                        _trade_setState(instanceId, { actions = enabledActions; index = 0 });
+
+                        logEngine.logInfo(src, "Starting: " # Nat.toText(enabledActions.size()) # " enabled actions", null, []);
+                        if (enabledActions.size() == 0) { return #Done };
+
+                        // Clear price cache for this run
+                        clearPriceCache();
+
+                        // Start Phase 0: metadata refresh
+                        let tokens = _collectTokens(enabledActions);
+                        if (tokens.size() > 0) {
+                            let taskKey = "trade-meta-" # instanceId;
+                            let taskFn = _makeRefreshMetadataTask(taskKey, tokens);
+                            choreEngine.setPendingTask(instanceId, taskKey, taskFn);
+                            logEngine.logDebug(src, "Phase 0: refreshing metadata for " # Nat.toText(tokens.size()) # " tokens", null, []);
+                            return #ContinueIn(5);
+                        };
+
+                        // No tokens to refresh → skip to Phase 1: price fetch
+                        let pairs = _collectPairs(enabledActions);
+                        if (pairs.size() > 0) {
+                            let taskKey = "trade-prices-" # instanceId;
+                            let taskFn = _makeFetchPricesTask(taskKey, pairs);
+                            choreEngine.setPendingTask(instanceId, taskKey, taskFn);
+                            logEngine.logDebug(src, "Phase 1: fetching prices for " # Nat.toText(pairs.size()) # " pairs", null, []);
+                            return #ContinueIn(5);
+                        };
+
+                        // No pairs either → start first trade action directly
+                        _trade_startCurrentTask(instanceId);
+                        return #ContinueIn(10);
+                    };
+
                     case (?prevTask) {
-                        // Check if previous was a price task (entering phase 2) or a trade action
-                        if (Text.startsWith(prevTask.taskId, #text("trade-prices-")) or Text.startsWith(prevTask.taskId, #text("trade-meta-"))) {
-                            // Just entered phase 2, start first action
+                        // Metadata refresh completed → start price fetch
+                        if (Text.startsWith(prevTask.taskId, #text("trade-meta-"))) {
+                            logEngine.logDebug(src, "Phase 0 complete: metadata refreshed", null, []);
+                            let st = _trade_getState(instanceId);
+                            let pairs = _collectPairs(st.actions);
+                            if (pairs.size() > 0) {
+                                let taskKey = "trade-prices-" # instanceId;
+                                let taskFn = _makeFetchPricesTask(taskKey, pairs);
+                                choreEngine.setPendingTask(instanceId, taskKey, taskFn);
+                                logEngine.logDebug(src, "Phase 1: fetching prices for " # Nat.toText(pairs.size()) # " pairs", null, []);
+                                return #ContinueIn(5);
+                            };
+                            // No pairs → start first trade action
                             _trade_startCurrentTask(instanceId);
                             return #ContinueIn(10);
                         };
 
-                        // A trade action completed, advance to next
+                        // Price fetch completed → start executing trade actions
+                        if (Text.startsWith(prevTask.taskId, #text("trade-prices-"))) {
+                            logEngine.logDebug(src, "Phase 1 complete: prices fetched", null, []);
+                            _trade_startCurrentTask(instanceId);
+                            return #ContinueIn(10);
+                        };
+
+                        // A trade action completed → advance to next
                         let st = _trade_getState(instanceId);
                         let nextIdx = st.index + 1;
                         _trade_setState(instanceId, { st with index = nextIdx });
                         if (nextIdx >= st.actions.size()) {
                             logEngine.logInfo(src, "Completed: all actions processed", null, []);
-                            _trade_phase := _clearPhase(_trade_phase, instanceId);
                             return #Done;
                         };
-                        _trade_startCurrentTask(instanceId);
-                        return #ContinueIn(10);
-                    };
-                    case null {
-                        // Shouldn't reach here in phase 2 without a completed task, but handle gracefully
                         _trade_startCurrentTask(instanceId);
                         return #ContinueIn(10);
                     };
@@ -1810,129 +1766,116 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
                 let instanceId = ctx.choreId;
                 let src = "chore:" # instanceId;
-                let phase = _getPhase(_rebal_phase, instanceId);
 
                 if (ctx.isTaskRunning) { return #ContinueIn(10) };
 
-                // Phase 0: Initialize and start metadata refresh
-                if (phase == 0) {
-                    switch (ctx.lastCompletedTask) {
-                        case null {
-                            let targets = getRebalTargets(instanceId);
-                            if (targets.size() == 0) {
-                                logEngine.logInfo(src, "Rebalance skipped: no targets configured", null, []);
-                                _rebal_phase := _clearPhase(_rebal_phase, instanceId);
-                                return #Done;
-                            };
-
-                            // Clear price cache for this run
-                            clearPriceCache();
-
-                            // Collect all unique tokens: targets + denomination token
-                            let denomToken = getRebalDenomToken(instanceId);
-                            let buf = Buffer.Buffer<Principal>(targets.size() + 1);
-                            var denomFound = false;
-                            for (t in targets.vals()) {
-                                var dup = false;
-                                for (existing in buf.vals()) { if (existing == t.token) { dup := true } };
-                                if (not dup) { buf.add(t.token) };
-                                if (t.token == denomToken) { denomFound := true };
-                            };
-                            if (not denomFound) { buf.add(denomToken) };
-                            let tokens = Buffer.toArray(buf);
-
-                            if (tokens.size() > 0) {
-                                let taskKey = "rebal-meta-" # instanceId;
-                                let taskFn = _makeRefreshMetadataTask(taskKey, tokens);
-                                choreEngine.setPendingTask(instanceId, taskKey, taskFn);
-                                logEngine.logDebug(src, "Phase 0: refreshing metadata for " # Nat.toText(tokens.size()) # " tokens", null, []);
-                                return #ContinueIn(5);
-                            } else {
-                                _rebal_phase := _setPhase(_rebal_phase, instanceId, 1);
-                                return #ContinueIn(0);
-                            };
-                        };
-                        case (?_) {
-                            // Metadata refresh completed, advance to phase 1
-                            _rebal_phase := _setPhase(_rebal_phase, instanceId, 1);
-                            logEngine.logDebug(src, "Phase 0 complete: metadata refreshed", null, []);
-                            return #ContinueIn(0);
-                        };
-                    };
-                };
-
-                // Phase 1: Fetch prices for valuation pairs
-                if (phase == 1) {
-                    switch (ctx.lastCompletedTask) {
-                        case (?prevTask) {
-                            if (Text.startsWith(prevTask.taskId, #text("rebal-prices-"))) {
-                                // Price fetch completed, advance to phase 2
-                                _rebal_phase := _setPhase(_rebal_phase, instanceId, 2);
-                                logEngine.logDebug(src, "Phase 1 complete: prices fetched", null, []);
-                                return #ContinueIn(0);
-                            };
-                        };
-                        case null {};
-                    };
-
-                    // Build price pairs: each target token vs denomination token
-                    let targets = getRebalTargets(instanceId);
-                    let denomToken = getRebalDenomToken(instanceId);
-                    let pairBuf = Buffer.Buffer<(Principal, Principal)>(targets.size());
-                    for (t in targets.vals()) {
-                        if (t.token != denomToken) {
-                            let key = pairKey(t.token, denomToken);
-                            var dup = false;
-                            for ((i, o) in pairBuf.vals()) { if (pairKey(i, o) == key) { dup := true } };
-                            if (not dup) { pairBuf.add((t.token, denomToken)) };
-                        };
-                    };
-                    let pairs = Buffer.toArray(pairBuf);
-
-                    if (pairs.size() > 0) {
-                        let taskKey = "rebal-prices-" # instanceId;
-                        let taskFn = _makeFetchPricesTask(taskKey, pairs);
-                        choreEngine.setPendingTask(instanceId, taskKey, taskFn);
-                        logEngine.logDebug(src, "Phase 1: fetching prices for " # Nat.toText(pairs.size()) # " pairs", null, []);
-                        return #ContinueIn(5);
-                    } else {
-                        _rebal_phase := _setPhase(_rebal_phase, instanceId, 2);
-                        return #ContinueIn(0);
-                    };
-                };
-
-                // Phase 2: Execute rebalance using cached prices
                 switch (ctx.lastCompletedTask) {
+                    case null {
+                        // First invocation
+                        let targets = getRebalTargets(instanceId);
+                        if (targets.size() == 0) {
+                            logEngine.logInfo(src, "Rebalance skipped: no targets configured", null, []);
+                            return #Done;
+                        };
+
+                        // Clear price cache for this run
+                        clearPriceCache();
+
+                        // Collect all unique tokens: targets + denomination token
+                        let denomToken = getRebalDenomToken(instanceId);
+                        let buf = Buffer.Buffer<Principal>(targets.size() + 1);
+                        var denomFound = false;
+                        for (t in targets.vals()) {
+                            var dup = false;
+                            for (existing in buf.vals()) { if (existing == t.token) { dup := true } };
+                            if (not dup) { buf.add(t.token) };
+                            if (t.token == denomToken) { denomFound := true };
+                        };
+                        if (not denomFound) { buf.add(denomToken) };
+                        let tokens = Buffer.toArray(buf);
+
+                        // Start Phase 0: metadata refresh
+                        if (tokens.size() > 0) {
+                            let taskKey = "rebal-meta-" # instanceId;
+                            let taskFn = _makeRefreshMetadataTask(taskKey, tokens);
+                            choreEngine.setPendingTask(instanceId, taskKey, taskFn);
+                            logEngine.logDebug(src, "Phase 0: refreshing metadata for " # Nat.toText(tokens.size()) # " tokens", null, []);
+                            return #ContinueIn(5);
+                        };
+
+                        // No tokens → skip to Phase 1: price fetch
+                        let pairBuf = Buffer.Buffer<(Principal, Principal)>(targets.size());
+                        for (t in targets.vals()) {
+                            if (t.token != denomToken) {
+                                let key = pairKey(t.token, denomToken);
+                                var dup2 = false;
+                                for ((i, o) in pairBuf.vals()) { if (pairKey(i, o) == key) { dup2 := true } };
+                                if (not dup2) { pairBuf.add((t.token, denomToken)) };
+                            };
+                        };
+                        let pairs = Buffer.toArray(pairBuf);
+                        if (pairs.size() > 0) {
+                            let taskKey = "rebal-prices-" # instanceId;
+                            let taskFn = _makeFetchPricesTask(taskKey, pairs);
+                            choreEngine.setPendingTask(instanceId, taskKey, taskFn);
+                            logEngine.logDebug(src, "Phase 1: fetching prices for " # Nat.toText(pairs.size()) # " pairs", null, []);
+                            return #ContinueIn(5);
+                        };
+
+                        // No pairs either → start rebalance directly
+                        let taskFn = func(): async BotChoreTypes.TaskAction {
+                            try { ignore await executeRebalance(instanceId); #Done }
+                            catch (e) { #Error("Rebalance failed: " # Error.message(e)) }
+                        };
+                        choreEngine.setPendingTask(instanceId, "rebalance-exec-" # Nat.toText(Int.abs(Time.now())), taskFn);
+                        return #ContinueIn(15);
+                    };
+
                     case (?prevTask) {
-                        if (Text.startsWith(prevTask.taskId, #text("rebal-prices-")) or Text.startsWith(prevTask.taskId, #text("rebal-meta-"))) {
-                            // Just entered phase 2, start the rebalance task
+                        // Metadata refresh completed → start price fetch
+                        if (Text.startsWith(prevTask.taskId, #text("rebal-meta-"))) {
+                            logEngine.logDebug(src, "Phase 0 complete: metadata refreshed", null, []);
+                            let targets = getRebalTargets(instanceId);
+                            let denomToken = getRebalDenomToken(instanceId);
+                            let pairBuf = Buffer.Buffer<(Principal, Principal)>(targets.size());
+                            for (t in targets.vals()) {
+                                if (t.token != denomToken) {
+                                    let key = pairKey(t.token, denomToken);
+                                    var dup = false;
+                                    for ((i, o) in pairBuf.vals()) { if (pairKey(i, o) == key) { dup := true } };
+                                    if (not dup) { pairBuf.add((t.token, denomToken)) };
+                                };
+                            };
+                            let pairs = Buffer.toArray(pairBuf);
+                            if (pairs.size() > 0) {
+                                let taskKey = "rebal-prices-" # instanceId;
+                                let taskFn = _makeFetchPricesTask(taskKey, pairs);
+                                choreEngine.setPendingTask(instanceId, taskKey, taskFn);
+                                logEngine.logDebug(src, "Phase 1: fetching prices for " # Nat.toText(pairs.size()) # " pairs", null, []);
+                                return #ContinueIn(5);
+                            };
+                            // No pairs → start rebalance directly
                             let taskFn = func(): async BotChoreTypes.TaskAction {
-                                try {
-                                    ignore await executeRebalance(instanceId);
-                                    #Done
-                                } catch (e) {
-                                    #Error("Rebalance failed: " # Error.message(e))
-                                }
+                                try { ignore await executeRebalance(instanceId); #Done }
+                                catch (e) { #Error("Rebalance failed: " # Error.message(e)) }
                             };
                             choreEngine.setPendingTask(instanceId, "rebalance-exec-" # Nat.toText(Int.abs(Time.now())), taskFn);
                             return #ContinueIn(15);
                         };
-                        // Rebalance execution completed
-                        _rebal_phase := _clearPhase(_rebal_phase, instanceId);
-                        return #Done;
-                    };
-                    case null {
-                        // Shouldn't reach phase 2 without a completed task; start rebalance anyway
-                        let taskFn = func(): async BotChoreTypes.TaskAction {
-                            try {
-                                ignore await executeRebalance(instanceId);
-                                #Done
-                            } catch (e) {
-                                #Error("Rebalance failed: " # Error.message(e))
-                            }
+
+                        // Price fetch completed → start rebalance execution
+                        if (Text.startsWith(prevTask.taskId, #text("rebal-prices-"))) {
+                            logEngine.logDebug(src, "Phase 1 complete: prices fetched", null, []);
+                            let taskFn = func(): async BotChoreTypes.TaskAction {
+                                try { ignore await executeRebalance(instanceId); #Done }
+                                catch (e) { #Error("Rebalance failed: " # Error.message(e)) }
+                            };
+                            choreEngine.setPendingTask(instanceId, "rebalance-exec-" # Nat.toText(Int.abs(Time.now())), taskFn);
+                            return #ContinueIn(15);
                         };
-                        choreEngine.setPendingTask(instanceId, "rebalance-exec-" # Nat.toText(Int.abs(Time.now())), taskFn);
-                        return #ContinueIn(15);
+
+                        // Rebalance execution completed
+                        return #Done;
                     };
                 };
             };
