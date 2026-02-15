@@ -18,6 +18,7 @@ import { useAuth } from '../AuthContext';
 import { createActor as createBotActor } from 'external/sneed_trading_bot';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes } from 'react-icons/fa';
+import TokenIcon from '../components/TokenIcon';
 
 // Trading bot accent colors — green/teal for trading
 const ACCENT = '#10b981';
@@ -221,7 +222,7 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
     const [fMaxSlippageBps, setFMaxSlippageBps] = useState('');
     const [fDestOwner, setFDestOwner] = useState('');
     // Price direction toggle: 'output_per_input' means "SNEED per ICP", 'input_per_output' means "ICP per SNEED"
-    const [fPriceDirection, setFPriceDirection] = useState('output_per_input');
+    const [fPriceDirection, setFPriceDirection] = useState('input_per_output');
 
     // Collect all unique token principals from actions for metadata resolution
     const actionTokenIds = React.useMemo(() => {
@@ -305,7 +306,7 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
         setFMinAmount(''); setFMaxAmount(''); setFEnabled(true);
         setFMinBalance(''); setFMaxBalance(''); setFMinPrice(''); setFMaxPrice('');
         setFMaxPriceImpactBps(''); setFMaxSlippageBps(''); setFDestOwner('');
-        setFPriceDirection('output_per_input');
+        setFPriceDirection('input_per_output');
         setShowConditions(false);
     };
 
@@ -326,13 +327,15 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
         setFEnabled(action.enabled);
         setFMinBalance(optVal(action.minBalance) != null ? formatTokenAmount(optVal(action.minBalance), inputDec) : '');
         setFMaxBalance(optVal(action.maxBalance) != null ? formatTokenAmount(optVal(action.maxBalance), inputDec) : '');
-        // Convert e8s prices to human-readable (default direction: output per input)
+        // Convert e8s prices to human-readable (default direction: input per output)
+        // In input_per_output direction, native min = user's max and vice versa (inversion flips ordering)
         const outDec = getDecimals(optVal(action.outputToken) ? principalToStr(optVal(action.outputToken)) : '');
-        setFPriceDirection('output_per_input');
-        setFMinPrice(optVal(action.minPrice) != null ? String(e8sToHumanPrice(optVal(action.minPrice), outDec, 'output_per_input')) : '');
-        setFMaxPrice(optVal(action.maxPrice) != null ? String(e8sToHumanPrice(optVal(action.maxPrice), outDec, 'output_per_input')) : '');
-        setFMaxPriceImpactBps(optVal(action.maxPriceImpactBps) != null ? String(Number(optVal(action.maxPriceImpactBps))) : '');
-        setFMaxSlippageBps(optVal(action.maxSlippageBps) != null ? String(Number(optVal(action.maxSlippageBps))) : '');
+        setFPriceDirection('input_per_output');
+        setFMinPrice(optVal(action.maxPrice) != null ? String(e8sToHumanPrice(optVal(action.maxPrice), outDec, 'input_per_output')) : '');
+        setFMaxPrice(optVal(action.minPrice) != null ? String(e8sToHumanPrice(optVal(action.minPrice), outDec, 'input_per_output')) : '');
+        // Display bps as percentage
+        setFMaxPriceImpactBps(optVal(action.maxPriceImpactBps) != null ? String(Number(optVal(action.maxPriceImpactBps)) / 100) : '');
+        setFMaxSlippageBps(optVal(action.maxSlippageBps) != null ? String(Number(optVal(action.maxSlippageBps)) / 100) : '');
         setFDestOwner(optVal(action.destinationOwner) ? principalToStr(optVal(action.destinationOwner)) : '');
         // Auto-expand conditions if any condition fields are set
         const hasConditions = optVal(action.minBalance) != null || optVal(action.maxBalance) != null ||
@@ -379,8 +382,8 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                 return v != null ? [v] : [];
             })(),
             priceDenominationToken: [],
-            maxPriceImpactBps: fMaxPriceImpactBps ? [BigInt(fMaxPriceImpactBps)] : [],
-            maxSlippageBps: fMaxSlippageBps ? [BigInt(fMaxSlippageBps)] : [],
+            maxPriceImpactBps: fMaxPriceImpactBps ? [BigInt(Math.round(Number(fMaxPriceImpactBps) * 100))] : [],
+            maxSlippageBps: fMaxSlippageBps ? [BigInt(Math.round(Number(fMaxSlippageBps) * 100))] : [],
             minFrequencySeconds: [],
             maxFrequencySeconds: [],
             tradeSizeDenominationToken: [],
@@ -568,12 +571,12 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                                 <input value={fMaxPrice} onChange={(e) => setFMaxPrice(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder={`Skip if price above`} />
                             </div>
                             <div>
-                                <label style={labelStyle}>Max Price Impact (bps)</label>
-                                <input value={fMaxPriceImpactBps} onChange={(e) => setFMaxPriceImpactBps(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" placeholder="e.g. 100 = 1%" />
+                                <label style={labelStyle}>Max Price Impact (%)</label>
+                                <input value={fMaxPriceImpactBps} onChange={(e) => setFMaxPriceImpactBps(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="e.g. 1 = 1%" />
                             </div>
                             <div>
-                                <label style={labelStyle}>Max Slippage (bps)</label>
-                                <input value={fMaxSlippageBps} onChange={(e) => setFMaxSlippageBps(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="numeric" placeholder="e.g. 50 = 0.5%" />
+                                <label style={labelStyle}>Max Slippage (%)</label>
+                                <input value={fMaxSlippageBps} onChange={(e) => setFMaxSlippageBps(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="e.g. 0.5 = 0.5%" />
                             </div>
                         </div>
                     )}
@@ -652,22 +655,24 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                                             {optVal(action.destinationOwner) && <div><strong>Dest:</strong> {shortPrincipal(optVal(action.destinationOwner))}</div>}
                                             {optVal(action.minBalance) != null && <div><strong>Min Bal:</strong> {formatTokenAmount(optVal(action.minBalance), inputDec)} {inputSym}</div>}
                                             {optVal(action.maxBalance) != null && <div><strong>Max Bal:</strong> {formatTokenAmount(optVal(action.maxBalance), inputDec)} {inputSym}</div>}
-                                            {optVal(action.minPrice) != null && (() => {
+                                            {(() => {
                                                 const outKey = action.outputToken?.length > 0 ? (typeof action.outputToken[0] === 'string' ? action.outputToken[0] : action.outputToken[0]?.toText?.() || String(action.outputToken[0])) : '';
                                                 const outD = getDecimals(outKey);
                                                 const outS = outKey ? getSymbol(outKey) : 'Output';
-                                                const hp = e8sToHumanPrice(optVal(action.minPrice), outD, 'output_per_input');
-                                                return <div><strong>Min Price:</strong> {typeof hp === 'number' ? hp.toLocaleString(undefined, { maximumSignificantDigits: 6 }) : hp} {outS}/{inputSym}</div>;
+                                                const inS = inputSym;
+                                                const priceUnit = `${inS}/${outS}`;
+                                                const nativeMin = optVal(action.minPrice);
+                                                const nativeMax = optVal(action.maxPrice);
+                                                // In input_per_output direction, native max → user's min, native min → user's max
+                                                const userMin = nativeMax != null ? e8sToHumanPrice(nativeMax, outD, 'input_per_output') : null;
+                                                const userMax = nativeMin != null ? e8sToHumanPrice(nativeMin, outD, 'input_per_output') : null;
+                                                return <>
+                                                    {userMin != null && <div><strong>Min Price:</strong> {typeof userMin === 'number' ? userMin.toLocaleString(undefined, { maximumSignificantDigits: 6 }) : userMin} {priceUnit}</div>}
+                                                    {userMax != null && <div><strong>Max Price:</strong> {typeof userMax === 'number' ? userMax.toLocaleString(undefined, { maximumSignificantDigits: 6 }) : userMax} {priceUnit}</div>}
+                                                </>;
                                             })()}
-                                            {optVal(action.maxPrice) != null && (() => {
-                                                const outKey = action.outputToken?.length > 0 ? (typeof action.outputToken[0] === 'string' ? action.outputToken[0] : action.outputToken[0]?.toText?.() || String(action.outputToken[0])) : '';
-                                                const outD = getDecimals(outKey);
-                                                const outS = outKey ? getSymbol(outKey) : 'Output';
-                                                const hp = e8sToHumanPrice(optVal(action.maxPrice), outD, 'output_per_input');
-                                                return <div><strong>Max Price:</strong> {typeof hp === 'number' ? hp.toLocaleString(undefined, { maximumSignificantDigits: 6 }) : hp} {outS}/{inputSym}</div>;
-                                            })()}
-                                            {optVal(action.maxPriceImpactBps) != null && <div><strong>Max Impact:</strong> {Number(optVal(action.maxPriceImpactBps))} bps</div>}
-                                            {optVal(action.maxSlippageBps) != null && <div><strong>Max Slippage:</strong> {Number(optVal(action.maxSlippageBps))} bps</div>}
+                                            {optVal(action.maxPriceImpactBps) != null && <div><strong>Max Impact:</strong> {(Number(optVal(action.maxPriceImpactBps)) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%</div>}
+                                            {optVal(action.maxSlippageBps) != null && <div><strong>Max Slippage:</strong> {(Number(optVal(action.maxSlippageBps)) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%</div>}
                                             {action.lastExecutedAt?.length > 0 && (
                                                 <div><strong>Last run:</strong> {new Date(Number(action.lastExecutedAt[0]) / 1_000_000).toLocaleString()}</div>
                                             )}
@@ -776,8 +781,8 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
 
     const handleSaveTargets = async () => {
         if (!editingTargets) return;
-        const totalBps = editingTargets.reduce((sum, t) => sum + (parseInt(t.targetBps) || 0), 0);
-        if (totalBps !== 10000) { setError(`Target allocations must total 100% (10000 bps). Current total: ${totalBps} bps (${(totalBps / 100).toFixed(1)}%).`); return; }
+        const totalPct = editingTargets.reduce((sum, t) => sum + (parseFloat(t.targetBps) || 0), 0);
+        if (Math.abs(totalPct - 100) > 0.01) { setError(`Target allocations must total 100%. Current total: ${totalPct.toFixed(2)}%.`); return; }
         // Validate all tokens are set
         for (const t of editingTargets) {
             if (!t.token) { setError('All tokens must be selected.'); return; }
@@ -787,7 +792,7 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
             const bot = await getReadyBotActor();
             const formatted = editingTargets.map(t => ({
                 token: Principal.fromText(t.token),
-                targetBps: BigInt(t.targetBps),
+                targetBps: BigInt(Math.round(parseFloat(t.targetBps) * 100)),
             }));
             await bot.setRebalanceTargets(instanceId, formatted);
             setSuccess('Rebalance targets updated.');
@@ -859,27 +864,30 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                     </div>
                                 </div>
                                 <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
-                                    <div style={{ fontSize: '0.7rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Threshold (bps)</div>
-                                    <div style={{ fontSize: '0.8rem', color: theme.colors.primaryText }}>{Number(settings.thresholdBps)} bps ({(Number(settings.thresholdBps) / 100).toFixed(1)}%)</div>
+                                    <div style={{ fontSize: '0.7rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Threshold (%)</div>
+                                    <div style={{ fontSize: '0.8rem', color: theme.colors.primaryText }}>{(Number(settings.thresholdBps) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%</div>
                                     <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
-                                        <input type="text" inputMode="numeric" id={`rebal-threshold-${instanceId}`} defaultValue={Number(settings.thresholdBps)} style={{ ...inputStyle, width: '60px', fontSize: '0.7rem' }} />
-                                        <button onClick={() => { const v = document.getElementById(`rebal-threshold-${instanceId}`)?.value; if (v) handleSaveSetting('setRebalanceThresholdBps', BigInt(v)); }} disabled={saving} style={{ ...secondaryButtonStyle, fontSize: '0.65rem', padding: '2px 6px' }}>Set</button>
+                                        <input type="text" inputMode="decimal" id={`rebal-threshold-${instanceId}`} defaultValue={(Number(settings.thresholdBps) / 100).toString()} style={{ ...inputStyle, width: '60px', fontSize: '0.7rem' }} />
+                                        <span style={{ fontSize: '0.7rem', color: theme.colors.secondaryText, alignSelf: 'center' }}>%</span>
+                                        <button onClick={() => { const v = document.getElementById(`rebal-threshold-${instanceId}`)?.value; if (v) handleSaveSetting('setRebalanceThresholdBps', BigInt(Math.round(Number(v) * 100))); }} disabled={saving} style={{ ...secondaryButtonStyle, fontSize: '0.65rem', padding: '2px 6px' }}>Set</button>
                                     </div>
                                 </div>
                                 <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
-                                    <div style={{ fontSize: '0.7rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Max Price Impact (bps)</div>
-                                    <div style={{ fontSize: '0.8rem', color: theme.colors.primaryText }}>{Number(settings.maxPriceImpactBps)} bps</div>
+                                    <div style={{ fontSize: '0.7rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Max Price Impact (%)</div>
+                                    <div style={{ fontSize: '0.8rem', color: theme.colors.primaryText }}>{(Number(settings.maxPriceImpactBps) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%</div>
                                     <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
-                                        <input type="text" inputMode="numeric" id={`rebal-impact-${instanceId}`} defaultValue={Number(settings.maxPriceImpactBps)} style={{ ...inputStyle, width: '60px', fontSize: '0.7rem' }} />
-                                        <button onClick={() => { const v = document.getElementById(`rebal-impact-${instanceId}`)?.value; if (v) handleSaveSetting('setRebalanceMaxPriceImpactBps', BigInt(v)); }} disabled={saving} style={{ ...secondaryButtonStyle, fontSize: '0.65rem', padding: '2px 6px' }}>Set</button>
+                                        <input type="text" inputMode="decimal" id={`rebal-impact-${instanceId}`} defaultValue={(Number(settings.maxPriceImpactBps) / 100).toString()} style={{ ...inputStyle, width: '60px', fontSize: '0.7rem' }} />
+                                        <span style={{ fontSize: '0.7rem', color: theme.colors.secondaryText, alignSelf: 'center' }}>%</span>
+                                        <button onClick={() => { const v = document.getElementById(`rebal-impact-${instanceId}`)?.value; if (v) handleSaveSetting('setRebalanceMaxPriceImpactBps', BigInt(Math.round(Number(v) * 100))); }} disabled={saving} style={{ ...secondaryButtonStyle, fontSize: '0.65rem', padding: '2px 6px' }}>Set</button>
                                     </div>
                                 </div>
                                 <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
-                                    <div style={{ fontSize: '0.7rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Max Slippage (bps)</div>
-                                    <div style={{ fontSize: '0.8rem', color: theme.colors.primaryText }}>{Number(settings.maxSlippageBps)} bps</div>
+                                    <div style={{ fontSize: '0.7rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Max Slippage (%)</div>
+                                    <div style={{ fontSize: '0.8rem', color: theme.colors.primaryText }}>{(Number(settings.maxSlippageBps) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%</div>
                                     <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
-                                        <input type="text" inputMode="numeric" id={`rebal-slippage-${instanceId}`} defaultValue={Number(settings.maxSlippageBps)} style={{ ...inputStyle, width: '60px', fontSize: '0.7rem' }} />
-                                        <button onClick={() => { const v = document.getElementById(`rebal-slippage-${instanceId}`)?.value; if (v) handleSaveSetting('setRebalanceMaxSlippageBps', BigInt(v)); }} disabled={saving} style={{ ...secondaryButtonStyle, fontSize: '0.65rem', padding: '2px 6px' }}>Set</button>
+                                        <input type="text" inputMode="decimal" id={`rebal-slippage-${instanceId}`} defaultValue={(Number(settings.maxSlippageBps) / 100).toString()} style={{ ...inputStyle, width: '60px', fontSize: '0.7rem' }} />
+                                        <span style={{ fontSize: '0.7rem', color: theme.colors.secondaryText, alignSelf: 'center' }}>%</span>
+                                        <button onClick={() => { const v = document.getElementById(`rebal-slippage-${instanceId}`)?.value; if (v) handleSaveSetting('setRebalanceMaxSlippageBps', BigInt(Math.round(Number(v) * 100))); }} disabled={saving} style={{ ...secondaryButtonStyle, fontSize: '0.65rem', padding: '2px 6px' }}>Set</button>
                                     </div>
                                 </div>
                             </div>
@@ -893,7 +901,7 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                 Target Allocations ({targets.length} token{targets.length !== 1 ? 's' : ''})
                             </h4>
                             {editingTargets === null ? (
-                                <button onClick={() => setEditingTargets(targets.map(t => ({ token: t.token.toText ? t.token.toText() : String(t.token), targetBps: Number(t.targetBps).toString() })))} style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <button onClick={() => setEditingTargets(targets.map(t => ({ token: t.token.toText ? t.token.toText() : String(t.token), targetBps: (Number(t.targetBps) / 100).toString() })))} style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                     <FaEdit style={{ fontSize: '0.65rem' }} /> Edit
                                 </button>
                             ) : (
@@ -940,7 +948,7 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                             />
                                         </div>
                                         <input value={t.targetBps} onChange={(e) => { const arr = [...editingTargets]; arr[i] = { ...arr[i], targetBps: e.target.value }; setEditingTargets(arr); }} style={{ ...inputStyle, width: '70px', fontSize: '0.75rem' }} type="text" inputMode="numeric" />
-                                        <span style={{ fontSize: '0.7rem', color: theme.colors.secondaryText, minWidth: '30px' }}>bps</span>
+                                        <span style={{ fontSize: '0.7rem', color: theme.colors.secondaryText, minWidth: '20px' }}>%</span>
                                         <button onClick={() => setEditingTargets(editingTargets.filter((_, j) => j !== i))} style={{ ...secondaryButtonStyle, fontSize: '0.65rem', padding: '2px 6px', color: '#ef4444', borderColor: '#ef444440' }}>
                                             <FaTrash style={{ fontSize: '0.6rem' }} />
                                         </button>
@@ -950,9 +958,13 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                     <button onClick={() => setEditingTargets([...editingTargets, { token: '', targetBps: '0' }])} style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                         <FaPlus style={{ fontSize: '0.6rem' }} /> Add Token
                                     </button>
-                                    <span style={{ fontSize: '0.75rem', color: editingTargets.reduce((s, t) => s + (parseInt(t.targetBps) || 0), 0) === 10000 ? '#22c55e' : '#f59e0b' }}>
-                                        Total: {(editingTargets.reduce((s, t) => s + (parseInt(t.targetBps) || 0), 0) / 100).toFixed(1)}% {editingTargets.reduce((s, t) => s + (parseInt(t.targetBps) || 0), 0) === 10000 ? '' : '(must be 100%)'}
-                                    </span>
+                                    {(() => {
+                                        const totalPct = editingTargets.reduce((s, t) => s + (parseFloat(t.targetBps) || 0), 0);
+                                        const isValid = Math.abs(totalPct - 100) < 0.01;
+                                        return <span style={{ fontSize: '0.75rem', color: isValid ? '#22c55e' : '#f59e0b' }}>
+                                            Total: {totalPct.toFixed(1)}% {isValid ? '' : '(must be 100%)'}
+                                        </span>;
+                                    })()}
                                 </div>
                             </div>
                         )}
@@ -1221,12 +1233,13 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
     }, [entries]);
     const tokenMeta = useTokenMetadata(entryTokenIds, identity);
 
+    const toStr = (p) => typeof p === 'string' ? p : p?.toText?.() || String(p);
     const getSym = (p) => {
-        const key = typeof p === 'string' ? p : p?.toText?.() || String(p);
+        const key = toStr(p);
         return tokenMeta[key]?.symbol || shortPrincipal(key);
     };
     const getDec = (p) => {
-        const key = typeof p === 'string' ? p : p?.toText?.() || String(p);
+        const key = toStr(p);
         return tokenMeta[key]?.decimals ?? 8;
     };
 
@@ -1387,7 +1400,12 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
                             }
                             return (
                                 <tr key={tid} style={{ borderTop: `1px solid ${theme.colors.border}20` }}>
-                                    <td style={{ padding: '3px 6px', color: theme.colors.primaryText, fontWeight: '500' }}>{info.symbol}</td>
+                                    <td style={{ padding: '3px 6px', color: theme.colors.primaryText, fontWeight: '500' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <TokenIcon canisterId={tid} size={14} />
+                                            {info.symbol}
+                                        </div>
+                                    </td>
                                     <td style={{ padding: '3px 6px', textAlign: 'right', color: theme.colors.secondaryText, fontFamily: 'monospace', fontSize: '0.7rem' }}>
                                         {bBal != null ? formatTokenAmount(bBal, dec) : '—'}
                                     </td>
@@ -1449,9 +1467,10 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
                         const inputDec = getDec(e.inputToken);
                         const outputDec = e.outputToken?.length > 0 ? getDec(e.outputToken[0]) : 8;
                         const isSwap = Number(e.actionType) === 0;
-                        // Format price as human-readable output/input
+                        // Format price as human-readable input/output (e.g., ICP per SNEED)
                         const priceE8s = optVal(e.priceE8s);
-                        const humanPrice = priceE8s != null && outputDec != null ? (Number(priceE8s) / (10 ** outputDec)) : null;
+                        const nativePrice = priceE8s != null && outputDec != null ? (Number(priceE8s) / (10 ** outputDec)) : null;
+                        const humanPrice = nativePrice != null && nativePrice > 0 ? (1 / nativePrice) : null;
                         const outSym = e.outputToken?.length > 0 ? getSym(e.outputToken[0]) : '';
                         const inSym = getSym(e.inputToken);
                         return (
@@ -1471,11 +1490,15 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
                                     <span style={{ color: theme.colors.mutedText, fontSize: '0.7rem' }}>{new Date(Number(e.timestamp) / 1_000_000).toLocaleString()}</span>
                                 </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '4px', color: theme.colors.secondaryText }}>
-                                    <div><strong>In:</strong> {formatTokenAmount(e.inputAmount, inputDec)} {inSym}</div>
-                                    {e.outputToken?.length > 0 && <div><strong>Out:</strong> {optVal(e.outputAmount) != null ? formatTokenAmount(optVal(e.outputAmount), outputDec) : '—'} {outSym}</div>}
-                                    {humanPrice != null && <div><strong>Price:</strong> {humanPrice.toLocaleString(undefined, { maximumSignificantDigits: 6 })} {outSym}/{inSym}</div>}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <strong>In:</strong> <TokenIcon canisterId={toStr(e.inputToken)} size={16} /> {formatTokenAmount(e.inputAmount, inputDec)} {inSym}
+                                    </div>
+                                    {e.outputToken?.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <strong>Out:</strong> <TokenIcon canisterId={toStr(e.outputToken[0])} size={16} /> {optVal(e.outputAmount) != null ? formatTokenAmount(optVal(e.outputAmount), outputDec) : '—'} {outSym}
+                                    </div>}
+                                    {humanPrice != null && <div><strong>Price:</strong> {humanPrice.toLocaleString(undefined, { maximumSignificantDigits: 6 })} {inSym}/{outSym}</div>}
                                     {optVal(e.dexId) != null && <div><strong>DEX:</strong> {DEX_LABELS[Number(optVal(e.dexId))] || `DEX ${Number(optVal(e.dexId))}`}</div>}
-                                    {optVal(e.priceImpactBps) != null && <div><strong>Impact:</strong> {Number(optVal(e.priceImpactBps))} bps</div>}
+                                    {optVal(e.priceImpactBps) != null && <div><strong>Impact:</strong> {(Number(optVal(e.priceImpactBps)) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%</div>}
                                     {optVal(e.choreId) && <div><strong>Chore:</strong> {optVal(e.choreId)}</div>}
                                     {optVal(e.actionId) != null && <div><strong>Action:</strong> #{Number(optVal(e.actionId))}</div>}
                                     {optVal(e.errorMessage) && <div style={{ color: '#ef4444', gridColumn: '1 / -1' }}><strong>Error:</strong> {optVal(e.errorMessage)}</div>}
@@ -1672,7 +1695,12 @@ function PortfolioSnapshotViewer({ getReadyBotActor, theme, accentColor }) {
                                     }
                                     return (
                                         <tr key={tid} style={{ borderTop: `1px solid ${theme.colors.border}20` }}>
-                                            <td style={{ padding: '3px 6px', color: theme.colors.primaryText, fontWeight: '500' }}>{info.symbol}</td>
+                                            <td style={{ padding: '3px 6px', color: theme.colors.primaryText, fontWeight: '500' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <TokenIcon canisterId={tid} size={14} />
+                                                    {info.symbol}
+                                                </div>
+                                            </td>
                                             <td style={{ padding: '3px 6px', textAlign: 'right', color: theme.colors.secondaryText, fontFamily: 'monospace', fontSize: '0.7rem' }}>
                                                 {bBal != null ? formatTokenAmount(bBal, dec) : '—'}
                                             </td>
@@ -1735,7 +1763,12 @@ function PortfolioSnapshotViewer({ getReadyBotActor, theme, accentColor }) {
                             <tbody>
                                 {snap.tokens.map((tok, i) => (
                                     <tr key={i} style={{ color: theme.colors.secondaryText, borderTop: `1px solid ${theme.colors.border}10` }}>
-                                        <td style={{ padding: '3px 6px', fontWeight: '500' }}>{tok.symbol || shortPrincipal(tok.token)}</td>
+                                        <td style={{ padding: '3px 6px', fontWeight: '500' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                <TokenIcon canisterId={typeof tok.token === 'string' ? tok.token : tok.token?.toText?.() || String(tok.token)} size={14} />
+                                                {tok.symbol || shortPrincipal(tok.token)}
+                                            </div>
+                                        </td>
                                         <td style={{ padding: '3px 6px', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.7rem' }}>{formatTokenAmount(tok.balance, tok.decimals)}</td>
                                         <td style={{ padding: '3px 6px', textAlign: 'right', fontSize: '0.7rem' }}>{optVal(tok.valueIcpE8s) != null ? formatTokenAmount(optVal(tok.valueIcpE8s), 8) + ' ICP' : '—'}</td>
                                         <td style={{ padding: '3px 6px', textAlign: 'right', fontSize: '0.7rem' }}>{optVal(tok.valueUsdE8s) != null ? '$' + formatTokenAmount(optVal(tok.valueUsdE8s), 8) : '—'}</td>
