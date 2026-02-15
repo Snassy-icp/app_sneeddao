@@ -109,7 +109,7 @@ src/
 ├── BotChoreEngine.mo             # Reusable engine (like BotkeyPermissions.mo)
 ├── BotkeyTypes.mo                # (existing)
 ├── BotkeyPermissions.mo          # (existing)
-└── sneed_icp_neuron_manager/
+└── sneed_icp_staking_bot/
     ├── neuron_manager_canister.mo  # Bot actor — integrates chore engine
     └── Types.mo                    # Bot types — adds chore permissions
 ```
