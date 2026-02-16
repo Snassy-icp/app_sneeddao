@@ -1757,6 +1757,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     // REBALANCER EXECUTION
     // ============================================
 
+    // Last trade log ID produced by executeRebalance, keyed by instanceId.
+    // Used by the after-snapshot task to link to the trade log entry.
+    transient var _rebal_lastLogId: [(Text, ?Nat)] = [];
+
     /// Execute one rebalancing trade for the given instance.
     func executeRebalance(instanceId: Text): async Bool {
         let src = "chore:" # instanceId;
@@ -1937,7 +1941,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     ("sellDeviation", Nat.toText(sellToken.deviationBps)),
                     ("buyDeviation", Nat.toText(buyToken.deviationBps)),
                 ]);
-                ignore appendTradeLog({
+                let logId = appendTradeLog({
                     choreId = ?instanceId;
                     choreTypeId = getInstanceTypeId(instanceId);
                     actionId = null;
@@ -1955,6 +1959,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     txId = r.txId;
                     destinationOwner = null;
                 });
+                _rebal_lastLogId := setInMap(_rebal_lastLogId, instanceId, logId);
                 true
             };
             case (#Err(e)) {
@@ -1963,7 +1968,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     ("buyToken", Principal.toText(buyToken.token)),
                     ("error", e),
                 ]);
-                ignore appendTradeLog({
+                let logId = appendTradeLog({
                     choreId = ?instanceId;
                     choreTypeId = getInstanceTypeId(instanceId);
                     actionId = null;
@@ -1981,9 +1986,43 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     txId = null;
                     destinationOwner = null;
                 });
+                _rebal_lastLogId := setInMap(_rebal_lastLogId, instanceId, logId);
                 false
             };
         };
+    };
+
+    /// Create a task function that takes a portfolio snapshot for all rebalance target tokens.
+    /// Used as before/after trade snapshot tasks in the rebalancer pipeline.
+    func _makeRebalSnapshotTaskFn(tokens: [Principal], phase: T.SnapshotPhase, instanceId: Text): () -> async BotChoreTypes.TaskAction {
+        func(): async BotChoreTypes.TaskAction {
+            try {
+                let snaps = await takeTokenSnapshots(tokens);
+                let trigger = switch (phase) {
+                    case (#Before) { "Rebalance pre-trade" };
+                    case (#After) { "Rebalance post-trade" };
+                };
+                let tradeLogId: ?Nat = switch (phase) {
+                    case (#After) { getFromMap(_rebal_lastLogId, instanceId, null) };
+                    case (#Before) { null };
+                };
+                ignore appendPortfolioSnapshot({
+                    trigger = trigger;
+                    tradeLogId = tradeLogId;
+                    phase = phase;
+                    choreId = ?instanceId;
+                    denominationToken = null;
+                    totalValueIcpE8s = null;
+                    totalValueUsdE8s = null;
+                    totalValueDenomE8s = null;
+                    tokens = snaps;
+                });
+                #Done
+            } catch (e) {
+                logEngine.logWarning("chore:" # instanceId, "Rebalance snapshot failed: " # Error.message(e), null, []);
+                #Done
+            }
+        }
     };
 
     // ============================================
@@ -2461,6 +2500,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         });
 
         // --- Chore: Rebalance ---
+        // Pipeline: meta → prices → snapshot(before) → execute → snapshot(after) → done
         choreEngine.registerChore({
             id = "rebalance";
             name = "Rebalance Portfolio";
@@ -2474,32 +2514,61 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
                 if (ctx.isTaskRunning) { return #ContinueIn(10) };
 
+                // Helper: collect unique target token principals
+                let targets = getRebalTargets(instanceId);
+                let targetTokens = Array.map<T.RebalanceTarget, Principal>(targets, func(t) { t.token });
+
+                // Helper: collect all tokens for metadata (targets + denom + ICP + ckUSDC)
+                let icpToken = Principal.fromText(T.ICP_LEDGER);
+                let ckusdcToken = Principal.fromText(T.CKUSDC_LEDGER);
+                let denomToken = getRebalDenomToken(instanceId);
+
+                let collectAllTokens = func(): [Principal] {
+                    let buf = Buffer.Buffer<Principal>(targets.size() + 3);
+                    let addUnique = func(p: Principal) {
+                        var dup = false;
+                        for (existing in buf.vals()) { if (existing == p) { dup := true } };
+                        if (not dup) { buf.add(p) };
+                    };
+                    for (t in targets.vals()) { addUnique(t.token) };
+                    addUnique(denomToken);
+                    addUnique(icpToken);
+                    addUnique(ckusdcToken);
+                    Buffer.toArray(buf)
+                };
+
+                // Helper: collect all price pairs needed for rebalancing + snapshots
+                let collectAllPairs = func(): [(Principal, Principal)] {
+                    let buf = Buffer.Buffer<(Principal, Principal)>(targets.size() * 2 + 2);
+                    let addPair = func(inp: Principal, out: Principal) {
+                        let key = pairKey(inp, out);
+                        var found = false;
+                        for ((i, o) in buf.vals()) { if (pairKey(i, o) == key) { found := true } };
+                        if (not found) { buf.add((inp, out)) };
+                    };
+                    for (t in targets.vals()) {
+                        // token → denomToken (for rebalancer portfolio valuation)
+                        if (t.token != denomToken) { addPair(t.token, denomToken) };
+                        // token → ICP (for snapshot ICP valuation)
+                        if (t.token != icpToken) { addPair(t.token, icpToken) };
+                    };
+                    // ICP → ckUSDC (for snapshot USD valuation)
+                    addPair(icpToken, ckusdcToken);
+                    Buffer.toArray(buf)
+                };
+
                 switch (ctx.lastCompletedTask) {
                     case null {
                         // First invocation
-                        let targets = getRebalTargets(instanceId);
                         if (targets.size() == 0) {
                             logEngine.logInfo(src, "Rebalance skipped: no targets configured", null, []);
                             return #Done;
                         };
 
-                        // Clear price cache for this run
                         clearPriceCache();
 
-                        // Collect all unique tokens: targets + denomination token
-                        let denomToken = getRebalDenomToken(instanceId);
-                        let buf = Buffer.Buffer<Principal>(targets.size() + 1);
-                        var denomFound = false;
-                        for (t in targets.vals()) {
-                            var dup = false;
-                            for (existing in buf.vals()) { if (existing == t.token) { dup := true } };
-                            if (not dup) { buf.add(t.token) };
-                            if (t.token == denomToken) { denomFound := true };
-                        };
-                        if (not denomFound) { buf.add(denomToken) };
-                        let tokens = Buffer.toArray(buf);
-
-                        // Start Phase 0: metadata refresh
+                        // Phase 0: metadata refresh
+                        let tokens = collectAllTokens();
                         if (tokens.size() > 0) {
                             let taskKey = "rebal-meta-" # instanceId;
                             let taskFn = _makeRefreshMetadataTask(taskKey, tokens);
@@ -2508,17 +2577,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             return #ContinueIn(5);
                         };
 
-                        // No tokens → skip to Phase 1: price fetch
-                        let pairBuf = Buffer.Buffer<(Principal, Principal)>(targets.size());
-                        for (t in targets.vals()) {
-                            if (t.token != denomToken) {
-                                let key = pairKey(t.token, denomToken);
-                                var dup2 = false;
-                                for ((i, o) in pairBuf.vals()) { if (pairKey(i, o) == key) { dup2 := true } };
-                                if (not dup2) { pairBuf.add((t.token, denomToken)) };
-                            };
-                        };
-                        let pairs = Buffer.toArray(pairBuf);
+                        // Skip to Phase 1: price fetch
+                        let pairs = collectAllPairs();
                         if (pairs.size() > 0) {
                             let taskKey = "rebal-prices-" # instanceId;
                             let taskFn = _makeFetchPricesTask(taskKey, pairs);
@@ -2527,31 +2587,18 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             return #ContinueIn(5);
                         };
 
-                        // No pairs either → start rebalance directly
-                        let taskFn = func(): async BotChoreTypes.TaskAction {
-                            try { ignore await executeRebalance(instanceId); #Done }
-                            catch (e) { #Error("Rebalance failed: " # Error.message(e)) }
-                        };
-                        choreEngine.setPendingTask(instanceId, "rebalance-exec-" # Nat.toText(Int.abs(Time.now())), taskFn);
-                        return #ContinueIn(15);
+                        // Skip to Phase 2: before-snapshot
+                        let taskFn = _makeRebalSnapshotTaskFn(targetTokens, #Before, instanceId);
+                        choreEngine.setPendingTask(instanceId, "rebal-snap-before-" # instanceId, taskFn);
+                        logEngine.logInfo(src, "Phase 2: taking pre-trade portfolio snapshot", null, []);
+                        return #ContinueIn(5);
                     };
 
                     case (?prevTask) {
-                        // Metadata refresh completed → start price fetch
+                        // Phase 0 complete → Phase 1: price fetch
                         if (Text.startsWith(prevTask.taskId, #text("rebal-meta-"))) {
                             logEngine.logInfo(src, "Phase 0 complete: metadata refreshed", null, []);
-                            let targets = getRebalTargets(instanceId);
-                            let denomToken = getRebalDenomToken(instanceId);
-                            let pairBuf = Buffer.Buffer<(Principal, Principal)>(targets.size());
-                            for (t in targets.vals()) {
-                                if (t.token != denomToken) {
-                                    let key = pairKey(t.token, denomToken);
-                                    var dup = false;
-                                    for ((i, o) in pairBuf.vals()) { if (pairKey(i, o) == key) { dup := true } };
-                                    if (not dup) { pairBuf.add((t.token, denomToken)) };
-                                };
-                            };
-                            let pairs = Buffer.toArray(pairBuf);
+                            let pairs = collectAllPairs();
                             if (pairs.size() > 0) {
                                 let taskKey = "rebal-prices-" # instanceId;
                                 let taskFn = _makeFetchPricesTask(taskKey, pairs);
@@ -2559,18 +2606,25 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                                 logEngine.logInfo(src, "Phase 1: fetching prices for " # Nat.toText(pairs.size()) # " pairs", null, []);
                                 return #ContinueIn(5);
                             };
-                            // No pairs → start rebalance directly
-                            let taskFn = func(): async BotChoreTypes.TaskAction {
-                                try { ignore await executeRebalance(instanceId); #Done }
-                                catch (e) { #Error("Rebalance failed: " # Error.message(e)) }
-                            };
-                            choreEngine.setPendingTask(instanceId, "rebalance-exec-" # Nat.toText(Int.abs(Time.now())), taskFn);
-                            return #ContinueIn(15);
+                            // No pairs → skip to before-snapshot
+                            let taskFn = _makeRebalSnapshotTaskFn(targetTokens, #Before, instanceId);
+                            choreEngine.setPendingTask(instanceId, "rebal-snap-before-" # instanceId, taskFn);
+                            logEngine.logInfo(src, "Phase 2: taking pre-trade portfolio snapshot", null, []);
+                            return #ContinueIn(5);
                         };
 
-                        // Price fetch completed → start rebalance execution
+                        // Phase 1 complete → Phase 2: before-snapshot
                         if (Text.startsWith(prevTask.taskId, #text("rebal-prices-"))) {
                             logEngine.logInfo(src, "Phase 1 complete: prices fetched", null, []);
+                            let taskFn = _makeRebalSnapshotTaskFn(targetTokens, #Before, instanceId);
+                            choreEngine.setPendingTask(instanceId, "rebal-snap-before-" # instanceId, taskFn);
+                            logEngine.logInfo(src, "Phase 2: taking pre-trade portfolio snapshot", null, []);
+                            return #ContinueIn(5);
+                        };
+
+                        // Phase 2 complete → Phase 3: execute rebalance trade
+                        if (Text.startsWith(prevTask.taskId, #text("rebal-snap-before-"))) {
+                            logEngine.logInfo(src, "Phase 2 complete: pre-trade snapshot taken", null, []);
                             let taskFn = func(): async BotChoreTypes.TaskAction {
                                 try { ignore await executeRebalance(instanceId); #Done }
                                 catch (e) { #Error("Rebalance failed: " # Error.message(e)) }
@@ -2579,7 +2633,22 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             return #ContinueIn(15);
                         };
 
-                        // Rebalance execution completed
+                        // Phase 3 complete → Phase 4: after-snapshot
+                        if (Text.startsWith(prevTask.taskId, #text("rebalance-exec-"))) {
+                            logEngine.logInfo(src, "Phase 3 complete: rebalance trade executed", null, []);
+                            let taskFn = _makeRebalSnapshotTaskFn(targetTokens, #After, instanceId);
+                            choreEngine.setPendingTask(instanceId, "rebal-snap-after-" # instanceId, taskFn);
+                            logEngine.logInfo(src, "Phase 4: taking post-trade portfolio snapshot", null, []);
+                            return #ContinueIn(5);
+                        };
+
+                        // Phase 4 complete → Done
+                        if (Text.startsWith(prevTask.taskId, #text("rebal-snap-after-"))) {
+                            logEngine.logInfo(src, "Phase 4 complete: post-trade snapshot taken. Rebalance cycle done.", null, []);
+                            return #Done;
+                        };
+
+                        // Unknown task → done (safety fallback)
                         return #Done;
                     };
                 };
