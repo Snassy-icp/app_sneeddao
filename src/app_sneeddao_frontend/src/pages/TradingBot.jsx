@@ -90,6 +90,59 @@ const ACTION_TYPE_LABELS = {
 };
 
 // ============================================
+// Well-known canister IDs
+// ============================================
+const CKUSDC_LEDGER = 'xevnm-gaaaa-aaaar-qafnq-cai';
+const CKUSDT_LEDGER = 'cngnf-vqaaa-aaaar-qag4q-cai';
+const ICP_LEDGER = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
+
+/** Returns true when the given canister ID is a USD stablecoin (ckUSDC or ckUSDT). */
+const isUsdStablecoin = (canisterId) => {
+    if (!canisterId) return false;
+    const id = typeof canisterId === 'string' ? canisterId : canisterId?.toText?.() || String(canisterId);
+    return id === CKUSDC_LEDGER || id === CKUSDT_LEDGER;
+};
+
+/**
+ * Format a human-readable amount using $ if the denomination is a USD stablecoin,
+ * otherwise append the denomination symbol.
+ * @param {number|string} amount - The human-readable numeric value
+ * @param {string} denomCanisterId - The denomination token's canister ID (or '')
+ * @param {string} denomSymbol - The denomination token's symbol (e.g. 'ckUSDC')
+ * @returns {string} e.g. "$12.50" or "0.005 ckBTC"
+ */
+const formatDenomAmount = (amount, denomCanisterId, denomSymbol) => {
+    const num = typeof amount === 'string' ? parseFloat(amount) : Number(amount);
+    if (isNaN(num)) return '—';
+    if (isUsdStablecoin(denomCanisterId)) {
+        if (num === 0) return '$0.00';
+        if (Math.abs(num) < 0.01) return num > 0 ? '<$0.01' : '>-$0.01';
+        return (num < 0 ? '-' : '') + '$' + Math.abs(num).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    return `${num.toLocaleString(undefined, { maximumSignificantDigits: 6 })} ${denomSymbol || ''}`.trim();
+};
+
+/**
+ * Format a label suffix for denomination.
+ * Returns " ($)" for USD stablecoins, otherwise " (SYM)".
+ */
+const denomLabel = (denomCanisterId, denomSymbol, fallbackSymbol) => {
+    if (denomCanisterId && isUsdStablecoin(denomCanisterId)) return ' ($)';
+    if (denomSymbol) return ` (${denomSymbol})`;
+    if (fallbackSymbol) return ` (${fallbackSymbol})`;
+    return '';
+};
+
+/**
+ * Format a price unit label for denomination.
+ * Returns "$/Output" for USD stablecoins, otherwise "Sym/Output".
+ */
+const denomPriceUnit = (denomCanisterId, denomSymbol, outputSymbol) => {
+    const denom = (denomCanisterId && isUsdStablecoin(denomCanisterId)) ? '$' : (denomSymbol || '?');
+    return `${denom}/${outputSymbol || 'Output'}`;
+};
+
+// ============================================
 // HELPER: Shorten principal for display
 // ============================================
 const shortPrincipal = (p) => {
@@ -562,10 +615,10 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
         const balanceDenomSym = fBalanceDenom && tokenMeta[fBalanceDenom] ? tokenMeta[fBalanceDenom].symbol : null;
         const priceDenomSym = fPriceDenom && tokenMeta[fPriceDenom] ? tokenMeta[fPriceDenom].symbol : null;
         const nativeInputSym = fInputToken && tokenMeta[fInputToken] ? tokenMeta[fInputToken].symbol : null;
-        const amountSymLabel = amountDenomSym ? ` (${amountDenomSym})` : (nativeInputSym ? ` (${nativeInputSym})` : '');
-        const balanceSymLabel = balanceDenomSym ? ` (${balanceDenomSym})` : (nativeInputSym ? ` (${nativeInputSym})` : '');
+        const amountSymLabel = denomLabel(fTradeSizeDenom, amountDenomSym, nativeInputSym);
+        const balanceSymLabel = denomLabel(fBalanceDenom, balanceDenomSym, nativeInputSym);
         const denomPriceLabel = priceDenomSym
-            ? `${priceDenomSym}/${fOutputToken ? getSymbol(fOutputToken) : 'Output'}`
+            ? denomPriceUnit(fPriceDenom, priceDenomSym, fOutputToken ? getSymbol(fOutputToken) : 'Output')
             : priceLabel;
         return (
             <div style={{ padding: '14px', background: `${accentColor}06`, borderRadius: '8px', border: `1px solid ${accentColor}20`, marginTop: '10px' }}>
@@ -850,8 +903,12 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                                         <div style={{ marginTop: '8px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '6px', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
                                             <div><strong>Input:</strong> {inputSym}</div>
                                             {action.outputToken?.length > 0 && <div><strong>Output:</strong> {getSymbol(action.outputToken[0])}</div>}
-                                            <div><strong>Min:</strong> {formatTokenAmount(action.minAmount, amtDec)} {actTsDenom ? `${amtSym} of ${inputSym}` : inputSym}</div>
-                                            <div><strong>Max:</strong> {formatTokenAmount(action.maxAmount, amtDec)} {actTsDenom ? `${amtSym} of ${inputSym}` : inputSym}</div>
+                                            <div><strong>Min:</strong> {actTsDenom && isUsdStablecoin(actTsDenom)
+                                                ? `${formatDenomAmount(Number(formatTokenAmount(action.minAmount, amtDec)), actTsDenom, amtSym)} of ${inputSym}`
+                                                : `${formatTokenAmount(action.minAmount, amtDec)} ${actTsDenom ? `${amtSym} of ${inputSym}` : inputSym}`}</div>
+                                            <div><strong>Max:</strong> {actTsDenom && isUsdStablecoin(actTsDenom)
+                                                ? `${formatDenomAmount(Number(formatTokenAmount(action.maxAmount, amtDec)), actTsDenom, amtSym)} of ${inputSym}`
+                                                : `${formatTokenAmount(action.maxAmount, amtDec)} ${actTsDenom ? `${amtSym} of ${inputSym}` : inputSym}`}</div>
                                             {optVal(action.destinationOwner) && <div><strong>Dest:</strong> {shortPrincipal(optVal(action.destinationOwner))}</div>}
                                             {optVal(action.targetSubaccount) != null && (() => {
                                                 const sub = subaccounts.find(s => Number(s.number) === Number(optVal(action.targetSubaccount)));
@@ -861,17 +918,25 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                                                 const sub = subaccounts.find(s => Number(s.number) === Number(optVal(action.sourceSubaccount)));
                                                 return <div><strong>From Sub:</strong> {sub ? `${sub.name} (#${Number(sub.number)})` : `#${Number(optVal(action.sourceSubaccount))}`}</div>;
                                             })()}
-                                            {optVal(action.minBalance) != null && <div><strong>Min Bal:</strong> {formatTokenAmount(optVal(action.minBalance), balDec)} {balSym}</div>}
-                                            {optVal(action.maxBalance) != null && <div><strong>Max Bal:</strong> {formatTokenAmount(optVal(action.maxBalance), balDec)} {balSym}</div>}
+                                            {optVal(action.minBalance) != null && <div><strong>Min Bal:</strong> {actBDenom && isUsdStablecoin(actBDenom)
+                                                ? formatDenomAmount(Number(formatTokenAmount(optVal(action.minBalance), balDec)), actBDenom, balSym)
+                                                : `${formatTokenAmount(optVal(action.minBalance), balDec)} ${balSym}`}</div>}
+                                            {optVal(action.maxBalance) != null && <div><strong>Max Bal:</strong> {actBDenom && isUsdStablecoin(actBDenom)
+                                                ? formatDenomAmount(Number(formatTokenAmount(optVal(action.maxBalance), balDec)), actBDenom, balSym)
+                                                : `${formatTokenAmount(optVal(action.maxBalance), balDec)} ${balSym}`}</div>}
                                             {(() => {
                                                 const outKey = action.outputToken?.length > 0 ? (typeof action.outputToken[0] === 'string' ? action.outputToken[0] : action.outputToken[0]?.toText?.() || String(action.outputToken[0])) : '';
                                                 const outS = outKey ? getSymbol(outKey) : 'Output';
-                                                const priceUnit = prcSym ? `${prcSym}/${outS}` : `${inputSym}/${outS}`;
+                                                const priceUnit = actPDenom ? denomPriceUnit(actPDenom, prcSym, outS) : `${inputSym}/${outS}`;
                                                 const userMin = optVal(action.minPrice) != null ? e8sToHumanPrice(optVal(action.minPrice), prcDec, 'input_per_output') : null;
                                                 const userMax = optVal(action.maxPrice) != null ? e8sToHumanPrice(optVal(action.maxPrice), prcDec, 'input_per_output') : null;
+                                                const fmtPrice = (v) => {
+                                                    if (actPDenom && isUsdStablecoin(actPDenom)) return formatDenomAmount(v, actPDenom, prcSym);
+                                                    return typeof v === 'number' ? v.toLocaleString(undefined, { maximumSignificantDigits: 6 }) : v;
+                                                };
                                                 return <>
-                                                    {userMin != null && <div><strong>Min Price:</strong> {typeof userMin === 'number' ? userMin.toLocaleString(undefined, { maximumSignificantDigits: 6 }) : userMin} {priceUnit}</div>}
-                                                    {userMax != null && <div><strong>Max Price:</strong> {typeof userMax === 'number' ? userMax.toLocaleString(undefined, { maximumSignificantDigits: 6 }) : userMax} {priceUnit}</div>}
+                                                    {userMin != null && <div><strong>Min Price:</strong> {fmtPrice(userMin)}{actPDenom && isUsdStablecoin(actPDenom) ? `/${outS}` : ` ${priceUnit}`}</div>}
+                                                    {userMax != null && <div><strong>Max Price:</strong> {fmtPrice(userMax)}{actPDenom && isUsdStablecoin(actPDenom) ? `/${outS}` : ` ${priceUnit}`}</div>}
                                                 </>;
                                             })()}
                                             {optVal(action.maxPriceImpactBps) != null && <div><strong>Max Impact:</strong> {(Number(optVal(action.maxPriceImpactBps)) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%</div>}
@@ -2302,6 +2367,10 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
     const [scanning, setScanning] = useState(false);
     const [scanProgress, setScanProgress] = useState(null); // { current, total, found }
     const [showTokenManager, setShowTokenManager] = useState(false);
+    // Denomination selector for balances
+    const [denomToken, setDenomToken] = useState(CKUSDC_LEDGER);
+    const [denomPrices, setDenomPrices] = useState({}); // tokenId -> price in denom units per 1 token
+    const [loadingPrices, setLoadingPrices] = useState(false);
 
     // Resolve token metadata for display
     const allTokenIds = React.useMemo(() => {
@@ -2317,8 +2386,9 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
             ids.add(k);
         }
         if (addTokenValue) ids.add(addTokenValue);
+        if (denomToken) ids.add(denomToken);
         return [...ids];
-    }, [allBalances, tokenRegistry, addTokenValue]);
+    }, [allBalances, tokenRegistry, addTokenValue, denomToken]);
     const tokenMeta = useTokenMetadata(allTokenIds, identity);
 
     const getSymbol = (p) => {
@@ -2346,6 +2416,63 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
     }, [getReadyBotActor]);
 
     useEffect(() => { loadData(); }, [loadData]);
+
+    // Fetch denomination prices for all tokens in registry using two-hop via ICP
+    const fetchDenomPrices = useCallback(async () => {
+        if (!denomToken || tokenRegistry.length === 0) { setDenomPrices({}); return; }
+        setLoadingPrices(true);
+        try {
+            const bot = await getReadyBotActor();
+            const denomDec = getDecimals(denomToken);
+            const oneUnit = (dec) => BigInt(10 ** dec);
+            const prices = {};
+            // If denomination IS the token, price is 1
+            const denomId = denomToken;
+
+            for (const t of tokenRegistry) {
+                const tid = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
+                if (tid === denomId) { prices[tid] = 1; continue; }
+                const tDec = Number(t.decimals ?? getDecimals(tid));
+                try {
+                    // Try direct quote: token -> denomToken
+                    const directQuotes = await bot.getQuote([], Principal.fromText(tid), Principal.fromText(denomId), oneUnit(tDec));
+                    if (directQuotes.length > 0) {
+                        const q = directQuotes[0];
+                        prices[tid] = Number(q.expectedOutput) / (10 ** denomDec);
+                        continue;
+                    }
+                } catch (_) {}
+                // Two-hop via ICP: token->ICP, ICP->denomToken
+                if (tid === ICP_LEDGER) {
+                    // ICP -> denomToken direct
+                    try {
+                        const icpQuotes = await bot.getQuote([], Principal.fromText(ICP_LEDGER), Principal.fromText(denomId), oneUnit(8));
+                        if (icpQuotes.length > 0) {
+                            prices[tid] = Number(icpQuotes[0].expectedOutput) / (10 ** denomDec);
+                            continue;
+                        }
+                    } catch (_) {}
+                }
+                try {
+                    const [leg1Quotes, leg2Quotes] = await Promise.all([
+                        bot.getQuote([], Principal.fromText(tid), Principal.fromText(ICP_LEDGER), oneUnit(tDec)),
+                        bot.getQuote([], Principal.fromText(ICP_LEDGER), Principal.fromText(denomId), oneUnit(8)),
+                    ]);
+                    if (leg1Quotes.length > 0 && leg2Quotes.length > 0) {
+                        const icpPerToken = Number(leg1Quotes[0].expectedOutput) / 1e8;
+                        const denomPerIcp = Number(leg2Quotes[0].expectedOutput) / (10 ** denomDec);
+                        prices[tid] = icpPerToken * denomPerIcp;
+                        continue;
+                    }
+                } catch (_) {}
+                prices[tid] = null; // no price available
+            }
+            setDenomPrices(prices);
+        } catch (e) { console.warn('Failed to fetch denom prices:', e); }
+        finally { setLoadingPrices(false); }
+    }, [getReadyBotActor, denomToken, tokenRegistry, getDecimals]);
+
+    useEffect(() => { fetchDenomPrices(); }, [fetchDenomPrices]);
 
     // --- Subaccount handlers ---
     const handleCreate = async () => {
@@ -2617,28 +2744,67 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
 
             {/* ── Selected Account Balances ── */}
             <div style={{ padding: '12px', background: cardBg, borderRadius: '10px', border: `1px solid ${borderColor}`, marginBottom: '14px' }}>
-                <h4 style={{ margin: '0 0 10px', fontSize: '0.85rem', color: theme.colors.primaryText, fontWeight: '600' }}>
-                    {selectedAccount === 'main' ? 'Main Account' : (() => {
-                        const s = subaccounts.find(s => String(Number(s.number)) === selectedAccount);
-                        return s ? `${s.name} (#${selectedAccount})` : `Subaccount #${selectedAccount}`;
-                    })()}
-                    {' '}— Token Balances
-                </h4>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '10px' }}>
+                    <h4 style={{ margin: 0, fontSize: '0.85rem', color: theme.colors.primaryText, fontWeight: '600' }}>
+                        {selectedAccount === 'main' ? 'Main Account' : (() => {
+                            const s = subaccounts.find(s => String(Number(s.number)) === selectedAccount);
+                            return s ? `${s.name} (#${selectedAccount})` : `Subaccount #${selectedAccount}`;
+                        })()}
+                        {' '}— Token Balances
+                    </h4>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <label style={{ fontSize: '0.7rem', color: theme.colors.secondaryText }}>Value in:</label>
+                        <div style={{ width: '160px' }}>
+                            <TokenSelector
+                                value={denomToken}
+                                onChange={(v) => { setDenomToken(v); setDenomPrices({}); }}
+                                allowCustom={true}
+                                placeholder="Denomination..."
+                            />
+                        </div>
+                        {denomToken && (
+                            <button type="button" onClick={() => { setDenomToken(''); setDenomPrices({}); }}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.6rem', color: accentColor, padding: '2px' }}
+                                title="Clear denomination">
+                                <FaTimes />
+                            </button>
+                        )}
+                    </div>
+                </div>
                 {selectedBalances.length === 0 ? (
                     <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', padding: '8px 0' }}>No token balances.{tokenRegistry.length === 0 ? ' Register some tokens above to see balances.' : ''}</div>
-                ) : (
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-                        <thead>
-                            <tr style={{ color: theme.colors.mutedText, textAlign: 'left' }}>
-                                <th style={{ padding: '4px 8px' }}>Token</th>
-                                <th style={{ padding: '4px 8px', textAlign: 'right' }}>Balance</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {selectedBalances.map((b) => {
-                                const tid = typeof b.token === 'string' ? b.token : b.token?.toText?.() || String(b.token);
-                                const dec = getDecimals(tid);
-                                return (
+                ) : (() => {
+                    const denomSym = denomToken ? getSymbol(denomToken) : '';
+                    const denomIsUsd = isUsdStablecoin(denomToken);
+                    const denomDec = denomToken ? getDecimals(denomToken) : 8;
+                    let totalDenomValue = 0;
+                    let hasAnyDenomValue = false;
+
+                    const rows = selectedBalances.map((b) => {
+                        const tid = typeof b.token === 'string' ? b.token : b.token?.toText?.() || String(b.token);
+                        const dec = getDecimals(tid);
+                        const humanBal = Number(b.balance) / (10 ** dec);
+                        const price = denomPrices[tid];
+                        let denomValue = null;
+                        if (denomToken && price != null && price > 0) {
+                            denomValue = humanBal * price;
+                            totalDenomValue += denomValue;
+                            hasAnyDenomValue = true;
+                        }
+                        return { tid, dec, humanBal, balance: b.balance, denomValue };
+                    });
+
+                    return (
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                            <thead>
+                                <tr style={{ color: theme.colors.mutedText, textAlign: 'left' }}>
+                                    <th style={{ padding: '4px 8px' }}>Token</th>
+                                    <th style={{ padding: '4px 8px', textAlign: 'right' }}>Balance</th>
+                                    {denomToken && <th style={{ padding: '4px 8px', textAlign: 'right' }}>{denomIsUsd ? 'Value ($)' : `Value (${denomSym})`}</th>}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {rows.map(({ tid, dec, balance, denomValue }) => (
                                     <tr key={tid} style={{ borderTop: `1px solid ${borderColor}20` }}>
                                         <td style={{ padding: '5px 8px', color: theme.colors.primaryText }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -2647,14 +2813,31 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                                             </div>
                                         </td>
                                         <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'monospace', color: theme.colors.secondaryText }}>
-                                            {formatTokenAmount(b.balance, dec)}
+                                            {formatTokenAmount(balance, dec)}
+                                        </td>
+                                        {denomToken && (
+                                            <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'monospace', color: denomValue != null ? theme.colors.primaryText : theme.colors.mutedText, fontSize: '0.78rem' }}>
+                                                {denomValue != null
+                                                    ? formatDenomAmount(denomValue, denomToken, denomSym)
+                                                    : (loadingPrices ? '...' : '—')}
+                                            </td>
+                                        )}
+                                    </tr>
+                                ))}
+                                {/* Total row */}
+                                {denomToken && hasAnyDenomValue && (
+                                    <tr style={{ borderTop: `2px solid ${borderColor}40` }}>
+                                        <td style={{ padding: '6px 8px', fontWeight: '700', color: theme.colors.primaryText }}>Total</td>
+                                        <td />
+                                        <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', color: accentColor, fontSize: '0.85rem' }}>
+                                            {formatDenomAmount(totalDenomValue, denomToken, denomSym)}
                                         </td>
                                     </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                )}
+                                )}
+                            </tbody>
+                        </table>
+                    );
+                })()}
                 {/* Rename / Delete for non-main subaccounts */}
                 {selectedAccount !== 'main' && (
                     <div style={{ marginTop: '10px', display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
