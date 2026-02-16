@@ -1255,13 +1255,70 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
         return { totalValue, tokens: result, hasBalances: Object.keys(tokenBalances).length > 0, hasPrices: Object.keys(denomPrices).length > 0 };
     }, [targets, targetTokenIds, tokenBalances, denomPrices, tokenMeta]);
 
-    // Chart segments
+    // Chart segments — saved targets
     const targetSegments = React.useMemo(() =>
         targets.map((t, i) => {
             const tid = typeof t.token === 'string' ? t.token : t.token?.toText?.() || String(t.token);
             return { label: getSymbol(tid), value: Number(t.targetBps), color: CHART_COLORS[i % CHART_COLORS.length] };
         }),
     [targets, tokenMeta]);
+
+    // Chart segments — live editing preview
+    const editingTargetSegments = React.useMemo(() => {
+        if (!editingTargets) return null;
+        return editingTargets.map((t, i) => ({
+            label: t.token ? getSymbol(t.token) : `Token ${i + 1}`,
+            value: Math.max(0, (parseFloat(t.targetBps) || 0) * 100),
+            color: CHART_COLORS[i % CHART_COLORS.length],
+        }));
+    }, [editingTargets, tokenMeta]);
+
+    // Editing helpers
+    const editingTotal = React.useMemo(() =>
+        editingTargets ? editingTargets.reduce((s, t) => s + (parseFloat(t.targetBps) || 0), 0) : 0,
+    [editingTargets]);
+    const editingRemaining = 100 - editingTotal;
+    const editingIsValid = editingTargets ? Math.abs(editingTotal - 100) < 0.01 : false;
+
+    const normalizeTargets = () => {
+        if (!editingTargets || editingTotal <= 0) return;
+        const scale = 100 / editingTotal;
+        setEditingTargets(editingTargets.map(t => ({
+            ...t,
+            targetBps: ((parseFloat(t.targetBps) || 0) * scale).toFixed(1),
+        })));
+    };
+
+    const equalSplitTargets = () => {
+        if (!editingTargets || editingTargets.length === 0) return;
+        const each = (100 / editingTargets.length).toFixed(1);
+        const arr = editingTargets.map(t => ({ ...t, targetBps: each }));
+        // Fix rounding: give the remainder to the first token
+        const total = arr.reduce((s, t) => s + parseFloat(t.targetBps), 0);
+        if (Math.abs(total - 100) > 0.001) {
+            arr[0] = { ...arr[0], targetBps: (parseFloat(arr[0].targetBps) + (100 - total)).toFixed(1) };
+        }
+        setEditingTargets(arr);
+    };
+
+    const distributeRemaining = () => {
+        if (!editingTargets || editingTargets.length === 0) return;
+        const zeroTokens = editingTargets.filter(t => (parseFloat(t.targetBps) || 0) === 0);
+        if (editingRemaining <= 0) return;
+        if (zeroTokens.length > 0) {
+            const each = editingRemaining / zeroTokens.length;
+            setEditingTargets(editingTargets.map(t =>
+                (parseFloat(t.targetBps) || 0) === 0 ? { ...t, targetBps: each.toFixed(1) } : t
+            ));
+        } else {
+            // Distribute proportionally
+            const scale = 100 / editingTotal;
+            setEditingTargets(editingTargets.map(t => ({
+                ...t,
+                targetBps: ((parseFloat(t.targetBps) || 0) * scale).toFixed(1),
+            })));
+        }
+    };
 
     const currentSegments = React.useMemo(() => {
         if (!portfolioStatus) return [];
@@ -1397,7 +1454,7 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                 </button>
                             ) : (
                                 <div style={{ display: 'flex', gap: '6px' }}>
-                                    <button onClick={handleSaveTargets} disabled={saving} style={{ ...buttonStyle, fontSize: '0.7rem', padding: '3px 8px', background: `linear-gradient(135deg, ${accentColor}, ${accentColor}cc)`, color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <button onClick={handleSaveTargets} disabled={saving || !editingIsValid} style={{ ...buttonStyle, fontSize: '0.7rem', padding: '3px 8px', background: editingIsValid ? `linear-gradient(135deg, ${accentColor}, ${accentColor}cc)` : theme.colors.border, color: editingIsValid ? '#fff' : theme.colors.mutedText, border: 'none', display: 'flex', alignItems: 'center', gap: '4px', cursor: editingIsValid ? 'pointer' : 'not-allowed' }} title={editingIsValid ? 'Save targets' : `Allocations must total 100% (currently ${editingTotal.toFixed(1)}%)`}>
                                         <FaSave style={{ fontSize: '0.6rem' }} /> Save
                                     </button>
                                     <button onClick={() => setEditingTargets(null)} style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -1426,36 +1483,89 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                 </div>
                             )
                         ) : (
-                            <div>
-                                {editingTargets.map((t, i) => (
-                                    <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
-                                        <div style={{ flex: 1 }}>
-                                            <TokenSelector
-                                                value={t.token}
-                                                onChange={(v) => { const arr = [...editingTargets]; arr[i] = { ...arr[i], token: v }; setEditingTargets(arr); }}
-                                                onSelectToken={cacheTokenMeta}
-                                                allowCustom={true}
-                                                placeholder="Select token..."
-                                            />
-                                        </div>
-                                        <input value={t.targetBps} onChange={(e) => { const arr = [...editingTargets]; arr[i] = { ...arr[i], targetBps: e.target.value }; setEditingTargets(arr); }} style={{ ...inputStyle, width: '70px', fontSize: '0.75rem' }} type="text" inputMode="numeric" />
-                                        <span style={{ fontSize: '0.7rem', color: theme.colors.secondaryText, minWidth: '20px' }}>%</span>
-                                        <button onClick={() => setEditingTargets(editingTargets.filter((_, j) => j !== i))} style={{ ...secondaryButtonStyle, fontSize: '0.65rem', padding: '2px 6px', color: '#ef4444', borderColor: '#ef444440' }}>
-                                            <FaTrash style={{ fontSize: '0.6rem' }} />
-                                        </button>
+                            <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+                                {/* Live pie chart preview */}
+                                <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                                    <PieChart segments={editingTargetSegments || []} label="Preview" theme={theme} />
+                                    {/* Total / remaining indicator */}
+                                    <div style={{
+                                        padding: '6px 12px', borderRadius: '8px', fontSize: '0.8rem', fontWeight: '600', textAlign: 'center',
+                                        background: editingIsValid ? '#22c55e15' : editingTotal > 100 ? '#ef444415' : '#f59e0b15',
+                                        border: `1px solid ${editingIsValid ? '#22c55e40' : editingTotal > 100 ? '#ef444440' : '#f59e0b40'}`,
+                                        color: editingIsValid ? '#22c55e' : editingTotal > 100 ? '#ef4444' : '#f59e0b',
+                                    }}>
+                                        {editingIsValid ? 'Total: 100%' : editingTotal > 100
+                                            ? `Over by ${(editingTotal - 100).toFixed(1)}%`
+                                            : `${editingRemaining.toFixed(1)}% unallocated`}
                                     </div>
-                                ))}
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
-                                    <button onClick={() => setEditingTargets([...editingTargets, { token: '', targetBps: '0' }])} style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                        <FaPlus style={{ fontSize: '0.6rem' }} /> Add Token
-                                    </button>
-                                    {(() => {
-                                        const totalPct = editingTargets.reduce((s, t) => s + (parseFloat(t.targetBps) || 0), 0);
-                                        const isValid = Math.abs(totalPct - 100) < 0.01;
-                                        return <span style={{ fontSize: '0.75rem', color: isValid ? '#22c55e' : '#f59e0b' }}>
-                                            Total: {totalPct.toFixed(1)}% {isValid ? '' : '(must be 100%)'}
-                                        </span>;
-                                    })()}
+                                </div>
+                                {/* Editing form */}
+                                <div style={{ flex: 1, minWidth: '260px' }}>
+                                    {editingTargets.map((t, i) => {
+                                        const pct = parseFloat(t.targetBps) || 0;
+                                        return (
+                                            <div key={i} style={{ marginBottom: '10px', padding: '8px 10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '6px' }}>
+                                                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: CHART_COLORS[i % CHART_COLORS.length], flexShrink: 0 }} />
+                                                    <div style={{ flex: 1 }}>
+                                                        <TokenSelector
+                                                            value={t.token}
+                                                            onChange={(v) => { const arr = [...editingTargets]; arr[i] = { ...arr[i], token: v }; setEditingTargets(arr); }}
+                                                            onSelectToken={cacheTokenMeta}
+                                                            allowCustom={true}
+                                                            placeholder="Select token..."
+                                                        />
+                                                    </div>
+                                                    <button onClick={() => setEditingTargets(editingTargets.filter((_, j) => j !== i))} style={{ ...secondaryButtonStyle, fontSize: '0.65rem', padding: '2px 6px', color: '#ef4444', borderColor: '#ef444440' }}>
+                                                        <FaTrash style={{ fontSize: '0.6rem' }} />
+                                                    </button>
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                    <input
+                                                        type="range" min="0" max="100" step="0.1"
+                                                        value={pct}
+                                                        onChange={(e) => {
+                                                            const arr = [...editingTargets];
+                                                            arr[i] = { ...arr[i], targetBps: parseFloat(e.target.value).toFixed(1) };
+                                                            setEditingTargets(arr);
+                                                        }}
+                                                        style={{ flex: 1, accentColor: CHART_COLORS[i % CHART_COLORS.length], cursor: 'pointer', height: '6px' }}
+                                                    />
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                                                        <input
+                                                            value={t.targetBps}
+                                                            onChange={(e) => { const arr = [...editingTargets]; arr[i] = { ...arr[i], targetBps: e.target.value }; setEditingTargets(arr); }}
+                                                            style={{ ...inputStyle, width: '60px', fontSize: '0.75rem', textAlign: 'right' }}
+                                                            type="text" inputMode="decimal"
+                                                        />
+                                                        <span style={{ fontSize: '0.7rem', color: theme.colors.secondaryText }}>%</span>
+                                                    </div>
+                                                </div>
+                                                {/* Visual bar */}
+                                                <div style={{ marginTop: '4px', height: '3px', borderRadius: '2px', background: theme.colors.border, overflow: 'hidden' }}>
+                                                    <div style={{ height: '100%', width: `${Math.min(pct, 100)}%`, background: CHART_COLORS[i % CHART_COLORS.length], borderRadius: '2px', transition: 'width 0.2s ease' }} />
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', marginTop: '6px' }}>
+                                        <button onClick={() => setEditingTargets([...editingTargets, { token: '', targetBps: '0' }])} style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <FaPlus style={{ fontSize: '0.6rem' }} /> Add Token
+                                        </button>
+                                        <button onClick={equalSplitTargets} disabled={editingTargets.length === 0} style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px' }} title="Set all tokens to equal percentage">
+                                            Equal Split
+                                        </button>
+                                        {!editingIsValid && editingTotal > 0 && (
+                                            <button onClick={normalizeTargets} style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px' }} title="Scale all values proportionally to total 100%">
+                                                Normalize to 100%
+                                            </button>
+                                        )}
+                                        {editingRemaining > 0.01 && (
+                                            <button onClick={distributeRemaining} style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px', color: '#f59e0b', borderColor: '#f59e0b40' }} title="Distribute unallocated percentage among tokens">
+                                                +{editingRemaining.toFixed(1)}% Distribute
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         )}
