@@ -91,44 +91,75 @@ const ACTION_TYPE_LABELS = {
 };
 
 // ============================================
-// Well-known canister IDs
+// Well-known canister IDs & currency signs
 // ============================================
 const CKUSDC_LEDGER = 'xevnm-gaaaa-aaaar-qafnq-cai';
 const CKUSDT_LEDGER = 'cngnf-vqaaa-aaaar-qag4q-cai';
-const ICP_LEDGER = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
-
-/** Returns true when the given canister ID is a USD stablecoin (ckUSDC or ckUSDT). */
-const isUsdStablecoin = (canisterId) => {
-    if (!canisterId) return false;
-    const id = typeof canisterId === 'string' ? canisterId : canisterId?.toText?.() || String(canisterId);
-    return id === CKUSDC_LEDGER || id === CKUSDT_LEDGER;
-};
+const CKEURC_LEDGER = 'pe5t5-diaaa-aaaar-qahwa-cai';
+const CKBTC_LEDGER  = 'mxzaz-hqaaa-aaaar-qaada-cai';
+const CKETH_LEDGER  = 'ss2fx-dyaaa-aaaar-qacoq-cai';
+const ICP_LEDGER    = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 
 /**
- * Format a human-readable amount using $ if the denomination is a USD stablecoin,
+ * Map of well-known canister IDs to their native currency sign.
+ * Fiat-pegged stablecoins use the fiat symbol; crypto-pegged use their unicode symbols.
+ */
+const CURRENCY_SIGNS = {
+    [CKUSDC_LEDGER]: '$',
+    [CKUSDT_LEDGER]: '$',
+    [CKEURC_LEDGER]: '€',
+    [CKBTC_LEDGER]:  '₿',      // U+20BF Bitcoin Sign
+    [CKETH_LEDGER]:  'Ξ',      // U+039E Greek Capital Letter Xi (Ethereum)
+};
+
+/** Fiat-style currencies use 2 fixed decimal places; crypto signs use significant digits */
+const FIAT_SIGNS = new Set(['$', '€']);
+
+/**
+ * Returns the native currency sign for a canister ID, or null if none.
+ */
+const getCurrencySign = (canisterId) => {
+    if (!canisterId) return null;
+    const id = typeof canisterId === 'string' ? canisterId : canisterId?.toText?.() || String(canisterId);
+    return CURRENCY_SIGNS[id] || null;
+};
+
+/** Backward-compat shorthand: true when the token has ANY known currency sign. */
+const hasCurrencySign = (canisterId) => getCurrencySign(canisterId) !== null;
+
+/**
+ * Format a human-readable amount using a native currency sign if available,
  * otherwise append the denomination symbol.
- * @param {number|string} amount - The human-readable numeric value
- * @param {string} denomCanisterId - The denomination token's canister ID (or '')
- * @param {string} denomSymbol - The denomination token's symbol (e.g. 'ckUSDC')
- * @returns {string} e.g. "$12.50" or "0.005 ckBTC"
+ * @param {number|string} amount
+ * @param {string} denomCanisterId
+ * @param {string} denomSymbol - fallback symbol (e.g. 'ckBTC')
+ * @returns {string} e.g. "$12.50", "€8.30", "₿0.00512", "Ξ1.234", "1,234 SNEED"
  */
 const formatDenomAmount = (amount, denomCanisterId, denomSymbol) => {
     const num = typeof amount === 'string' ? parseFloat(amount) : Number(amount);
     if (isNaN(num)) return '—';
-    if (isUsdStablecoin(denomCanisterId)) {
-        if (num === 0) return '$0.00';
-        if (Math.abs(num) < 0.01) return num > 0 ? '<$0.01' : '>-$0.01';
-        return (num < 0 ? '-' : '') + '$' + Math.abs(num).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const sign = getCurrencySign(denomCanisterId);
+    if (sign) {
+        const isFiat = FIAT_SIGNS.has(sign);
+        if (isFiat) {
+            if (num === 0) return `${sign}0.00`;
+            if (Math.abs(num) < 0.01) return num > 0 ? `<${sign}0.01` : `>-${sign}0.01`;
+            return (num < 0 ? '-' : '') + sign + Math.abs(num).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+        // Crypto sign: use up to 6 significant digits
+        if (num === 0) return `${sign}0`;
+        return (num < 0 ? '-' : '') + sign + Math.abs(num).toLocaleString(undefined, { maximumSignificantDigits: 6 });
     }
     return `${num.toLocaleString(undefined, { maximumSignificantDigits: 6 })} ${denomSymbol || ''}`.trim();
 };
 
 /**
  * Format a label suffix for denomination.
- * Returns " ($)" for USD stablecoins, otherwise " (SYM)".
+ * Returns " ($)" / " (€)" / " (₿)" etc. for known currencies, otherwise " (SYM)".
  */
 const denomLabel = (denomCanisterId, denomSymbol, fallbackSymbol) => {
-    if (denomCanisterId && isUsdStablecoin(denomCanisterId)) return ' ($)';
+    const sign = getCurrencySign(denomCanisterId);
+    if (sign) return ` (${sign})`;
     if (denomSymbol) return ` (${denomSymbol})`;
     if (fallbackSymbol) return ` (${fallbackSymbol})`;
     return '';
@@ -136,10 +167,11 @@ const denomLabel = (denomCanisterId, denomSymbol, fallbackSymbol) => {
 
 /**
  * Format a price unit label for denomination.
- * Returns "$/Output" for USD stablecoins, otherwise "Sym/Output".
+ * Returns "$/Output", "€/Output", "₿/Output", etc.
  */
 const denomPriceUnit = (denomCanisterId, denomSymbol, outputSymbol) => {
-    const denom = (denomCanisterId && isUsdStablecoin(denomCanisterId)) ? '$' : (denomSymbol || '?');
+    const sign = getCurrencySign(denomCanisterId);
+    const denom = sign || (denomSymbol || '?');
     return `${denom}/${outputSymbol || 'Output'}`;
 };
 
@@ -904,10 +936,10 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                                         <div style={{ marginTop: '8px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '6px', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
                                             <div><strong>Input:</strong> {inputSym}</div>
                                             {action.outputToken?.length > 0 && <div><strong>Output:</strong> {getSymbol(action.outputToken[0])}</div>}
-                                            <div><strong>Min:</strong> {actTsDenom && isUsdStablecoin(actTsDenom)
+                                            <div><strong>Min:</strong> {actTsDenom && hasCurrencySign(actTsDenom)
                                                 ? `${formatDenomAmount(Number(formatTokenAmount(action.minAmount, amtDec)), actTsDenom, amtSym)} of ${inputSym}`
                                                 : `${formatTokenAmount(action.minAmount, amtDec)} ${actTsDenom ? `${amtSym} of ${inputSym}` : inputSym}`}</div>
-                                            <div><strong>Max:</strong> {actTsDenom && isUsdStablecoin(actTsDenom)
+                                            <div><strong>Max:</strong> {actTsDenom && hasCurrencySign(actTsDenom)
                                                 ? `${formatDenomAmount(Number(formatTokenAmount(action.maxAmount, amtDec)), actTsDenom, amtSym)} of ${inputSym}`
                                                 : `${formatTokenAmount(action.maxAmount, amtDec)} ${actTsDenom ? `${amtSym} of ${inputSym}` : inputSym}`}</div>
                                             {optVal(action.destinationOwner) && <div><strong>Dest:</strong> {shortPrincipal(optVal(action.destinationOwner))}</div>}
@@ -919,10 +951,10 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                                                 const sub = subaccounts.find(s => Number(s.number) === Number(optVal(action.sourceSubaccount)));
                                                 return <div><strong>From Sub:</strong> {sub ? `${sub.name} (#${Number(sub.number)})` : `#${Number(optVal(action.sourceSubaccount))}`}</div>;
                                             })()}
-                                            {optVal(action.minBalance) != null && <div><strong>Min Bal:</strong> {actBDenom && isUsdStablecoin(actBDenom)
+                                            {optVal(action.minBalance) != null && <div><strong>Min Bal:</strong> {actBDenom && hasCurrencySign(actBDenom)
                                                 ? formatDenomAmount(Number(formatTokenAmount(optVal(action.minBalance), balDec)), actBDenom, balSym)
                                                 : `${formatTokenAmount(optVal(action.minBalance), balDec)} ${balSym}`}</div>}
-                                            {optVal(action.maxBalance) != null && <div><strong>Max Bal:</strong> {actBDenom && isUsdStablecoin(actBDenom)
+                                            {optVal(action.maxBalance) != null && <div><strong>Max Bal:</strong> {actBDenom && hasCurrencySign(actBDenom)
                                                 ? formatDenomAmount(Number(formatTokenAmount(optVal(action.maxBalance), balDec)), actBDenom, balSym)
                                                 : `${formatTokenAmount(optVal(action.maxBalance), balDec)} ${balSym}`}</div>}
                                             {(() => {
@@ -932,12 +964,12 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                                                 const userMin = optVal(action.minPrice) != null ? e8sToHumanPrice(optVal(action.minPrice), prcDec, 'input_per_output') : null;
                                                 const userMax = optVal(action.maxPrice) != null ? e8sToHumanPrice(optVal(action.maxPrice), prcDec, 'input_per_output') : null;
                                                 const fmtPrice = (v) => {
-                                                    if (actPDenom && isUsdStablecoin(actPDenom)) return formatDenomAmount(v, actPDenom, prcSym);
+                                                    if (actPDenom && hasCurrencySign(actPDenom)) return formatDenomAmount(v, actPDenom, prcSym);
                                                     return typeof v === 'number' ? v.toLocaleString(undefined, { maximumSignificantDigits: 6 }) : v;
                                                 };
                                                 return <>
-                                                    {userMin != null && <div><strong>Min Price:</strong> {fmtPrice(userMin)}{actPDenom && isUsdStablecoin(actPDenom) ? `/${outS}` : ` ${priceUnit}`}</div>}
-                                                    {userMax != null && <div><strong>Max Price:</strong> {fmtPrice(userMax)}{actPDenom && isUsdStablecoin(actPDenom) ? `/${outS}` : ` ${priceUnit}`}</div>}
+                                                    {userMin != null && <div><strong>Min Price:</strong> {fmtPrice(userMin)}{actPDenom && hasCurrencySign(actPDenom) ? `/${outS}` : ` ${priceUnit}`}</div>}
+                                                    {userMax != null && <div><strong>Max Price:</strong> {fmtPrice(userMax)}{actPDenom && hasCurrencySign(actPDenom) ? `/${outS}` : ` ${priceUnit}`}</div>}
                                                 </>;
                                             })()}
                                             {optVal(action.maxPriceImpactBps) != null && <div><strong>Max Impact:</strong> {(Number(optVal(action.maxPriceImpactBps)) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%</div>}
@@ -2771,7 +2803,7 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                     <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', padding: '8px 0' }}>No token balances.{tokenRegistry.length === 0 ? ' Register some tokens above to see balances.' : ''}</div>
                 ) : (() => {
                     const denomSym = denomToken ? getSymbol(denomToken) : '';
-                    const denomIsUsd = isUsdStablecoin(denomToken);
+                    const denomSign = getCurrencySign(denomToken);
                     const denomDec = denomToken ? getDecimals(denomToken) : 8;
                     let totalDenomValue = 0;
                     let hasAnyDenomValue = false;
@@ -2796,7 +2828,7 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                                 <tr style={{ color: theme.colors.mutedText, textAlign: 'left' }}>
                                     <th style={{ padding: '4px 8px' }}>Token</th>
                                     <th style={{ padding: '4px 8px', textAlign: 'right' }}>Balance</th>
-                                    {denomToken && <th style={{ padding: '4px 8px', textAlign: 'right' }}>{denomIsUsd ? 'Value ($)' : `Value (${denomSym})`}</th>}
+                                    {denomToken && <th style={{ padding: '4px 8px', textAlign: 'right' }}>{denomSign ? `Value (${denomSign})` : `Value (${denomSym})`}</th>}
                                 </tr>
                             </thead>
                             <tbody>
