@@ -520,6 +520,43 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         _priceCache := [];
     };
 
+    /// Convert an amount from one token to another using the cached price data.
+    /// Tries a direct quote first; if unavailable, falls back to a two-hop
+    /// conversion via ICP (e.g., SNEED → ICP → ckUSDC).
+    func convertAmountViaCache(amount: Nat, fromToken: Principal, toToken: Principal): ?Nat {
+        if (fromToken == toToken) return ?amount;
+        // Try direct conversion
+        switch (getCachedQuote(fromToken, toToken)) {
+            case (?q) {
+                if (q.inputAmount > 0) {
+                    return ?(amount * q.expectedOutput / q.inputAmount)
+                };
+            };
+            case null {};
+        };
+        // Fallback: two-hop via ICP
+        let icpToken = Principal.fromText(T.ICP_LEDGER);
+        if (fromToken != icpToken and toToken != icpToken) {
+            switch (getCachedQuote(fromToken, icpToken)) {
+                case (?q1) {
+                    if (q1.inputAmount > 0) {
+                        let icpAmount = amount * q1.expectedOutput / q1.inputAmount;
+                        switch (getCachedQuote(icpToken, toToken)) {
+                            case (?q2) {
+                                if (q2.inputAmount > 0) {
+                                    return ?(icpAmount * q2.expectedOutput / q2.inputAmount)
+                                };
+                            };
+                            case null {};
+                        };
+                    };
+                };
+                case null {};
+            };
+        };
+        null
+    };
+
     /// Get token info from registry, then metadata cache, then fetch on-the-fly.
     /// Results are stored in the metadata cache for future lookups.
     func getTokenInfoOrFetch(token: Principal): async T.TokenRegistryEntry {
@@ -1219,31 +1256,66 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             };
         };
 
-        // Check input balance
+        // Check input balance (optionally denominated in another token)
         let balance = await getBalance(action.inputToken, null); // Main account only for trades
+        let balanceForComparison: Nat = switch (action.balanceDenominationToken) {
+            case (?denomToken) {
+                switch (convertAmountViaCache(balance, action.inputToken, denomToken)) {
+                    case (?converted) converted;
+                    case null {
+                        logEngine.logWarning(src, "Trade " # Nat.toText(action.id) # " skipped: no cached quote to convert balance to denomination token", null, []);
+                        return false;
+                    };
+                };
+            };
+            case null { balance };
+        };
         switch (action.minBalance) {
-            case (?min) { if (balance < min) {
-                logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: balance " # Nat.toText(balance) # " < min " # Nat.toText(min), null, []);
+            case (?min) { if (balanceForComparison < min) {
+                logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: balance " # Nat.toText(balanceForComparison) # " < min " # Nat.toText(min), null, []);
                 return false;
             }};
             case null {};
         };
         switch (action.maxBalance) {
-            case (?max) { if (balance > max) {
-                logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: balance " # Nat.toText(balance) # " > max " # Nat.toText(max), null, []);
+            case (?max) { if (balanceForComparison > max) {
+                logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: balance " # Nat.toText(balanceForComparison) # " > max " # Nat.toText(max), null, []);
                 return false;
             }};
             case null {};
         };
 
         // Determine trade size (pick a value in the min-max range)
-        let tradeSize = if (action.minAmount == action.maxAmount) {
-            action.minAmount
-        } else {
-            // Use Time.now() for deterministic but varying amounts within the range
-            let range = action.maxAmount - action.minAmount;
+        // If tradeSizeDenominationToken is set, convert min/max from denomination units to inputToken units
+        let (effectiveMinAmount, effectiveMaxAmount): (Nat, Nat) = switch (action.tradeSizeDenominationToken) {
+            case (?denomToken) {
+                let minNative = switch (convertAmountViaCache(action.minAmount, denomToken, action.inputToken)) {
+                    case (?v) v;
+                    case null {
+                        logEngine.logWarning(src, "Trade " # Nat.toText(action.id) # " skipped: no cached quote to convert trade size min from denomination token", null, []);
+                        return false;
+                    };
+                };
+                let maxNative = switch (convertAmountViaCache(action.maxAmount, denomToken, action.inputToken)) {
+                    case (?v) v;
+                    case null {
+                        logEngine.logWarning(src, "Trade " # Nat.toText(action.id) # " skipped: no cached quote to convert trade size max from denomination token", null, []);
+                        return false;
+                    };
+                };
+                (minNative, maxNative)
+            };
+            case null { (action.minAmount, action.maxAmount) };
+        };
+
+        let tradeSize = if (effectiveMinAmount == effectiveMaxAmount) {
+            effectiveMinAmount
+        } else if (effectiveMaxAmount > effectiveMinAmount) {
+            let range = effectiveMaxAmount - effectiveMinAmount;
             let entropy = Int.abs(Time.now()) % (range + 1);
-            action.minAmount + entropy
+            effectiveMinAmount + entropy
+        } else {
+            effectiveMinAmount
         };
 
         // Clamp to available balance (minus fees)
@@ -1251,8 +1323,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         let maxAffordable = if (balance > inputFee * 3) { balance - inputFee * 3 } else { 0 };
         let actualTradeSize = Nat.min(tradeSize, maxAffordable);
 
-        if (actualTradeSize < action.minAmount) {
-            logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: affordable amount " # Nat.toText(actualTradeSize) # " < min " # Nat.toText(action.minAmount), null, []);
+        if (actualTradeSize < effectiveMinAmount) {
+            logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: affordable amount " # Nat.toText(actualTradeSize) # " < min " # Nat.toText(effectiveMinAmount), null, []);
             return false;
         };
 
@@ -1305,32 +1377,65 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         };
 
         // Check price conditions.
-        // Stored prices are in "input per output" direction: humanInputPerOutput * 10^inputDecimals.
-        // spotPriceE8s is "output per input": humanOutputPerInput * 10^outputDecimals.
-        // To compare without precision-losing division, we use cross-multiplication:
-        //   minPrice <= actualIPO  ⟺  minPrice * spot <= 10^(inDec + outDec)
-        //   actualIPO <= maxPrice  ⟺  10^(inDec + outDec) <= maxPrice * spot
         switch (action.minPrice, action.maxPrice) {
             case (null, null) {};
             case (_, _) {
-                let inMeta = getCachedMeta(action.inputToken);
-                let outMeta = getCachedMeta(outputToken);
-                let inDec: Nat = switch (inMeta) { case (?m) Nat8.toNat(m.decimals); case null 8 };
-                let outDec: Nat = switch (outMeta) { case (?m) Nat8.toNat(m.decimals); case null 8 };
-                let scale = 10 ** (inDec + outDec);
-                switch (action.minPrice) {
-                    case (?min) { if (min * quote.spotPriceE8s > scale) {
-                        logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: price too low", null, []);
-                        return false;
-                    }};
-                    case null {};
-                };
-                switch (action.maxPrice) {
-                    case (?max) { if (max * quote.spotPriceE8s < scale) {
-                        logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: price too high", null, []);
-                        return false;
-                    }};
-                    case null {};
+                switch (action.priceDenominationToken) {
+                    case (?denomToken) {
+                        // Denominated price: stored as humanDenomPerOutput * 10^denomDecimals.
+                        // Convert 1 whole output token to denomination units via cache (supports two-hop via ICP).
+                        let outMeta = getCachedMeta(outputToken);
+                        let outDec: Nat = switch (outMeta) { case (?m) Nat8.toNat(m.decimals); case null 8 };
+                        let oneOutputUnit = 10 ** outDec;
+                        switch (convertAmountViaCache(oneOutputUnit, outputToken, denomToken)) {
+                            case (?currentPriceInDenom) {
+                                switch (action.minPrice) {
+                                    case (?min) { if (currentPriceInDenom < min) {
+                                        logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: denominated price " # Nat.toText(currentPriceInDenom) # " < min " # Nat.toText(min), null, []);
+                                        return false;
+                                    }};
+                                    case null {};
+                                };
+                                switch (action.maxPrice) {
+                                    case (?max) { if (currentPriceInDenom > max) {
+                                        logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: denominated price " # Nat.toText(currentPriceInDenom) # " > max " # Nat.toText(max), null, []);
+                                        return false;
+                                    }};
+                                    case null {};
+                                };
+                            };
+                            case null {
+                                logEngine.logWarning(src, "Trade " # Nat.toText(action.id) # " skipped: cannot convert output token price to denomination token (no direct or ICP-hop quote)", null, []);
+                                return false;
+                            };
+                        };
+                    };
+                    case null {
+                        // Native price: stored as humanInputPerOutput * 10^inputDecimals.
+                        // spotPriceE8s is "output per input": humanOutputPerInput * 10^outputDecimals.
+                        // Cross-multiplication:
+                        //   minPrice <= actualIPO  ⟺  minPrice * spot <= 10^(inDec + outDec)
+                        //   actualIPO <= maxPrice  ⟺  10^(inDec + outDec) <= maxPrice * spot
+                        let inMeta = getCachedMeta(action.inputToken);
+                        let outMeta = getCachedMeta(outputToken);
+                        let inDec: Nat = switch (inMeta) { case (?m) Nat8.toNat(m.decimals); case null 8 };
+                        let outDec: Nat = switch (outMeta) { case (?m) Nat8.toNat(m.decimals); case null 8 };
+                        let scale = 10 ** (inDec + outDec);
+                        switch (action.minPrice) {
+                            case (?min) { if (min * quote.spotPriceE8s > scale) {
+                                logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: price too low", null, []);
+                                return false;
+                            }};
+                            case null {};
+                        };
+                        switch (action.maxPrice) {
+                            case (?max) { if (max * quote.spotPriceE8s < scale) {
+                                logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: price too high", null, []);
+                                return false;
+                            }};
+                            case null {};
+                        };
+                    };
                 };
             };
         };
@@ -2079,6 +2184,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 case (?ot) { addToken(ot) };
                 case null {};
             };
+            // Include denomination tokens so their metadata is fetched
+            switch (a.tradeSizeDenominationToken) { case (?dt) { addToken(dt) }; case null {} };
+            switch (a.priceDenominationToken) { case (?dt) { addToken(dt) }; case null {} };
+            switch (a.balanceDenominationToken) { case (?dt) { addToken(dt) }; case null {} };
         };
         // Ensure ICP and ckUSDC metadata are available for snapshot pricing
         addToken(Principal.fromText(T.ICP_LEDGER));
@@ -2087,11 +2196,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     };
 
     /// Collect all unique (input, output) token pairs from trade actions.
-    /// Also adds supplementary pairs for portfolio snapshots:
+    /// Also adds supplementary pairs for portfolio snapshots and denomination conversions:
     ///  - token→ICP for any token not already paired with ICP (for ICP valuation)
     ///  - ICP→ckUSDC (for USD valuation)
+    ///  - denomination token pairs for trade size, price, and balance conversions
     func _collectPairs(actions: [T.ActionConfig]): [(Principal, Principal)] {
-        let buf = Buffer.Buffer<(Principal, Principal)>(actions.size() + 4);
+        let buf = Buffer.Buffer<(Principal, Principal)>(actions.size() + 8);
         let icpToken = Principal.fromText(T.ICP_LEDGER);
         let ckusdcToken = Principal.fromText(T.CKUSDC_LEDGER);
 
@@ -2106,6 +2216,30 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         for (a in actions.vals()) {
             switch (a.outputToken) {
                 case (?ot) { addPair(a.inputToken, ot) };
+                case null {};
+            };
+        };
+
+        // Add denomination conversion pairs
+        for (a in actions.vals()) {
+            // Trade size: need denomToken→inputToken conversion
+            switch (a.tradeSizeDenominationToken) {
+                case (?dt) { addPair(dt, a.inputToken) };
+                case null {};
+            };
+            // Price: need outputToken→denomToken conversion
+            switch (a.priceDenominationToken) {
+                case (?dt) {
+                    switch (a.outputToken) {
+                        case (?ot) { addPair(ot, dt) };
+                        case null {};
+                    };
+                };
+                case null {};
+            };
+            // Balance: need inputToken→denomToken conversion
+            switch (a.balanceDenominationToken) {
+                case (?dt) { addPair(a.inputToken, dt) };
                 case null {};
             };
         };

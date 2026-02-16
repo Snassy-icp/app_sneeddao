@@ -223,6 +223,10 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
     const [fDestOwner, setFDestOwner] = useState('');
     // Price direction toggle: 'output_per_input' means "SNEED per ICP", 'input_per_output' means "ICP per SNEED"
     const [fPriceDirection, setFPriceDirection] = useState('input_per_output');
+    // Denomination token state: null = native, otherwise a canister ID string
+    const [fTradeSizeDenom, setFTradeSizeDenom] = useState('');
+    const [fPriceDenom, setFPriceDenom] = useState('');
+    const [fBalanceDenom, setFBalanceDenom] = useState('');
 
     // Collect all unique token principals from actions for metadata resolution
     const actionTokenIds = React.useMemo(() => {
@@ -234,11 +238,21 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                 const out = typeof a.outputToken[0] === 'string' ? a.outputToken[0] : a.outputToken[0]?.toText?.() || String(a.outputToken[0]);
                 ids.add(out);
             }
+            // Include denomination tokens from stored actions
+            const tsd = a.tradeSizeDenominationToken?.length > 0 ? a.tradeSizeDenominationToken[0] : null;
+            const pd = a.priceDenominationToken?.length > 0 ? a.priceDenominationToken[0] : null;
+            const bd = a.balanceDenominationToken?.length > 0 ? a.balanceDenominationToken[0] : null;
+            if (tsd) ids.add(typeof tsd === 'string' ? tsd : tsd?.toText?.() || String(tsd));
+            if (pd) ids.add(typeof pd === 'string' ? pd : pd?.toText?.() || String(pd));
+            if (bd) ids.add(typeof bd === 'string' ? bd : bd?.toText?.() || String(bd));
         }
         if (fInputToken) ids.add(fInputToken);
         if (fOutputToken) ids.add(fOutputToken);
+        if (fTradeSizeDenom) ids.add(fTradeSizeDenom);
+        if (fPriceDenom) ids.add(fPriceDenom);
+        if (fBalanceDenom) ids.add(fBalanceDenom);
         return [...ids];
-    }, [actions, fInputToken, fOutputToken]);
+    }, [actions, fInputToken, fOutputToken, fTradeSizeDenom, fPriceDenom, fBalanceDenom]);
     const tokenMeta = useTokenMetadata(actionTokenIds, identity);
 
     const getSymbol = (principal) => {
@@ -308,6 +322,7 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
         setFMinBalance(''); setFMaxBalance(''); setFMinPrice(''); setFMaxPrice('');
         setFMaxPriceImpactBps(''); setFMaxSlippageBps(''); setFDestOwner('');
         setFPriceDirection('input_per_output');
+        setFTradeSizeDenom(''); setFPriceDenom(''); setFBalanceDenom('');
         setShowConditions(false);
     };
 
@@ -319,19 +334,29 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
 
     const openEditForm = (action) => {
         const inputStr = principalToStr(action.inputToken);
-        const inputDec = getDecimals(inputStr);
+        // Load denomination tokens
+        const tsDenom = optVal(action.tradeSizeDenominationToken) ? principalToStr(optVal(action.tradeSizeDenominationToken)) : '';
+        const pDenom = optVal(action.priceDenominationToken) ? principalToStr(optVal(action.priceDenominationToken)) : '';
+        const bDenom = optVal(action.balanceDenominationToken) ? principalToStr(optVal(action.balanceDenominationToken)) : '';
+        setFTradeSizeDenom(tsDenom);
+        setFPriceDenom(pDenom);
+        setFBalanceDenom(bDenom);
+        // Use denomination token's decimals for amounts/balances/prices when set
+        const amountDec = tsDenom ? getDecimals(tsDenom) : getDecimals(inputStr);
+        const balanceDec = bDenom ? getDecimals(bDenom) : getDecimals(inputStr);
+        const priceDec = pDenom ? getDecimals(pDenom) : getDecimals(inputStr);
         setFActionType(Number(action.actionType));
         setFInputToken(inputStr);
         setFOutputToken(optVal(action.outputToken) ? principalToStr(optVal(action.outputToken)) : '');
-        setFMinAmount(Number(action.minAmount) ? formatTokenAmount(action.minAmount, inputDec) : '');
-        setFMaxAmount(Number(action.maxAmount) ? formatTokenAmount(action.maxAmount, inputDec) : '');
+        setFMinAmount(Number(action.minAmount) ? formatTokenAmount(action.minAmount, amountDec) : '');
+        setFMaxAmount(Number(action.maxAmount) ? formatTokenAmount(action.maxAmount, amountDec) : '');
         setFEnabled(action.enabled);
-        setFMinBalance(optVal(action.minBalance) != null ? formatTokenAmount(optVal(action.minBalance), inputDec) : '');
-        setFMaxBalance(optVal(action.maxBalance) != null ? formatTokenAmount(optVal(action.maxBalance), inputDec) : '');
-        // Prices are stored as input-per-output (e.g. ICP/SNEED). Direct load, no swap needed.
-        setFPriceDirection('input_per_output');
-        setFMinPrice(optVal(action.minPrice) != null ? String(e8sToHumanPrice(optVal(action.minPrice), inputDec, 'input_per_output')) : '');
-        setFMaxPrice(optVal(action.maxPrice) != null ? String(e8sToHumanPrice(optVal(action.maxPrice), inputDec, 'input_per_output')) : '');
+        setFMinBalance(optVal(action.minBalance) != null ? formatTokenAmount(optVal(action.minBalance), balanceDec) : '');
+        setFMaxBalance(optVal(action.maxBalance) != null ? formatTokenAmount(optVal(action.maxBalance), balanceDec) : '');
+        // Price direction: when denomination is set, prices are always denomToken/outputToken
+        setFPriceDirection(pDenom ? 'input_per_output' : 'input_per_output');
+        setFMinPrice(optVal(action.minPrice) != null ? String(e8sToHumanPrice(optVal(action.minPrice), priceDec, 'input_per_output')) : '');
+        setFMaxPrice(optVal(action.maxPrice) != null ? String(e8sToHumanPrice(optVal(action.maxPrice), priceDec, 'input_per_output')) : '');
         // Display bps as percentage
         setFMaxPriceImpactBps(optVal(action.maxPriceImpactBps) != null ? String(Number(optVal(action.maxPriceImpactBps)) / 100) : '');
         setFMaxSlippageBps(optVal(action.maxSlippageBps) != null ? String(Number(optVal(action.maxSlippageBps)) / 100) : '');
@@ -339,7 +364,8 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
         // Auto-expand conditions if any condition fields are set
         const hasConditions = optVal(action.minBalance) != null || optVal(action.maxBalance) != null ||
             optVal(action.minPrice) != null || optVal(action.maxPrice) != null ||
-            optVal(action.maxPriceImpactBps) != null || optVal(action.maxSlippageBps) != null;
+            optVal(action.maxPriceImpactBps) != null || optVal(action.maxSlippageBps) != null ||
+            bDenom || pDenom;
         setShowConditions(hasConditions);
         setFormMode({ id: Number(action.id) });
         setError(''); setSuccess('');
@@ -353,39 +379,52 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
     /** Build an ActionConfigInput from the current form state */
     const buildConfig = () => {
         const inputDecimals = getDecimals(fInputToken);
+        // Use denomination token decimals when set, otherwise fall back to input token decimals
+        const amountDecimals = fTradeSizeDenom ? getDecimals(fTradeSizeDenom) : inputDecimals;
+        const balanceDecimals = fBalanceDenom ? getDecimals(fBalanceDenom) : inputDecimals;
+        const priceDecimals = fPriceDenom ? getDecimals(fPriceDenom) : inputDecimals;
         return {
             actionType: BigInt(fActionType),
             enabled: fEnabled,
             inputToken: Principal.fromText(fInputToken),
             outputToken: fActionType === ACTION_TYPE_TRADE && fOutputToken ? [Principal.fromText(fOutputToken)] : [],
-            minAmount: fMinAmount ? BigInt(parseTokenAmount(fMinAmount, inputDecimals)) : BigInt(0),
-            maxAmount: fMaxAmount ? BigInt(parseTokenAmount(fMaxAmount, inputDecimals)) : BigInt(0),
+            minAmount: fMinAmount ? BigInt(parseTokenAmount(fMinAmount, amountDecimals)) : BigInt(0),
+            maxAmount: fMaxAmount ? BigInt(parseTokenAmount(fMaxAmount, amountDecimals)) : BigInt(0),
             preferredDex: [],
             sourceSubaccount: [],
             targetSubaccount: [],
             destinationOwner: fDestOwner.trim() ? [Principal.fromText(fDestOwner.trim())] : [],
             destinationSubaccount: [],
-            minBalance: fMinBalance ? [BigInt(parseTokenAmount(fMinBalance, inputDecimals))] : [],
-            maxBalance: fMaxBalance ? [BigInt(parseTokenAmount(fMaxBalance, inputDecimals))] : [],
-            balanceDenominationToken: [],
+            minBalance: fMinBalance ? [BigInt(parseTokenAmount(fMinBalance, balanceDecimals))] : [],
+            maxBalance: fMaxBalance ? [BigInt(parseTokenAmount(fMaxBalance, balanceDecimals))] : [],
+            balanceDenominationToken: fBalanceDenom ? [Principal.fromText(fBalanceDenom)] : [],
             minPrice: (() => {
-                // Storage is input-per-output. When user enters in output_per_input direction,
+                if (fPriceDenom) {
+                    // Denominated price: always stored as denomToken/outputToken, no direction swap
+                    const v = humanPriceToE8s(fMinPrice, priceDecimals, 'input_per_output');
+                    return v != null ? [v] : [];
+                }
+                // Native: storage is input-per-output. When user enters in output_per_input direction,
                 // inversion flips ordering: user's "max" → stored min.
                 const src = fPriceDirection === 'output_per_input' ? fMaxPrice : fMinPrice;
                 const v = humanPriceToE8s(src, inputDecimals, fPriceDirection);
                 return v != null ? [v] : [];
             })(),
             maxPrice: (() => {
+                if (fPriceDenom) {
+                    const v = humanPriceToE8s(fMaxPrice, priceDecimals, 'input_per_output');
+                    return v != null ? [v] : [];
+                }
                 const src = fPriceDirection === 'output_per_input' ? fMinPrice : fMaxPrice;
                 const v = humanPriceToE8s(src, inputDecimals, fPriceDirection);
                 return v != null ? [v] : [];
             })(),
-            priceDenominationToken: [],
+            priceDenominationToken: fPriceDenom ? [Principal.fromText(fPriceDenom)] : [],
             maxPriceImpactBps: fMaxPriceImpactBps ? [BigInt(Math.round(Number(fMaxPriceImpactBps) * 100))] : [],
             maxSlippageBps: fMaxSlippageBps ? [BigInt(Math.round(Number(fMaxSlippageBps) * 100))] : [],
             minFrequencySeconds: [],
             maxFrequencySeconds: [],
-            tradeSizeDenominationToken: [],
+            tradeSizeDenominationToken: fTradeSizeDenom ? [Principal.fromText(fTradeSizeDenom)] : [],
         };
     };
 
@@ -461,7 +500,15 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
     /** Shared form JSX (used for both add and edit) */
     const renderForm = () => {
         const isEditing = formMode !== 'add';
-        const tokenSymLabel = fInputToken && tokenMeta[fInputToken] ? ` (${tokenMeta[fInputToken].symbol})` : '';
+        const amountDenomSym = fTradeSizeDenom && tokenMeta[fTradeSizeDenom] ? tokenMeta[fTradeSizeDenom].symbol : null;
+        const balanceDenomSym = fBalanceDenom && tokenMeta[fBalanceDenom] ? tokenMeta[fBalanceDenom].symbol : null;
+        const priceDenomSym = fPriceDenom && tokenMeta[fPriceDenom] ? tokenMeta[fPriceDenom].symbol : null;
+        const nativeInputSym = fInputToken && tokenMeta[fInputToken] ? tokenMeta[fInputToken].symbol : null;
+        const amountSymLabel = amountDenomSym ? ` (${amountDenomSym})` : (nativeInputSym ? ` (${nativeInputSym})` : '');
+        const balanceSymLabel = balanceDenomSym ? ` (${balanceDenomSym})` : (nativeInputSym ? ` (${nativeInputSym})` : '');
+        const denomPriceLabel = priceDenomSym
+            ? `${priceDenomSym}/${fOutputToken ? getSymbol(fOutputToken) : 'Output'}`
+            : priceLabel;
         return (
             <div style={{ padding: '14px', background: `${accentColor}06`, borderRadius: '8px', border: `1px solid ${accentColor}20`, marginTop: '10px' }}>
                 {isEditing && (
@@ -499,13 +546,31 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                         </div>
                     )}
                     <div>
-                        <label style={labelStyle}>Min Amount{tokenSymLabel}</label>
+                        <label style={labelStyle}>Min Amount{amountSymLabel}</label>
                         <input value={fMinAmount} onChange={(e) => setFMinAmount(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="0.0" />
                     </div>
                     <div>
-                        <label style={labelStyle}>Max Amount{tokenSymLabel}</label>
+                        <label style={labelStyle}>Max Amount{amountSymLabel}</label>
                         <input value={fMaxAmount} onChange={(e) => setFMaxAmount(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="0.0" />
                     </div>
+                    {fActionType === ACTION_TYPE_TRADE && (
+                        <div>
+                            <label style={labelStyle}>Amount Denomination</label>
+                            <TokenSelector
+                                value={fTradeSizeDenom}
+                                onChange={(v) => { setFTradeSizeDenom(v); setFMinAmount(''); setFMaxAmount(''); }}
+                                onSelectToken={cacheTokenMeta}
+                                allowCustom={true}
+                                placeholder="Native (input token)"
+                            />
+                            {fTradeSizeDenom && (
+                                <button type="button" onClick={() => { setFTradeSizeDenom(''); setFMinAmount(''); setFMaxAmount(''); }}
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.65rem', color: accentColor, padding: '2px 0', marginTop: '2px' }}>
+                                    Clear (use native)
+                                </button>
+                            )}
+                        </div>
+                    )}
                     {(fActionType === ACTION_TYPE_SEND || fActionType === ACTION_TYPE_WITHDRAW || fActionType === ACTION_TYPE_DEPOSIT) && (
                         <div>
                             <label style={labelStyle}>Destination Owner (principal)</label>
@@ -529,14 +594,30 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                     {showConditions && (
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px', marginTop: '10px' }}>
                             <div>
-                                <label style={labelStyle}>Min Input Balance{tokenSymLabel}</label>
+                                <label style={labelStyle}>Min Input Balance{balanceSymLabel}</label>
                                 <input value={fMinBalance} onChange={(e) => setFMinBalance(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="Only run if balance ≥" />
                             </div>
                             <div>
-                                <label style={labelStyle}>Max Input Balance{tokenSymLabel}</label>
+                                <label style={labelStyle}>Max Input Balance{balanceSymLabel}</label>
                                 <input value={fMaxBalance} onChange={(e) => setFMaxBalance(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="Only run if balance ≤" />
                             </div>
-                            {fActionType === ACTION_TYPE_TRADE && fOutputToken && (
+                            <div>
+                                <label style={labelStyle}>Balance Denomination</label>
+                                <TokenSelector
+                                    value={fBalanceDenom}
+                                    onChange={(v) => { setFBalanceDenom(v); setFMinBalance(''); setFMaxBalance(''); }}
+                                    onSelectToken={cacheTokenMeta}
+                                    allowCustom={true}
+                                    placeholder="Native (input token)"
+                                />
+                                {fBalanceDenom && (
+                                    <button type="button" onClick={() => { setFBalanceDenom(''); setFMinBalance(''); setFMaxBalance(''); }}
+                                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.65rem', color: accentColor, padding: '2px 0', marginTop: '2px' }}>
+                                        Clear (use native)
+                                    </button>
+                                )}
+                            </div>
+                            {fActionType === ACTION_TYPE_TRADE && fOutputToken && !fPriceDenom && (
                                 <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                     <label style={{ ...labelStyle, margin: 0 }}>Price direction:</label>
                                     <button
@@ -562,13 +643,31 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                                 </div>
                             )}
                             <div>
-                                <label style={labelStyle}>Min Price ({priceLabel})</label>
+                                <label style={labelStyle}>Min Price ({denomPriceLabel})</label>
                                 <input value={fMinPrice} onChange={(e) => setFMinPrice(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder={`Skip if price below`} />
                             </div>
                             <div>
-                                <label style={labelStyle}>Max Price ({priceLabel})</label>
+                                <label style={labelStyle}>Max Price ({denomPriceLabel})</label>
                                 <input value={fMaxPrice} onChange={(e) => setFMaxPrice(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder={`Skip if price above`} />
                             </div>
+                            {fActionType === ACTION_TYPE_TRADE && fOutputToken && (
+                                <div>
+                                    <label style={labelStyle}>Price Denomination</label>
+                                    <TokenSelector
+                                        value={fPriceDenom}
+                                        onChange={(v) => { setFPriceDenom(v); setFMinPrice(''); setFMaxPrice(''); setFPriceDirection('input_per_output'); }}
+                                        onSelectToken={cacheTokenMeta}
+                                        allowCustom={true}
+                                        placeholder="Native (input/output)"
+                                    />
+                                    {fPriceDenom && (
+                                        <button type="button" onClick={() => { setFPriceDenom(''); setFMinPrice(''); setFMaxPrice(''); }}
+                                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.65rem', color: accentColor, padding: '2px 0', marginTop: '2px' }}>
+                                            Clear (use native)
+                                        </button>
+                                    )}
+                                </div>
+                            )}
                             <div>
                                 <label style={labelStyle}>Max Price Impact (%)</label>
                                 <input value={fMaxPriceImpactBps} onChange={(e) => setFMaxPriceImpactBps(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="e.g. 1 = 1%" />
@@ -612,6 +711,15 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                     {actions.map((action) => {
                         const inputSym = getSymbol(action.inputToken);
                         const inputDec = getDecimals(action.inputToken);
+                        const actTsDenom = optVal(action.tradeSizeDenominationToken) ? principalToStr(optVal(action.tradeSizeDenominationToken)) : '';
+                        const actPDenom = optVal(action.priceDenominationToken) ? principalToStr(optVal(action.priceDenominationToken)) : '';
+                        const actBDenom = optVal(action.balanceDenominationToken) ? principalToStr(optVal(action.balanceDenominationToken)) : '';
+                        const amtDec = actTsDenom ? getDecimals(actTsDenom) : inputDec;
+                        const amtSym = actTsDenom ? getSymbol(actTsDenom) : inputSym;
+                        const balDec = actBDenom ? getDecimals(actBDenom) : inputDec;
+                        const balSym = actBDenom ? getSymbol(actBDenom) : inputSym;
+                        const prcDec = actPDenom ? getDecimals(actPDenom) : inputDec;
+                        const prcSym = actPDenom ? getSymbol(actPDenom) : null;
                         const isBeingEdited = formMode && formMode !== 'add' && formMode.id === Number(action.id);
                         return (
                             <div key={Number(action.id)}>
@@ -649,19 +757,17 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                                         <div style={{ marginTop: '8px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '6px', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
                                             <div><strong>Input:</strong> {inputSym}</div>
                                             {action.outputToken?.length > 0 && <div><strong>Output:</strong> {getSymbol(action.outputToken[0])}</div>}
-                                            <div><strong>Min:</strong> {formatTokenAmount(action.minAmount, inputDec)} {inputSym}</div>
-                                            <div><strong>Max:</strong> {formatTokenAmount(action.maxAmount, inputDec)} {inputSym}</div>
+                                            <div><strong>Min:</strong> {formatTokenAmount(action.minAmount, amtDec)} {actTsDenom ? `${amtSym} of ${inputSym}` : inputSym}</div>
+                                            <div><strong>Max:</strong> {formatTokenAmount(action.maxAmount, amtDec)} {actTsDenom ? `${amtSym} of ${inputSym}` : inputSym}</div>
                                             {optVal(action.destinationOwner) && <div><strong>Dest:</strong> {shortPrincipal(optVal(action.destinationOwner))}</div>}
-                                            {optVal(action.minBalance) != null && <div><strong>Min Bal:</strong> {formatTokenAmount(optVal(action.minBalance), inputDec)} {inputSym}</div>}
-                                            {optVal(action.maxBalance) != null && <div><strong>Max Bal:</strong> {formatTokenAmount(optVal(action.maxBalance), inputDec)} {inputSym}</div>}
+                                            {optVal(action.minBalance) != null && <div><strong>Min Bal:</strong> {formatTokenAmount(optVal(action.minBalance), balDec)} {balSym}</div>}
+                                            {optVal(action.maxBalance) != null && <div><strong>Max Bal:</strong> {formatTokenAmount(optVal(action.maxBalance), balDec)} {balSym}</div>}
                                             {(() => {
                                                 const outKey = action.outputToken?.length > 0 ? (typeof action.outputToken[0] === 'string' ? action.outputToken[0] : action.outputToken[0]?.toText?.() || String(action.outputToken[0])) : '';
                                                 const outS = outKey ? getSymbol(outKey) : 'Output';
-                                                const inS = inputSym;
-                                                const priceUnit = `${inS}/${outS}`;
-                                                // Stored format is input-per-output — direct display, no swap
-                                                const userMin = optVal(action.minPrice) != null ? e8sToHumanPrice(optVal(action.minPrice), inputDec, 'input_per_output') : null;
-                                                const userMax = optVal(action.maxPrice) != null ? e8sToHumanPrice(optVal(action.maxPrice), inputDec, 'input_per_output') : null;
+                                                const priceUnit = prcSym ? `${prcSym}/${outS}` : `${inputSym}/${outS}`;
+                                                const userMin = optVal(action.minPrice) != null ? e8sToHumanPrice(optVal(action.minPrice), prcDec, 'input_per_output') : null;
+                                                const userMax = optVal(action.maxPrice) != null ? e8sToHumanPrice(optVal(action.maxPrice), prcDec, 'input_per_output') : null;
                                                 return <>
                                                     {userMin != null && <div><strong>Min Price:</strong> {typeof userMin === 'number' ? userMin.toLocaleString(undefined, { maximumSignificantDigits: 6 }) : userMin} {priceUnit}</div>}
                                                     {userMax != null && <div><strong>Max Price:</strong> {typeof userMax === 'number' ? userMax.toLocaleString(undefined, { maximumSignificantDigits: 6 }) : userMax} {priceUnit}</div>}
