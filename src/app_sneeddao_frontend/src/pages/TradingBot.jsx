@@ -2433,22 +2433,111 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
         return tokenMeta[k]?.decimals ?? 8;
     };
 
+    // Load subaccounts + token registry only (fast query calls, no inter-canister)
     const loadData = useCallback(async () => {
         try {
             const bot = await getReadyBotActor();
-            const [subs, bals, registry] = await Promise.all([
+            const [subs, registry] = await Promise.all([
                 bot.getSubaccounts ? bot.getSubaccounts() : [],
-                bot.getAllBalances ? bot.getAllBalances() : [],
                 bot.getTokenRegistry ? bot.getTokenRegistry() : [],
             ]);
             setSubaccounts(subs);
-            setAllBalances(bals);
             setTokenRegistry(registry);
         } catch (e) { setError('Failed to load accounts: ' + e.message); }
         finally { setLoading(false); }
     }, [getReadyBotActor]);
 
     useEffect(() => { loadData(); }, [loadData]);
+
+    // Fetch balances directly from ledger canisters (frontend-only, fast, progressive)
+    const [balancesLoading, setBalancesLoading] = useState(false);
+    const balanceFetchKeyRef = useRef('');
+    useEffect(() => {
+        if (!canisterId || tokenRegistry.length === 0) { setAllBalances([]); return; }
+        // Build a stable key from registry + subaccounts to avoid re-fetching unnecessarily
+        const regIds = tokenRegistry.map(t => typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId)).sort().join(',');
+        const subIds = subaccounts.map(s => String(s.number)).join(',');
+        const key = `${canisterId}:${regIds}:${subIds}`;
+        if (key === balanceFetchKeyRef.current) return;
+        balanceFetchKeyRef.current = key;
+        let cancelled = false;
+        setBalancesLoading(true);
+        (async () => {
+            try {
+                const { HttpAgent } = await import('@dfinity/agent');
+                const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                const host = isLocal ? 'http://localhost:4943' : 'https://ic0.app';
+                const agent = HttpAgent.createSync({ identity, host });
+                if (isLocal) await agent.fetchRootKey();
+                const botPrincipal = Principal.fromText(canisterId);
+
+                // Build list of (subaccountNumber, name, subaccountBlob-or-null) entries
+                const accounts = [
+                    { number: 0, name: 'Main Account', subaccount: [] },
+                    ...subaccounts.map(s => ({ number: Number(s.number), name: s.name, subaccount: Array.from(s.subaccount || []) })),
+                ];
+
+                const tokenList = tokenRegistry.map(t => {
+                    const tid = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
+                    return tid;
+                });
+
+                // Progressive state: accumulate results keyed by subaccountNumber
+                const accumulated = {};
+                for (const acc of accounts) {
+                    accumulated[acc.number] = { subaccountNumber: acc.number, name: acc.name, balances: [] };
+                }
+
+                // Fire all balance queries in parallel (token x account), with concurrency limit
+                const CONCURRENCY = 12;
+                const jobs = [];
+                for (const acc of accounts) {
+                    for (const tid of tokenList) {
+                        jobs.push({ acc, tid });
+                    }
+                }
+
+                let completed = 0;
+                const queue = [...jobs];
+                const runWorker = async () => {
+                    while (queue.length > 0 && !cancelled) {
+                        const job = queue.shift();
+                        if (!job) break;
+                        try {
+                            const ledgerActor = createLedgerActor(job.tid, { agent });
+                            const subParam = job.acc.number === 0 ? [] : [job.acc.subaccount];
+                            const balance = await ledgerActor.icrc1_balance_of({ owner: botPrincipal, subaccount: subParam });
+                            if (BigInt(balance) > 0n) {
+                                accumulated[job.acc.number].balances.push({ token: job.tid, balance: BigInt(balance) });
+                            }
+                        } catch (_) {}
+                        completed++;
+                        // Progressive update: push current state every few completions or at the end
+                        if (!cancelled && (completed % Math.max(1, Math.min(tokenList.length, 4)) === 0 || completed === jobs.length)) {
+                            setAllBalances(Object.values(accumulated).map(a => ({
+                                subaccountNumber: a.subaccountNumber,
+                                name: a.name,
+                                balances: [...a.balances],
+                            })));
+                        }
+                    }
+                };
+                const workers = [];
+                for (let i = 0; i < Math.min(CONCURRENCY, jobs.length); i++) workers.push(runWorker());
+                await Promise.all(workers);
+                if (!cancelled) {
+                    // Final update
+                    setAllBalances(Object.values(accumulated).map(a => ({
+                        subaccountNumber: a.subaccountNumber,
+                        name: a.name,
+                        balances: [...a.balances],
+                    })));
+                }
+            } catch (e) { console.warn('Failed to fetch balances:', e); }
+            finally { if (!cancelled) setBalancesLoading(false); }
+        })();
+        return () => { cancelled = true; };
+    }, [canisterId, tokenRegistry, subaccounts, identity]);
 
     // Fetch denomination prices using frontend-only PriceService (fast, cached)
     // Uses two-hop via ICP: get each token's ICP price + denom token's ICP price, then divide.
@@ -2675,7 +2764,7 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                         <button onClick={() => setShowTokenManager(!showTokenManager)} style={btnStyle}>
                             {showTokenManager ? 'Hide' : 'Manage'}
                         </button>
-                        <button onClick={() => { setLoading(true); loadData(); }} style={btnStyle}>
+                        <button onClick={() => { balanceFetchKeyRef.current = ''; setAllBalances([]); setLoading(true); loadData(); }} style={btnStyle}>
                             <FaSyncAlt style={{ fontSize: '0.6rem' }} />
                         </button>
                     </div>
@@ -2800,7 +2889,9 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                     </div>
                 </div>
                 {selectedBalances.length === 0 ? (
-                    <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', padding: '8px 0' }}>No token balances.{tokenRegistry.length === 0 ? ' Register some tokens above to see balances.' : ''}</div>
+                    <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', padding: '8px 0' }}>
+                        {balancesLoading ? 'Fetching balances...' : (tokenRegistry.length === 0 ? 'No token balances. Register some tokens above to see balances.' : 'No token balances found for this account.')}
+                    </div>
                 ) : (() => {
                     const denomSym = denomToken ? getSymbol(denomToken) : '';
                     const denomSign = getCurrencySign(denomToken);
@@ -2855,12 +2946,17 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                                 {/* Total row */}
                                 {denomToken && hasAnyDenomValue && (
                                     <tr style={{ borderTop: `2px solid ${borderColor}40` }}>
-                                        <td style={{ padding: '6px 8px', fontWeight: '700', color: theme.colors.primaryText }}>Total</td>
+                                        <td style={{ padding: '6px 8px', fontWeight: '700', color: theme.colors.primaryText }}>
+                                            Total{balancesLoading ? ' (loading...)' : ''}
+                                        </td>
                                         <td />
                                         <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', color: accentColor, fontSize: '0.85rem' }}>
                                             {formatDenomAmount(totalDenomValue, denomToken, denomSym)}
                                         </td>
                                     </tr>
+                                )}
+                                {balancesLoading && !hasAnyDenomValue && (
+                                    <tr><td colSpan={denomToken ? 3 : 2} style={{ padding: '4px 8px', fontSize: '0.75rem', color: theme.colors.mutedText }}>Scanning balances...</td></tr>
                                 )}
                             </tbody>
                         </table>
