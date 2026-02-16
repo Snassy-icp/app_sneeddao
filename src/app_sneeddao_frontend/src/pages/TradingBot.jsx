@@ -603,6 +603,8 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                             />
                         </div>
                     )}
+                    {/* Force new row before amounts */}
+                    <div style={{ gridColumn: '1 / -1', height: 0 }} />
                     <div>
                         <label style={labelStyle}>Min Amount{amountSymLabel}</label>
                         <input value={fMinAmount} onChange={(e) => setFMinAmount(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="0.0" />
