@@ -3231,10 +3231,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         let finalTokens = Array.map<T.PortfolioTokenStatus, T.PortfolioTokenStatus>(
             Buffer.toArray(tokenStatuses),
             func(ts) {
-                let currentBps = if (totalValue > 0) { (ts.valueInDenomination * 10000) / totalValue } else { 0 };
+                let currentBps: Nat = if (totalValue > 0) { (ts.valueInDenomination * 10000) / totalValue } else { 0 };
+                let deviation: Int = (currentBps : Int) - (ts.targetBps : Int); // positive = overweight, negative = underweight
                 { ts with
                     currentBps = currentBps;
-                    deviationBps = Int.abs(currentBps) - Int.abs(ts.targetBps);
+                    deviationBps = deviation;
                 }
             }
         );
