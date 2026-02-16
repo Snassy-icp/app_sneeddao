@@ -17,8 +17,10 @@ import { useAuth } from '../AuthContext';
 // Trading bot Candid declarations — aligned with staking bot API for shared BotManagementPanel.
 import { createActor as createBotActor } from 'external/sneed_trading_bot';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
+import { decodeIcrcAccount, encodeIcrcAccount } from '@dfinity/ledger-icrc';
 import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt } from 'react-icons/fa';
 import TokenIcon from '../components/TokenIcon';
+import PrincipalInput from '../components/PrincipalInput';
 
 // Trading bot accent colors — green/teal for trading
 const ACCENT = '#10b981';
@@ -221,6 +223,11 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
     const [fMaxPriceImpactBps, setFMaxPriceImpactBps] = useState('');
     const [fMaxSlippageBps, setFMaxSlippageBps] = useState('');
     const [fDestOwner, setFDestOwner] = useState('');
+    // Subaccount fields: number index into bot's named subaccounts ('' = not set)
+    const [fSourceSubaccount, setFSourceSubaccount] = useState('');
+    const [fTargetSubaccount, setFTargetSubaccount] = useState('');
+    // Named subaccounts loaded from the bot
+    const [subaccounts, setSubaccounts] = useState([]);
     // Price direction toggle: 'output_per_input' means "SNEED per ICP", 'input_per_output' means "ICP per SNEED"
     const [fPriceDirection, setFPriceDirection] = useState('input_per_output');
     // Denomination token state: null = native, otherwise a canister ID string
@@ -311,6 +318,18 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
 
     useEffect(() => { loadActions(); }, [loadActions]);
 
+    // Load named subaccounts for Deposit/Withdraw selectors
+    const loadSubaccounts = useCallback(async () => {
+        try {
+            const bot = await getReadyBotActor();
+            if (bot?.getSubaccounts) {
+                const subs = await bot.getSubaccounts();
+                setSubaccounts(subs);
+            }
+        } catch (_) {}
+    }, [getReadyBotActor]);
+    useEffect(() => { loadSubaccounts(); }, [loadSubaccounts]);
+
     // Helper: extract optional Candid value
     const optVal = (arr) => arr?.length > 0 ? arr[0] : null;
 
@@ -321,6 +340,7 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
         setFMinAmount(''); setFMaxAmount(''); setFEnabled(true);
         setFMinBalance(''); setFMaxBalance(''); setFMinPrice(''); setFMaxPrice('');
         setFMaxPriceImpactBps(''); setFMaxSlippageBps(''); setFDestOwner('');
+        setFSourceSubaccount(''); setFTargetSubaccount('');
         setFPriceDirection('input_per_output');
         setFTradeSizeDenom(''); setFPriceDenom(''); setFBalanceDenom('');
         setShowConditions(false);
@@ -360,7 +380,27 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
         // Display bps as percentage
         setFMaxPriceImpactBps(optVal(action.maxPriceImpactBps) != null ? String(Number(optVal(action.maxPriceImpactBps)) / 100) : '');
         setFMaxSlippageBps(optVal(action.maxSlippageBps) != null ? String(Number(optVal(action.maxSlippageBps)) / 100) : '');
-        setFDestOwner(optVal(action.destinationOwner) ? principalToStr(optVal(action.destinationOwner)) : '');
+        // Reconstruct destination: for Send, combine principal + subaccount into ICRC1 account string
+        const destOwner = optVal(action.destinationOwner);
+        const destSub = optVal(action.destinationSubaccount);
+        if (destOwner && destSub && destSub.length > 0) {
+            try {
+                const ownerPrincipal = typeof destOwner === 'string' ? Principal.fromText(destOwner) : destOwner;
+                const subBytes = new Uint8Array(destSub);
+                const isDefault = subBytes.every(b => b === 0);
+                if (!isDefault) {
+                    setFDestOwner(encodeIcrcAccount({ owner: ownerPrincipal, subaccount: subBytes }));
+                } else {
+                    setFDestOwner(principalToStr(destOwner));
+                }
+            } catch (_) {
+                setFDestOwner(destOwner ? principalToStr(destOwner) : '');
+            }
+        } else {
+            setFDestOwner(destOwner ? principalToStr(destOwner) : '');
+        }
+        setFSourceSubaccount(optVal(action.sourceSubaccount) != null ? String(Number(optVal(action.sourceSubaccount))) : '');
+        setFTargetSubaccount(optVal(action.targetSubaccount) != null ? String(Number(optVal(action.targetSubaccount))) : '');
         // Auto-expand conditions if any condition fields are set
         const hasConditions = optVal(action.minBalance) != null || optVal(action.maxBalance) != null ||
             optVal(action.minPrice) != null || optVal(action.maxPrice) != null ||
@@ -391,10 +431,27 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
             minAmount: fMinAmount ? BigInt(parseTokenAmount(fMinAmount, amountDecimals)) : BigInt(0),
             maxAmount: fMaxAmount ? BigInt(parseTokenAmount(fMaxAmount, amountDecimals)) : BigInt(0),
             preferredDex: [],
-            sourceSubaccount: [],
-            targetSubaccount: [],
-            destinationOwner: fDestOwner.trim() ? [Principal.fromText(fDestOwner.trim())] : [],
-            destinationSubaccount: [],
+            sourceSubaccount: fSourceSubaccount !== '' ? [BigInt(fSourceSubaccount)] : [],
+            targetSubaccount: fTargetSubaccount !== '' ? [BigInt(fTargetSubaccount)] : [],
+            ...(() => {
+                // For Send: parse ICRC1 account to extract principal + optional subaccount
+                const raw = fDestOwner.trim();
+                if (!raw) return { destinationOwner: [], destinationSubaccount: [] };
+                if (raw.includes('.')) {
+                    try {
+                        const decoded = decodeIcrcAccount(raw);
+                        return {
+                            destinationOwner: [decoded.owner],
+                            destinationSubaccount: decoded.subaccount ? [[...new Uint8Array(decoded.subaccount)]] : [],
+                        };
+                    } catch (_) {}
+                }
+                try {
+                    return { destinationOwner: [Principal.fromText(raw)], destinationSubaccount: [] };
+                } catch (_) {
+                    return { destinationOwner: [], destinationSubaccount: [] };
+                }
+            })(),
             minBalance: fMinBalance ? [BigInt(parseTokenAmount(fMinBalance, balanceDecimals))] : [],
             maxBalance: fMaxBalance ? [BigInt(parseTokenAmount(fMaxBalance, balanceDecimals))] : [],
             balanceDenominationToken: fBalanceDenom ? [Principal.fromText(fBalanceDenom)] : [],
@@ -571,10 +628,39 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                             )}
                         </div>
                     )}
-                    {(fActionType === ACTION_TYPE_SEND || fActionType === ACTION_TYPE_WITHDRAW || fActionType === ACTION_TYPE_DEPOSIT) && (
+                    {/* Deposit: target subaccount selector */}
+                    {fActionType === ACTION_TYPE_DEPOSIT && (
                         <div>
-                            <label style={labelStyle}>Destination Owner (principal)</label>
-                            <input value={fDestOwner} onChange={(e) => setFDestOwner(e.target.value)} style={{ ...inputStyle, width: '100%' }} placeholder="Principal ID" />
+                            <label style={labelStyle}>Destination Subaccount</label>
+                            <select value={fTargetSubaccount} onChange={(e) => setFTargetSubaccount(e.target.value)} style={{ ...inputStyle, width: '100%', appearance: 'auto' }}>
+                                <option value="">— Select subaccount —</option>
+                                {subaccounts.map(s => <option key={Number(s.number)} value={String(Number(s.number))}>{s.name} (#{Number(s.number)})</option>)}
+                            </select>
+                            {subaccounts.length === 0 && <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, marginTop: '2px' }}>No subaccounts yet. Create one in the Accounts tab.</div>}
+                        </div>
+                    )}
+                    {/* Withdraw: source subaccount selector */}
+                    {fActionType === ACTION_TYPE_WITHDRAW && (
+                        <div>
+                            <label style={labelStyle}>Source Subaccount</label>
+                            <select value={fSourceSubaccount} onChange={(e) => setFSourceSubaccount(e.target.value)} style={{ ...inputStyle, width: '100%', appearance: 'auto' }}>
+                                <option value="">— Select subaccount —</option>
+                                {subaccounts.map(s => <option key={Number(s.number)} value={String(Number(s.number))}>{s.name} (#{Number(s.number)})</option>)}
+                            </select>
+                            {subaccounts.length === 0 && <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, marginTop: '2px' }}>No subaccounts yet. Create one in the Accounts tab.</div>}
+                        </div>
+                    )}
+                    {/* Send: destination ICRC1 account (principal + optional subaccount) */}
+                    {fActionType === ACTION_TYPE_SEND && (
+                        <div style={{ gridColumn: '1 / -1' }}>
+                            <label style={labelStyle}>Destination Account</label>
+                            <PrincipalInput
+                                value={fDestOwner}
+                                onChange={setFDestOwner}
+                                placeholder="Principal ID or ICRC-1 account..."
+                                showSubaccountOption={true}
+                                style={{ width: '100%' }}
+                            />
                         </div>
                     )}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '20px' }}>
@@ -617,40 +703,42 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                                     </button>
                                 )}
                             </div>
-                            {fActionType === ACTION_TYPE_TRADE && fOutputToken && !fPriceDenom && (
-                                <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                    <label style={{ ...labelStyle, margin: 0 }}>Price direction:</label>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            const newDir = fPriceDirection === 'output_per_input' ? 'input_per_output' : 'output_per_input';
-                                            // Invert and swap: old min → new max, old max → new min
-                                            const oldMin = fMinPrice ? Number(fMinPrice) : null;
-                                            const oldMax = fMaxPrice ? Number(fMaxPrice) : null;
-                                            setFMinPrice(oldMax && oldMax > 0 ? String(1 / oldMax) : '');
-                                            setFMaxPrice(oldMin && oldMin > 0 ? String(1 / oldMin) : '');
-                                            setFPriceDirection(newDir);
-                                        }}
-                                        style={{
-                                            ...secondaryButtonStyle,
-                                            fontSize: '0.7rem',
-                                            padding: '2px 8px',
-                                            fontWeight: fPriceDirection ? '600' : '400',
-                                        }}
-                                    >
-                                        ⇆ {priceLabel}
-                                    </button>
+                            {/* Price & slippage conditions — only for Trade (Swap) actions */}
+                            {fActionType === ACTION_TYPE_TRADE && fOutputToken && (<>
+                                {/* Row break before price fields */}
+                                <div style={{ gridColumn: '1 / -1', borderTop: `1px solid ${theme.colors.border}20`, margin: '4px 0' }} />
+                                {!fPriceDenom && (
+                                    <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                        <label style={{ ...labelStyle, margin: 0 }}>Price direction:</label>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const newDir = fPriceDirection === 'output_per_input' ? 'input_per_output' : 'output_per_input';
+                                                const oldMin = fMinPrice ? Number(fMinPrice) : null;
+                                                const oldMax = fMaxPrice ? Number(fMaxPrice) : null;
+                                                setFMinPrice(oldMax && oldMax > 0 ? String(1 / oldMax) : '');
+                                                setFMaxPrice(oldMin && oldMin > 0 ? String(1 / oldMin) : '');
+                                                setFPriceDirection(newDir);
+                                            }}
+                                            style={{
+                                                ...secondaryButtonStyle,
+                                                fontSize: '0.7rem',
+                                                padding: '2px 8px',
+                                                fontWeight: fPriceDirection ? '600' : '400',
+                                            }}
+                                        >
+                                            ⇆ {priceLabel}
+                                        </button>
+                                    </div>
+                                )}
+                                <div>
+                                    <label style={labelStyle}>Min Price ({denomPriceLabel})</label>
+                                    <input value={fMinPrice} onChange={(e) => setFMinPrice(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder={`Skip if price below`} />
                                 </div>
-                            )}
-                            <div>
-                                <label style={labelStyle}>Min Price ({denomPriceLabel})</label>
-                                <input value={fMinPrice} onChange={(e) => setFMinPrice(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder={`Skip if price below`} />
-                            </div>
-                            <div>
-                                <label style={labelStyle}>Max Price ({denomPriceLabel})</label>
-                                <input value={fMaxPrice} onChange={(e) => setFMaxPrice(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder={`Skip if price above`} />
-                            </div>
-                            {fActionType === ACTION_TYPE_TRADE && fOutputToken && (
+                                <div>
+                                    <label style={labelStyle}>Max Price ({denomPriceLabel})</label>
+                                    <input value={fMaxPrice} onChange={(e) => setFMaxPrice(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder={`Skip if price above`} />
+                                </div>
                                 <div>
                                     <label style={labelStyle}>Price Denomination</label>
                                     <TokenSelector
@@ -667,15 +755,15 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                                         </button>
                                     )}
                                 </div>
-                            )}
-                            <div>
-                                <label style={labelStyle}>Max Price Impact (%)</label>
-                                <input value={fMaxPriceImpactBps} onChange={(e) => setFMaxPriceImpactBps(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="e.g. 1 = 1%" />
-                            </div>
-                            <div>
-                                <label style={labelStyle}>Max Slippage (%)</label>
-                                <input value={fMaxSlippageBps} onChange={(e) => setFMaxSlippageBps(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="e.g. 0.5 = 0.5%" />
-                            </div>
+                                <div>
+                                    <label style={labelStyle}>Max Price Impact (%)</label>
+                                    <input value={fMaxPriceImpactBps} onChange={(e) => setFMaxPriceImpactBps(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="e.g. 1 = 1%" />
+                                </div>
+                                <div>
+                                    <label style={labelStyle}>Max Slippage (%)</label>
+                                    <input value={fMaxSlippageBps} onChange={(e) => setFMaxSlippageBps(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="e.g. 0.5 = 0.5%" />
+                                </div>
+                            </>)}
                         </div>
                     )}
                 </div>
@@ -760,6 +848,14 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                                             <div><strong>Min:</strong> {formatTokenAmount(action.minAmount, amtDec)} {actTsDenom ? `${amtSym} of ${inputSym}` : inputSym}</div>
                                             <div><strong>Max:</strong> {formatTokenAmount(action.maxAmount, amtDec)} {actTsDenom ? `${amtSym} of ${inputSym}` : inputSym}</div>
                                             {optVal(action.destinationOwner) && <div><strong>Dest:</strong> {shortPrincipal(optVal(action.destinationOwner))}</div>}
+                                            {optVal(action.targetSubaccount) != null && (() => {
+                                                const sub = subaccounts.find(s => Number(s.number) === Number(optVal(action.targetSubaccount)));
+                                                return <div><strong>To Sub:</strong> {sub ? `${sub.name} (#${Number(sub.number)})` : `#${Number(optVal(action.targetSubaccount))}`}</div>;
+                                            })()}
+                                            {optVal(action.sourceSubaccount) != null && (() => {
+                                                const sub = subaccounts.find(s => Number(s.number) === Number(optVal(action.sourceSubaccount)));
+                                                return <div><strong>From Sub:</strong> {sub ? `${sub.name} (#${Number(sub.number)})` : `#${Number(optVal(action.sourceSubaccount))}`}</div>;
+                                            })()}
                                             {optVal(action.minBalance) != null && <div><strong>Min Bal:</strong> {formatTokenAmount(optVal(action.minBalance), balDec)} {balSym}</div>}
                                             {optVal(action.maxBalance) != null && <div><strong>Max Bal:</strong> {formatTokenAmount(optVal(action.maxBalance), balDec)} {balSym}</div>}
                                             {(() => {
@@ -1321,8 +1417,6 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
     const [filterChoreType, setFilterChoreType] = useState('');
     // Snapshots indexed by tradeLogId: { before: snap|null, after: snap|null }
     const [snapMap, setSnapMap] = useState({});
-    // Track which trade log entries have their snapshot section expanded
-    const [expandedSnaps, setExpandedSnaps] = useState(new Set());
     // Track which trade log entries have their snapshot section expanded
     const [expandedSnaps, setExpandedSnaps] = useState(new Set());
 
@@ -2181,6 +2275,233 @@ function LoggingSettingsPanel({ getReadyBotActor, theme, accentColor, choreStatu
 }
 
 // ============================================
+// ACCOUNTS PANEL — named subaccounts & token balances
+// ============================================
+function AccountsPanel({ getReadyBotActor, theme, accentColor }) {
+    const { identity } = useAuth();
+    const [subaccounts, setSubaccounts] = useState([]);
+    const [allBalances, setAllBalances] = useState([]); // SubaccountBalances[]
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+    const [newName, setNewName] = useState('');
+    const [creating, setCreating] = useState(false);
+    const [selectedAccount, setSelectedAccount] = useState('main'); // 'main' or subaccount number string
+    const [renamingId, setRenamingId] = useState(null);
+    const [renameValue, setRenameValue] = useState('');
+
+    // Resolve token metadata
+    const allTokenIds = React.useMemo(() => {
+        const ids = new Set();
+        for (const sb of allBalances) {
+            for (const b of (sb.balances || [])) {
+                const t = typeof b.token === 'string' ? b.token : b.token?.toText?.() || String(b.token);
+                ids.add(t);
+            }
+        }
+        return [...ids];
+    }, [allBalances]);
+    const tokenMeta = useTokenMetadata(allTokenIds, identity);
+
+    const getSymbol = (p) => {
+        const k = typeof p === 'string' ? p : p?.toText?.() || String(p);
+        return tokenMeta[k]?.symbol || shortPrincipal(k);
+    };
+    const getDecimals = (p) => {
+        const k = typeof p === 'string' ? p : p?.toText?.() || String(p);
+        return tokenMeta[k]?.decimals ?? 8;
+    };
+
+    const loadData = useCallback(async () => {
+        try {
+            const bot = await getReadyBotActor();
+            const [subs, bals] = await Promise.all([
+                bot.getSubaccounts ? bot.getSubaccounts() : [],
+                bot.getAllBalances ? bot.getAllBalances() : [],
+            ]);
+            setSubaccounts(subs);
+            setAllBalances(bals);
+        } catch (e) { setError('Failed to load accounts: ' + e.message); }
+        finally { setLoading(false); }
+    }, [getReadyBotActor]);
+
+    useEffect(() => { loadData(); }, [loadData]);
+
+    const handleCreate = async () => {
+        if (!newName.trim()) return;
+        setCreating(true); setError(''); setSuccess('');
+        try {
+            const bot = await getReadyBotActor();
+            await bot.createSubaccount(newName.trim());
+            setNewName('');
+            setSuccess(`Subaccount "${newName.trim()}" created.`);
+            await loadData();
+        } catch (e) { setError('Failed to create: ' + e.message); }
+        finally { setCreating(false); }
+    };
+
+    const handleRename = async (num) => {
+        if (!renameValue.trim()) return;
+        setError(''); setSuccess('');
+        try {
+            const bot = await getReadyBotActor();
+            await bot.renameSubaccount(BigInt(num), renameValue.trim());
+            setRenamingId(null); setRenameValue('');
+            setSuccess('Renamed.');
+            await loadData();
+        } catch (e) { setError('Failed to rename: ' + e.message); }
+    };
+
+    const handleDelete = async (num) => {
+        setError(''); setSuccess('');
+        try {
+            const bot = await getReadyBotActor();
+            await bot.deleteSubaccount(BigInt(num));
+            if (selectedAccount === String(num)) setSelectedAccount('main');
+            setSuccess('Deleted.');
+            await loadData();
+        } catch (e) { setError('Failed to delete: ' + e.message); }
+    };
+
+    // Get balances for the selected account
+    const selectedBalances = React.useMemo(() => {
+        if (selectedAccount === 'main') {
+            const main = allBalances.find(b => Number(b.subaccountNumber) === 0);
+            return main?.balances || [];
+        }
+        const sub = allBalances.find(b => Number(b.subaccountNumber) === Number(selectedAccount));
+        return sub?.balances || [];
+    }, [allBalances, selectedAccount]);
+
+    const cardBg = theme.colors.cardGradient;
+    const borderColor = theme.colors.border;
+    const inputStyle = { padding: '6px 10px', borderRadius: '6px', border: `1px solid ${borderColor}`, background: theme.colors.primaryBg, color: theme.colors.primaryText, fontSize: '0.8rem', outline: 'none' };
+    const btnStyle = { padding: '4px 10px', borderRadius: '6px', border: `1px solid ${accentColor}40`, background: 'none', color: accentColor, cursor: 'pointer', fontSize: '0.75rem', fontWeight: '500' };
+    const dangerBtn = { ...btnStyle, color: '#ef4444', borderColor: '#ef444440' };
+
+    if (loading) return <div style={{ textAlign: 'center', padding: '20px', color: theme.colors.secondaryText }}>Loading accounts...</div>;
+
+    return (
+        <div>
+            {error && <div style={{ padding: '8px 12px', background: '#ef444415', border: '1px solid #ef444430', borderRadius: '8px', color: '#ef4444', fontSize: '0.8rem', marginBottom: '10px' }}>{error}</div>}
+            {success && <div style={{ padding: '8px 12px', background: '#22c55e15', border: '1px solid #22c55e30', borderRadius: '8px', color: '#22c55e', fontSize: '0.8rem', marginBottom: '10px' }}>{success}</div>}
+
+            {/* Account selector tabs */}
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                <button
+                    onClick={() => setSelectedAccount('main')}
+                    style={{
+                        padding: '6px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '500',
+                        background: selectedAccount === 'main' ? `${accentColor}20` : 'transparent',
+                        border: `1px solid ${selectedAccount === 'main' ? accentColor : borderColor}`,
+                        color: selectedAccount === 'main' ? accentColor : theme.colors.secondaryText,
+                    }}
+                >
+                    Main Account
+                </button>
+                {subaccounts.map(s => {
+                    const num = String(Number(s.number));
+                    const active = selectedAccount === num;
+                    return (
+                        <button key={num} onClick={() => setSelectedAccount(num)}
+                            style={{
+                                padding: '6px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '500',
+                                background: active ? `${accentColor}20` : 'transparent',
+                                border: `1px solid ${active ? accentColor : borderColor}`,
+                                color: active ? accentColor : theme.colors.secondaryText,
+                            }}
+                        >
+                            {s.name} <span style={{ fontSize: '0.65rem', opacity: 0.7 }}>#{num}</span>
+                        </button>
+                    );
+                })}
+            </div>
+
+            {/* Selected account balances */}
+            <div style={{ padding: '12px', background: cardBg, borderRadius: '10px', border: `1px solid ${borderColor}`, marginBottom: '14px' }}>
+                <h4 style={{ margin: '0 0 10px', fontSize: '0.85rem', color: theme.colors.primaryText, fontWeight: '600' }}>
+                    {selectedAccount === 'main' ? 'Main Account' : (() => {
+                        const s = subaccounts.find(s => String(Number(s.number)) === selectedAccount);
+                        return s ? `${s.name} (#${selectedAccount})` : `Subaccount #${selectedAccount}`;
+                    })()}
+                    {' '}— Token Balances
+                </h4>
+                {selectedBalances.length === 0 ? (
+                    <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', padding: '8px 0' }}>No token balances.</div>
+                ) : (
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                        <thead>
+                            <tr style={{ color: theme.colors.mutedText, textAlign: 'left' }}>
+                                <th style={{ padding: '4px 8px' }}>Token</th>
+                                <th style={{ padding: '4px 8px', textAlign: 'right' }}>Balance</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {selectedBalances.map((b) => {
+                                const tid = typeof b.token === 'string' ? b.token : b.token?.toText?.() || String(b.token);
+                                const dec = getDecimals(tid);
+                                return (
+                                    <tr key={tid} style={{ borderTop: `1px solid ${borderColor}20` }}>
+                                        <td style={{ padding: '5px 8px', color: theme.colors.primaryText }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <TokenIcon canisterId={tid} size={18} />
+                                                {getSymbol(tid)}
+                                            </div>
+                                        </td>
+                                        <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'monospace', color: theme.colors.secondaryText }}>
+                                            {formatTokenAmount(b.balance, dec)}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                )}
+                {/* Rename / Delete for non-main subaccounts */}
+                {selectedAccount !== 'main' && (
+                    <div style={{ marginTop: '10px', display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        {renamingId === selectedAccount ? (
+                            <>
+                                <input value={renameValue} onChange={(e) => setRenameValue(e.target.value)} placeholder="New name..." style={inputStyle} autoFocus
+                                    onKeyDown={(e) => { if (e.key === 'Enter') handleRename(selectedAccount); if (e.key === 'Escape') setRenamingId(null); }} />
+                                <button onClick={() => handleRename(selectedAccount)} style={btnStyle}><FaSave style={{ fontSize: '0.65rem', marginRight: '3px' }} />Save</button>
+                                <button onClick={() => setRenamingId(null)} style={btnStyle}><FaTimes style={{ fontSize: '0.65rem' }} /></button>
+                            </>
+                        ) : (
+                            <>
+                                <button onClick={() => { setRenamingId(selectedAccount); setRenameValue(subaccounts.find(s => String(Number(s.number)) === selectedAccount)?.name || ''); }} style={btnStyle}>
+                                    <FaEdit style={{ fontSize: '0.6rem', marginRight: '3px' }} />Rename
+                                </button>
+                                <button onClick={() => { if (confirm(`Delete subaccount #${selectedAccount}?`)) handleDelete(Number(selectedAccount)); }} style={dangerBtn}>
+                                    <FaTrash style={{ fontSize: '0.6rem', marginRight: '3px' }} />Delete
+                                </button>
+                            </>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {/* Create new subaccount */}
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <input
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="New subaccount name..."
+                    style={{ ...inputStyle, flex: 1 }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); }}
+                />
+                <button onClick={handleCreate} disabled={creating || !newName.trim()} style={{ ...btnStyle, opacity: creating || !newName.trim() ? 0.5 : 1 }}>
+                    <FaPlus style={{ fontSize: '0.65rem', marginRight: '3px' }} />{creating ? 'Creating...' : 'Create Subaccount'}
+                </button>
+            </div>
+            <div style={{ marginTop: '4px', fontSize: '0.7rem', color: theme.colors.mutedText }}>
+                Refresh balances by switching between accounts. Token balances are fetched from the bot canister.
+            </div>
+        </div>
+    );
+}
+
+// ============================================
 // Trading Bot Logs Section (combines trade log, portfolio snapshots, logging settings)
 // ============================================
 function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, identity }) {
@@ -2226,11 +2547,13 @@ function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, iden
         <div style={{ marginTop: '16px' }}>
             {/* Tab bar */}
             <div style={{ display: 'flex', gap: '4px', marginBottom: '12px', borderBottom: `1px solid ${theme.colors.border}`, paddingBottom: '0' }}>
+                <button onClick={() => setActiveTab('accounts')} style={tabStyle(activeTab === 'accounts')}>Accounts</button>
                 <button onClick={() => setActiveTab('trade')} style={tabStyle(activeTab === 'trade')}>Trade Log</button>
                 <button onClick={() => setActiveTab('snapshots')} style={tabStyle(activeTab === 'snapshots')}>Portfolio Snapshots</button>
                 <button onClick={() => setActiveTab('settings')} style={tabStyle(activeTab === 'settings')}>Logging Settings</button>
             </div>
 
+            {activeTab === 'accounts' && <AccountsPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
             {activeTab === 'trade' && <TradeLogViewer getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
             {activeTab === 'snapshots' && <PortfolioSnapshotViewer getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
             {activeTab === 'settings' && <LoggingSettingsPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} choreStatuses={choreStatuses} />}
