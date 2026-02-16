@@ -3367,8 +3367,46 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         enabledDexes
     };
 
+    /// Returns all supported DEXes with their enabled/disabled status.
+    public shared query (msg) func getSupportedDexes(): async [T.DexInfo] {
+        assertPermission(msg.caller, T.TradingPermission.ViewPortfolio);
+        Array.map<(Nat, Text, Text), T.DexInfo>(T.SUPPORTED_DEXES, func((id, name, desc)) {
+            { id = id; name = name; description = desc; enabled = isDexEnabled(id) }
+        })
+    };
+
+    /// Toggle a single DEX on or off. At least one DEX must remain enabled.
+    public shared (msg) func setDexEnabled(dexId: Nat, enabled: Bool): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageDexSettings);
+        if (enabled) {
+            // Add if not already present
+            if (not isDexEnabled(dexId)) {
+                enabledDexes := Array.append(enabledDexes, [dexId]);
+            };
+        } else {
+            let filtered = Array.filter<Nat>(enabledDexes, func(d) { d != dexId });
+            if (filtered.size() == 0) {
+                // Cannot disable the last DEX — enable all others instead
+                let others = Array.map<(Nat, Text, Text), Nat>(
+                    Array.filter<(Nat, Text, Text)>(T.SUPPORTED_DEXES, func((id, _, _)) { id != dexId }),
+                    func((id, _, _)) { id }
+                );
+                enabledDexes := others;
+                logEngine.logWarning("api", "Cannot disable last DEX (id " # Nat.toText(dexId) # "). Enabled others instead.", ?msg.caller, []);
+            } else {
+                enabledDexes := filtered;
+            };
+        };
+        logEngine.logInfo("api", "DEX " # Nat.toText(dexId) # " " # (if enabled "enabled" else "disabled") # ". Active DEXes: " # debug_show(enabledDexes), ?msg.caller, []);
+    };
+
     public shared (msg) func setEnabledDexes(dexIds: [Nat]): async () {
         assertPermission(msg.caller, T.TradingPermission.ManageDexSettings);
+        if (dexIds.size() == 0) {
+            // Cannot disable all — keep current
+            logEngine.logWarning("api", "Cannot set empty DEX list. At least one DEX must be enabled.", ?msg.caller, []);
+            return;
+        };
         enabledDexes := dexIds;
         logEngine.logInfo("api", "Updated enabled DEXes: " # debug_show(dexIds), ?msg.caller, []);
     };

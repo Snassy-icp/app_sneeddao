@@ -487,6 +487,13 @@ export const idlFactory = ({ IDL }) => {
 
         // DEX (REMOVED: getQuote — use frontend PriceService)
         getEnabledDexes: IDL.Func([], [IDL.Vec(IDL.Nat)], ['query']),
+        getSupportedDexes: IDL.Func([], [IDL.Vec(IDL.Record({
+            id: IDL.Nat,
+            name: IDL.Text,
+            description: IDL.Text,
+            enabled: IDL.Bool,
+        }))], ['query']),
+        setDexEnabled: IDL.Func([IDL.Nat, IDL.Bool], [], []),
         setEnabledDexes: IDL.Func([IDL.Vec(IDL.Nat)], [], []),
         setDefaultSlippage: IDL.Func([IDL.Nat], [], []),
         setDefaultMaxPriceImpact: IDL.Func([IDL.Nat], [], []),

@@ -3431,6 +3431,115 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
 }
 
 // ============================================
+// DEX Settings Panel (for the Info tab)
+// ============================================
+function DexSettingsPanel({ canisterId, createBotActor, identity }) {
+    const { theme } = useTheme();
+    const [dexes, setDexes] = useState(null);
+    const [toggling, setToggling] = useState(null); // dexId currently being toggled
+    const [error, setError] = useState('');
+    const actorRef = useRef(null);
+
+    const getActor = useCallback(async () => {
+        if (actorRef.current) return actorRef.current;
+        const { HttpAgent } = await import('@dfinity/agent');
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const host = isLocal ? 'http://localhost:4943' : 'https://ic0.app';
+        const agent = HttpAgent.createSync({ identity, host });
+        if (isLocal) await agent.fetchRootKey();
+        actorRef.current = createBotActor(canisterId, { agent });
+        return actorRef.current;
+    }, [canisterId, identity, createBotActor]);
+
+    const loadDexes = useCallback(async () => {
+        try {
+            const bot = await getActor();
+            const list = await bot.getSupportedDexes();
+            setDexes(list);
+        } catch (e) { setError('Failed to load DEX settings: ' + e.message); }
+    }, [getActor]);
+
+    useEffect(() => { loadDexes(); }, [loadDexes]);
+
+    const handleToggle = async (dexId, currentEnabled) => {
+        setToggling(dexId);
+        setError('');
+        try {
+            const bot = await getActor();
+            await bot.setDexEnabled(dexId, !currentEnabled);
+            await loadDexes();
+        } catch (e) { setError('Failed to toggle DEX: ' + e.message); }
+        finally { setToggling(null); }
+    };
+
+    if (!dexes) return null;
+
+    const enabledCount = dexes.filter(d => d.enabled).length;
+
+    return (
+        <div style={{ marginTop: '16px', padding: '14px', background: theme.colors.cardGradient, borderRadius: '10px', border: `1px solid ${theme.colors.border}` }}>
+            <div style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '10px' }}>
+                DEX Configuration
+            </div>
+            <p style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, margin: '0 0 10px 0', lineHeight: '1.4' }}>
+                Enable or disable DEXes for trading. At least one DEX must remain active.
+            </p>
+            {error && <div style={{ padding: '6px 10px', background: '#ef444415', border: '1px solid #ef444430', borderRadius: '6px', color: '#ef4444', fontSize: '0.75rem', marginBottom: '8px' }}>{error}</div>}
+            <div style={{ display: 'grid', gap: '8px' }}>
+                {dexes.map(dex => {
+                    const isOnly = dex.enabled && enabledCount <= 1;
+                    return (
+                        <div key={dex.id} style={{
+                            display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 14px',
+                            background: theme.colors.primaryBg, borderRadius: '8px',
+                            border: `1px solid ${dex.enabled ? ACCENT + '40' : theme.colors.border}`,
+                            opacity: toggling === Number(dex.id) ? 0.6 : 1,
+                            transition: 'all 0.2s ease',
+                        }}>
+                            {/* Toggle switch */}
+                            <button
+                                onClick={() => handleToggle(Number(dex.id), dex.enabled)}
+                                disabled={toggling != null}
+                                title={isOnly ? 'Cannot disable the only active DEX' : (dex.enabled ? 'Disable' : 'Enable')}
+                                style={{
+                                    width: '40px', height: '22px', borderRadius: '11px', border: 'none', cursor: toggling != null ? 'wait' : 'pointer',
+                                    background: dex.enabled ? ACCENT : theme.colors.border,
+                                    position: 'relative', flexShrink: 0, transition: 'background 0.2s ease',
+                                }}
+                            >
+                                <div style={{
+                                    width: '18px', height: '18px', borderRadius: '50%', background: '#fff',
+                                    position: 'absolute', top: '2px',
+                                    left: dex.enabled ? '20px' : '2px',
+                                    transition: 'left 0.2s ease',
+                                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                                }} />
+                            </button>
+                            <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText }}>
+                                    {dex.name}
+                                    {isOnly && <span style={{ fontSize: '0.65rem', fontWeight: '400', color: theme.colors.mutedText, marginLeft: '6px' }}>(only active DEX)</span>}
+                                </div>
+                                <div style={{ fontSize: '0.7rem', color: theme.colors.secondaryText, marginTop: '2px' }}>
+                                    {dex.description}
+                                </div>
+                            </div>
+                            <div style={{
+                                fontSize: '0.7rem', fontWeight: '500', padding: '2px 8px', borderRadius: '4px',
+                                background: dex.enabled ? '#22c55e15' : '#ef444415',
+                                color: dex.enabled ? '#22c55e' : '#ef4444',
+                            }}>
+                                {dex.enabled ? 'Active' : 'Disabled'}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
+// ============================================
 // Trading Bot Logs Section (combines trade log, portfolio snapshots, logging settings)
 // ============================================
 function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, identity }) {
@@ -3651,6 +3760,7 @@ export default function TradingBot() {
                             renderChoreConfig={renderTradingBotChoreConfig}
                             identity={identity}
                             isAuthenticated={isAuthenticated}
+                            extraInfoContent={<DexSettingsPanel canisterId={canisterId} createBotActor={createBotActor} identity={identity} />}
                         />
                         <TradingBotLogs
                             canisterId={canisterId}

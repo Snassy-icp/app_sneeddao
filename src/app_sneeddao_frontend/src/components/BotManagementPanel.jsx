@@ -167,6 +167,7 @@ export default function BotManagementPanel({
     renderChoreConfig,
     identity,
     isAuthenticated,
+    extraInfoContent,
 }) {
     const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
@@ -1474,6 +1475,7 @@ export default function BotManagementPanel({
                                     )}
                                 </div>
                             )}
+                            {extraInfoContent}
                         </div>
                     )}
 

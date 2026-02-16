@@ -150,6 +150,20 @@ module {
         public let KongSwap: Nat = 1;
     };
 
+    // Info about a supported DEX — returned by public API
+    public type DexInfo = {
+        id: Nat;
+        name: Text;
+        description: Text;
+        enabled: Bool;
+    };
+
+    // Master list of all DEXes the bot knows about (order = display order)
+    public let SUPPORTED_DEXES: [(Nat, Text, Text)] = [
+        (DexId.ICPSwap, "ICPSwap", "ICPSwap V3 — concentrated liquidity AMM"),
+        (DexId.KongSwap, "KongSwap",  "KongSwap — hybrid orderbook/AMM"),
+    ];
+
     // Well-known canister IDs
     public let ICP_LEDGER: Text = "ryjl3-tyaaa-aaaaa-aaaba-cai";
     public let CKUSDC_LEDGER: Text = "xevnm-gaaaa-aaaar-qafnq-cai";
