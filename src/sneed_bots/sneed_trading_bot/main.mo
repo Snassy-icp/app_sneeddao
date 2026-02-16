@@ -1811,6 +1811,19 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         tradeSize: Nat,
         route: Text,
     ): async Bool {
+        logEngine.logTrace(src, "Executing swap: " # tokenLabel(sellToken.token) # " → " # tokenLabel(buyToken.token) # " on dex " # Nat.toText(quote.dexId), null, [
+            ("sellToken", tokenLabel(sellToken.token)),
+            ("sellTokenId", Principal.toText(sellToken.token)),
+            ("buyToken", tokenLabel(buyToken.token)),
+            ("buyTokenId", Principal.toText(buyToken.token)),
+            ("tradeSize", Nat.toText(tradeSize)),
+            ("expectedOutput", Nat.toText(quote.expectedOutput)),
+            ("spotPriceE8s", Nat.toText(quote.spotPriceE8s)),
+            ("priceImpactBps", Nat.toText(quote.priceImpactBps)),
+            ("slippageBps", Nat.toText(slippage)),
+            ("dexId", Nat.toText(quote.dexId)),
+            ("route", route),
+        ]);
         let result = await executeSwap(quote, slippage);
         switch (result) {
             case (#Ok(r)) {
@@ -1891,6 +1904,22 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
         let denomToken = getRebalDenomToken(instanceId);
         let threshold = getRebalThreshold(instanceId);
+        let maxTrade = getRebalMaxTrade(instanceId);
+        let minTrade = getRebalMinTrade(instanceId);
+        let maxImpactCfg = getRebalMaxImpact(instanceId);
+        let slippageCfg = getRebalMaxSlippage(instanceId);
+
+        logEngine.logTrace(src, "executeRebalance started", null, [
+            ("instanceId", instanceId),
+            ("denomToken", Principal.toText(denomToken)),
+            ("denomLabel", tokenLabel(denomToken)),
+            ("thresholdBps", Nat.toText(threshold)),
+            ("maxTrade", Nat.toText(maxTrade)),
+            ("minTrade", Nat.toText(minTrade)),
+            ("maxImpactBps", Nat.toText(maxImpactCfg)),
+            ("maxSlippageBps", Nat.toText(slippageCfg)),
+            ("targetCount", Nat.toText(targets.size())),
+        ]);
 
         // 1. Value portfolio
         let tokenValues = Buffer.Buffer<{
@@ -1907,22 +1936,54 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
             // Get value in denomination token — use cached price if available
             let value = if (target.token == denomToken) {
+                logEngine.logTrace(src, "Token " # tokenLabel(target.token) # " is denom token, value = balance", null, [
+                    ("token", tokenLabel(target.token)),
+                    ("tokenId", Principal.toText(target.token)),
+                    ("balance", Nat.toText(balance)),
+                ]);
                 balance
             } else {
                 // Try cached quote first (populated by price-fetch phase)
                 switch (getCachedQuote(target.token, denomToken)) {
                     case (?cachedQ) {
-                        // Scale cached price to actual balance: (balance * cachedQ.expectedOutput) / cachedQ.inputAmount
-                        if (cachedQ.inputAmount > 0) {
+                        let v = if (cachedQ.inputAmount > 0) {
                             (balance * cachedQ.expectedOutput) / cachedQ.inputAmount
-                        } else { 0 }
+                        } else { 0 };
+                        logEngine.logTrace(src, "Token " # tokenLabel(target.token) # " valued via cached quote", null, [
+                            ("token", tokenLabel(target.token)),
+                            ("tokenId", Principal.toText(target.token)),
+                            ("balance", Nat.toText(balance)),
+                            ("value", Nat.toText(v)),
+                            ("cachedInputAmount", Nat.toText(cachedQ.inputAmount)),
+                            ("cachedExpectedOutput", Nat.toText(cachedQ.expectedOutput)),
+                            ("cachedDexId", Nat.toText(cachedQ.dexId)),
+                        ]);
+                        v
                     };
                     case null {
-                        // Fallback: fetch a fresh quote (should rarely happen after pipeline)
+                        logEngine.logDebug(src, "No cached quote for " # tokenLabel(target.token) # " → " # tokenLabel(denomToken) # ", fetching fresh", null, [
+                            ("token", tokenLabel(target.token)),
+                            ("tokenId", Principal.toText(target.token)),
+                            ("denomToken", tokenLabel(denomToken)),
+                        ]);
                         let quoteOpt = await getBestQuote(target.token, denomToken, balance);
                         switch (quoteOpt) {
-                            case (?q) { q.expectedOutput };
-                            case null { 0 };
+                            case (?q) {
+                                logEngine.logTrace(src, "Fresh quote obtained for " # tokenLabel(target.token), null, [
+                                    ("token", tokenLabel(target.token)),
+                                    ("value", Nat.toText(q.expectedOutput)),
+                                    ("dexId", Nat.toText(q.dexId)),
+                                    ("priceImpactBps", Nat.toText(q.priceImpactBps)),
+                                ]);
+                                q.expectedOutput
+                            };
+                            case null {
+                                logEngine.logDebug(src, "No quote available for " # tokenLabel(target.token) # " → " # tokenLabel(denomToken) # ", value = 0", null, [
+                                    ("token", tokenLabel(target.token)),
+                                    ("tokenId", Principal.toText(target.token)),
+                                ]);
+                                0
+                            };
                         };
                     };
                 };
@@ -1937,12 +1998,36 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             return false;
         };
 
+        // Log portfolio summary
+        logEngine.logDebug(src, "Portfolio valued: totalValue = " # Nat.toText(totalValue) # " " # tokenLabel(denomToken) # ", " # Nat.toText(tokenValues.size()) # " tokens", null, [
+            ("totalValue", Nat.toText(totalValue)),
+            ("denomToken", tokenLabel(denomToken)),
+            ("tokenCount", Nat.toText(tokenValues.size())),
+        ]);
+
         // 2. Calculate deviations
         let overweight = Buffer.Buffer<{ token: Principal; deviationBps: Nat; balance: Nat; value: Nat }>(4);
         let underweight = Buffer.Buffer<{ token: Principal; deviationBps: Nat; balance: Nat; value: Nat }>(4);
 
         for (tv in tokenValues.vals()) {
             let currentBps = (tv.value * 10000) / totalValue;
+            let classification = if (currentBps > tv.targetBps + threshold) {
+                "overweight"
+            } else if (tv.targetBps > currentBps + threshold) {
+                "underweight"
+            } else { "within-tolerance" };
+
+            logEngine.logTrace(src, tokenLabel(tv.token) # ": current " # Nat.toText(currentBps / 100) # "." # Nat.toText(currentBps % 100) # "% target " # Nat.toText(tv.targetBps / 100) # "." # Nat.toText(tv.targetBps % 100) # "% → " # classification, null, [
+                ("token", tokenLabel(tv.token)),
+                ("tokenId", Principal.toText(tv.token)),
+                ("balance", Nat.toText(tv.balance)),
+                ("value", Nat.toText(tv.value)),
+                ("currentBps", Nat.toText(currentBps)),
+                ("targetBps", Nat.toText(tv.targetBps)),
+                ("thresholdBps", Nat.toText(threshold)),
+                ("classification", classification),
+            ]);
+
             if (currentBps > tv.targetBps + threshold) {
                 overweight.add({
                     token = tv.token;
@@ -1960,6 +2045,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             };
         };
 
+        logEngine.logDebug(src, "Deviation analysis: " # Nat.toText(overweight.size()) # " overweight, " # Nat.toText(underweight.size()) # " underweight (threshold " # Nat.toText(threshold) # " bps)", null, [
+            ("overweightCount", Nat.toText(overweight.size())),
+            ("underweightCount", Nat.toText(underweight.size())),
+            ("thresholdBps", Nat.toText(threshold)),
+        ]);
+
         if (overweight.size() == 0 or underweight.size() == 0) {
             logEngine.logInfo(src, "Rebalance skipped: portfolio within tolerance (threshold " # Nat.toText(threshold / 100) # "." # Nat.toText(threshold % 100) # "%, " # Nat.toText(overweight.size()) # " overweight, " # Nat.toText(underweight.size()) # " underweight)", null, [
                 ("thresholdBps", Nat.toText(threshold)),
@@ -1968,9 +2059,6 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             ]);
             return false;
         };
-
-        let maxTrade = getRebalMaxTrade(instanceId);
-        let minTrade = getRebalMinTrade(instanceId);
 
         // Helper: get transfer fee for a token
         let getFee = func(token: Principal): Nat {
@@ -1983,6 +2071,28 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         // 3. Pair selection — weighted random, where each token's deviation
         //    is its weight in the lottery. This ensures all imbalanced pairs
         //    get a chance proportional to their severity.
+
+        // Log all candidate tokens with their lottery weights
+        for (ow in overweight.vals()) {
+            logEngine.logTrace(src, "Overweight candidate: " # tokenLabel(ow.token) # " +" # Nat.toText(ow.deviationBps) # " bps", null, [
+                ("token", tokenLabel(ow.token)),
+                ("tokenId", Principal.toText(ow.token)),
+                ("deviationBps", Nat.toText(ow.deviationBps)),
+                ("balance", Nat.toText(ow.balance)),
+                ("value", Nat.toText(ow.value)),
+                ("side", "sell"),
+            ]);
+        };
+        for (uw in underweight.vals()) {
+            logEngine.logTrace(src, "Underweight candidate: " # tokenLabel(uw.token) # " -" # Nat.toText(uw.deviationBps) # " bps", null, [
+                ("token", tokenLabel(uw.token)),
+                ("tokenId", Principal.toText(uw.token)),
+                ("deviationBps", Nat.toText(uw.deviationBps)),
+                ("balance", Nat.toText(uw.balance)),
+                ("value", Nat.toText(uw.value)),
+                ("side", "buy"),
+            ]);
+        };
 
         var sellToken = overweight.get(0);
         var buyToken = underweight.get(0);
@@ -2020,6 +2130,21 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             };
         };
 
+        logEngine.logDebug(src, "Lottery result: sell " # tokenLabel(sellToken.token) # " (weight " # Nat.toText(sellToken.deviationBps) # "/" # Nat.toText(totalOverWeight) # " = " # Nat.toText((sellToken.deviationBps * 100) / totalOverWeight) # "%, draw " # Nat.toText(owRand) # ") → buy " # tokenLabel(buyToken.token) # " (weight " # Nat.toText(buyToken.deviationBps) # "/" # Nat.toText(totalUnderWeight) # " = " # Nat.toText((buyToken.deviationBps * 100) / totalUnderWeight) # "%, draw " # Nat.toText(uwRand) # ")", null, [
+            ("sellToken", tokenLabel(sellToken.token)),
+            ("sellTokenId", Principal.toText(sellToken.token)),
+            ("sellDeviationBps", Nat.toText(sellToken.deviationBps)),
+            ("sellWeight", Nat.toText(sellToken.deviationBps) # "/" # Nat.toText(totalOverWeight)),
+            ("sellWeightPct", Nat.toText((sellToken.deviationBps * 100) / totalOverWeight)),
+            ("sellDraw", Nat.toText(owRand)),
+            ("buyToken", tokenLabel(buyToken.token)),
+            ("buyTokenId", Principal.toText(buyToken.token)),
+            ("buyDeviationBps", Nat.toText(buyToken.deviationBps)),
+            ("buyWeight", Nat.toText(buyToken.deviationBps) # "/" # Nat.toText(totalUnderWeight)),
+            ("buyWeightPct", Nat.toText((buyToken.deviationBps * 100) / totalUnderWeight)),
+            ("buyDraw", Nat.toText(uwRand)),
+        ]);
+
         // 4. Calculate trade size — check if target-reaching is possible,
         //    otherwise use conservative partial sizing.
         let fee = getFee(sellToken.token);
@@ -2031,6 +2156,26 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             (capDenomValue * sellToken.balance) / sellToken.value
         } else { 0 };
         let effectiveTargetReach = Nat.min(targetReachUnits, maxAffordable);
+
+        logEngine.logTrace(src, "Trade size calculation for " # tokenLabel(sellToken.token) # " → " # tokenLabel(buyToken.token), null, [
+            ("sellToken", tokenLabel(sellToken.token)),
+            ("buyToken", tokenLabel(buyToken.token)),
+            ("sellBalance", Nat.toText(sellToken.balance)),
+            ("sellValue", Nat.toText(sellToken.value)),
+            ("buyBalance", Nat.toText(buyToken.balance)),
+            ("buyValue", Nat.toText(buyToken.value)),
+            ("fee", Nat.toText(fee)),
+            ("maxAffordable", Nat.toText(maxAffordable)),
+            ("excessSellValue", Nat.toText(excessSellValue)),
+            ("deficitBuyValue", Nat.toText(deficitBuyValue)),
+            ("capDenomValue", Nat.toText(capDenomValue)),
+            ("targetReachUnits", Nat.toText(targetReachUnits)),
+            ("effectiveTargetReach", Nat.toText(effectiveTargetReach)),
+            ("minTrade", Nat.toText(minTrade)),
+            ("maxTrade", Nat.toText(maxTrade)),
+            ("balanceDiv4", Nat.toText(sellToken.balance / 4)),
+            ("totalValue", Nat.toText(totalValue)),
+        ]);
 
         var tradeSize: Nat = 0;
 
@@ -2045,12 +2190,23 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 ("tradeSize", Nat.toText(tradeSize)),
                 ("sellDeviationBps", Nat.toText(sellToken.deviationBps)),
                 ("buyDeviationBps", Nat.toText(buyToken.deviationBps)),
+                ("combinedDeviationBps", Nat.toText(sellToken.deviationBps + buyToken.deviationBps)),
                 ("mode", "target-reaching"),
             ]);
         } else {
             // Partial trade: use conservative sizing with overshoot cap
             let overshootCap = targetReachUnits;
             tradeSize := Nat.min(maxTrade, Nat.min(maxAffordable, Nat.min(sellToken.balance / 4, overshootCap)));
+
+            logEngine.logTrace(src, "Partial trade sizing breakdown", null, [
+                ("overshootCap", Nat.toText(overshootCap)),
+                ("balanceDiv4", Nat.toText(sellToken.balance / 4)),
+                ("maxAffordable", Nat.toText(maxAffordable)),
+                ("maxTrade", Nat.toText(maxTrade)),
+                ("resultTradeSize", Nat.toText(tradeSize)),
+                ("limitingFactor", if (tradeSize == overshootCap) { "overshootCap" } else if (tradeSize == sellToken.balance / 4) { "balanceDiv4" } else if (tradeSize == maxAffordable) { "maxAffordable" } else { "maxTrade" }),
+            ]);
+
             logEngine.logInfo(src, "Pair selected (partial): sell " # tokenLabel(sellToken.token) # " (+" # Nat.toText(sellToken.deviationBps / 100) # "." # Nat.toText(sellToken.deviationBps % 100) # "% over) → buy " # tokenLabel(buyToken.token) # " (-" # Nat.toText(buyToken.deviationBps / 100) # "." # Nat.toText(buyToken.deviationBps % 100) # "% under), trade " # Nat.toText(tradeSize) # " units (cap: " # Nat.toText(overshootCap) # ", targetReach: " # Nat.toText(targetReachUnits) # ")", null, [
                 ("sellToken", tokenLabel(sellToken.token)),
                 ("sellTokenId", Principal.toText(sellToken.token)),
@@ -2062,6 +2218,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 ("maxAffordable", Nat.toText(maxAffordable)),
                 ("sellDeviationBps", Nat.toText(sellToken.deviationBps)),
                 ("buyDeviationBps", Nat.toText(buyToken.deviationBps)),
+                ("combinedDeviationBps", Nat.toText(sellToken.deviationBps + buyToken.deviationBps)),
                 ("mode", "partial"),
             ]);
         };
@@ -2096,20 +2253,53 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         };
 
         // 5. Get quote and validate — with ICP-routed fallback for illiquid pairs
-        let maxImpact = getRebalMaxImpact(instanceId);
-        let slippage = getRebalMaxSlippage(instanceId);
+        let maxImpact = maxImpactCfg;
+        let slippage = slippageCfg;
         let icpToken = Principal.fromText(T.ICP_LEDGER);
+
+        logEngine.logDebug(src, "Fetching direct quote: " # tokenLabel(sellToken.token) # " → " # tokenLabel(buyToken.token) # " amount " # Nat.toText(tradeSize), null, [
+            ("sellToken", tokenLabel(sellToken.token)),
+            ("sellTokenId", Principal.toText(sellToken.token)),
+            ("buyToken", tokenLabel(buyToken.token)),
+            ("buyTokenId", Principal.toText(buyToken.token)),
+            ("tradeSize", Nat.toText(tradeSize)),
+            ("maxImpactBps", Nat.toText(maxImpact)),
+            ("maxSlippageBps", Nat.toText(slippage)),
+        ]);
 
         // Try direct quote first
         let directQuoteOpt = await getBestQuote(sellToken.token, buyToken.token, tradeSize);
         let directOk = switch (directQuoteOpt) {
-            case (?q) { q.priceImpactBps <= maxImpact };
-            case null { false };
+            case (?q) {
+                logEngine.logTrace(src, "Direct quote received: " # Nat.toText(q.expectedOutput) # " " # tokenLabel(buyToken.token) # " (dex " # Nat.toText(q.dexId) # ", impact " # Nat.toText(q.priceImpactBps) # " bps, spot " # Nat.toText(q.spotPriceE8s) # ")", null, [
+                    ("expectedOutput", Nat.toText(q.expectedOutput)),
+                    ("spotPriceE8s", Nat.toText(q.spotPriceE8s)),
+                    ("priceImpactBps", Nat.toText(q.priceImpactBps)),
+                    ("dexId", Nat.toText(q.dexId)),
+                    ("maxImpactBps", Nat.toText(maxImpact)),
+                    ("impactOk", if (q.priceImpactBps <= maxImpact) { "yes" } else { "no" }),
+                ]);
+                q.priceImpactBps <= maxImpact
+            };
+            case null {
+                logEngine.logTrace(src, "Direct quote: no quote available for " # tokenLabel(sellToken.token) # " → " # tokenLabel(buyToken.token), null, [
+                    ("sellToken", tokenLabel(sellToken.token)),
+                    ("buyToken", tokenLabel(buyToken.token)),
+                ]);
+                false
+            };
         };
 
         if (directOk) {
             // --- 6a. Direct trade path ---
             let quote = switch (directQuoteOpt) { case (?q) q; case null { return false } };
+            logEngine.logDebug(src, "Executing direct swap: " # tokenLabel(sellToken.token) # " → " # tokenLabel(buyToken.token) # " on dex " # Nat.toText(quote.dexId) # " amount " # Nat.toText(tradeSize) # " slippage " # Nat.toText(slippage) # " bps", null, [
+                ("route", "direct"),
+                ("dexId", Nat.toText(quote.dexId)),
+                ("tradeSize", Nat.toText(tradeSize)),
+                ("expectedOutput", Nat.toText(quote.expectedOutput)),
+                ("slippageBps", Nat.toText(slippage)),
+            ]);
             return await _rebalExecuteAndLog(instanceId, src, sellToken, buyToken, quote, slippage, tradeSize, "direct");
         };
 
@@ -2158,9 +2348,24 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         ]);
 
         // Leg 1 quote: sell token → ICP
+        logEngine.logDebug(src, "Fetching ICP-route leg1 quote: " # tokenLabel(sellToken.token) # " → ICP, amount " # Nat.toText(tradeSize), null, [
+            ("leg", "1"),
+            ("sellToken", tokenLabel(sellToken.token)),
+            ("sellTokenId", Principal.toText(sellToken.token)),
+            ("amount", Nat.toText(tradeSize)),
+        ]);
         let leg1QuoteOpt = await getBestQuote(sellToken.token, icpToken, tradeSize);
         let leg1Quote = switch (leg1QuoteOpt) {
             case (?q) {
+                logEngine.logTrace(src, "ICP-route leg1 quote received: " # Nat.toText(q.expectedOutput) # " ICP (dex " # Nat.toText(q.dexId) # ", impact " # Nat.toText(q.priceImpactBps) # " bps)", null, [
+                    ("leg", "1"),
+                    ("expectedOutput", Nat.toText(q.expectedOutput)),
+                    ("spotPriceE8s", Nat.toText(q.spotPriceE8s)),
+                    ("priceImpactBps", Nat.toText(q.priceImpactBps)),
+                    ("dexId", Nat.toText(q.dexId)),
+                    ("maxImpactBps", Nat.toText(maxImpact)),
+                    ("impactOk", if (q.priceImpactBps <= maxImpact) { "yes" } else { "no" }),
+                ]);
                 if (q.priceImpactBps > maxImpact) {
                     let reason = "ICP route leg1 (" # tokenLabel(sellToken.token) # " → ICP) impact " # Nat.toText(q.priceImpactBps) # " bps > max " # Nat.toText(maxImpact) # " bps";
                     logEngine.logWarning(src, "Rebalance skipped: " # reason, null, [
@@ -2207,9 +2412,24 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
         // Leg 2 quote: ICP → buy token (using expected ICP output from leg 1)
         let icpAmount = leg1Quote.expectedOutput;
+        logEngine.logDebug(src, "Fetching ICP-route leg2 quote: ICP → " # tokenLabel(buyToken.token) # ", amount " # Nat.toText(icpAmount) # " ICP", null, [
+            ("leg", "2"),
+            ("buyToken", tokenLabel(buyToken.token)),
+            ("buyTokenId", Principal.toText(buyToken.token)),
+            ("icpAmount", Nat.toText(icpAmount)),
+        ]);
         let leg2QuoteOpt = await getBestQuote(icpToken, buyToken.token, icpAmount);
         let leg2Quote = switch (leg2QuoteOpt) {
             case (?q) {
+                logEngine.logTrace(src, "ICP-route leg2 quote received: " # Nat.toText(q.expectedOutput) # " " # tokenLabel(buyToken.token) # " (dex " # Nat.toText(q.dexId) # ", impact " # Nat.toText(q.priceImpactBps) # " bps)", null, [
+                    ("leg", "2"),
+                    ("expectedOutput", Nat.toText(q.expectedOutput)),
+                    ("spotPriceE8s", Nat.toText(q.spotPriceE8s)),
+                    ("priceImpactBps", Nat.toText(q.priceImpactBps)),
+                    ("dexId", Nat.toText(q.dexId)),
+                    ("maxImpactBps", Nat.toText(maxImpact)),
+                    ("impactOk", if (q.priceImpactBps <= maxImpact) { "yes" } else { "no" }),
+                ]);
                 if (q.priceImpactBps > maxImpact) {
                     let reason = "ICP route leg2 (ICP → " # tokenLabel(buyToken.token) # ") impact " # Nat.toText(q.priceImpactBps) # " bps > max " # Nat.toText(maxImpact) # " bps";
                     logEngine.logWarning(src, "Rebalance skipped: " # reason, null, [
@@ -2264,9 +2484,23 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         ]);
 
         // Execute leg 1: sell token → ICP
+        logEngine.logDebug(src, "Executing ICP-route leg1: " # tokenLabel(sellToken.token) # " → ICP on dex " # Nat.toText(leg1Quote.dexId) # " amount " # Nat.toText(tradeSize) # " expected " # Nat.toText(leg1Quote.expectedOutput) # " ICP", null, [
+            ("leg", "1"),
+            ("dexId", Nat.toText(leg1Quote.dexId)),
+            ("tradeSize", Nat.toText(tradeSize)),
+            ("expectedOutput", Nat.toText(leg1Quote.expectedOutput)),
+            ("slippageBps", Nat.toText(slippage)),
+        ]);
         let leg1Result = await executeSwap(leg1Quote, slippage);
         let icpReceived = switch (leg1Result) {
-            case (#Ok(r)) { r.amountOut };
+            case (#Ok(r)) {
+                logEngine.logTrace(src, "ICP-route leg1 executed OK: received " # Nat.toText(r.amountOut) # " ICP", null, [
+                    ("leg", "1"),
+                    ("amountOut", Nat.toText(r.amountOut)),
+                    ("txId", switch (r.txId) { case (?t) Nat.toText(t); case null "none" }),
+                ]);
+                r.amountOut
+            };
             case (#Err(e)) {
                 logEngine.logError(src, "Rebalance ICP-route leg1 failed (" # tokenLabel(sellToken.token) # " → ICP): " # e, null, [
                     ("sellToken", tokenLabel(sellToken.token)),
@@ -2322,27 +2556,60 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         });
 
         // Get fresh quote for leg 2 with actual ICP received
+        logEngine.logDebug(src, "Fetching fresh leg2 quote with actual ICP received: " # Nat.toText(icpReceived) # " ICP → " # tokenLabel(buyToken.token), null, [
+            ("leg", "2-fresh"),
+            ("icpReceived", Nat.toText(icpReceived)),
+            ("buyToken", tokenLabel(buyToken.token)),
+            ("buyTokenId", Principal.toText(buyToken.token)),
+        ]);
         let leg2FreshQuoteOpt = await getBestQuote(icpToken, buyToken.token, icpReceived);
         let leg2FreshQuote = switch (leg2FreshQuoteOpt) {
-            case (?q) q;
+            case (?q) {
+                logEngine.logTrace(src, "Fresh leg2 quote received: " # Nat.toText(q.expectedOutput) # " " # tokenLabel(buyToken.token) # " (dex " # Nat.toText(q.dexId) # ", impact " # Nat.toText(q.priceImpactBps) # " bps)", null, [
+                    ("leg", "2-fresh"),
+                    ("expectedOutput", Nat.toText(q.expectedOutput)),
+                    ("spotPriceE8s", Nat.toText(q.spotPriceE8s)),
+                    ("priceImpactBps", Nat.toText(q.priceImpactBps)),
+                    ("dexId", Nat.toText(q.dexId)),
+                ]);
+                q
+            };
             case null {
                 // We have ICP in hand but can't swap it — log and return
-                logEngine.logError(src, "Rebalance ICP-route: leg1 succeeded but no quote for leg2 (ICP stuck)", null, []);
+                logEngine.logError(src, "Rebalance ICP-route: leg1 succeeded (" # Nat.toText(icpReceived) # " ICP) but no quote for leg2 ICP → " # tokenLabel(buyToken.token) # " (ICP stuck)", null, [
+                    ("icpReceived", Nat.toText(icpReceived)),
+                    ("buyToken", tokenLabel(buyToken.token)),
+                    ("buyTokenId", Principal.toText(buyToken.token)),
+                ]);
                 return false;
             };
         };
 
         // Execute leg 2: ICP → buy token
+        logEngine.logDebug(src, "Executing ICP-route leg2: ICP → " # tokenLabel(buyToken.token) # " on dex " # Nat.toText(leg2FreshQuote.dexId) # " amount " # Nat.toText(icpReceived) # " ICP expected " # Nat.toText(leg2FreshQuote.expectedOutput) # " " # tokenLabel(buyToken.token), null, [
+            ("leg", "2"),
+            ("dexId", Nat.toText(leg2FreshQuote.dexId)),
+            ("icpAmount", Nat.toText(icpReceived)),
+            ("expectedOutput", Nat.toText(leg2FreshQuote.expectedOutput)),
+            ("slippageBps", Nat.toText(slippage)),
+        ]);
         let leg2Result = await executeSwap(leg2FreshQuote, slippage);
         switch (leg2Result) {
             case (#Ok(r)) {
-                logEngine.logInfo(src, "Rebalance ICP-route complete: sold " # Nat.toText(tradeSize) # " of " # Principal.toText(sellToken.token) # " -> " # Nat.toText(icpReceived) # " ICP -> " # Nat.toText(r.amountOut) # " of " # Principal.toText(buyToken.token), null, [
-                    ("sellToken", Principal.toText(sellToken.token)),
-                    ("buyToken", Principal.toText(buyToken.token)),
+                logEngine.logInfo(src, "Rebalance ICP-route complete: sold " # Nat.toText(tradeSize) # " " # tokenLabel(sellToken.token) # " → " # Nat.toText(icpReceived) # " ICP → " # Nat.toText(r.amountOut) # " " # tokenLabel(buyToken.token), null, [
+                    ("sellToken", tokenLabel(sellToken.token)),
+                    ("sellTokenId", Principal.toText(sellToken.token)),
+                    ("buyToken", tokenLabel(buyToken.token)),
+                    ("buyTokenId", Principal.toText(buyToken.token)),
                     ("sellAmount", Nat.toText(tradeSize)),
                     ("icpIntermediate", Nat.toText(icpReceived)),
                     ("buyAmount", Nat.toText(r.amountOut)),
+                    ("leg1DexId", Nat.toText(leg1Quote.dexId)),
+                    ("leg2DexId", Nat.toText(leg2FreshQuote.dexId)),
+                    ("leg1ImpactBps", Nat.toText(leg1Quote.priceImpactBps)),
+                    ("leg2ImpactBps", Nat.toText(leg2FreshQuote.priceImpactBps)),
                     ("route", "via-ICP"),
+                    ("txId", switch (r.txId) { case (?t) Nat.toText(t); case null "none" }),
                 ]);
                 let logId = appendTradeLog({
                     choreId = ?instanceId;
