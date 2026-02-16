@@ -1615,10 +1615,6 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                                         <span style={{ fontSize: '0.7rem', color: theme.colors.secondaryText }}>%</span>
                                                     </div>
                                                 </div>
-                                                {/* Visual bar */}
-                                                <div style={{ marginTop: '4px', height: '3px', borderRadius: '2px', background: theme.colors.border, overflow: 'hidden' }}>
-                                                    <div style={{ height: '100%', width: `${Math.min(pct, 100)}%`, background: CHART_COLORS[i % CHART_COLORS.length], borderRadius: '2px', transition: 'width 0.2s ease' }} />
-                                                </div>
                                             </div>
                                         );
                                     })}
