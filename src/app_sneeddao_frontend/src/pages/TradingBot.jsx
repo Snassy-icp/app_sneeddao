@@ -18,9 +18,10 @@ import { useAuth } from '../AuthContext';
 import { createActor as createBotActor } from 'external/sneed_trading_bot';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { decodeIcrcAccount, encodeIcrcAccount } from '@dfinity/ledger-icrc';
-import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt } from 'react-icons/fa';
+import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt, FaSearch } from 'react-icons/fa';
 import TokenIcon from '../components/TokenIcon';
 import PrincipalInput from '../components/PrincipalInput';
+import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
 
 // Trading bot accent colors — green/teal for trading
 const ACCENT = '#10b981';
@@ -755,6 +756,8 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                                         </button>
                                     )}
                                 </div>
+                                {/* Row break before impact/slippage */}
+                                <div style={{ gridColumn: '1 / -1', borderTop: `1px solid ${theme.colors.border}20`, margin: '4px 0' }} />
                                 <div>
                                     <label style={labelStyle}>Max Price Impact (%)</label>
                                     <input value={fMaxPriceImpactBps} onChange={(e) => setFMaxPriceImpactBps(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="e.g. 1 = 1%" />
@@ -2277,10 +2280,12 @@ function LoggingSettingsPanel({ getReadyBotActor, theme, accentColor, choreStatu
 // ============================================
 // ACCOUNTS PANEL — named subaccounts & token balances
 // ============================================
-function AccountsPanel({ getReadyBotActor, theme, accentColor }) {
+function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
     const { identity } = useAuth();
+    const { whitelistedTokens } = useWhitelistTokens();
     const [subaccounts, setSubaccounts] = useState([]);
     const [allBalances, setAllBalances] = useState([]); // SubaccountBalances[]
+    const [tokenRegistry, setTokenRegistry] = useState([]); // TokenRegistryEntry[]
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
@@ -2289,8 +2294,14 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor }) {
     const [selectedAccount, setSelectedAccount] = useState('main'); // 'main' or subaccount number string
     const [renamingId, setRenamingId] = useState(null);
     const [renameValue, setRenameValue] = useState('');
+    // Token registration
+    const [addTokenValue, setAddTokenValue] = useState('');
+    const [addingToken, setAddingToken] = useState(false);
+    const [scanning, setScanning] = useState(false);
+    const [scanProgress, setScanProgress] = useState(null); // { current, total, found }
+    const [showTokenManager, setShowTokenManager] = useState(false);
 
-    // Resolve token metadata
+    // Resolve token metadata for display
     const allTokenIds = React.useMemo(() => {
         const ids = new Set();
         for (const sb of allBalances) {
@@ -2299,8 +2310,13 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor }) {
                 ids.add(t);
             }
         }
+        for (const t of tokenRegistry) {
+            const k = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
+            ids.add(k);
+        }
+        if (addTokenValue) ids.add(addTokenValue);
         return [...ids];
-    }, [allBalances]);
+    }, [allBalances, tokenRegistry, addTokenValue]);
     const tokenMeta = useTokenMetadata(allTokenIds, identity);
 
     const getSymbol = (p) => {
@@ -2315,18 +2331,21 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor }) {
     const loadData = useCallback(async () => {
         try {
             const bot = await getReadyBotActor();
-            const [subs, bals] = await Promise.all([
+            const [subs, bals, registry] = await Promise.all([
                 bot.getSubaccounts ? bot.getSubaccounts() : [],
                 bot.getAllBalances ? bot.getAllBalances() : [],
+                bot.getTokenRegistry ? bot.getTokenRegistry() : [],
             ]);
             setSubaccounts(subs);
             setAllBalances(bals);
+            setTokenRegistry(registry);
         } catch (e) { setError('Failed to load accounts: ' + e.message); }
         finally { setLoading(false); }
     }, [getReadyBotActor]);
 
     useEffect(() => { loadData(); }, [loadData]);
 
+    // --- Subaccount handlers ---
     const handleCreate = async () => {
         if (!newName.trim()) return;
         setCreating(true); setError(''); setSuccess('');
@@ -2363,6 +2382,104 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor }) {
         } catch (e) { setError('Failed to delete: ' + e.message); }
     };
 
+    // --- Token registry handlers ---
+    const handleAddToken = async (tokenData) => {
+        if (!addTokenValue) return;
+        setAddingToken(true); setError(''); setSuccess('');
+        try {
+            const bot = await getReadyBotActor();
+            const meta = tokenMeta[addTokenValue];
+            const entry = {
+                ledgerCanisterId: Principal.fromText(addTokenValue),
+                symbol: tokenData?.symbol || meta?.symbol || '???',
+                decimals: tokenData?.decimals ?? meta?.decimals ?? 8,
+                fee: BigInt(tokenData?.fee ?? meta?.fee ?? 10000),
+            };
+            await bot.addToken(entry);
+            setAddTokenValue('');
+            setSuccess(`Token ${entry.symbol} registered.`);
+            await loadData();
+        } catch (e) { setError('Failed to add token: ' + e.message); }
+        finally { setAddingToken(false); }
+    };
+
+    const handleRemoveToken = async (ledgerId) => {
+        setError(''); setSuccess('');
+        try {
+            const bot = await getReadyBotActor();
+            const p = typeof ledgerId === 'string' ? Principal.fromText(ledgerId) : ledgerId;
+            await bot.removeToken(p);
+            setSuccess('Token removed.');
+            await loadData();
+        } catch (e) { setError('Failed to remove token: ' + e.message); }
+    };
+
+    // Scan for tokens with balances
+    const handleScanForTokens = async () => {
+        if (scanning) return;
+        setScanning(true); setError(''); setSuccess('');
+        setScanProgress({ current: 0, total: 0, found: 0 });
+        try {
+            const bot = await getReadyBotActor();
+            // Get already registered token IDs
+            const registeredSet = new Set(tokenRegistry.map(t => {
+                const k = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
+                return k;
+            }));
+            // Filter whitelisted tokens to those not already registered
+            const ledgersToScan = whitelistedTokens
+                .map(t => ({ id: t.ledger_id?.toString?.() ?? String(t.ledger_id), symbol: t.symbol, decimals: t.decimals, fee: t.fee }))
+                .filter(t => !registeredSet.has(t.id));
+            setScanProgress({ current: 0, total: ledgersToScan.length, found: 0 });
+            if (ledgersToScan.length === 0) {
+                setSuccess('All whitelisted tokens are already registered.');
+                setScanning(false); setScanProgress(null);
+                return;
+            }
+            // Create agent for balance checks
+            const { HttpAgent } = await import('@dfinity/agent');
+            const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            const host = isLocal ? 'http://localhost:4943' : 'https://ic0.app';
+            const agent = HttpAgent.createSync({ identity, host });
+            if (isLocal) await agent.fetchRootKey();
+            // Get the bot's principal (canister ID) to check its balances
+            const botPrincipal = Principal.fromText(canisterId);
+            let foundCount = 0;
+            let scanned = 0;
+            // Scan concurrently with limited parallelism
+            const CONCURRENCY = 8;
+            const queue = [...ledgersToScan];
+            const workers = [];
+            for (let i = 0; i < Math.min(CONCURRENCY, queue.length); i++) {
+                workers.push((async () => {
+                    while (queue.length > 0) {
+                        const item = queue.shift();
+                        if (!item) break;
+                        try {
+                            const ledgerActor = createLedgerActor(item.id, { agent });
+                            const balance = await ledgerActor.icrc1_balance_of({ owner: botPrincipal, subaccount: [] });
+                            if (BigInt(balance) > 0n) {
+                                await bot.addToken({
+                                    ledgerCanisterId: Principal.fromText(item.id),
+                                    symbol: item.symbol || '???',
+                                    decimals: item.decimals ?? 8,
+                                    fee: BigInt(item.fee ?? 10000),
+                                });
+                                foundCount++;
+                            }
+                        } catch (_) {}
+                        scanned++;
+                        setScanProgress({ current: scanned, total: ledgersToScan.length, found: foundCount });
+                    }
+                })());
+            }
+            await Promise.all(workers);
+            setSuccess(`Scan complete. Found ${foundCount} token${foundCount !== 1 ? 's' : ''} with balances.`);
+            await loadData();
+        } catch (e) { setError('Scan failed: ' + e.message); }
+        finally { setScanning(false); setScanProgress(null); }
+    };
+
     // Get balances for the selected account
     const selectedBalances = React.useMemo(() => {
         if (selectedAccount === 'main') {
@@ -2386,7 +2503,86 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor }) {
             {error && <div style={{ padding: '8px 12px', background: '#ef444415', border: '1px solid #ef444430', borderRadius: '8px', color: '#ef4444', fontSize: '0.8rem', marginBottom: '10px' }}>{error}</div>}
             {success && <div style={{ padding: '8px 12px', background: '#22c55e15', border: '1px solid #22c55e30', borderRadius: '8px', color: '#22c55e', fontSize: '0.8rem', marginBottom: '10px' }}>{success}</div>}
 
-            {/* Account selector tabs */}
+            {/* ── Token Registry Section ── */}
+            <div style={{ padding: '12px', background: cardBg, borderRadius: '10px', border: `1px solid ${borderColor}`, marginBottom: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <h4 style={{ margin: 0, fontSize: '0.85rem', color: theme.colors.primaryText, fontWeight: '600' }}>
+                        Registered Tokens ({tokenRegistry.length})
+                    </h4>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        <button onClick={handleScanForTokens} disabled={scanning}
+                            style={{ ...btnStyle, opacity: scanning ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <FaSearch style={{ fontSize: '0.6rem', animation: scanning ? 'spin 1s linear infinite' : 'none' }} />
+                            {scanning ? 'Scanning...' : 'Scan for Tokens'}
+                        </button>
+                        <button onClick={() => setShowTokenManager(!showTokenManager)} style={btnStyle}>
+                            {showTokenManager ? 'Hide' : 'Manage'}
+                        </button>
+                        <button onClick={() => { setLoading(true); loadData(); }} style={btnStyle}>
+                            <FaSyncAlt style={{ fontSize: '0.6rem' }} />
+                        </button>
+                    </div>
+                </div>
+                {scanProgress && (
+                    <div style={{ fontSize: '0.72rem', color: theme.colors.secondaryText, marginBottom: '6px' }}>
+                        Scanning {scanProgress.current}/{scanProgress.total}... Found {scanProgress.found} so far.
+                    </div>
+                )}
+                {/* Registered tokens list (compact) */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: showTokenManager ? '10px' : '0' }}>
+                    {tokenRegistry.length === 0 ? (
+                        <div style={{ color: theme.colors.mutedText, fontSize: '0.78rem', padding: '4px 0' }}>No tokens registered. Add tokens or scan for tokens with balances.</div>
+                    ) : (
+                        tokenRegistry.map((t) => {
+                            const tid = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
+                            return (
+                                <div key={tid} style={{
+                                    display: 'flex', alignItems: 'center', gap: '4px',
+                                    padding: '3px 8px', borderRadius: '6px', background: theme.colors.primaryBg,
+                                    border: `1px solid ${borderColor}`, fontSize: '0.75rem', color: theme.colors.primaryText,
+                                }}>
+                                    <TokenIcon canisterId={tid} size={14} />
+                                    <span>{t.symbol || getSymbol(tid)}</span>
+                                    {showTokenManager && (
+                                        <button onClick={() => handleRemoveToken(tid)}
+                                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '0.6rem', padding: '0 2px', lineHeight: 1 }}
+                                            title="Remove token">
+                                            <FaTimes />
+                                        </button>
+                                    )}
+                                </div>
+                            );
+                        })
+                    )}
+                </div>
+                {/* Add token form */}
+                {showTokenManager && (
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-end' }}>
+                        <div style={{ flex: 1 }}>
+                            <label style={{ fontSize: '0.7rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '3px' }}>Add Token</label>
+                            <TokenSelector
+                                value={addTokenValue}
+                                onChange={setAddTokenValue}
+                                onSelectToken={(data) => {
+                                    setAddTokenValue(data.ledger_id);
+                                    // Auto-register immediately when selected from dropdown
+                                    handleAddToken(data);
+                                }}
+                                allowCustom={true}
+                                placeholder="Search or paste ledger ID..."
+                            />
+                        </div>
+                        {addTokenValue && (
+                            <button onClick={() => handleAddToken(null)} disabled={addingToken}
+                                style={{ ...btnStyle, opacity: addingToken ? 0.6 : 1, whiteSpace: 'nowrap', marginBottom: '1px' }}>
+                                <FaPlus style={{ fontSize: '0.6rem', marginRight: '3px' }} />{addingToken ? 'Adding...' : 'Add'}
+                            </button>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {/* ── Account Selector ── */}
             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px' }}>
                 <button
                     onClick={() => setSelectedAccount('main')}
@@ -2417,7 +2613,7 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor }) {
                 })}
             </div>
 
-            {/* Selected account balances */}
+            {/* ── Selected Account Balances ── */}
             <div style={{ padding: '12px', background: cardBg, borderRadius: '10px', border: `1px solid ${borderColor}`, marginBottom: '14px' }}>
                 <h4 style={{ margin: '0 0 10px', fontSize: '0.85rem', color: theme.colors.primaryText, fontWeight: '600' }}>
                     {selectedAccount === 'main' ? 'Main Account' : (() => {
@@ -2427,7 +2623,7 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor }) {
                     {' '}— Token Balances
                 </h4>
                 {selectedBalances.length === 0 ? (
-                    <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', padding: '8px 0' }}>No token balances.</div>
+                    <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', padding: '8px 0' }}>No token balances.{tokenRegistry.length === 0 ? ' Register some tokens above to see balances.' : ''}</div>
                 ) : (
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
                         <thead>
@@ -2481,7 +2677,7 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor }) {
                 )}
             </div>
 
-            {/* Create new subaccount */}
+            {/* ── Create New Subaccount ── */}
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <input
                     value={newName}
@@ -2493,9 +2689,6 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor }) {
                 <button onClick={handleCreate} disabled={creating || !newName.trim()} style={{ ...btnStyle, opacity: creating || !newName.trim() ? 0.5 : 1 }}>
                     <FaPlus style={{ fontSize: '0.65rem', marginRight: '3px' }} />{creating ? 'Creating...' : 'Create Subaccount'}
                 </button>
-            </div>
-            <div style={{ marginTop: '4px', fontSize: '0.7rem', color: theme.colors.mutedText }}>
-                Refresh balances by switching between accounts. Token balances are fetched from the bot canister.
             </div>
         </div>
     );
@@ -2553,7 +2746,7 @@ function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, iden
                 <button onClick={() => setActiveTab('settings')} style={tabStyle(activeTab === 'settings')}>Logging Settings</button>
             </div>
 
-            {activeTab === 'accounts' && <AccountsPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
+            {activeTab === 'accounts' && <AccountsPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} canisterId={canisterId} />}
             {activeTab === 'trade' && <TradeLogViewer getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
             {activeTab === 'snapshots' && <PortfolioSnapshotViewer getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
             {activeTab === 'settings' && <LoggingSettingsPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} choreStatuses={choreStatuses} />}
