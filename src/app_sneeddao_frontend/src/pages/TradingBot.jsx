@@ -253,25 +253,26 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
     // Price conversion helpers.
     // Backend stores spotPriceE8s = humanOutputPerInput * 10^outputDecimals
     // direction: 'output_per_input' (native) or 'input_per_output' (inverse)
-    const e8sToHumanPrice = (e8sVal, outputDec, direction) => {
+    // Price storage format: humanInputPerOutput * 10^inputDecimals
+    // e.g. "30 ICP per SNEED" stored as 30 * 10^8 = 3_000_000_000
+    const e8sToHumanPrice = (e8sVal, inputDec, direction) => {
         if (!e8sVal || e8sVal === 0n) return '';
         const raw = typeof e8sVal === 'bigint' ? e8sVal : BigInt(e8sVal);
-        const divisor = 10 ** outputDec;
-        const nativePrice = Number(raw) / divisor;
-        if (direction === 'input_per_output') {
-            return nativePrice > 0 ? (1 / nativePrice) : 0;
+        const storedPrice = Number(raw) / (10 ** inputDec); // humanInputPerOutput
+        if (direction === 'output_per_input') {
+            return storedPrice > 0 ? (1 / storedPrice) : 0;
         }
-        return nativePrice;
+        return storedPrice; // input_per_output — direct
     };
-    const humanPriceToE8s = (humanVal, outputDec, direction) => {
+    const humanPriceToE8s = (humanVal, inputDec, direction) => {
         if (!humanVal || humanVal === '' || Number(humanVal) === 0) return null;
         const num = Number(humanVal);
-        const multiplier = 10 ** outputDec;
-        if (direction === 'input_per_output') {
-            // inverse: native = 1 / human
+        const multiplier = 10 ** inputDec;
+        if (direction === 'output_per_input') {
+            // User entered output/input, invert to stored format (input/output)
             return BigInt(Math.round((1 / num) * multiplier));
         }
-        return BigInt(Math.round(num * multiplier));
+        return BigInt(Math.round(num * multiplier)); // input_per_output — direct
     };
     // Label helpers for price direction
     const inputSym = fInputToken ? getSymbol(fInputToken) : 'Input';
@@ -279,7 +280,7 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
     const priceLabel = fPriceDirection === 'output_per_input'
         ? `${outputSym} per ${inputSym}`
         : `${inputSym} per ${outputSym}`;
-    const outputDec = fOutputToken ? getDecimals(fOutputToken) : 8;
+    const inputDec = fInputToken ? getDecimals(fInputToken) : 8;
 
     const loadActions = useCallback(async () => {
         try {
@@ -327,12 +328,10 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
         setFEnabled(action.enabled);
         setFMinBalance(optVal(action.minBalance) != null ? formatTokenAmount(optVal(action.minBalance), inputDec) : '');
         setFMaxBalance(optVal(action.maxBalance) != null ? formatTokenAmount(optVal(action.maxBalance), inputDec) : '');
-        // Convert e8s prices to human-readable (default direction: input per output)
-        // In input_per_output direction, native min = user's max and vice versa (inversion flips ordering)
-        const outDec = getDecimals(optVal(action.outputToken) ? principalToStr(optVal(action.outputToken)) : '');
+        // Prices are stored as input-per-output (e.g. ICP/SNEED). Direct load, no swap needed.
         setFPriceDirection('input_per_output');
-        setFMinPrice(optVal(action.maxPrice) != null ? String(e8sToHumanPrice(optVal(action.maxPrice), outDec, 'input_per_output')) : '');
-        setFMaxPrice(optVal(action.minPrice) != null ? String(e8sToHumanPrice(optVal(action.minPrice), outDec, 'input_per_output')) : '');
+        setFMinPrice(optVal(action.minPrice) != null ? String(e8sToHumanPrice(optVal(action.minPrice), inputDec, 'input_per_output')) : '');
+        setFMaxPrice(optVal(action.maxPrice) != null ? String(e8sToHumanPrice(optVal(action.maxPrice), inputDec, 'input_per_output')) : '');
         // Display bps as percentage
         setFMaxPriceImpactBps(optVal(action.maxPriceImpactBps) != null ? String(Number(optVal(action.maxPriceImpactBps)) / 100) : '');
         setFMaxSlippageBps(optVal(action.maxSlippageBps) != null ? String(Number(optVal(action.maxSlippageBps)) / 100) : '');
@@ -370,15 +369,15 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
             maxBalance: fMaxBalance ? [BigInt(parseTokenAmount(fMaxBalance, inputDecimals))] : [],
             balanceDenominationToken: [],
             minPrice: (() => {
-                // When direction is inverted, user's "max" maps to native min (inversion flips ordering)
-                const src = fPriceDirection === 'input_per_output' ? fMaxPrice : fMinPrice;
-                const v = humanPriceToE8s(src, outputDec, fPriceDirection);
+                // Storage is input-per-output. When user enters in output_per_input direction,
+                // inversion flips ordering: user's "max" → stored min.
+                const src = fPriceDirection === 'output_per_input' ? fMaxPrice : fMinPrice;
+                const v = humanPriceToE8s(src, inputDecimals, fPriceDirection);
                 return v != null ? [v] : [];
             })(),
             maxPrice: (() => {
-                // When direction is inverted, user's "min" maps to native max (inversion flips ordering)
-                const src = fPriceDirection === 'input_per_output' ? fMinPrice : fMaxPrice;
-                const v = humanPriceToE8s(src, outputDec, fPriceDirection);
+                const src = fPriceDirection === 'output_per_input' ? fMinPrice : fMaxPrice;
+                const v = humanPriceToE8s(src, inputDecimals, fPriceDirection);
                 return v != null ? [v] : [];
             })(),
             priceDenominationToken: [],
@@ -657,15 +656,12 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                                             {optVal(action.maxBalance) != null && <div><strong>Max Bal:</strong> {formatTokenAmount(optVal(action.maxBalance), inputDec)} {inputSym}</div>}
                                             {(() => {
                                                 const outKey = action.outputToken?.length > 0 ? (typeof action.outputToken[0] === 'string' ? action.outputToken[0] : action.outputToken[0]?.toText?.() || String(action.outputToken[0])) : '';
-                                                const outD = getDecimals(outKey);
                                                 const outS = outKey ? getSymbol(outKey) : 'Output';
                                                 const inS = inputSym;
                                                 const priceUnit = `${inS}/${outS}`;
-                                                const nativeMin = optVal(action.minPrice);
-                                                const nativeMax = optVal(action.maxPrice);
-                                                // In input_per_output direction, native max → user's min, native min → user's max
-                                                const userMin = nativeMax != null ? e8sToHumanPrice(nativeMax, outD, 'input_per_output') : null;
-                                                const userMax = nativeMin != null ? e8sToHumanPrice(nativeMin, outD, 'input_per_output') : null;
+                                                // Stored format is input-per-output — direct display, no swap
+                                                const userMin = optVal(action.minPrice) != null ? e8sToHumanPrice(optVal(action.minPrice), inputDec, 'input_per_output') : null;
+                                                const userMax = optVal(action.maxPrice) != null ? e8sToHumanPrice(optVal(action.maxPrice), inputDec, 'input_per_output') : null;
                                                 return <>
                                                     {userMin != null && <div><strong>Min Price:</strong> {typeof userMin === 'number' ? userMin.toLocaleString(undefined, { maximumSignificantDigits: 6 }) : userMin} {priceUnit}</div>}
                                                     {userMax != null && <div><strong>Max Price:</strong> {typeof userMax === 'number' ? userMax.toLocaleString(undefined, { maximumSignificantDigits: 6 }) : userMax} {priceUnit}</div>}

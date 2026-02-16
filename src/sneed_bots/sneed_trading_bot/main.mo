@@ -1304,20 +1304,35 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             return false;
         };
 
-        // Check price conditions
-        switch (action.minPrice) {
-            case (?min) { if (quote.spotPriceE8s < min) {
-                logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: price too low", null, []);
-                return false;
-            }};
-            case null {};
-        };
-        switch (action.maxPrice) {
-            case (?max) { if (quote.spotPriceE8s > max) {
-                logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: price too high", null, []);
-                return false;
-            }};
-            case null {};
+        // Check price conditions.
+        // Stored prices are in "input per output" direction: humanInputPerOutput * 10^inputDecimals.
+        // spotPriceE8s is "output per input": humanOutputPerInput * 10^outputDecimals.
+        // To compare without precision-losing division, we use cross-multiplication:
+        //   minPrice <= actualIPO  ⟺  minPrice * spot <= 10^(inDec + outDec)
+        //   actualIPO <= maxPrice  ⟺  10^(inDec + outDec) <= maxPrice * spot
+        switch (action.minPrice, action.maxPrice) {
+            case (null, null) {};
+            case (_, _) {
+                let inMeta = getCachedMeta(action.inputToken);
+                let outMeta = getCachedMeta(outputToken);
+                let inDec: Nat = switch (inMeta) { case (?m) Nat8.toNat(m.decimals); case null 8 };
+                let outDec: Nat = switch (outMeta) { case (?m) Nat8.toNat(m.decimals); case null 8 };
+                let scale = 10 ** (inDec + outDec);
+                switch (action.minPrice) {
+                    case (?min) { if (min * quote.spotPriceE8s > scale) {
+                        logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: price too low", null, []);
+                        return false;
+                    }};
+                    case null {};
+                };
+                switch (action.maxPrice) {
+                    case (?max) { if (max * quote.spotPriceE8s < scale) {
+                        logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: price too high", null, []);
+                        return false;
+                    }};
+                    case null {};
+                };
+            };
         };
 
         // Execute the swap

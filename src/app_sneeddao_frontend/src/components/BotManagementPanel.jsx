@@ -508,7 +508,7 @@ export default function BotManagementPanel({
         if (chorePollingRef.current) clearInterval(chorePollingRef.current);
         let elapsed = 0;
         const POLL_INTERVAL = 2000;
-        const MAX_POLL = 120_000;
+        const MAX_POLL = 600_000; // 10 minutes — long enough for multi-step chore pipelines
         chorePollingRef.current = setInterval(async () => {
             elapsed += POLL_INTERVAL;
             if (elapsed > MAX_POLL) {
@@ -698,7 +698,8 @@ export default function BotManagementPanel({
         })();
     }, [activeTab, logEntries, identity]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Chore tick for imminent countdowns
+    // Chore tick for imminent countdowns + auto-refresh statuses while running
+    const choreRunningRefreshRef = useRef(null);
     useEffect(() => {
         const IMMINENT_MS = 5 * 60 * 1000;
         const now = Date.now();
@@ -713,8 +714,27 @@ export default function BotManagementPanel({
         } else {
             if (choreTickRef.current) { clearInterval(choreTickRef.current); choreTickRef.current = null; }
         }
-        return () => { if (choreTickRef.current) { clearInterval(choreTickRef.current); choreTickRef.current = null; } };
-    }, [choreStatuses]);
+        // Auto-refresh statuses every 3s while any chore is actively running (no timeout limit)
+        if (anyRunning) {
+            if (!choreRunningRefreshRef.current) {
+                choreRunningRefreshRef.current = setInterval(async () => {
+                    try {
+                        const bot = await getReadyBotActor();
+                        if (bot) {
+                            const statuses = await bot.getChoreStatuses();
+                            setChoreStatuses(statuses);
+                        }
+                    } catch { /* Silently ignore */ }
+                }, 3000);
+            }
+        } else {
+            if (choreRunningRefreshRef.current) { clearInterval(choreRunningRefreshRef.current); choreRunningRefreshRef.current = null; }
+        }
+        return () => {
+            if (choreTickRef.current) { clearInterval(choreTickRef.current); choreTickRef.current = null; }
+            if (choreRunningRefreshRef.current) { clearInterval(choreRunningRefreshRef.current); choreRunningRefreshRef.current = null; }
+        };
+    }, [choreStatuses, getReadyBotActor]);
 
     // Fetch token balance when selected token changes (only when withdraw section expanded)
     useEffect(() => {
