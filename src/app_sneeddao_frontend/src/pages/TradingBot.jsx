@@ -116,6 +116,17 @@ const CURRENCY_SIGNS = {
 const FIAT_SIGNS = new Set(['$', '€']);
 
 /**
+ * Approximate USD peg for fiat stablecoins.
+ * Used to derive reliable ICP prices from the liquid ICP/USDC pool
+ * instead of relying on potentially illiquid individual token/ICP pools.
+ */
+const FIAT_USD_PEG = {
+    [CKUSDC_LEDGER]: 1.0,
+    [CKUSDT_LEDGER]: 1.0,
+    [CKEURC_LEDGER]: 1.08, // approximate EUR/USD
+};
+
+/**
  * Returns the native currency sign for a canister ID, or null if none.
  */
 const getCurrencySign = (canisterId) => {
@@ -2541,40 +2552,75 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
 
     // Fetch denomination prices using frontend-only PriceService (fast, cached)
     // Uses two-hop via ICP: get each token's ICP price + denom token's ICP price, then divide.
+    // tokenMeta provides accurate decimals for any token we've seen.
     const denomCacheKeyRef = useRef('');
     useEffect(() => {
         if (!denomToken || tokenRegistry.length === 0) { setDenomPrices({}); return; }
-        // Stable key: denom + sorted token IDs
+        // Stable key: denom + sorted token IDs + denomination decimals (so we re-fetch if metadata loads)
         const ids = tokenRegistry.map(t => typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId)).sort().join(',');
-        const cacheKey = `${denomToken}:${ids}`;
-        if (cacheKey === denomCacheKeyRef.current) return; // already fetched for this exact set
+        const denomDec = tokenMeta[denomToken]?.decimals;
+        const cacheKey = `${denomToken}:${ids}:d${denomDec ?? '?'}`;
+        if (cacheKey === denomCacheKeyRef.current) return;
         denomCacheKeyRef.current = cacheKey;
         let cancelled = false;
         setLoadingPrices(true);
         (async () => {
             try {
+                // Build a decimals lookup from registry + tokenMeta (tokenMeta is authoritative)
+                const decFor = (id) => {
+                    const meta = tokenMeta[id];
+                    if (meta?.decimals != null) return Number(meta.decimals);
+                    const regEntry = tokenRegistry.find(t => {
+                        const k = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
+                        return k === id;
+                    });
+                    if (regEntry?.decimals != null) return Number(regEntry.decimals);
+                    return 8; // safe default
+                };
+
                 const tokenIds = ids.split(',');
-                // Set decimals in PriceService for better accuracy
-                for (const t of tokenRegistry) {
-                    const tid = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
-                    if (t.decimals != null) priceService.setTokenDecimals(tid, Number(t.decimals));
+                // Set decimals in PriceService for all tokens we'll query
+                for (const tid of tokenIds) {
+                    priceService.setTokenDecimals(tid, decFor(tid));
                 }
+                if (denomToken && denomToken !== ICP_LEDGER) {
+                    priceService.setTokenDecimals(denomToken, decFor(denomToken));
+                }
+
+                // Helper: get a token's ICP price, using fiat-peg derivation for stablecoins
+                // (avoids relying on potentially illiquid/nonexistent individual token/ICP pools)
+                const getIcpPrice = async (tid, dec) => {
+                    if (tid === ICP_LEDGER) return 1;
+                    const fiatPeg = FIAT_USD_PEG[tid];
+                    if (fiatPeg != null) {
+                        // Derive from the liquid ICP/USDC pool: tokenIcpPrice = fiatUsdPeg / icpUsdPrice
+                        const icpUsd = await priceService.getICPUSDPrice();
+                        if (icpUsd > 0) return fiatPeg / icpUsd;
+                        return null;
+                    }
+                    return await priceService.getTokenICPPrice(tid, dec);
+                };
+
                 // Fetch all token->ICP prices in parallel
                 const icpPricePromises = tokenIds.map(async (tid) => {
-                    if (tid === ICP_LEDGER) return { tid, icpPrice: 1 };
                     try {
-                        const p = await priceService.getTokenICPPrice(tid);
+                        const p = await getIcpPrice(tid, decFor(tid));
                         return { tid, icpPrice: p };
                     } catch (_) { return { tid, icpPrice: null }; }
                 });
                 // Fetch denomination token -> ICP price
                 let denomIcpPrice = 1;
                 if (denomToken !== ICP_LEDGER) {
-                    try { denomIcpPrice = await priceService.getTokenICPPrice(denomToken); }
-                    catch (_) { denomIcpPrice = null; }
+                    try {
+                        denomIcpPrice = await getIcpPrice(denomToken, decFor(denomToken));
+                    } catch (_) { denomIcpPrice = null; }
                 }
                 const results = await Promise.all(icpPricePromises);
                 if (cancelled) return;
+                // Sanity-check denom price
+                if (denomIcpPrice != null && (denomIcpPrice <= 0 || !isFinite(denomIcpPrice))) {
+                    denomIcpPrice = null;
+                }
                 const prices = {};
                 for (const { tid, icpPrice } of results) {
                     if (tid === denomToken) { prices[tid] = 1; continue; }
@@ -2589,7 +2635,7 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
             finally { if (!cancelled) setLoadingPrices(false); }
         })();
         return () => { cancelled = true; };
-    }, [denomToken, tokenRegistry]); // stable deps only
+    }, [denomToken, tokenRegistry, tokenMeta]); // tokenMeta included for accurate decimals
 
     // --- Subaccount handlers ---
     const handleCreate = async () => {
