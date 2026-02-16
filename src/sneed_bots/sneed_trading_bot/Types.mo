@@ -252,10 +252,10 @@ module {
     };
 
     public type KongSwapReply = {
-        tx_id: Nat;
+        tx_id: Nat64;          // KongSwap uses nat64
         pay_amount: Nat;
         receive_amount: Nat;
-        claim_ids: [Nat];
+        // claim_ids omitted: KongSwap uses vec nat64 and we don't need it
         status: Text;
         mid_price: Float;
         price: Float;

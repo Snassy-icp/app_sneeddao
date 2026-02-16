@@ -2,7 +2,7 @@ import Principal "mo:base/Principal";
 import Blob "mo:base/Blob";
 import Nat "mo:base/Nat";
 import Nat8 "mo:base/Nat8";
-// Nat64 available if needed for future timestamp operations
+import Nat64 "mo:base/Nat64";
 import Int "mo:base/Int";
 import Float "mo:base/Float";
 import Time "mo:base/Time";
@@ -889,7 +889,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
             switch (swapResult) {
                 case (#Ok(reply)) {
-                    #Ok({ amountOut = reply.receive_amount; txId = ?reply.tx_id })
+                    #Ok({ amountOut = reply.receive_amount; txId = ?Nat64.toNat(reply.tx_id) })
                 };
                 case (#Err(e)) { #Err("Kong swap failed: " # e) };
             };

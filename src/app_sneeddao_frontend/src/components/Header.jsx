@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars, FaComments, FaUnlock, FaCrown, FaGift, FaBrain, FaKey, FaHandPaper, FaBell, FaEnvelope, FaCoins, FaSync, FaVoteYea, FaCloudDownloadAlt, FaBolt, FaExclamationTriangle, FaCubes, FaChartLine } from 'react-icons/fa';
+import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars, FaComments, FaUnlock, FaCrown, FaGift, FaBrain, FaKey, FaHandPaper, FaBell, FaEnvelope, FaCoins, FaSync, FaVoteYea, FaCloudDownloadAlt, FaBolt, FaRobot, FaCubes, FaChartLine } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { headerStyles } from '../styles/HeaderStyles';
@@ -2001,7 +2001,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                 }}
                                 title={`${choreUnhealthyCount} bot${choreUnhealthyCount !== 1 ? 's' : ''} ${choreWorstState === 'error' ? 'with chore errors' : 'needing chore attention'}`}
                             >
-                                <FaExclamationTriangle size={10} />
+                                <FaRobot size={10} />
                                 <span>{choreUnhealthyCount}</span>
                             </div>
                         )}
