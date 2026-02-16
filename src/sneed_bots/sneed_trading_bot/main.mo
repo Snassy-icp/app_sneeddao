@@ -1980,124 +1980,69 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             }
         };
 
-        // 3. Pair selection — prefer a single trade that reaches target over random
+        // 3. Pair selection — always pick the pair with the largest combined
+        //    deviation first, then decide whether a target-reaching or partial
+        //    trade is appropriate for that pair.
 
-        // Scan all (overweight, underweight) pairs for one that can be fully
-        // rebalanced in a single trade within maxTrade.
-        var bestSell: ?{ token: Principal; deviationBps: Nat; balance: Nat; value: Nat } = null;
-        var bestBuy: ?{ token: Principal; deviationBps: Nat; balance: Nat; value: Nat } = null;
-        var bestTradeSize: Nat = 0;
-        var bestDeviation: Nat = 0;
+        // Find the pair (overweight, underweight) with the largest combined deviation.
+        var sellToken = overweight.get(0);
+        var buyToken = underweight.get(0);
+        var bestPairDev: Nat = 0;
 
         for (ow in overweight.vals()) {
-            let owFee = getFee(ow.token);
-            let owAffordable = if (ow.balance > owFee * 3) { ow.balance - owFee * 3 } else { 0 };
-
             for (uw in underweight.vals()) {
-                // Amount needed to bring both tokens exactly to target (in denom units)
-                let excessSell = (totalValue * ow.deviationBps) / 10000;
-                let deficitBuy = (totalValue * uw.deviationBps) / 10000;
-                let capDenom = Nat.min(excessSell, deficitBuy);
-                // Convert to sell-token units
-                let capUnits = if (ow.value > 0) { (capDenom * ow.balance) / ow.value } else { 0 };
-                // For "reach target" mode, don't apply the conservative balance/4 cap
-                let effectiveSize = Nat.min(capUnits, owAffordable);
-
-                if (effectiveSize <= maxTrade and effectiveSize >= minTrade) {
-                    // This pair can be completed in one trade — prefer the one
-                    // that corrects the largest combined deviation
-                    let combinedDev = ow.deviationBps + uw.deviationBps;
-                    if (combinedDev > bestDeviation) {
-                        bestSell := ?ow;
-                        bestBuy := ?uw;
-                        bestTradeSize := effectiveSize;
-                        bestDeviation := combinedDev;
-                    };
+                let combined = ow.deviationBps + uw.deviationBps;
+                if (combined > bestPairDev) {
+                    sellToken := ow;
+                    buyToken := uw;
+                    bestPairDev := combined;
                 };
             };
         };
 
-        var sellToken = overweight.get(0);
-        var buyToken = underweight.get(0);
+        // 4. Calculate trade size for the selected pair
+        let fee = getFee(sellToken.token);
+        let maxAffordable = if (sellToken.balance > fee * 3) { sellToken.balance - fee * 3 } else { 0 };
+        let excessSellValue = (totalValue * sellToken.deviationBps) / 10000;
+        let deficitBuyValue = (totalValue * buyToken.deviationBps) / 10000;
+        let capDenomValue = Nat.min(excessSellValue, deficitBuyValue);
+        let targetReachUnits = if (sellToken.value > 0) {
+            (capDenomValue * sellToken.balance) / sellToken.value
+        } else { 0 };
+        let effectiveTargetReach = Nat.min(targetReachUnits, maxAffordable);
+
         var tradeSize: Nat = 0;
 
-        switch (bestSell, bestBuy) {
-            case (?bs, ?bb) {
-                // Deterministic: trade exact amount to reach target
-                sellToken := bs;
-                buyToken := bb;
-                tradeSize := bestTradeSize;
-                logEngine.logInfo(src, "Pair selected (target-reaching): sell " # tokenLabel(bs.token) # " (+" # Nat.toText(bs.deviationBps / 100) # "." # Nat.toText(bs.deviationBps % 100) # "% over) → buy " # tokenLabel(bb.token) # " (-" # Nat.toText(bb.deviationBps / 100) # "." # Nat.toText(bb.deviationBps % 100) # "% under), trade " # Nat.toText(bestTradeSize) # " units", null, [
-                    ("sellToken", tokenLabel(bs.token)),
-                    ("sellTokenId", Principal.toText(bs.token)),
-                    ("buyToken", tokenLabel(bb.token)),
-                    ("buyTokenId", Principal.toText(bb.token)),
-                    ("tradeSize", Nat.toText(bestTradeSize)),
-                    ("sellDeviationBps", Nat.toText(bs.deviationBps)),
-                    ("buyDeviationBps", Nat.toText(bb.deviationBps)),
-                    ("mode", "target-reaching"),
-                ]);
-            };
-            case (_, _) {
-                // Fallback: weighted random selection
-                let entropy = Int.abs(Time.now());
-
-                // Pick overweight token (weighted by deviation)
-                var totalOverWeight: Nat = 0;
-                for (ow in overweight.vals()) { totalOverWeight += ow.deviationBps };
-                let owRand = entropy % totalOverWeight;
-                var owCumulative: Nat = 0;
-                var owPicked = false;
-                for (ow in overweight.vals()) {
-                    if (not owPicked) {
-                        owCumulative += ow.deviationBps;
-                        if (owCumulative > owRand) {
-                            sellToken := ow;
-                            owPicked := true;
-                        };
-                    };
-                };
-
-                // Pick underweight token (weighted by deviation)
-                var totalUnderWeight: Nat = 0;
-                for (uw in underweight.vals()) { totalUnderWeight += uw.deviationBps };
-                let uwRand = (entropy / 1000) % totalUnderWeight;
-                var uwCumulative: Nat = 0;
-                var uwPicked = false;
-                for (uw in underweight.vals()) {
-                    if (not uwPicked) {
-                        uwCumulative += uw.deviationBps;
-                        if (uwCumulative > uwRand) {
-                            buyToken := uw;
-                            uwPicked := true;
-                        };
-                    };
-                };
-
-                // 4. Calculate trade size with overshoot cap and balance/4 safety
-                let fee = getFee(sellToken.token);
-                let maxAffordable = if (sellToken.balance > fee * 3) { sellToken.balance - fee * 3 } else { 0 };
-                let excessSellValue = (totalValue * sellToken.deviationBps) / 10000;
-                let deficitBuyValue = (totalValue * buyToken.deviationBps) / 10000;
-                let capDenomValue = Nat.min(excessSellValue, deficitBuyValue);
-                let overshootCap = if (sellToken.value > 0) {
-                    (capDenomValue * sellToken.balance) / sellToken.value
-                } else { 0 };
-                tradeSize := Nat.min(maxTrade, Nat.min(maxAffordable, Nat.min(sellToken.balance / 4, overshootCap)));
-
-                logEngine.logInfo(src, "Pair selected (random): sell " # tokenLabel(sellToken.token) # " (+" # Nat.toText(sellToken.deviationBps / 100) # "." # Nat.toText(sellToken.deviationBps % 100) # "% over) → buy " # tokenLabel(buyToken.token) # " (-" # Nat.toText(buyToken.deviationBps / 100) # "." # Nat.toText(buyToken.deviationBps % 100) # "% under), trade " # Nat.toText(tradeSize) # " units (cap: " # Nat.toText(overshootCap) # ")", null, [
-                    ("sellToken", tokenLabel(sellToken.token)),
-                    ("sellTokenId", Principal.toText(sellToken.token)),
-                    ("buyToken", tokenLabel(buyToken.token)),
-                    ("buyTokenId", Principal.toText(buyToken.token)),
-                    ("tradeSize", Nat.toText(tradeSize)),
-                    ("overshootCap", Nat.toText(overshootCap)),
-                    ("maxAffordable", Nat.toText(maxAffordable)),
-                    ("sellDeviationBps", Nat.toText(sellToken.deviationBps)),
-                    ("buyDeviationBps", Nat.toText(buyToken.deviationBps)),
-                    ("mode", "random"),
-                ]);
-            };
+        if (effectiveTargetReach >= minTrade and effectiveTargetReach <= maxTrade) {
+            // Target-reaching: this pair can be completed in one trade
+            tradeSize := effectiveTargetReach;
+            logEngine.logInfo(src, "Pair selected (target-reaching): sell " # tokenLabel(sellToken.token) # " (+" # Nat.toText(sellToken.deviationBps / 100) # "." # Nat.toText(sellToken.deviationBps % 100) # "% over) → buy " # tokenLabel(buyToken.token) # " (-" # Nat.toText(buyToken.deviationBps / 100) # "." # Nat.toText(buyToken.deviationBps % 100) # "% under), trade " # Nat.toText(tradeSize) # " units", null, [
+                ("sellToken", tokenLabel(sellToken.token)),
+                ("sellTokenId", Principal.toText(sellToken.token)),
+                ("buyToken", tokenLabel(buyToken.token)),
+                ("buyTokenId", Principal.toText(buyToken.token)),
+                ("tradeSize", Nat.toText(tradeSize)),
+                ("sellDeviationBps", Nat.toText(sellToken.deviationBps)),
+                ("buyDeviationBps", Nat.toText(buyToken.deviationBps)),
+                ("mode", "target-reaching"),
+            ]);
+        } else {
+            // Partial trade: pair is too large for one trade, use conservative sizing
+            let overshootCap = targetReachUnits; // same calculation, cap to avoid overshooting
+            tradeSize := Nat.min(maxTrade, Nat.min(maxAffordable, Nat.min(sellToken.balance / 4, overshootCap)));
+            logEngine.logInfo(src, "Pair selected (partial): sell " # tokenLabel(sellToken.token) # " (+" # Nat.toText(sellToken.deviationBps / 100) # "." # Nat.toText(sellToken.deviationBps % 100) # "% over) → buy " # tokenLabel(buyToken.token) # " (-" # Nat.toText(buyToken.deviationBps / 100) # "." # Nat.toText(buyToken.deviationBps % 100) # "% under), trade " # Nat.toText(tradeSize) # " units (cap: " # Nat.toText(overshootCap) # ", targetReach: " # Nat.toText(targetReachUnits) # ")", null, [
+                ("sellToken", tokenLabel(sellToken.token)),
+                ("sellTokenId", Principal.toText(sellToken.token)),
+                ("buyToken", tokenLabel(buyToken.token)),
+                ("buyTokenId", Principal.toText(buyToken.token)),
+                ("tradeSize", Nat.toText(tradeSize)),
+                ("overshootCap", Nat.toText(overshootCap)),
+                ("targetReachUnits", Nat.toText(targetReachUnits)),
+                ("maxAffordable", Nat.toText(maxAffordable)),
+                ("sellDeviationBps", Nat.toText(sellToken.deviationBps)),
+                ("buyDeviationBps", Nat.toText(buyToken.deviationBps)),
+                ("mode", "partial"),
+            ]);
         };
 
         if (tradeSize < minTrade) {
