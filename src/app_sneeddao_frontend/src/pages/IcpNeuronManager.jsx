@@ -3527,9 +3527,6 @@ function IcpNeuronManager() {
                                     <button style={tabStyle(canisterActiveTab === 'info')} onClick={() => setCanisterActiveTab('info')}>
                                         Info
                                     </button>
-                                    <button style={tabStyle(canisterActiveTab === 'permissions')} onClick={() => setCanisterActiveTab('permissions')}>
-                                        Botkeys
-                                    </button>
                                     {(hasPermission('ViewChores') || canManageAnyChore) && (
                                     <button style={{...tabStyle(canisterActiveTab === 'chores'), display: 'inline-flex', alignItems: 'center', gap: '6px'}} onClick={() => setCanisterActiveTab('chores')}>
                                         {choreStatuses.length > 0 && (
@@ -3542,6 +3539,9 @@ function IcpNeuronManager() {
                                         Chores
                                     </button>
                                     )}
+                                    <button style={tabStyle(canisterActiveTab === 'permissions')} onClick={() => setCanisterActiveTab('permissions')}>
+                                        Botkeys
+                                    </button>
                                     {hasPermission('ViewLogs') && (
                                     <button style={tabStyle(canisterActiveTab === 'log')} onClick={() => setCanisterActiveTab('log')}>
                                         Log

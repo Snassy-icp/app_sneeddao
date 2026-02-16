@@ -1142,7 +1142,6 @@ export default function BotManagementPanel({
                     {/* Tabs */}
                     <div style={{ display: 'flex', flexWrap: 'wrap', marginBottom: '16px', gap: '0' }}>
                         <button style={tabStyle(activeTab === 'info')} onClick={() => setActiveTab('info')}>Info</button>
-                        <button style={tabStyle(activeTab === 'permissions')} onClick={() => setActiveTab('permissions')}>Botkeys</button>
                         {(hasPermission('ViewChores') || canManageAnyChore()) && (
                             <button style={{ ...tabStyle(activeTab === 'chores'), display: 'inline-flex', alignItems: 'center', gap: '6px' }} onClick={() => setActiveTab('chores')}>
                                 {choreStatuses.length > 0 && (
@@ -1152,6 +1151,7 @@ export default function BotManagementPanel({
                                 Chores
                             </button>
                         )}
+                        <button style={tabStyle(activeTab === 'permissions')} onClick={() => setActiveTab('permissions')}>Botkeys</button>
                         {hasPermission('ViewLogs') && (
                             <button style={tabStyle(activeTab === 'log')} onClick={() => setActiveTab('log')}>Log</button>
                         )}
