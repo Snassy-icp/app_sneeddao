@@ -1277,47 +1277,98 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
     const editingTotal = React.useMemo(() =>
         editingTargets ? editingTargets.reduce((s, t) => s + (parseFloat(t.targetBps) || 0), 0) : 0,
     [editingTargets]);
-    const editingRemaining = 100 - editingTotal;
     const editingIsValid = editingTargets ? Math.abs(editingTotal - 100) < 0.01 : false;
 
-    const normalizeTargets = () => {
-        if (!editingTargets || editingTotal <= 0) return;
-        const scale = 100 / editingTotal;
-        setEditingTargets(editingTargets.map(t => ({
-            ...t,
-            targetBps: ((parseFloat(t.targetBps) || 0) * scale).toFixed(1),
-        })));
-    };
+    // Linked slider: when token i changes to newPct, redistribute delta among others
+    const setLinkedTarget = useCallback((idx, newPct) => {
+        if (!editingTargets || editingTargets.length <= 1) {
+            const arr = [...editingTargets]; arr[idx] = { ...arr[idx], targetBps: newPct.toFixed(1) }; setEditingTargets(arr);
+            return;
+        }
+        const oldPct = parseFloat(editingTargets[idx].targetBps) || 0;
+        const delta = newPct - oldPct; // positive = this token grew, others must shrink
+        if (Math.abs(delta) < 0.01) return;
+
+        const others = editingTargets.map((t, i) => ({ val: i === idx ? 0 : (parseFloat(t.targetBps) || 0), i })).filter(o => o.i !== idx);
+        const othersTotal = others.reduce((s, o) => s + o.val, 0);
+
+        const arr = editingTargets.map((t, i) => {
+            if (i === idx) return { ...t, targetBps: Math.max(0, Math.min(100, newPct)).toFixed(1) };
+            const cur = parseFloat(t.targetBps) || 0;
+            if (othersTotal <= 0) {
+                // All others are 0 — distribute evenly
+                const share = (100 - newPct) / (editingTargets.length - 1);
+                return { ...t, targetBps: Math.max(0, share).toFixed(1) };
+            }
+            // Proportional redistribution
+            const ratio = cur / othersTotal;
+            const adjusted = cur - delta * ratio;
+            return { ...t, targetBps: Math.max(0, adjusted).toFixed(1) };
+        });
+
+        // Fix rounding so total is exactly 100
+        const total = arr.reduce((s, t) => s + parseFloat(t.targetBps), 0);
+        if (Math.abs(total - 100) > 0.01) {
+            // Find biggest "other" to absorb rounding error
+            let maxIdx = -1; let maxVal = -1;
+            arr.forEach((t, i) => { if (i !== idx) { const v = parseFloat(t.targetBps); if (v > maxVal) { maxVal = v; maxIdx = i; } } });
+            if (maxIdx >= 0) {
+                arr[maxIdx] = { ...arr[maxIdx], targetBps: Math.max(0, parseFloat(arr[maxIdx].targetBps) + (100 - total)).toFixed(1) };
+            }
+        }
+        setEditingTargets(arr);
+    }, [editingTargets]);
 
     const equalSplitTargets = () => {
         if (!editingTargets || editingTargets.length === 0) return;
-        const each = (100 / editingTargets.length).toFixed(1);
-        const arr = editingTargets.map(t => ({ ...t, targetBps: each }));
-        // Fix rounding: give the remainder to the first token
-        const total = arr.reduce((s, t) => s + parseFloat(t.targetBps), 0);
+        const n = editingTargets.length;
+        const base = Math.floor((1000 / n)) / 10; // one decimal place
+        const arr = editingTargets.map(t => ({ ...t, targetBps: base.toFixed(1) }));
+        // Give remainder to first token
+        const total = base * n;
         if (Math.abs(total - 100) > 0.001) {
+            arr[0] = { ...arr[0], targetBps: (base + (100 - total)).toFixed(1) };
+        }
+        setEditingTargets(arr);
+    };
+
+    const addEditingToken = () => {
+        if (!editingTargets) return;
+        const n = editingTargets.length + 1;
+        const newShare = Math.round(1000 / n) / 10; // % for the new token
+        const scale = (100 - newShare) / 100;
+        const arr = editingTargets.map(t => ({
+            ...t,
+            targetBps: (Math.max(0, (parseFloat(t.targetBps) || 0) * scale)).toFixed(1),
+        }));
+        arr.push({ token: '', targetBps: newShare.toFixed(1) });
+        // Fix rounding
+        const total = arr.reduce((s, t) => s + parseFloat(t.targetBps), 0);
+        if (Math.abs(total - 100) > 0.01 && arr.length > 0) {
             arr[0] = { ...arr[0], targetBps: (parseFloat(arr[0].targetBps) + (100 - total)).toFixed(1) };
         }
         setEditingTargets(arr);
     };
 
-    const distributeRemaining = () => {
-        if (!editingTargets || editingTargets.length === 0) return;
-        const zeroTokens = editingTargets.filter(t => (parseFloat(t.targetBps) || 0) === 0);
-        if (editingRemaining <= 0) return;
-        if (zeroTokens.length > 0) {
-            const each = editingRemaining / zeroTokens.length;
-            setEditingTargets(editingTargets.map(t =>
-                (parseFloat(t.targetBps) || 0) === 0 ? { ...t, targetBps: each.toFixed(1) } : t
-            ));
-        } else {
-            // Distribute proportionally
-            const scale = 100 / editingTotal;
-            setEditingTargets(editingTargets.map(t => ({
-                ...t,
-                targetBps: ((parseFloat(t.targetBps) || 0) * scale).toFixed(1),
-            })));
+    const removeEditingToken = (idx) => {
+        if (!editingTargets) return;
+        const removed = parseFloat(editingTargets[idx].targetBps) || 0;
+        const arr = editingTargets.filter((_, j) => j !== idx);
+        if (arr.length === 0) { setEditingTargets(arr); return; }
+        const othersTotal = arr.reduce((s, t) => s + (parseFloat(t.targetBps) || 0), 0);
+        if (othersTotal <= 0) {
+            // All at 0, split the freed % evenly
+            const each = (100 / arr.length).toFixed(1);
+            setEditingTargets(arr.map(t => ({ ...t, targetBps: each })));
+            return;
         }
+        const scale = 100 / othersTotal;
+        const result = arr.map(t => ({ ...t, targetBps: ((parseFloat(t.targetBps) || 0) * scale).toFixed(1) }));
+        const total = result.reduce((s, t) => s + parseFloat(t.targetBps), 0);
+        if (Math.abs(total - 100) > 0.01) {
+            result[0] = { ...result[0], targetBps: (parseFloat(result[0].targetBps) + (100 - total)).toFixed(1) };
+        }
+        setEditingTargets(result);
     };
 
     const currentSegments = React.useMemo(() => {
@@ -1449,7 +1500,16 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                 Target Allocations ({targets.length} token{targets.length !== 1 ? 's' : ''})
                             </h4>
                             {editingTargets === null ? (
-                                <button onClick={() => setEditingTargets(targets.map(t => ({ token: t.token.toText ? t.token.toText() : String(t.token), targetBps: (Number(t.targetBps) / 100).toString() })))} style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <button onClick={() => {
+                                    const raw = targets.map(t => ({ token: t.token.toText ? t.token.toText() : String(t.token), targetBps: Number(t.targetBps) / 100 }));
+                                    const total = raw.reduce((s, t) => s + t.targetBps, 0);
+                                    const scale = total > 0 ? 100 / total : 1;
+                                    const normed = raw.map(t => ({ ...t, targetBps: (t.targetBps * scale).toFixed(1) }));
+                                    // Fix rounding
+                                    const nTotal = normed.reduce((s, t) => s + parseFloat(t.targetBps), 0);
+                                    if (normed.length > 0 && Math.abs(nTotal - 100) > 0.01) normed[0] = { ...normed[0], targetBps: (parseFloat(normed[0].targetBps) + (100 - nTotal)).toFixed(1) };
+                                    setEditingTargets(normed.length > 0 ? normed : [{ token: '', targetBps: '100.0' }]);
+                                }} style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                     <FaEdit style={{ fontSize: '0.65rem' }} /> Edit
                                 </button>
                             ) : (
@@ -1487,16 +1547,19 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                 {/* Live pie chart preview */}
                                 <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
                                     <PieChart segments={editingTargetSegments || []} label="Preview" theme={theme} />
-                                    {/* Total / remaining indicator */}
+                                    {/* Total indicator */}
                                     <div style={{
                                         padding: '6px 12px', borderRadius: '8px', fontSize: '0.8rem', fontWeight: '600', textAlign: 'center',
-                                        background: editingIsValid ? '#22c55e15' : editingTotal > 100 ? '#ef444415' : '#f59e0b15',
-                                        border: `1px solid ${editingIsValid ? '#22c55e40' : editingTotal > 100 ? '#ef444440' : '#f59e0b40'}`,
-                                        color: editingIsValid ? '#22c55e' : editingTotal > 100 ? '#ef4444' : '#f59e0b',
+                                        background: editingIsValid ? '#22c55e15' : '#f59e0b15',
+                                        border: `1px solid ${editingIsValid ? '#22c55e40' : '#f59e0b40'}`,
+                                        color: editingIsValid ? '#22c55e' : '#f59e0b',
                                     }}>
-                                        {editingIsValid ? 'Total: 100%' : editingTotal > 100
-                                            ? `Over by ${(editingTotal - 100).toFixed(1)}%`
-                                            : `${editingRemaining.toFixed(1)}% unallocated`}
+                                        Total: {editingTotal.toFixed(1)}%
+                                        {editingTargets && editingTargets.length > 0 && (
+                                            <span style={{ fontSize: '0.65rem', fontWeight: '400', marginLeft: '4px', opacity: 0.7 }}>
+                                                ({editingTargets.length} token{editingTargets.length !== 1 ? 's' : ''})
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
                                 {/* Editing form */}
@@ -1516,7 +1579,7 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                                             placeholder="Select token..."
                                                         />
                                                     </div>
-                                                    <button onClick={() => setEditingTargets(editingTargets.filter((_, j) => j !== i))} style={{ ...secondaryButtonStyle, fontSize: '0.65rem', padding: '2px 6px', color: '#ef4444', borderColor: '#ef444440' }}>
+                                                    <button onClick={() => removeEditingToken(i)} style={{ ...secondaryButtonStyle, fontSize: '0.65rem', padding: '2px 6px', color: '#ef4444', borderColor: '#ef444440' }}>
                                                         <FaTrash style={{ fontSize: '0.6rem' }} />
                                                     </button>
                                                 </div>
@@ -1524,17 +1587,28 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                                     <input
                                                         type="range" min="0" max="100" step="0.1"
                                                         value={pct}
-                                                        onChange={(e) => {
-                                                            const arr = [...editingTargets];
-                                                            arr[i] = { ...arr[i], targetBps: parseFloat(e.target.value).toFixed(1) };
-                                                            setEditingTargets(arr);
-                                                        }}
+                                                        onChange={(e) => setLinkedTarget(i, parseFloat(e.target.value))}
                                                         style={{ flex: 1, accentColor: CHART_COLORS[i % CHART_COLORS.length], cursor: 'pointer', height: '6px' }}
                                                     />
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
                                                         <input
                                                             value={t.targetBps}
-                                                            onChange={(e) => { const arr = [...editingTargets]; arr[i] = { ...arr[i], targetBps: e.target.value }; setEditingTargets(arr); }}
+                                                            onChange={(e) => {
+                                                                const v = e.target.value;
+                                                                // Allow free typing — only link when it parses to a number
+                                                                const num = parseFloat(v);
+                                                                if (!isNaN(num) && v.trim() !== '' && num >= 0 && num <= 100) {
+                                                                    setLinkedTarget(i, num);
+                                                                } else {
+                                                                    // Allow incomplete input (e.g. empty or trailing dot)
+                                                                    const arr = [...editingTargets]; arr[i] = { ...arr[i], targetBps: v }; setEditingTargets(arr);
+                                                                }
+                                                            }}
+                                                            onBlur={() => {
+                                                                // On blur, normalize to linked value
+                                                                const num = parseFloat(editingTargets[i].targetBps);
+                                                                if (!isNaN(num)) setLinkedTarget(i, Math.max(0, Math.min(100, num)));
+                                                            }}
                                                             style={{ ...inputStyle, width: '60px', fontSize: '0.75rem', textAlign: 'right' }}
                                                             type="text" inputMode="decimal"
                                                         />
@@ -1549,22 +1623,12 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                         );
                                     })}
                                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', marginTop: '6px' }}>
-                                        <button onClick={() => setEditingTargets([...editingTargets, { token: '', targetBps: '0' }])} style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <button onClick={addEditingToken} style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                             <FaPlus style={{ fontSize: '0.6rem' }} /> Add Token
                                         </button>
                                         <button onClick={equalSplitTargets} disabled={editingTargets.length === 0} style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px' }} title="Set all tokens to equal percentage">
                                             Equal Split
                                         </button>
-                                        {!editingIsValid && editingTotal > 0 && (
-                                            <button onClick={normalizeTargets} style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px' }} title="Scale all values proportionally to total 100%">
-                                                Normalize to 100%
-                                            </button>
-                                        )}
-                                        {editingRemaining > 0.01 && (
-                                            <button onClick={distributeRemaining} style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px', color: '#f59e0b', borderColor: '#f59e0b40' }} title="Distribute unallocated percentage among tokens">
-                                                +{editingRemaining.toFixed(1)}% Distribute
-                                            </button>
-                                        )}
                                     </div>
                                 </div>
                             </div>
