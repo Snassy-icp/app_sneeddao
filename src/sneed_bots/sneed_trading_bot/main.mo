@@ -1980,27 +1980,48 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             }
         };
 
-        // 3. Pair selection — always pick the pair with the largest combined
-        //    deviation first, then decide whether a target-reaching or partial
-        //    trade is appropriate for that pair.
+        // 3. Pair selection — weighted random, where each token's deviation
+        //    is its weight in the lottery. This ensures all imbalanced pairs
+        //    get a chance proportional to their severity.
 
-        // Find the pair (overweight, underweight) with the largest combined deviation.
         var sellToken = overweight.get(0);
         var buyToken = underweight.get(0);
-        var bestPairDev: Nat = 0;
+        let entropy = Int.abs(Time.now());
 
+        // Pick overweight (sell) token — weighted by deviation
+        var totalOverWeight: Nat = 0;
+        for (ow in overweight.vals()) { totalOverWeight += ow.deviationBps };
+        let owRand = entropy % totalOverWeight;
+        var owCumulative: Nat = 0;
+        var owPicked = false;
         for (ow in overweight.vals()) {
-            for (uw in underweight.vals()) {
-                let combined = ow.deviationBps + uw.deviationBps;
-                if (combined > bestPairDev) {
+            if (not owPicked) {
+                owCumulative += ow.deviationBps;
+                if (owCumulative > owRand) {
                     sellToken := ow;
-                    buyToken := uw;
-                    bestPairDev := combined;
+                    owPicked := true;
                 };
             };
         };
 
-        // 4. Calculate trade size for the selected pair
+        // Pick underweight (buy) token — weighted by deviation
+        var totalUnderWeight: Nat = 0;
+        for (uw in underweight.vals()) { totalUnderWeight += uw.deviationBps };
+        let uwRand = (entropy / 1000) % totalUnderWeight;
+        var uwCumulative: Nat = 0;
+        var uwPicked = false;
+        for (uw in underweight.vals()) {
+            if (not uwPicked) {
+                uwCumulative += uw.deviationBps;
+                if (uwCumulative > uwRand) {
+                    buyToken := uw;
+                    uwPicked := true;
+                };
+            };
+        };
+
+        // 4. Calculate trade size — check if target-reaching is possible,
+        //    otherwise use conservative partial sizing.
         let fee = getFee(sellToken.token);
         let maxAffordable = if (sellToken.balance > fee * 3) { sellToken.balance - fee * 3 } else { 0 };
         let excessSellValue = (totalValue * sellToken.deviationBps) / 10000;
@@ -2027,8 +2048,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 ("mode", "target-reaching"),
             ]);
         } else {
-            // Partial trade: pair is too large for one trade, use conservative sizing
-            let overshootCap = targetReachUnits; // same calculation, cap to avoid overshooting
+            // Partial trade: use conservative sizing with overshoot cap
+            let overshootCap = targetReachUnits;
             tradeSize := Nat.min(maxTrade, Nat.min(maxAffordable, Nat.min(sellToken.balance / 4, overshootCap)));
             logEngine.logInfo(src, "Pair selected (partial): sell " # tokenLabel(sellToken.token) # " (+" # Nat.toText(sellToken.deviationBps / 100) # "." # Nat.toText(sellToken.deviationBps % 100) # "% over) → buy " # tokenLabel(buyToken.token) # " (-" # Nat.toText(buyToken.deviationBps / 100) # "." # Nat.toText(buyToken.deviationBps % 100) # "% under), trade " # Nat.toText(tradeSize) # " units (cap: " # Nat.toText(overshootCap) # ", targetReach: " # Nat.toText(targetReachUnits) # ")", null, [
                 ("sellToken", tokenLabel(sellToken.token)),
