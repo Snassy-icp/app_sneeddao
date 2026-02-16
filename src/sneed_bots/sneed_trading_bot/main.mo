@@ -633,7 +633,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             });
 
             switch (quoteResult) {
-                case (#ok(expectedOutput)) {
+                case (#ok(expectedOutputInt)) {
+                    // ICPSwap returns Int; convert to Nat (negative means error)
+                    if (expectedOutputInt <= 0) return null;
+                    let expectedOutput = Int.abs(expectedOutputInt);
                     let netOutput = if (expectedOutput > outputFees) { expectedOutput - outputFees } else { 0 };
 
                     // Calculate spot price (as e8s: output per 1e(inputDecimals) input)
@@ -819,7 +822,13 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             });
 
             switch (swapResult) {
-                case (#ok(amountOut)) { #Ok({ amountOut = amountOut; txId = null }) };
+                case (#ok(amountOutInt)) {
+                    // ICPSwap returns Int; convert to Nat
+                    if (amountOutInt <= 0) {
+                        return #Err("ICPSwap swap returned non-positive output: " # Int.toText(amountOutInt));
+                    };
+                    #Ok({ amountOut = Int.abs(amountOutInt); txId = null })
+                };
                 case (#err(e)) { #Err("ICPSwap swap failed: " # e.message) };
             };
         } catch (e) {

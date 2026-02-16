@@ -209,9 +209,9 @@ module {
     };
 
     public type ICPSwapPoolActor = actor {
-        quote: shared (ICPSwapQuoteArgs) -> async { #ok: Nat; #err: { message: Text } };
-        depositAndSwap: shared (ICPSwapSwapArgs) -> async { #ok: Nat; #err: { message: Text } };
-        depositFromAndSwap: shared (ICPSwapSwapArgs) -> async { #ok: Nat; #err: { message: Text } };
+        quote: shared (ICPSwapQuoteArgs) -> async { #ok: Int; #err: { message: Text } };
+        depositAndSwap: shared (ICPSwapSwapArgs) -> async { #ok: Int; #err: { message: Text } };
+        depositFromAndSwap: shared (ICPSwapSwapArgs) -> async { #ok: Int; #err: { message: Text } };
         metadata: shared query () -> async { #ok: ICPSwapPoolMetadata; #err: { message: Text } };
     };
 
