@@ -17,7 +17,7 @@ import { useAuth } from '../AuthContext';
 // Trading bot Candid declarations — aligned with staking bot API for shared BotManagementPanel.
 import { createActor as createBotActor } from 'external/sneed_trading_bot';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
-import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes } from 'react-icons/fa';
+import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt } from 'react-icons/fa';
 import TokenIcon from '../components/TokenIcon';
 
 // Trading bot accent colors — green/teal for trading
@@ -1532,7 +1532,17 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
     return (
         <div style={cardStyle}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-                <h3 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '0.95rem', fontWeight: '600' }}>Trade Log</h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <h3 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '0.95rem', fontWeight: '600' }}>Trade Log</h3>
+                    <button
+                        onClick={() => { setLoading(true); setSnapMap({}); loadData(); }}
+                        disabled={loading}
+                        title="Refresh"
+                        style={{ background: 'none', border: 'none', cursor: loading ? 'default' : 'pointer', color: accentColor, padding: '2px', display: 'flex', alignItems: 'center', opacity: loading ? 0.5 : 1 }}
+                    >
+                        <FaSyncAlt style={{ fontSize: '0.75rem', animation: loading ? 'spin 1s linear infinite' : 'none' }} />
+                    </button>
+                </div>
                 {stats && <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>{Number(stats.totalEntries)} entries</span>}
             </div>
 
@@ -1887,7 +1897,17 @@ function PortfolioSnapshotViewer({ getReadyBotActor, theme, accentColor }) {
     return (
         <div style={cardStyle}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                <h3 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '0.95rem', fontWeight: '600' }}>Portfolio Snapshots</h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <h3 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '0.95rem', fontWeight: '600' }}>Portfolio Snapshots</h3>
+                    <button
+                        onClick={() => { setLoading(true); loadData(); }}
+                        disabled={loading}
+                        title="Refresh"
+                        style={{ background: 'none', border: 'none', cursor: loading ? 'default' : 'pointer', color: accentColor, padding: '2px', display: 'flex', alignItems: 'center', opacity: loading ? 0.5 : 1 }}
+                    >
+                        <FaSyncAlt style={{ fontSize: '0.75rem', animation: loading ? 'spin 1s linear infinite' : 'none' }} />
+                    </button>
+                </div>
                 {stats && <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>{Number(stats.totalEntries)} snapshots</span>}
             </div>
 

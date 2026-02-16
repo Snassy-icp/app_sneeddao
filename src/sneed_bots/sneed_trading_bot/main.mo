@@ -2153,7 +2153,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                                 };
                             };
                         } catch (e) {
-                            logEngine.logWarning("prep", "Price fetch failed for pair: " # Error.message(e), null, []);
+                            logEngine.logDebug("prep", "Price fetch skipped for pair (no direct pool): " # Error.message(e), null, []);
                         };
                     };
                 };
