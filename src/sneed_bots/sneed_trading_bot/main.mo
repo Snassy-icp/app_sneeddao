@@ -2857,63 +2857,17 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     // PUBLIC API — BALANCES
     // ============================================
 
-    public shared (msg) func getBalances(subaccountNumber: ?Nat): async [T.TokenBalance] {
-        assertPermission(msg.caller, T.TradingPermission.ViewPortfolio);
-        let subBlob = getSubaccountBlob(subaccountNumber);
-        let balances = Buffer.Buffer<T.TokenBalance>(tokenRegistry.size());
-        for (token in tokenRegistry.vals()) {
-            let bal = await getBalance(token.ledgerCanisterId, subBlob);
-            balances.add({ token = token.ledgerCanisterId; balance = bal });
-        };
-        Buffer.toArray(balances)
-    };
-
-    public shared (msg) func getAllBalances(): async [T.SubaccountBalances] {
-        assertPermission(msg.caller, T.TradingPermission.ViewPortfolio);
-        let result = Buffer.Buffer<T.SubaccountBalances>(namedSubaccounts.size() + 1);
-
-        // Main account (subaccount 0)
-        let mainBalances = Buffer.Buffer<T.TokenBalance>(tokenRegistry.size());
-        for (token in tokenRegistry.vals()) {
-            let bal = await getBalance(token.ledgerCanisterId, null);
-            mainBalances.add({ token = token.ledgerCanisterId; balance = bal });
-        };
-        result.add({ subaccountNumber = 0; name = "Main Account"; balances = Buffer.toArray(mainBalances) });
-
-        // Named subaccounts
-        for ((num, name) in namedSubaccounts.vals()) {
-            let subBlob = ?subaccountNumberToBlob(num);
-            let subBalances = Buffer.Buffer<T.TokenBalance>(tokenRegistry.size());
-            for (token in tokenRegistry.vals()) {
-                let bal = await getBalance(token.ledgerCanisterId, subBlob);
-                subBalances.add({ token = token.ledgerCanisterId; balance = bal });
-            };
-            result.add({ subaccountNumber = num; name = name; balances = Buffer.toArray(subBalances) });
-        };
-
-        Buffer.toArray(result)
-    };
+    // REMOVED: getBalances and getAllBalances were expensive update methods (N inter-canister
+    // calls each) exposed to the public API. Balances are now fetched directly from ledger
+    // canisters by the frontend, avoiding unnecessary cycles cost and latency.
 
     // ============================================
     // PUBLIC API — DEX
     // ============================================
 
-    public shared (msg) func getQuote(dexId: ?Nat, inputToken: Principal, outputToken: Principal, amount: Nat): async [T.SwapQuote] {
-        assertPermission(msg.caller, T.TradingPermission.ViewPortfolio);
-        switch (dexId) {
-            case (?id) {
-                let q = if (id == T.DexId.ICPSwap) {
-                    await getICPSwapQuote(inputToken, outputToken, amount)
-                } else if (id == T.DexId.KongSwap) {
-                    await getKongQuote(inputToken, outputToken, amount)
-                } else { null };
-                switch (q) { case (?quote) { [quote] }; case null { [] } };
-            };
-            case null {
-                await getAllQuotes(inputToken, outputToken, amount)
-            };
-        }
-    };
+    // REMOVED: getQuote was an expensive update method (inter-canister DEX calls) exposed to
+    // the public API. Prices are now fetched by the frontend via PriceService (ICPSwap pools).
+    // Internal quote functionality is still available via getBestQuote/getAllQuotes for chore execution.
 
     public shared query (msg) func getEnabledDexes(): async [Nat] {
         assertPermission(msg.caller, T.TradingPermission.ViewPortfolio);
@@ -3195,57 +3149,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         rebalanceThresholdBps := setInMap(rebalanceThresholdBps, instanceId, bps);
     };
 
-    public shared (msg) func getPortfolioStatus(instanceId: Text): async T.PortfolioStatus {
-        assertPermission(msg.caller, T.TradingPermission.ViewPortfolio);
-        let targets = getRebalTargets(instanceId);
-        let denomToken = getRebalDenomToken(instanceId);
-
-        let tokenStatuses = Buffer.Buffer<T.PortfolioTokenStatus>(targets.size());
-        var totalValue: Nat = 0;
-
-        for (target in targets.vals()) {
-            let balance = await getBalance(target.token, null);
-            let value = if (target.token == denomToken) {
-                balance
-            } else {
-                let quoteOpt = await getBestQuote(target.token, denomToken, balance);
-                switch (quoteOpt) { case (?q) q.expectedOutput; case null 0 };
-            };
-            let symbol = switch (getTokenInfo(target.token)) {
-                case (?i) i.symbol;
-                case null Principal.toText(target.token);
-            };
-            tokenStatuses.add({
-                token = target.token;
-                symbol = symbol;
-                balance = balance;
-                valueInDenomination = value;
-                currentBps = 0; // Computed below
-                targetBps = target.targetBps;
-                deviationBps = 0; // Computed below
-            });
-            totalValue += value;
-        };
-
-        // Compute currentBps and deviationBps
-        let finalTokens = Array.map<T.PortfolioTokenStatus, T.PortfolioTokenStatus>(
-            Buffer.toArray(tokenStatuses),
-            func(ts) {
-                let currentBps: Nat = if (totalValue > 0) { (ts.valueInDenomination * 10000) / totalValue } else { 0 };
-                let deviation: Int = (currentBps : Int) - (ts.targetBps : Int); // positive = overweight, negative = underweight
-                { ts with
-                    currentBps = currentBps;
-                    deviationBps = deviation;
-                }
-            }
-        );
-
-        {
-            denominationToken = denomToken;
-            totalValueInDenomination = totalValue;
-            tokens = finalTokens;
-        }
-    };
+    // REMOVED: getPortfolioStatus was an expensive update method (N balance + N quote
+    // inter-canister calls) exposed to the public API. Portfolio status is now computed
+    // entirely on the frontend using direct ledger balance calls + PriceService.
 
     // ============================================
     // PUBLIC API — DISTRIBUTION

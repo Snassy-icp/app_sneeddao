@@ -1013,9 +1013,60 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
 }
 
 // ============================================
+// PIE CHART — pure SVG donut chart
+// ============================================
+const CHART_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#3b82f6', '#ec4899', '#8b5cf6', '#14b8a6', '#f97316', '#06b6d4', '#84cc16', '#e11d48'];
+function PieChart({ segments, size = 140, thickness = 32, label, theme }) {
+    const r = (size - thickness) / 2;
+    const cx = size / 2;
+    const cy = size / 2;
+    const circ = 2 * Math.PI * r;
+    const total = segments.reduce((s, seg) => s + (seg.value || 0), 0);
+    let offset = 0;
+    const arcs = total > 0 ? segments.filter(s => s.value > 0).map((seg) => {
+        const frac = seg.value / total;
+        const dashLen = frac * circ;
+        const dashOffset = -offset * circ;
+        offset += frac;
+        return { ...seg, dashLen, dashOffset, frac };
+    }) : [];
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', minWidth: size }}>
+            {label && <div style={{ fontSize: '0.7rem', fontWeight: '600', color: theme.colors.secondaryText, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{label}</div>}
+            <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+                {/* Background circle */}
+                <circle cx={cx} cy={cy} r={r} fill="none" stroke={theme.colors.border} strokeWidth={thickness} opacity={0.3} />
+                {arcs.map((arc, i) => (
+                    <circle key={i} cx={cx} cy={cy} r={r} fill="none"
+                        stroke={arc.color}
+                        strokeWidth={thickness}
+                        strokeDasharray={`${arc.dashLen} ${circ - arc.dashLen}`}
+                        strokeDashoffset={arc.dashOffset}
+                        transform={`rotate(-90 ${cx} ${cy})`}
+                        style={{ transition: 'stroke-dasharray 0.4s ease, stroke-dashoffset 0.4s ease' }}
+                    />
+                ))}
+                {total > 0 && <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central" fill={theme.colors.primaryText} fontSize="11" fontWeight="600">
+                    {segments.length} tokens
+                </text>}
+                {total === 0 && <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central" fill={theme.colors.mutedText} fontSize="10">No data</text>}
+            </svg>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 10px', justifyContent: 'center', maxWidth: size + 40 }}>
+                {segments.map((seg, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '0.65rem', color: theme.colors.secondaryText }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: seg.color, flexShrink: 0 }} />
+                        {seg.label} {total > 0 ? `${(((seg.value || 0) / total) * 100).toFixed(1)}%` : ''}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+// ============================================
 // REBALANCER CONFIG PANEL
 // ============================================
-function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColor, cardStyle, inputStyle, buttonStyle, secondaryButtonStyle }) {
+function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColor, cardStyle, inputStyle, buttonStyle, secondaryButtonStyle, canisterId }) {
     const { identity } = useAuth();
     const [settings, setSettings] = useState(null);
     const [targets, setTargets] = useState([]);
@@ -1023,11 +1074,18 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [saving, setSaving] = useState(false);
-    const [portfolioStatus, setPortfolioStatus] = useState(null);
-    const [loadingPortfolio, setLoadingPortfolio] = useState(false);
 
     // Edit state for targets
-    const [editingTargets, setEditingTargets] = useState(null); // null = not editing, array = editing
+    const [editingTargets, setEditingTargets] = useState(null);
+
+    // Frontend-only portfolio status
+    const [tokenBalances, setTokenBalances] = useState({}); // { tokenId: BigInt balance }
+    const [denomPrices, setDenomPrices] = useState({}); // { tokenId: number (denom units per 1 whole token) }
+    const [balancesLoading, setBalancesLoading] = useState(false);
+    const [pricesLoading, setPricesLoading] = useState(false);
+    const balanceFetchRef = useRef('');
+    const priceFetchRef = useRef('');
+    const refreshTimerRef = useRef(null);
 
     // Resolve token metadata for all target tokens + denomination token
     const allTokenIds = React.useMemo(() => {
@@ -1053,14 +1111,23 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
         const key = typeof principal === 'string' ? principal : principal?.toText?.() || String(principal);
         return tokenMeta[key]?.symbol || shortPrincipal(key);
     };
+    const getDecimals = (principal) => {
+        const key = typeof principal === 'string' ? principal : principal?.toText?.() || String(principal);
+        return tokenMeta[key]?.decimals ?? 8;
+    };
 
-    // Denomination token metadata (for decimal-aware trade size editing)
+    // Denomination token metadata
     const denomKey = settings?.denominationToken
         ? (typeof settings.denominationToken === 'string' ? settings.denominationToken : settings.denominationToken?.toText?.() || String(settings.denominationToken))
         : null;
     const denomMeta = denomKey ? tokenMeta[denomKey] : null;
     const denomDecimals = denomMeta?.decimals ?? 8;
     const denomSymbol = denomMeta?.symbol || 'tokens';
+
+    // Token IDs for targets (stable string list)
+    const targetTokenIds = React.useMemo(() =>
+        targets.map(t => typeof t.token === 'string' ? t.token : t.token?.toText?.() || String(t.token)),
+    [targets]);
 
     const loadData = useCallback(async () => {
         try {
@@ -1081,15 +1148,127 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
 
     useEffect(() => { loadData(); }, [loadData]);
 
-    const loadPortfolio = async () => {
-        setLoadingPortfolio(true); setError('');
+    // --- Frontend-only balance fetching (direct to ledger canisters) ---
+    const fetchBalances = useCallback(async () => {
+        if (!canisterId || targetTokenIds.length === 0) return;
+        const key = `${canisterId}:${targetTokenIds.join(',')}`;
+        if (key === balanceFetchRef.current && Object.keys(tokenBalances).length > 0) return;
+        balanceFetchRef.current = key;
+        setBalancesLoading(true);
         try {
-            const bot = await getReadyBotActor();
-            const status = await bot.getPortfolioStatus(instanceId);
-            setPortfolioStatus(status);
-        } catch (err) { setError('Failed to load portfolio: ' + err.message); }
-        finally { setLoadingPortfolio(false); }
-    };
+            const { HttpAgent } = await import('@dfinity/agent');
+            const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            const host = isLocal ? 'http://localhost:4943' : 'https://ic0.app';
+            const agent = HttpAgent.createSync({ identity, host });
+            if (isLocal) await agent.fetchRootKey();
+            const botPrincipal = Principal.fromText(canisterId);
+            const results = {};
+            await Promise.all(targetTokenIds.map(async (tid) => {
+                try {
+                    const ledgerActor = createLedgerActor(tid, { agent });
+                    const bal = await ledgerActor.icrc1_balance_of({ owner: botPrincipal, subaccount: [] });
+                    results[tid] = BigInt(bal);
+                } catch (_) { results[tid] = 0n; }
+            }));
+            setTokenBalances(results);
+        } catch (e) { console.warn('Failed to fetch rebalance balances:', e); }
+        finally { setBalancesLoading(false); }
+    }, [canisterId, targetTokenIds, identity]);
+
+    // --- Frontend-only price fetching (via PriceService) ---
+    const fetchPrices = useCallback(async () => {
+        if (!denomKey || targetTokenIds.length === 0) return;
+        const key = `${denomKey}:${targetTokenIds.join(',')}`;
+        if (key === priceFetchRef.current && Object.keys(denomPrices).length > 0) return;
+        priceFetchRef.current = key;
+        setPricesLoading(true);
+        try {
+            const decFor = (id) => tokenMeta[id]?.decimals ?? 8;
+            // Set decimals in PriceService
+            for (const tid of targetTokenIds) priceService.setTokenDecimals(tid, decFor(tid));
+            if (denomKey !== ICP_LEDGER) priceService.setTokenDecimals(denomKey, decFor(denomKey));
+
+            const getIcpPrice = async (tid) => {
+                if (tid === ICP_LEDGER) return 1;
+                const fiatPeg = FIAT_USD_PEG[tid];
+                if (fiatPeg != null) {
+                    const icpUsd = await priceService.getICPUSDPrice();
+                    if (icpUsd > 0) return fiatPeg / icpUsd;
+                    return null;
+                }
+                return await priceService.getTokenICPPrice(tid, decFor(tid));
+            };
+
+            const [tokenResults, denomIcpPriceRaw] = await Promise.all([
+                Promise.all(targetTokenIds.map(async (tid) => {
+                    try { return { tid, icpPrice: await getIcpPrice(tid) }; }
+                    catch (_) { return { tid, icpPrice: null }; }
+                })),
+                denomKey !== ICP_LEDGER ? getIcpPrice(denomKey).catch(() => null) : Promise.resolve(1),
+            ]);
+            const denomIcpPrice = (denomIcpPriceRaw != null && isFinite(denomIcpPriceRaw) && denomIcpPriceRaw > 0) ? denomIcpPriceRaw : null;
+            const prices = {};
+            for (const { tid, icpPrice } of tokenResults) {
+                if (tid === denomKey) { prices[tid] = 1; continue; }
+                if (icpPrice != null && denomIcpPrice != null) {
+                    prices[tid] = icpPrice / denomIcpPrice;
+                } else { prices[tid] = null; }
+            }
+            setDenomPrices(prices);
+        } catch (e) { console.warn('Failed to fetch rebalance prices:', e); }
+        finally { setPricesLoading(false); }
+    }, [denomKey, targetTokenIds, tokenMeta]);
+
+    // Auto-fetch balances + prices when targets are known
+    useEffect(() => { if (targetTokenIds.length > 0 && canisterId) fetchBalances(); }, [fetchBalances]);
+    useEffect(() => { if (targetTokenIds.length > 0 && denomKey) fetchPrices(); }, [fetchPrices]);
+
+    // Auto-refresh every 30s
+    useEffect(() => {
+        if (targetTokenIds.length === 0 || !canisterId) return;
+        refreshTimerRef.current = setInterval(() => {
+            balanceFetchRef.current = ''; // force re-fetch
+            priceFetchRef.current = '';
+            fetchBalances();
+            fetchPrices();
+        }, 30_000);
+        return () => clearInterval(refreshTimerRef.current);
+    }, [fetchBalances, fetchPrices, targetTokenIds, canisterId]);
+
+    // Compute portfolio status from balances + prices + targets
+    const portfolioStatus = React.useMemo(() => {
+        if (targets.length === 0) return null;
+        let totalValue = 0;
+        const tokens = targetTokenIds.map((tid, i) => {
+            const bal = tokenBalances[tid] ?? 0n;
+            const dec = getDecimals(tid);
+            const humanBal = Number(bal) / (10 ** dec);
+            const price = denomPrices[tid];
+            const value = price != null ? humanBal * price : 0;
+            totalValue += value;
+            return { tid, symbol: getSymbol(tid), balance: bal, humanBal, value, targetBps: Number(targets[i]?.targetBps ?? 0) };
+        });
+        const result = tokens.map(tok => {
+            const currentBps = totalValue > 0 ? Math.round((tok.value / totalValue) * 10000) : 0;
+            return { ...tok, currentBps, deviationBps: currentBps - tok.targetBps };
+        });
+        return { totalValue, tokens: result, hasBalances: Object.keys(tokenBalances).length > 0, hasPrices: Object.keys(denomPrices).length > 0 };
+    }, [targets, targetTokenIds, tokenBalances, denomPrices, tokenMeta]);
+
+    // Chart segments
+    const targetSegments = React.useMemo(() =>
+        targets.map((t, i) => {
+            const tid = typeof t.token === 'string' ? t.token : t.token?.toText?.() || String(t.token);
+            return { label: getSymbol(tid), value: Number(t.targetBps), color: CHART_COLORS[i % CHART_COLORS.length] };
+        }),
+    [targets, tokenMeta]);
+
+    const currentSegments = React.useMemo(() => {
+        if (!portfolioStatus) return [];
+        return portfolioStatus.tokens.map((tok, i) => ({
+            label: tok.symbol, value: tok.currentBps, color: CHART_COLORS[i % CHART_COLORS.length],
+        }));
+    }, [portfolioStatus]);
 
     const handleSaveTargets = async () => {
         if (!editingTargets) return;
@@ -1282,41 +1461,73 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                         )}
                     </div>
 
-                    {/* Portfolio Status */}
-                    <div>
-                        <button onClick={loadPortfolio} disabled={loadingPortfolio} style={{ ...secondaryButtonStyle, fontSize: '0.8rem', marginBottom: '8px' }}>
-                            {loadingPortfolio ? 'Loading...' : portfolioStatus ? 'Refresh Portfolio Status' : 'View Portfolio Status'}
-                        </button>
-                        {portfolioStatus && (
-                            <div style={{ background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}`, overflow: 'hidden' }}>
-                                <div style={{ padding: '8px 12px', fontSize: '0.75rem', color: theme.colors.secondaryText, borderBottom: `1px solid ${theme.colors.border}` }}>
-                                    Total value: <strong style={{ color: theme.colors.primaryText }}>{formatTokenAmount(portfolioStatus.totalValueInDenomination, denomDecimals)} {denomSymbol}</strong>
-                                </div>
-                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
-                                    <thead>
-                                        <tr style={{ background: `${accentColor}08` }}>
-                                            <th style={{ padding: '6px 10px', textAlign: 'left', color: theme.colors.secondaryText, fontWeight: '500' }}>Token</th>
-                                            <th style={{ padding: '6px 10px', textAlign: 'right', color: theme.colors.secondaryText, fontWeight: '500' }}>Current</th>
-                                            <th style={{ padding: '6px 10px', textAlign: 'right', color: theme.colors.secondaryText, fontWeight: '500' }}>Target</th>
-                                            <th style={{ padding: '6px 10px', textAlign: 'right', color: theme.colors.secondaryText, fontWeight: '500' }}>Deviation</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {portfolioStatus.tokens.map((tok, i) => (
-                                            <tr key={i} style={{ borderTop: `1px solid ${theme.colors.border}` }}>
-                                                <td style={{ padding: '6px 10px', color: theme.colors.primaryText }}>{tok.symbol || getSymbol(tok.token)}</td>
-                                                <td style={{ padding: '6px 10px', textAlign: 'right', color: theme.colors.primaryText }}>{(Number(tok.currentBps) / 100).toFixed(1)}%</td>
-                                                <td style={{ padding: '6px 10px', textAlign: 'right', color: theme.colors.primaryText }}>{(Number(tok.targetBps) / 100).toFixed(1)}%</td>
-                                                <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: '500', color: Number(tok.deviationBps) > 0 ? '#ef4444' : Number(tok.deviationBps) < 0 ? '#3b82f6' : theme.colors.secondaryText }}>
-                                                    {Number(tok.deviationBps) > 0 ? '+' : ''}{(Number(tok.deviationBps) / 100).toFixed(1)}%
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                    {/* Portfolio Status — pie charts + table (auto-refreshed) */}
+                    {targets.length > 0 && (
+                        <div>
+                            <h4 style={{ color: theme.colors.primaryText, margin: '0 0 10px 0', fontSize: '0.85rem', fontWeight: '600' }}>
+                                Portfolio Status
+                                {(balancesLoading || pricesLoading) && <span style={{ fontWeight: '400', fontSize: '0.7rem', color: theme.colors.mutedText, marginLeft: '8px' }}>refreshing...</span>}
+                            </h4>
+
+                            {/* Pie charts: Target vs Current */}
+                            <div style={{ display: 'flex', gap: '24px', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '14px', padding: '12px', background: theme.colors.primaryBg, borderRadius: '10px', border: `1px solid ${theme.colors.border}` }}>
+                                <PieChart segments={targetSegments} label="Target" theme={theme} />
+                                <PieChart segments={currentSegments.length > 0 ? currentSegments : targetSegments.map(s => ({ ...s, value: 0 }))} label="Current" theme={theme} />
                             </div>
-                        )}
-                    </div>
+
+                            {/* Portfolio table */}
+                            {portfolioStatus && portfolioStatus.hasBalances && (
+                                <div style={{ background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}`, overflow: 'hidden' }}>
+                                    <div style={{ padding: '8px 12px', fontSize: '0.75rem', color: theme.colors.secondaryText, borderBottom: `1px solid ${theme.colors.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span>Total value: <strong style={{ color: theme.colors.primaryText }}>
+                                            {portfolioStatus.hasPrices
+                                                ? formatDenomAmount(portfolioStatus.totalValue, denomKey, denomSymbol)
+                                                : '...'}
+                                        </strong></span>
+                                        <span style={{ fontSize: '0.65rem', color: theme.colors.mutedText }}>Auto-refreshes every 30s</span>
+                                    </div>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+                                        <thead>
+                                            <tr style={{ background: `${accentColor}08` }}>
+                                                <th style={{ padding: '6px 10px', textAlign: 'left', color: theme.colors.secondaryText, fontWeight: '500' }}>Token</th>
+                                                <th style={{ padding: '6px 10px', textAlign: 'right', color: theme.colors.secondaryText, fontWeight: '500' }}>Balance</th>
+                                                <th style={{ padding: '6px 10px', textAlign: 'right', color: theme.colors.secondaryText, fontWeight: '500' }}>Value</th>
+                                                <th style={{ padding: '6px 10px', textAlign: 'right', color: theme.colors.secondaryText, fontWeight: '500' }}>Current</th>
+                                                <th style={{ padding: '6px 10px', textAlign: 'right', color: theme.colors.secondaryText, fontWeight: '500' }}>Target</th>
+                                                <th style={{ padding: '6px 10px', textAlign: 'right', color: theme.colors.secondaryText, fontWeight: '500' }}>Deviation</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {portfolioStatus.tokens.map((tok, i) => (
+                                                <tr key={i} style={{ borderTop: `1px solid ${theme.colors.border}` }}>
+                                                    <td style={{ padding: '6px 10px', color: theme.colors.primaryText }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: CHART_COLORS[i % CHART_COLORS.length], flexShrink: 0 }} />
+                                                            {tok.symbol}
+                                                        </div>
+                                                    </td>
+                                                    <td style={{ padding: '6px 10px', textAlign: 'right', fontFamily: 'monospace', color: theme.colors.secondaryText, fontSize: '0.72rem' }}>
+                                                        {formatTokenAmount(tok.balance, getDecimals(tok.tid))}
+                                                    </td>
+                                                    <td style={{ padding: '6px 10px', textAlign: 'right', fontFamily: 'monospace', color: theme.colors.secondaryText, fontSize: '0.72rem' }}>
+                                                        {tok.value > 0 ? formatDenomAmount(tok.value, denomKey, denomSymbol) : '...'}
+                                                    </td>
+                                                    <td style={{ padding: '6px 10px', textAlign: 'right', color: theme.colors.primaryText }}>{(tok.currentBps / 100).toFixed(1)}%</td>
+                                                    <td style={{ padding: '6px 10px', textAlign: 'right', color: theme.colors.primaryText }}>{(tok.targetBps / 100).toFixed(1)}%</td>
+                                                    <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: '500', color: tok.deviationBps > 0 ? '#ef4444' : tok.deviationBps < 0 ? '#3b82f6' : theme.colors.secondaryText }}>
+                                                        {tok.deviationBps > 0 ? '+' : ''}{(tok.deviationBps / 100).toFixed(1)}%
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                            {!portfolioStatus?.hasBalances && balancesLoading && (
+                                <div style={{ textAlign: 'center', padding: '12px', color: theme.colors.mutedText, fontSize: '0.8rem' }}>Fetching balances...</div>
+                            )}
+                        </div>
+                    )}
                 </>
             )}
         </div>
@@ -3112,7 +3323,7 @@ function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, iden
 // ============================================
 // Custom chore configuration renderer (dispatches to real components)
 // ============================================
-function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, getReadyBotActor, theme, accentColor, cardStyle, inputStyle, buttonStyle, secondaryButtonStyle }) {
+function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, getReadyBotActor, theme, accentColor, cardStyle, inputStyle, buttonStyle, secondaryButtonStyle, canisterId }) {
     switch (choreTypeId) {
         case 'trade':
             return (
@@ -3148,6 +3359,7 @@ function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, g
                     inputStyle={inputStyle}
                     buttonStyle={buttonStyle}
                     secondaryButtonStyle={secondaryButtonStyle}
+                    canisterId={canisterId}
                 />
             );
 

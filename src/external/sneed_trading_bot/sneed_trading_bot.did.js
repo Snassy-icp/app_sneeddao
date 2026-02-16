@@ -483,12 +483,9 @@ export const idlFactory = ({ IDL }) => {
         renameSubaccount: IDL.Func([IDL.Nat, IDL.Text], [IDL.Bool], []),
         deleteSubaccount: IDL.Func([IDL.Nat], [IDL.Bool], []),
 
-        // Balances
-        getBalances: IDL.Func([IDL.Opt(IDL.Nat)], [IDL.Vec(TokenBalance)], []),
-        getAllBalances: IDL.Func([], [IDL.Vec(SubaccountBalances)], []),
+        // Balances (REMOVED: getBalances, getAllBalances — use frontend ledger calls)
 
-        // DEX
-        getQuote: IDL.Func([IDL.Opt(IDL.Nat), IDL.Principal, IDL.Principal, IDL.Nat], [IDL.Vec(SwapQuote)], []),
+        // DEX (REMOVED: getQuote — use frontend PriceService)
         getEnabledDexes: IDL.Func([], [IDL.Vec(IDL.Nat)], ['query']),
         setEnabledDexes: IDL.Func([IDL.Vec(IDL.Nat)], [], []),
         setDefaultSlippage: IDL.Func([IDL.Nat], [], []),
@@ -517,7 +514,7 @@ export const idlFactory = ({ IDL }) => {
         setRebalanceMaxPriceImpactBps: IDL.Func([IDL.Text, IDL.Nat], [], []),
         setRebalanceMaxSlippageBps: IDL.Func([IDL.Text, IDL.Nat], [], []),
         setRebalanceThresholdBps: IDL.Func([IDL.Text, IDL.Nat], [], []),
-        getPortfolioStatus: IDL.Func([IDL.Text], [PortfolioStatus], []),
+        // REMOVED: getPortfolioStatus — portfolio status is now computed on frontend
 
         // Distribution
         getDistributionLists: IDL.Func([IDL.Text], [IDL.Vec(DistributionList)], ['query']),
