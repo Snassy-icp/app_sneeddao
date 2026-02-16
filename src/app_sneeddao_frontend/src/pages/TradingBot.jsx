@@ -18,11 +18,13 @@ import { useAuth } from '../AuthContext';
 import { createActor as createBotActor } from 'external/sneed_trading_bot';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { decodeIcrcAccount, encodeIcrcAccount } from '@dfinity/ledger-icrc';
-import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt, FaSearch } from 'react-icons/fa';
+import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt, FaSearch, FaGripVertical } from 'react-icons/fa';
 import TokenIcon from '../components/TokenIcon';
 import PrincipalInput from '../components/PrincipalInput';
 import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
 import priceService from '../services/PriceService';
+import { DndProvider, useDrag, useDrop } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
 
 // Trading bot accent colors — green/teal for trading
 const ACCENT = '#10b981';
@@ -591,6 +593,20 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
         };
     };
 
+    // Auto-register a token to the registry (idempotent — backend skips duplicates)
+    const autoRegisterToken = useCallback(async (bot, tokenId) => {
+        if (!tokenId) return;
+        try {
+            const meta = tokenMeta[tokenId];
+            await bot.addToken({
+                ledgerCanisterId: Principal.fromText(tokenId),
+                symbol: meta?.symbol || '???',
+                decimals: meta?.decimals ?? 8,
+                fee: BigInt(meta?.fee ?? 10000),
+            });
+        } catch (_) {} // silently ignore — token may already be registered
+    }, [tokenMeta]);
+
     const handleSave = async () => {
         if (!fInputToken) { setError('Input token is required.'); return; }
         if (fActionType === ACTION_TYPE_TRADE && !fOutputToken) { setError('Output token is required for trades.'); return; }
@@ -605,6 +621,11 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                 await bot[updateFn](instanceId, BigInt(formMode.id), config);
                 setSuccess('Action updated.');
             }
+            // Auto-register input/output tokens to the token registry
+            await Promise.all([
+                autoRegisterToken(bot, fInputToken),
+                fOutputToken ? autoRegisterToken(bot, fOutputToken) : Promise.resolve(),
+            ]);
             closeForm();
             await loadActions();
         } catch (err) { setError(`Failed to ${formMode === 'add' ? 'add' : 'update'} action: ` + err.message); }
@@ -1445,6 +1466,17 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                 targetBps: BigInt(Math.round(parseFloat(t.targetBps) * 100)),
             }));
             await bot.setRebalanceTargets(instanceId, formatted);
+            // Auto-register all target tokens to the token registry (idempotent)
+            await Promise.all(editingTargets.map(t => {
+                if (!t.token) return Promise.resolve();
+                const meta = tokenMeta[t.token];
+                return bot.addToken({
+                    ledgerCanisterId: Principal.fromText(t.token),
+                    symbol: meta?.symbol || '???',
+                    decimals: meta?.decimals ?? 8,
+                    fee: BigInt(meta?.fee ?? 10000),
+                }).catch(() => {}); // silently ignore duplicates
+            }));
             setSuccess('Rebalance targets updated.');
             setEditingTargets(null);
             await loadData();
@@ -1582,12 +1614,18 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                 </div>
                             ) : (
                                 <div style={{ display: 'grid', gap: '6px' }}>
-                                    {targets.map((t, i) => (
-                                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
-                                            <span style={{ fontSize: '0.8rem', color: theme.colors.primaryText, fontWeight: '500' }}>{getTokenLabel(t.token)}</span>
-                                            <span style={{ fontSize: '0.85rem', fontWeight: '600', color: accentColor }}>{(Number(t.targetBps) / 100).toFixed(1)}%</span>
-                                        </div>
-                                    ))}
+                                    {targets.map((t, i) => {
+                                        const tid = typeof t.token === 'string' ? t.token : t.token?.toText?.() || String(t.token);
+                                        return (
+                                            <div key={tid} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: CHART_COLORS[i % CHART_COLORS.length], flexShrink: 0 }} />
+                                                    <span style={{ fontSize: '0.8rem', color: theme.colors.primaryText, fontWeight: '500' }}>{getTokenLabel(t.token)}</span>
+                                                </div>
+                                                <span style={{ fontSize: '0.85rem', fontWeight: '600', color: accentColor }}>{(Number(t.targetBps) / 100).toFixed(1)}%</span>
+                                            </div>
+                                        );
+                                    })}
                                     <div style={{ textAlign: 'right', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
                                         Total: {(targets.reduce((s, t) => s + Number(t.targetBps), 0) / 100).toFixed(1)}%
                                     </div>
@@ -1613,12 +1651,18 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                         )}
                                     </div>
                                 </div>
-                                {/* Editing form */}
+                                {/* Editing form (drag-and-drop reorderable) */}
+                                <DndProvider backend={HTML5Backend}>
                                 <div style={{ flex: 1, minWidth: '260px' }}>
                                     {editingTargets.map((t, i) => {
                                         const pct = parseFloat(t.targetBps) || 0;
                                         return (
-                                            <div key={i} style={{ marginBottom: '10px', padding: '8px 10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+                                            <DraggableEditingTarget key={t.token || `new-${i}`} index={i} onReorder={(from, to) => {
+                                                const arr = [...editingTargets];
+                                                const [moved] = arr.splice(from, 1);
+                                                arr.splice(to, 0, moved);
+                                                setEditingTargets(arr);
+                                            }} theme={theme}>
                                                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '6px' }}>
                                                     <div style={{ width: 10, height: 10, borderRadius: '50%', background: CHART_COLORS[i % CHART_COLORS.length], flexShrink: 0 }} />
                                                     <div style={{ flex: 1 }}>
@@ -1666,7 +1710,7 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                                         <span style={{ fontSize: '0.7rem', color: theme.colors.secondaryText }}>%</span>
                                                     </div>
                                                 </div>
-                                            </div>
+                                            </DraggableEditingTarget>
                                         );
                                     })}
                                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', marginTop: '6px' }}>
@@ -1678,6 +1722,7 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                         </button>
                                     </div>
                                 </div>
+                                </DndProvider>
                             </div>
                         )}
                     </div>
@@ -2823,6 +2868,92 @@ function LoggingSettingsPanel({ getReadyBotActor, theme, accentColor, choreStatu
 // ============================================
 // ACCOUNTS PANEL — named subaccounts & token balances
 // ============================================
+const DND_TOKEN_CHIP = 'TOKEN_CHIP';
+
+function DraggableTokenChip({ tid, index, symbol, showRemove, onRemove, onReorder, theme, borderColor }) {
+    const ref = React.useRef(null);
+
+    const [{ isDragging }, drag] = useDrag(() => ({
+        type: DND_TOKEN_CHIP,
+        item: { tid, index },
+        collect: (monitor) => ({ isDragging: monitor.isDragging() }),
+    }), [tid, index]);
+
+    const [{ isOver }, drop] = useDrop(() => ({
+        accept: DND_TOKEN_CHIP,
+        hover: (item) => {
+            if (item.index === index) return;
+            onReorder(item.index, index);
+            item.index = index;
+        },
+        collect: (monitor) => ({ isOver: monitor.isOver() }),
+    }), [index, onReorder]);
+
+    drag(drop(ref));
+
+    return (
+        <div ref={ref} style={{
+            display: 'flex', alignItems: 'center', gap: '4px',
+            padding: '3px 8px', borderRadius: '6px', background: theme.colors.primaryBg,
+            border: `1px solid ${isOver ? theme.colors.accentColor || '#10b981' : borderColor}`,
+            fontSize: '0.75rem', color: theme.colors.primaryText,
+            opacity: isDragging ? 0.4 : 1, cursor: 'grab',
+            transition: 'border-color 0.15s',
+        }}>
+            <FaGripVertical style={{ fontSize: '0.55rem', color: theme.colors.mutedText, flexShrink: 0 }} />
+            <TokenIcon canisterId={tid} size={14} />
+            <span>{symbol}</span>
+            {showRemove && (
+                <button onClick={(e) => { e.stopPropagation(); onRemove(); }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '0.6rem', padding: '0 2px', lineHeight: 1 }}
+                    title="Remove token">
+                    <FaTimes />
+                </button>
+            )}
+        </div>
+    );
+}
+
+const DND_REBAL_TARGET = 'REBAL_TARGET';
+
+function DraggableEditingTarget({ index, onReorder, theme, children }) {
+    const ref = React.useRef(null);
+
+    const [{ isDragging }, drag, preview] = useDrag(() => ({
+        type: DND_REBAL_TARGET,
+        item: { index },
+        collect: (monitor) => ({ isDragging: monitor.isDragging() }),
+    }), [index]);
+
+    const [{ isOver }, drop] = useDrop(() => ({
+        accept: DND_REBAL_TARGET,
+        hover: (item) => {
+            if (item.index === index) return;
+            onReorder(item.index, index);
+            item.index = index;
+        },
+        collect: (monitor) => ({ isOver: monitor.isOver() }),
+    }), [index, onReorder]);
+
+    preview(drop(ref));
+
+    return (
+        <div ref={ref} style={{
+            marginBottom: '10px', padding: '8px 10px', background: theme.colors.primaryBg,
+            borderRadius: '8px', border: `1px solid ${isOver ? '#10b981' : theme.colors.border}`,
+            opacity: isDragging ? 0.4 : 1, position: 'relative',
+            transition: 'border-color 0.15s',
+        }}>
+            <div ref={drag} style={{ position: 'absolute', left: '2px', top: '50%', transform: 'translateY(-50%)', cursor: 'grab', padding: '4px 2px', color: theme.colors.mutedText }}>
+                <FaGripVertical style={{ fontSize: '0.6rem' }} />
+            </div>
+            <div style={{ marginLeft: '14px' }}>
+                {children}
+            </div>
+        </div>
+    );
+}
+
 function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
     const { identity } = useAuth();
     const { whitelistedTokens } = useWhitelistTokens();
@@ -3138,6 +3269,33 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
         } catch (e) { setError('Failed to remove token: ' + e.message); }
     };
 
+    // DnD reorder: swap in local state immediately, persist to backend
+    const reorderTimeoutRef = useRef(null);
+    const handleReorderTokens = useCallback((fromIdx, toIdx) => {
+        setTokenRegistry(prev => {
+            const updated = [...prev];
+            const [moved] = updated.splice(fromIdx, 1);
+            updated.splice(toIdx, 0, moved);
+            return updated;
+        });
+        // Debounce persist to backend
+        if (reorderTimeoutRef.current) clearTimeout(reorderTimeoutRef.current);
+        reorderTimeoutRef.current = setTimeout(async () => {
+            try {
+                const bot = await getReadyBotActor();
+                // Read current local state at persist time
+                setTokenRegistry(current => {
+                    const ordered = current.map(t => {
+                        const tid = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
+                        return Principal.fromText(tid);
+                    });
+                    bot.reorderTokenRegistry(ordered).catch(e => console.warn('Failed to persist token order:', e));
+                    return current;
+                });
+            } catch (e) { console.warn('Failed to reorder tokens:', e); }
+        }, 600);
+    }, [getReadyBotActor]);
+
     // Scan for tokens with balances
     const handleScanForTokens = async () => {
         if (scanning) return;
@@ -3223,6 +3381,7 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
     if (loading) return <div style={{ textAlign: 'center', padding: '20px', color: theme.colors.secondaryText }}>Loading accounts...</div>;
 
     return (
+        <DndProvider backend={HTML5Backend}>
         <div>
             {error && <div style={{ padding: '8px 12px', background: '#ef444415', border: '1px solid #ef444430', borderRadius: '8px', color: '#ef4444', fontSize: '0.8rem', marginBottom: '10px' }}>{error}</div>}
             {success && <div style={{ padding: '8px 12px', background: '#22c55e15', border: '1px solid #22c55e30', borderRadius: '8px', color: '#22c55e', fontSize: '0.8rem', marginBottom: '10px' }}>{success}</div>}
@@ -3252,29 +3411,25 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                         Scanning {scanProgress.current}/{scanProgress.total}... Found {scanProgress.found} so far.
                     </div>
                 )}
-                {/* Registered tokens list (compact) */}
+                {/* Registered tokens list (compact, drag-and-drop reorderable) */}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: showTokenManager ? '10px' : '0' }}>
                     {tokenRegistry.length === 0 ? (
                         <div style={{ color: theme.colors.mutedText, fontSize: '0.78rem', padding: '4px 0' }}>No tokens registered. Add tokens or scan for tokens with balances.</div>
                     ) : (
-                        tokenRegistry.map((t) => {
+                        tokenRegistry.map((t, idx) => {
                             const tid = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
                             return (
-                                <div key={tid} style={{
-                                    display: 'flex', alignItems: 'center', gap: '4px',
-                                    padding: '3px 8px', borderRadius: '6px', background: theme.colors.primaryBg,
-                                    border: `1px solid ${borderColor}`, fontSize: '0.75rem', color: theme.colors.primaryText,
-                                }}>
-                                    <TokenIcon canisterId={tid} size={14} />
-                                    <span>{t.symbol || getSymbol(tid)}</span>
-                                    {showTokenManager && (
-                                        <button onClick={() => handleRemoveToken(tid)}
-                                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '0.6rem', padding: '0 2px', lineHeight: 1 }}
-                                            title="Remove token">
-                                            <FaTimes />
-                                        </button>
-                                    )}
-                                </div>
+                                <DraggableTokenChip
+                                    key={tid}
+                                    tid={tid}
+                                    index={idx}
+                                    symbol={t.symbol || getSymbol(tid)}
+                                    showRemove={showTokenManager}
+                                    onRemove={() => handleRemoveToken(tid)}
+                                    onReorder={handleReorderTokens}
+                                    theme={theme}
+                                    borderColor={borderColor}
+                                />
                             );
                         })
                     )}
@@ -3388,56 +3543,80 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                             totalDenomValue += denomValue;
                             hasAnyDenomValue = true;
                         }
-                        return { tid, dec, humanBal, balance: b.balance, denomValue };
+                        return { tid, dec, humanBal, balance: b.balance, denomValue, price };
                     });
 
+                    // Build pie chart segments from denom values
+                    const pieSegments = hasAnyDenomValue ? rows.filter(r => r.denomValue != null && r.denomValue > 0).map((r, i) => ({
+                        label: getSymbol(r.tid), value: r.denomValue, color: CHART_COLORS[i % CHART_COLORS.length],
+                    })) : [];
+
+                    const colCount = denomToken ? 4 : 2;
+
                     return (
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-                            <thead>
-                                <tr style={{ color: theme.colors.mutedText, textAlign: 'left' }}>
-                                    <th style={{ padding: '4px 8px' }}>Token</th>
-                                    <th style={{ padding: '4px 8px', textAlign: 'right' }}>Balance</th>
-                                    {denomToken && <th style={{ padding: '4px 8px', textAlign: 'right' }}>{denomSign ? `Value (${denomSign})` : `Value (${denomSym})`}</th>}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {rows.map(({ tid, dec, balance, denomValue }) => (
-                                    <tr key={tid} style={{ borderTop: `1px solid ${borderColor}20` }}>
-                                        <td style={{ padding: '5px 8px', color: theme.colors.primaryText }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                <TokenIcon canisterId={tid} size={18} />
-                                                {getSymbol(tid)}
-                                            </div>
-                                        </td>
-                                        <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'monospace', color: theme.colors.secondaryText }}>
-                                            {formatTokenAmount(balance, dec)}
-                                        </td>
-                                        {denomToken && (
-                                            <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'monospace', color: denomValue != null ? theme.colors.primaryText : theme.colors.mutedText, fontSize: '0.78rem' }}>
-                                                {denomValue != null
-                                                    ? formatDenomAmount(denomValue, denomToken, denomSym)
-                                                    : (loadingPrices ? '...' : '—')}
+                        <>
+                            {/* Pie chart for account allocation */}
+                            {pieSegments.length > 0 && (
+                                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px', padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${borderColor}` }}>
+                                    <PieChart segments={pieSegments} label={selectedAccount === 'main' ? 'Main Account' : 'Subaccount'} theme={theme} />
+                                </div>
+                            )}
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                                <thead>
+                                    <tr style={{ color: theme.colors.mutedText, textAlign: 'left' }}>
+                                        <th style={{ padding: '4px 8px' }}>Token</th>
+                                        <th style={{ padding: '4px 8px', textAlign: 'right' }}>Balance</th>
+                                        {denomToken && <th style={{ padding: '4px 8px', textAlign: 'right' }}>Price ({denomSign || denomSym})</th>}
+                                        {denomToken && <th style={{ padding: '4px 8px', textAlign: 'right' }}>{denomSign ? `Value (${denomSign})` : `Value (${denomSym})`}</th>}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {rows.map(({ tid, dec, balance, denomValue, price }) => (
+                                        <tr key={tid} style={{ borderTop: `1px solid ${borderColor}20` }}>
+                                            <td style={{ padding: '5px 8px', color: theme.colors.primaryText }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    <TokenIcon canisterId={tid} size={18} />
+                                                    {getSymbol(tid)}
+                                                </div>
                                             </td>
-                                        )}
-                                    </tr>
-                                ))}
-                                {/* Total row */}
-                                {denomToken && hasAnyDenomValue && (
-                                    <tr style={{ borderTop: `2px solid ${borderColor}40` }}>
-                                        <td style={{ padding: '6px 8px', fontWeight: '700', color: theme.colors.primaryText }}>
-                                            Total{balancesLoading ? ' (loading...)' : ''}
-                                        </td>
-                                        <td />
-                                        <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', color: accentColor, fontSize: '0.85rem' }}>
-                                            {formatDenomAmount(totalDenomValue, denomToken, denomSym)}
-                                        </td>
-                                    </tr>
-                                )}
-                                {balancesLoading && !hasAnyDenomValue && (
-                                    <tr><td colSpan={denomToken ? 3 : 2} style={{ padding: '4px 8px', fontSize: '0.75rem', color: theme.colors.mutedText }}>Scanning balances...</td></tr>
-                                )}
-                            </tbody>
-                        </table>
+                                            <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'monospace', color: theme.colors.secondaryText }}>
+                                                {formatTokenAmount(balance, dec)}
+                                            </td>
+                                            {denomToken && (
+                                                <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'monospace', color: price != null ? theme.colors.secondaryText : theme.colors.mutedText, fontSize: '0.75rem' }}>
+                                                    {tid === denomToken ? '1.00' : (price != null
+                                                        ? formatDenomAmount(price, denomToken, denomSym)
+                                                        : (loadingPrices ? '...' : '—'))}
+                                                </td>
+                                            )}
+                                            {denomToken && (
+                                                <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'monospace', color: denomValue != null ? theme.colors.primaryText : theme.colors.mutedText, fontSize: '0.78rem' }}>
+                                                    {denomValue != null
+                                                        ? formatDenomAmount(denomValue, denomToken, denomSym)
+                                                        : (loadingPrices ? '...' : '—')}
+                                                </td>
+                                            )}
+                                        </tr>
+                                    ))}
+                                    {/* Total row */}
+                                    {denomToken && hasAnyDenomValue && (
+                                        <tr style={{ borderTop: `2px solid ${borderColor}40` }}>
+                                            <td style={{ padding: '6px 8px', fontWeight: '700', color: theme.colors.primaryText }}>
+                                                Total{balancesLoading ? ' (loading...)' : ''}
+                                            </td>
+                                            <td />
+                                            {denomToken && <td />}
+                                            <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', color: accentColor, fontSize: '0.85rem' }}>
+                                                {formatDenomAmount(totalDenomValue, denomToken, denomSym)}
+                                            </td>
+                                        </tr>
+                                    )}
+                                    {balancesLoading && !hasAnyDenomValue && (
+                                        <tr><td colSpan={colCount} style={{ padding: '4px 8px', fontSize: '0.75rem', color: theme.colors.mutedText }}>Scanning balances...</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </>
                     );
                 })()}
                 {/* Rename / Delete for non-main subaccounts */}
@@ -3478,6 +3657,7 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                 </button>
             </div>
         </div>
+        </DndProvider>
     );
 }
 

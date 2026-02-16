@@ -479,6 +479,7 @@ export const idlFactory = ({ IDL }) => {
         getTokenRegistry: IDL.Func([], [IDL.Vec(TokenRegistryEntry)], ['query']),
         addToken: IDL.Func([TokenRegistryEntry], [], []),
         removeToken: IDL.Func([IDL.Principal], [], []),
+        reorderTokenRegistry: IDL.Func([IDL.Vec(IDL.Principal)], [], []),
         refreshTokenMetadata: IDL.Func([IDL.Principal], [], []),
 
         // Subaccounts

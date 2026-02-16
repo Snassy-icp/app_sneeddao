@@ -3522,10 +3522,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
     public shared (msg) func addToken(entry: T.TokenRegistryEntry): async () {
         assertPermission(msg.caller, T.TradingPermission.ManageTokenRegistry);
-        // Check for duplicate
+        // Skip if already registered (idempotent for auto-registration)
         let existing = Array.find<T.TokenRegistryEntry>(tokenRegistry, func(e) { e.ledgerCanisterId == entry.ledgerCanisterId });
         switch (existing) {
-            case (?_) { Debug.trap("Token already registered: " # Principal.toText(entry.ledgerCanisterId)) };
+            case (?_) {}; // already registered, silently skip
             case null {
                 tokenRegistry := Array.append(tokenRegistry, [entry]);
                 logEngine.logInfo("api", "Added token: " # entry.symbol # " (" # Principal.toText(entry.ledgerCanisterId) # ")", ?msg.caller, []);
@@ -3537,6 +3537,26 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         assertPermission(msg.caller, T.TradingPermission.ManageTokenRegistry);
         tokenRegistry := Array.filter<T.TokenRegistryEntry>(tokenRegistry, func(e) { e.ledgerCanisterId != ledgerCanisterId });
         logEngine.logInfo("api", "Removed token: " # Principal.toText(ledgerCanisterId), ?msg.caller, []);
+    };
+
+    public shared (msg) func reorderTokenRegistry(orderedIds: [Principal]): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageTokenRegistry);
+        // Build a new ordered array: first the tokens in orderedIds order, then any remaining
+        let buf = Buffer.Buffer<T.TokenRegistryEntry>(tokenRegistry.size());
+        for (pid in orderedIds.vals()) {
+            switch (Array.find<T.TokenRegistryEntry>(tokenRegistry, func(e) { e.ledgerCanisterId == pid })) {
+                case (?e) { buf.add(e) };
+                case null {};
+            };
+        };
+        // Append any tokens not in orderedIds (shouldn't happen, but safety)
+        let orderedSet = Array.map<Principal, Text>(orderedIds, func(p) { Principal.toText(p) });
+        for (e in tokenRegistry.vals()) {
+            let found = Array.find<Text>(orderedSet, func(t) { t == Principal.toText(e.ledgerCanisterId) });
+            if (found == null) { buf.add(e) };
+        };
+        tokenRegistry := Buffer.toArray(buf);
+        logEngine.logDebug("api", "Token registry reordered (" # Nat.toText(tokenRegistry.size()) # " tokens)", ?msg.caller, []);
     };
 
     public shared (msg) func refreshTokenMetadata(ledgerCanisterId: Principal): async () {
