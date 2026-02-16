@@ -1912,10 +1912,22 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case null { switch (getCachedMeta(sellToken.token)) { case (?e) e.fee; case null 0 } };
         };
         let maxAffordable = if (sellToken.balance > fee * 3) { sellToken.balance - fee * 3 } else { 0 };
-        let tradeSize = Nat.min(maxTrade, Nat.min(maxAffordable, sellToken.balance / 4)); // Don't sell more than 25% at once
+
+        // Overshoot cap: don't trade more than would bring each token exactly to its target.
+        // excessSellValue = value the sell token is over its target (in denomination units)
+        // deficitBuyValue = value the buy token is under its target (in denomination units)
+        let excessSellValue = (totalValue * sellToken.deviationBps) / 10000;
+        let deficitBuyValue = (totalValue * buyToken.deviationBps) / 10000;
+        let capDenomValue = Nat.min(excessSellValue, deficitBuyValue);
+        // Convert denomination-value cap to sell-token units
+        let overshootCap = if (sellToken.value > 0) {
+            (capDenomValue * sellToken.balance) / sellToken.value
+        } else { 0 };
+
+        let tradeSize = Nat.min(maxTrade, Nat.min(maxAffordable, Nat.min(sellToken.balance / 4, overshootCap)));
 
         if (tradeSize < minTrade) {
-            logEngine.logDebug(src, "Rebalance skipped: trade size " # Nat.toText(tradeSize) # " < min " # Nat.toText(minTrade), null, []);
+            logEngine.logDebug(src, "Rebalance skipped: trade size " # Nat.toText(tradeSize) # " < min " # Nat.toText(minTrade) # " (overshoot cap: " # Nat.toText(overshootCap) # ")", null, []);
             return false;
         };
 
