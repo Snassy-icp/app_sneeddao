@@ -1928,79 +1928,117 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             return false;
         };
 
-        // 3. Weighted random selection
-        let entropy = Int.abs(Time.now());
-
-        // Pick overweight token (weighted by deviation)
-        var totalOverWeight: Nat = 0;
-        for (ow in overweight.vals()) { totalOverWeight += ow.deviationBps };
-        let owRand = entropy % totalOverWeight;
-        var owCumulative: Nat = 0;
-        var sellToken = overweight.get(0);
-        for (ow in overweight.vals()) {
-            owCumulative += ow.deviationBps;
-            if (owCumulative > owRand) {
-                sellToken := ow;
-                // Break out by exhausting the loop range isn't possible in Motoko iter,
-                // so we just let the last match win. We need to break manually.
-                // Actually, we should use a var and check a flag:
-            };
-        };
-        // Re-do with flag
-        owCumulative := 0;
-        var owPicked = false;
-        for (ow in overweight.vals()) {
-            if (not owPicked) {
-                owCumulative += ow.deviationBps;
-                if (owCumulative > owRand) {
-                    sellToken := ow;
-                    owPicked := true;
-                };
-            };
-        };
-
-        // Pick underweight token (weighted by deviation)
-        var totalUnderWeight: Nat = 0;
-        for (uw in underweight.vals()) { totalUnderWeight += uw.deviationBps };
-        let uwRand = (entropy / 1000) % totalUnderWeight; // Different entropy slice
-        var uwCumulative: Nat = 0;
-        var buyToken = underweight.get(0);
-        var uwPicked = false;
-        for (uw in underweight.vals()) {
-            if (not uwPicked) {
-                uwCumulative += uw.deviationBps;
-                if (uwCumulative > uwRand) {
-                    buyToken := uw;
-                    uwPicked := true;
-                };
-            };
-        };
-
-        // 4. Calculate trade size
         let maxTrade = getRebalMaxTrade(instanceId);
         let minTrade = getRebalMinTrade(instanceId);
 
-        let fee = switch (getTokenInfo(sellToken.token)) {
-            case (?i) i.fee;
-            case null { switch (getCachedMeta(sellToken.token)) { case (?e) e.fee; case null 0 } };
+        // Helper: get transfer fee for a token
+        let getFee = func(token: Principal): Nat {
+            switch (getTokenInfo(token)) {
+                case (?i) i.fee;
+                case null { switch (getCachedMeta(token)) { case (?e) e.fee; case null 0 } };
+            }
         };
-        let maxAffordable = if (sellToken.balance > fee * 3) { sellToken.balance - fee * 3 } else { 0 };
 
-        // Overshoot cap: don't trade more than would bring each token exactly to its target.
-        // excessSellValue = value the sell token is over its target (in denomination units)
-        // deficitBuyValue = value the buy token is under its target (in denomination units)
-        let excessSellValue = (totalValue * sellToken.deviationBps) / 10000;
-        let deficitBuyValue = (totalValue * buyToken.deviationBps) / 10000;
-        let capDenomValue = Nat.min(excessSellValue, deficitBuyValue);
-        // Convert denomination-value cap to sell-token units
-        let overshootCap = if (sellToken.value > 0) {
-            (capDenomValue * sellToken.balance) / sellToken.value
-        } else { 0 };
+        // 3. Pair selection — prefer a single trade that reaches target over random
 
-        let tradeSize = Nat.min(maxTrade, Nat.min(maxAffordable, Nat.min(sellToken.balance / 4, overshootCap)));
+        // Scan all (overweight, underweight) pairs for one that can be fully
+        // rebalanced in a single trade within maxTrade.
+        var bestSell: ?{ token: Principal; deviationBps: Nat; balance: Nat; value: Nat } = null;
+        var bestBuy: ?{ token: Principal; deviationBps: Nat; balance: Nat; value: Nat } = null;
+        var bestTradeSize: Nat = 0;
+        var bestDeviation: Nat = 0;
+
+        for (ow in overweight.vals()) {
+            let owFee = getFee(ow.token);
+            let owAffordable = if (ow.balance > owFee * 3) { ow.balance - owFee * 3 } else { 0 };
+
+            for (uw in underweight.vals()) {
+                // Amount needed to bring both tokens exactly to target (in denom units)
+                let excessSell = (totalValue * ow.deviationBps) / 10000;
+                let deficitBuy = (totalValue * uw.deviationBps) / 10000;
+                let capDenom = Nat.min(excessSell, deficitBuy);
+                // Convert to sell-token units
+                let capUnits = if (ow.value > 0) { (capDenom * ow.balance) / ow.value } else { 0 };
+                // For "reach target" mode, don't apply the conservative balance/4 cap
+                let effectiveSize = Nat.min(capUnits, owAffordable);
+
+                if (effectiveSize <= maxTrade and effectiveSize >= minTrade) {
+                    // This pair can be completed in one trade — prefer the one
+                    // that corrects the largest combined deviation
+                    let combinedDev = ow.deviationBps + uw.deviationBps;
+                    if (combinedDev > bestDeviation) {
+                        bestSell := ?ow;
+                        bestBuy := ?uw;
+                        bestTradeSize := effectiveSize;
+                        bestDeviation := combinedDev;
+                    };
+                };
+            };
+        };
+
+        var sellToken = overweight.get(0);
+        var buyToken = underweight.get(0);
+        var tradeSize: Nat = 0;
+
+        switch (bestSell, bestBuy) {
+            case (?bs, ?bb) {
+                // Deterministic: trade exact amount to reach target
+                sellToken := bs;
+                buyToken := bb;
+                tradeSize := bestTradeSize;
+                logEngine.logInfo(src, "Rebalance: target-reaching trade selected (" # Nat.toText(bestDeviation) # " bps combined deviation)", null, []);
+            };
+            case (_, _) {
+                // Fallback: weighted random selection
+                let entropy = Int.abs(Time.now());
+
+                // Pick overweight token (weighted by deviation)
+                var totalOverWeight: Nat = 0;
+                for (ow in overweight.vals()) { totalOverWeight += ow.deviationBps };
+                let owRand = entropy % totalOverWeight;
+                var owCumulative: Nat = 0;
+                var owPicked = false;
+                for (ow in overweight.vals()) {
+                    if (not owPicked) {
+                        owCumulative += ow.deviationBps;
+                        if (owCumulative > owRand) {
+                            sellToken := ow;
+                            owPicked := true;
+                        };
+                    };
+                };
+
+                // Pick underweight token (weighted by deviation)
+                var totalUnderWeight: Nat = 0;
+                for (uw in underweight.vals()) { totalUnderWeight += uw.deviationBps };
+                let uwRand = (entropy / 1000) % totalUnderWeight;
+                var uwCumulative: Nat = 0;
+                var uwPicked = false;
+                for (uw in underweight.vals()) {
+                    if (not uwPicked) {
+                        uwCumulative += uw.deviationBps;
+                        if (uwCumulative > uwRand) {
+                            buyToken := uw;
+                            uwPicked := true;
+                        };
+                    };
+                };
+
+                // 4. Calculate trade size with overshoot cap and balance/4 safety
+                let fee = getFee(sellToken.token);
+                let maxAffordable = if (sellToken.balance > fee * 3) { sellToken.balance - fee * 3 } else { 0 };
+                let excessSellValue = (totalValue * sellToken.deviationBps) / 10000;
+                let deficitBuyValue = (totalValue * buyToken.deviationBps) / 10000;
+                let capDenomValue = Nat.min(excessSellValue, deficitBuyValue);
+                let overshootCap = if (sellToken.value > 0) {
+                    (capDenomValue * sellToken.balance) / sellToken.value
+                } else { 0 };
+                tradeSize := Nat.min(maxTrade, Nat.min(maxAffordable, Nat.min(sellToken.balance / 4, overshootCap)));
+            };
+        };
 
         if (tradeSize < minTrade) {
-            logEngine.logDebug(src, "Rebalance skipped: trade size " # Nat.toText(tradeSize) # " < min " # Nat.toText(minTrade) # " (overshoot cap: " # Nat.toText(overshootCap) # ")", null, []);
+            logEngine.logDebug(src, "Rebalance skipped: trade size " # Nat.toText(tradeSize) # " < min " # Nat.toText(minTrade), null, []);
             return false;
         };
 
