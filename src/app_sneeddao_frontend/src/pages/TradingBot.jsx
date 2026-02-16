@@ -1321,6 +1321,10 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
     const [filterChoreType, setFilterChoreType] = useState('');
     // Snapshots indexed by tradeLogId: { before: snap|null, after: snap|null }
     const [snapMap, setSnapMap] = useState({});
+    // Track which trade log entries have their snapshot section expanded
+    const [expandedSnaps, setExpandedSnaps] = useState(new Set());
+    // Track which trade log entries have their snapshot section expanded
+    const [expandedSnaps, setExpandedSnaps] = useState(new Set());
 
     // Collect token IDs from entries for metadata resolution
     const entryTokenIds = React.useMemo(() => {
@@ -1450,7 +1454,7 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
 
     const optVal = (arr) => arr?.length > 0 ? arr[0] : null;
 
-    // Render inline snapshot balance changes for a trade entry
+    // Render inline snapshot balance changes for a trade entry (collapsible)
     const renderBalanceChanges = (tradeId) => {
         const snaps = snapMap[tradeId];
         if (!snaps || (!snaps.before && !snaps.after)) return null;
@@ -1472,59 +1476,78 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
         const rows = [...tokenMap.entries()];
         if (rows.length === 0) return null;
 
+        const isExpanded = expandedSnaps.has(tradeId);
+        const toggleExpand = () => {
+            setExpandedSnaps(prev => {
+                const next = new Set(prev);
+                if (next.has(tradeId)) next.delete(tradeId);
+                else next.add(tradeId);
+                return next;
+            });
+        };
+
         return (
-            <div style={{ marginTop: '8px', padding: '8px 10px', background: theme.colors.cardGradient, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem' }}>
-                    <thead>
-                        <tr style={{ color: theme.colors.mutedText, textAlign: 'left' }}>
-                            <th style={{ padding: '2px 6px' }}>Token</th>
-                            <th style={{ padding: '2px 6px', textAlign: 'right' }}>Before</th>
-                            <th style={{ padding: '2px 6px', textAlign: 'right' }}>After</th>
-                            <th style={{ padding: '2px 6px', textAlign: 'right' }}>Change</th>
-                            <th style={{ padding: '2px 6px', textAlign: 'right' }}>USD Value</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {rows.map(([tid, info]) => {
-                            const dec = info.decimals;
-                            const scale = 10 ** dec;
-                            const bBal = info.before?.balance != null ? Number(info.before.balance) : null;
-                            const aBal = info.after?.balance != null ? Number(info.after.balance) : null;
-                            const diff = (bBal != null && aBal != null) ? aBal - bBal : null;
-                            const diffColor = diff > 0 ? '#22c55e' : diff < 0 ? '#ef4444' : theme.colors.secondaryText;
-                            const diffPrefix = diff > 0 ? '+' : '';
-                            // USD value of the change (use after-snap price, or before if after unavailable)
-                            const snapForPrice = info.after || info.before;
-                            const usdPriceE8s = snapForPrice?.priceUsdE8s?.length > 0 ? Number(snapForPrice.priceUsdE8s[0]) : (snapForPrice?.priceUsdE8s != null && typeof snapForPrice.priceUsdE8s !== 'object' ? Number(snapForPrice.priceUsdE8s) : null);
-                            let usdChange = null;
-                            if (diff != null && usdPriceE8s != null && usdPriceE8s > 0) {
-                                usdChange = (diff / scale) * (usdPriceE8s / scale);
-                            }
-                            return (
-                                <tr key={tid} style={{ borderTop: `1px solid ${theme.colors.border}20` }}>
-                                    <td style={{ padding: '3px 6px', color: theme.colors.primaryText, fontWeight: '500' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                            <TokenIcon canisterId={tid} size={14} />
-                                            {info.symbol}
-                                        </div>
-                                    </td>
-                                    <td style={{ padding: '3px 6px', textAlign: 'right', color: theme.colors.secondaryText, fontFamily: 'monospace', fontSize: '0.7rem' }}>
-                                        {bBal != null ? formatTokenAmount(bBal, dec) : '—'}
-                                    </td>
-                                    <td style={{ padding: '3px 6px', textAlign: 'right', color: theme.colors.secondaryText, fontFamily: 'monospace', fontSize: '0.7rem' }}>
-                                        {aBal != null ? formatTokenAmount(aBal, dec) : '—'}
-                                    </td>
-                                    <td style={{ padding: '3px 6px', textAlign: 'right', color: diffColor, fontWeight: '600', fontFamily: 'monospace', fontSize: '0.7rem' }}>
-                                        {diff != null ? `${diffPrefix}${formatTokenAmount(Math.abs(diff), dec)}` : '—'}
-                                    </td>
-                                    <td style={{ padding: '3px 6px', textAlign: 'right', color: usdChange != null ? (usdChange >= 0 ? '#22c55e' : '#ef4444') : theme.colors.mutedText, fontSize: '0.7rem' }}>
-                                        {usdChange != null ? `${usdChange >= 0 ? '+' : ''}$${Math.abs(usdChange).toFixed(2)}` : '—'}
-                                    </td>
+            <div style={{ marginTop: '6px' }}>
+                <button
+                    onClick={toggleExpand}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.7rem', color: accentColor, padding: '2px 0', display: 'flex', alignItems: 'center', gap: '4px' }}
+                >
+                    {isExpanded ? '▾' : '▸'} Balance Snapshots
+                </button>
+                {isExpanded && (
+                    <div style={{ marginTop: '4px', padding: '8px 10px', background: theme.colors.cardGradient, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem' }}>
+                            <thead>
+                                <tr style={{ color: theme.colors.mutedText, textAlign: 'left' }}>
+                                    <th style={{ padding: '2px 6px' }}>Token</th>
+                                    <th style={{ padding: '2px 6px', textAlign: 'right' }}>Before</th>
+                                    <th style={{ padding: '2px 6px', textAlign: 'right' }}>After</th>
+                                    <th style={{ padding: '2px 6px', textAlign: 'right' }}>Change</th>
+                                    <th style={{ padding: '2px 6px', textAlign: 'right' }}>USD Value</th>
                                 </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
+                            </thead>
+                            <tbody>
+                                {rows.map(([tid, info]) => {
+                                    const dec = info.decimals;
+                                    const scale = 10 ** dec;
+                                    const bBal = info.before?.balance != null ? Number(info.before.balance) : null;
+                                    const aBal = info.after?.balance != null ? Number(info.after.balance) : null;
+                                    const diff = (bBal != null && aBal != null) ? aBal - bBal : null;
+                                    const diffColor = diff > 0 ? '#22c55e' : diff < 0 ? '#ef4444' : theme.colors.secondaryText;
+                                    const diffPrefix = diff > 0 ? '+' : '';
+                                    const snapForPrice = info.after || info.before;
+                                    const usdPriceE8s = snapForPrice?.priceUsdE8s?.length > 0 ? Number(snapForPrice.priceUsdE8s[0]) : (snapForPrice?.priceUsdE8s != null && typeof snapForPrice.priceUsdE8s !== 'object' ? Number(snapForPrice.priceUsdE8s) : null);
+                                    let usdChange = null;
+                                    if (diff != null && usdPriceE8s != null && usdPriceE8s > 0) {
+                                        usdChange = (diff / scale) * (usdPriceE8s / scale);
+                                    }
+                                    return (
+                                        <tr key={tid} style={{ borderTop: `1px solid ${theme.colors.border}20` }}>
+                                            <td style={{ padding: '3px 6px', color: theme.colors.primaryText, fontWeight: '500' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <TokenIcon canisterId={tid} size={14} />
+                                                    {info.symbol}
+                                                </div>
+                                            </td>
+                                            <td style={{ padding: '3px 6px', textAlign: 'right', color: theme.colors.secondaryText, fontFamily: 'monospace', fontSize: '0.7rem' }}>
+                                                {bBal != null ? formatTokenAmount(bBal, dec) : '—'}
+                                            </td>
+                                            <td style={{ padding: '3px 6px', textAlign: 'right', color: theme.colors.secondaryText, fontFamily: 'monospace', fontSize: '0.7rem' }}>
+                                                {aBal != null ? formatTokenAmount(aBal, dec) : '—'}
+                                            </td>
+                                            <td style={{ padding: '3px 6px', textAlign: 'right', color: diffColor, fontWeight: '600', fontFamily: 'monospace', fontSize: '0.7rem' }}>
+                                                {diff != null ? `${diffPrefix}${formatTokenAmount(Math.abs(diff), dec)}` : '—'}
+                                            </td>
+                                            <td style={{ padding: '3px 6px', textAlign: 'right', color: usdChange != null ? (usdChange >= 0 ? '#22c55e' : '#ef4444') : theme.colors.mutedText, fontSize: '0.7rem' }}>
+                                                {usdChange != null ? `${usdChange >= 0 ? '+' : ''}$${Math.abs(usdChange).toFixed(2)}` : '—'}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </div>
         );
     };
@@ -1574,7 +1597,7 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
                 </div>
             ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {entries.map((e) => {
+                    {[...entries].sort((a, b) => Number(b.id) - Number(a.id)).map((e) => {
                         const statusKey = Object.keys(e.status || {})[0] || 'Failed';
                         const inputDec = getDec(e.inputToken);
                         const outputDec = e.outputToken?.length > 0 ? getDec(e.outputToken[0]) : 8;
