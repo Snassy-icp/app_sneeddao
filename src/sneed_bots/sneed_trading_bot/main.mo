@@ -1770,6 +1770,79 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     // Used by the after-snapshot task to link to the trade log entry.
     transient var _rebal_lastLogId: [(Text, ?Nat)] = [];
 
+    /// Execute a swap and log the result for the rebalancer. Returns true on success.
+    func _rebalExecuteAndLog(
+        instanceId: Text,
+        src: Text,
+        sellToken: { token: Principal; deviationBps: Nat; balance: Nat; value: Nat },
+        buyToken: { token: Principal; deviationBps: Nat; balance: Nat; value: Nat },
+        quote: T.SwapQuote,
+        slippage: Nat,
+        tradeSize: Nat,
+        route: Text,
+    ): async Bool {
+        let result = await executeSwap(quote, slippage);
+        switch (result) {
+            case (#Ok(r)) {
+                logEngine.logInfo(src, "Rebalance trade: sold " # Nat.toText(tradeSize) # " of " # Principal.toText(sellToken.token) # " for " # Nat.toText(r.amountOut) # " of " # Principal.toText(buyToken.token), null, [
+                    ("sellToken", Principal.toText(sellToken.token)),
+                    ("buyToken", Principal.toText(buyToken.token)),
+                    ("sellAmount", Nat.toText(tradeSize)),
+                    ("buyAmount", Nat.toText(r.amountOut)),
+                    ("dexId", Nat.toText(quote.dexId)),
+                    ("route", route),
+                ]);
+                let logId = appendTradeLog({
+                    choreId = ?instanceId;
+                    choreTypeId = getInstanceTypeId(instanceId);
+                    actionId = null;
+                    actionType = 0;
+                    inputToken = sellToken.token;
+                    outputToken = ?buyToken.token;
+                    inputAmount = tradeSize;
+                    outputAmount = ?r.amountOut;
+                    priceE8s = ?quote.spotPriceE8s;
+                    priceImpactBps = ?quote.priceImpactBps;
+                    slippageBps = ?slippage;
+                    dexId = ?quote.dexId;
+                    status = #Success;
+                    errorMessage = null;
+                    txId = r.txId;
+                    destinationOwner = null;
+                });
+                _rebal_lastLogId := setInMap(_rebal_lastLogId, instanceId, logId);
+                true
+            };
+            case (#Err(e)) {
+                logEngine.logError(src, "Rebalance trade failed: " # e, null, [
+                    ("sellToken", Principal.toText(sellToken.token)),
+                    ("buyToken", Principal.toText(buyToken.token)),
+                    ("error", e),
+                ]);
+                let logId = appendTradeLog({
+                    choreId = ?instanceId;
+                    choreTypeId = getInstanceTypeId(instanceId);
+                    actionId = null;
+                    actionType = 0;
+                    inputToken = sellToken.token;
+                    outputToken = ?buyToken.token;
+                    inputAmount = tradeSize;
+                    outputAmount = null;
+                    priceE8s = ?quote.spotPriceE8s;
+                    priceImpactBps = ?quote.priceImpactBps;
+                    slippageBps = ?slippage;
+                    dexId = ?quote.dexId;
+                    status = #Failed;
+                    errorMessage = ?e;
+                    txId = null;
+                    destinationOwner = null;
+                });
+                _rebal_lastLogId := setInMap(_rebal_lastLogId, instanceId, logId);
+                false
+            };
+        };
+    };
+
     /// Execute one rebalancing trade for the given instance.
     func executeRebalance(instanceId: Text): async Bool {
         let src = "chore:" # instanceId;
@@ -1931,36 +2004,81 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             return false;
         };
 
-        // 5. Get quote and validate
-        let quoteOpt = await getBestQuote(sellToken.token, buyToken.token, tradeSize);
-        let quote = switch (quoteOpt) {
-            case (?q) q;
+        // 5. Get quote and validate — with ICP-routed fallback for illiquid pairs
+        let maxImpact = getRebalMaxImpact(instanceId);
+        let slippage = getRebalMaxSlippage(instanceId);
+        let icpToken = Principal.fromText(T.ICP_LEDGER);
+
+        // Try direct quote first
+        let directQuoteOpt = await getBestQuote(sellToken.token, buyToken.token, tradeSize);
+        let directOk = switch (directQuoteOpt) {
+            case (?q) { q.priceImpactBps <= maxImpact };
+            case null { false };
+        };
+
+        if (directOk) {
+            // --- 6a. Direct trade path ---
+            let quote = switch (directQuoteOpt) { case (?q) q; case null { return false } };
+            return await _rebalExecuteAndLog(instanceId, src, sellToken, buyToken, quote, slippage, tradeSize, "direct");
+        };
+
+        // --- 6b. ICP-routed fallback (sell → ICP → buy) ---
+        // Only attempt if neither token is already ICP
+        if (sellToken.token == icpToken or buyToken.token == icpToken) {
+            // One side is already ICP — direct path was the only option
+            let reason = switch (directQuoteOpt) {
+                case null { "no liquidity for " # Principal.toText(sellToken.token) # " -> " # Principal.toText(buyToken.token) };
+                case (?q) { "price impact " # Nat.toText(q.priceImpactBps) # " bps > max " # Nat.toText(maxImpact) };
+            };
+            logEngine.logWarning(src, "Rebalance skipped: " # reason, null, []);
+            return false;
+        };
+
+        // Leg 1 quote: sell token → ICP
+        let leg1QuoteOpt = await getBestQuote(sellToken.token, icpToken, tradeSize);
+        let leg1Quote = switch (leg1QuoteOpt) {
+            case (?q) {
+                if (q.priceImpactBps > maxImpact) {
+                    logEngine.logWarning(src, "Rebalance skipped: ICP route leg1 impact " # Nat.toText(q.priceImpactBps) # " bps > max " # Nat.toText(maxImpact), null, []);
+                    return false;
+                };
+                q
+            };
             case null {
-                logEngine.logWarning(src, "Rebalance skipped: no quote for " # Principal.toText(sellToken.token) # " -> " # Principal.toText(buyToken.token), null, []);
+                logEngine.logWarning(src, "Rebalance skipped: no quote for " # Principal.toText(sellToken.token) # " -> ICP", null, []);
                 return false;
             };
         };
 
-        let maxImpact = getRebalMaxImpact(instanceId);
-        if (quote.priceImpactBps > maxImpact) {
-            logEngine.logWarning(src, "Rebalance skipped: price impact " # Nat.toText(quote.priceImpactBps) # " bps > max " # Nat.toText(maxImpact), null, []);
-            return false;
+        // Leg 2 quote: ICP → buy token (using expected ICP output from leg 1)
+        let icpAmount = leg1Quote.expectedOutput;
+        let leg2QuoteOpt = await getBestQuote(icpToken, buyToken.token, icpAmount);
+        let leg2Quote = switch (leg2QuoteOpt) {
+            case (?q) {
+                if (q.priceImpactBps > maxImpact) {
+                    logEngine.logWarning(src, "Rebalance skipped: ICP route leg2 impact " # Nat.toText(q.priceImpactBps) # " bps > max " # Nat.toText(maxImpact), null, []);
+                    return false;
+                };
+                q
+            };
+            case null {
+                logEngine.logWarning(src, "Rebalance skipped: no quote for ICP -> " # Principal.toText(buyToken.token), null, []);
+                return false;
+            };
         };
 
-        // 6. Execute trade
-        let slippage = getRebalMaxSlippage(instanceId);
-        let result = await executeSwap(quote, slippage);
+        logEngine.logInfo(src, "Routing via ICP: " # Principal.toText(sellToken.token) # " -> ICP -> " # Principal.toText(buyToken.token) # " (leg1 impact: " # Nat.toText(leg1Quote.priceImpactBps) # " bps, leg2 impact: " # Nat.toText(leg2Quote.priceImpactBps) # " bps)", null, []);
 
-        switch (result) {
-            case (#Ok(r)) {
-                logEngine.logInfo(src, "Rebalance trade: sold " # Nat.toText(tradeSize) # " of " # Principal.toText(sellToken.token) # " for " # Nat.toText(r.amountOut) # " of " # Principal.toText(buyToken.token), null, [
+        // Execute leg 1: sell token → ICP
+        let leg1Result = await executeSwap(leg1Quote, slippage);
+        let icpReceived = switch (leg1Result) {
+            case (#Ok(r)) { r.amountOut };
+            case (#Err(e)) {
+                logEngine.logError(src, "Rebalance ICP-route leg1 failed: " # e, null, [
                     ("sellToken", Principal.toText(sellToken.token)),
-                    ("buyToken", Principal.toText(buyToken.token)),
-                    ("sellAmount", Nat.toText(tradeSize)),
-                    ("buyAmount", Nat.toText(r.amountOut)),
-                    ("dexId", Nat.toText(quote.dexId)),
-                    ("sellDeviation", Nat.toText(sellToken.deviationBps)),
-                    ("buyDeviation", Nat.toText(buyToken.deviationBps)),
+                    ("route", "via-ICP"),
+                    ("leg", "1"),
+                    ("error", e),
                 ]);
                 let logId = appendTradeLog({
                     choreId = ?instanceId;
@@ -1968,13 +2086,79 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     actionId = null;
                     actionType = 0;
                     inputToken = sellToken.token;
-                    outputToken = ?buyToken.token;
+                    outputToken = ?icpToken;
                     inputAmount = tradeSize;
-                    outputAmount = ?r.amountOut;
-                    priceE8s = ?quote.spotPriceE8s;
-                    priceImpactBps = ?quote.priceImpactBps;
+                    outputAmount = null;
+                    priceE8s = ?leg1Quote.spotPriceE8s;
+                    priceImpactBps = ?leg1Quote.priceImpactBps;
                     slippageBps = ?slippage;
-                    dexId = ?quote.dexId;
+                    dexId = ?leg1Quote.dexId;
+                    status = #Failed;
+                    errorMessage = ?("ICP-route leg1: " # e);
+                    txId = null;
+                    destinationOwner = null;
+                });
+                _rebal_lastLogId := setInMap(_rebal_lastLogId, instanceId, logId);
+                return false;
+            };
+        };
+
+        // Log leg 1 success
+        ignore appendTradeLog({
+            choreId = ?instanceId;
+            choreTypeId = getInstanceTypeId(instanceId);
+            actionId = null;
+            actionType = 0;
+            inputToken = sellToken.token;
+            outputToken = ?icpToken;
+            inputAmount = tradeSize;
+            outputAmount = ?icpReceived;
+            priceE8s = ?leg1Quote.spotPriceE8s;
+            priceImpactBps = ?leg1Quote.priceImpactBps;
+            slippageBps = ?slippage;
+            dexId = ?leg1Quote.dexId;
+            status = #Success;
+            errorMessage = null;
+            txId = null;
+            destinationOwner = null;
+        });
+
+        // Get fresh quote for leg 2 with actual ICP received
+        let leg2FreshQuoteOpt = await getBestQuote(icpToken, buyToken.token, icpReceived);
+        let leg2FreshQuote = switch (leg2FreshQuoteOpt) {
+            case (?q) q;
+            case null {
+                // We have ICP in hand but can't swap it — log and return
+                logEngine.logError(src, "Rebalance ICP-route: leg1 succeeded but no quote for leg2 (ICP stuck)", null, []);
+                return false;
+            };
+        };
+
+        // Execute leg 2: ICP → buy token
+        let leg2Result = await executeSwap(leg2FreshQuote, slippage);
+        switch (leg2Result) {
+            case (#Ok(r)) {
+                logEngine.logInfo(src, "Rebalance ICP-route complete: sold " # Nat.toText(tradeSize) # " of " # Principal.toText(sellToken.token) # " -> " # Nat.toText(icpReceived) # " ICP -> " # Nat.toText(r.amountOut) # " of " # Principal.toText(buyToken.token), null, [
+                    ("sellToken", Principal.toText(sellToken.token)),
+                    ("buyToken", Principal.toText(buyToken.token)),
+                    ("sellAmount", Nat.toText(tradeSize)),
+                    ("icpIntermediate", Nat.toText(icpReceived)),
+                    ("buyAmount", Nat.toText(r.amountOut)),
+                    ("route", "via-ICP"),
+                ]);
+                let logId = appendTradeLog({
+                    choreId = ?instanceId;
+                    choreTypeId = getInstanceTypeId(instanceId);
+                    actionId = null;
+                    actionType = 0;
+                    inputToken = icpToken;
+                    outputToken = ?buyToken.token;
+                    inputAmount = icpReceived;
+                    outputAmount = ?r.amountOut;
+                    priceE8s = ?leg2FreshQuote.spotPriceE8s;
+                    priceImpactBps = ?leg2FreshQuote.priceImpactBps;
+                    slippageBps = ?slippage;
+                    dexId = ?leg2FreshQuote.dexId;
                     status = #Success;
                     errorMessage = null;
                     txId = r.txId;
@@ -1984,9 +2168,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 true
             };
             case (#Err(e)) {
-                logEngine.logError(src, "Rebalance trade failed: " # e, null, [
-                    ("sellToken", Principal.toText(sellToken.token)),
+                logEngine.logError(src, "Rebalance ICP-route leg2 failed: " # e # " (ICP stuck)", null, [
                     ("buyToken", Principal.toText(buyToken.token)),
+                    ("icpAmount", Nat.toText(icpReceived)),
                     ("error", e),
                 ]);
                 let logId = appendTradeLog({
@@ -1994,16 +2178,16 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     choreTypeId = getInstanceTypeId(instanceId);
                     actionId = null;
                     actionType = 0;
-                    inputToken = sellToken.token;
+                    inputToken = icpToken;
                     outputToken = ?buyToken.token;
-                    inputAmount = tradeSize;
+                    inputAmount = icpReceived;
                     outputAmount = null;
-                    priceE8s = ?quote.spotPriceE8s;
-                    priceImpactBps = ?quote.priceImpactBps;
+                    priceE8s = ?leg2FreshQuote.spotPriceE8s;
+                    priceImpactBps = ?leg2FreshQuote.priceImpactBps;
                     slippageBps = ?slippage;
-                    dexId = ?quote.dexId;
+                    dexId = ?leg2FreshQuote.dexId;
                     status = #Failed;
-                    errorMessage = ?e;
+                    errorMessage = ?("ICP-route leg2: " # e);
                     txId = null;
                     destinationOwner = null;
                 });
