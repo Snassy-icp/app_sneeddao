@@ -313,6 +313,8 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
     const [fOutputToken, setFOutputToken] = useState('');
     const [fMinAmount, setFMinAmount] = useState('');
     const [fMaxAmount, setFMaxAmount] = useState('');
+    const [fAmountMode, setFAmountMode] = useState(0); // 0 = random range, 1 = percentage of balance
+    const [fBalancePercent, setFBalancePercent] = useState('100'); // percentage string, e.g. '100' for 100%
     const [fEnabled, setFEnabled] = useState(true);
     const [fMinBalance, setFMinBalance] = useState('');
     const [fMaxBalance, setFMaxBalance] = useState('');
@@ -435,7 +437,8 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
 
     const resetForm = () => {
         setFActionType(allowedTypes[0]); setFInputToken(''); setFOutputToken('');
-        setFMinAmount(''); setFMaxAmount(''); setFEnabled(true);
+        setFMinAmount(''); setFMaxAmount(''); setFAmountMode(0); setFBalancePercent('100');
+        setFEnabled(true);
         setFMinBalance(''); setFMaxBalance(''); setFMinPrice(''); setFMaxPrice('');
         setFMaxPriceImpactBps(''); setFMaxSlippageBps(''); setFDestOwner('');
         setFSourceSubaccount(''); setFTargetSubaccount('');
@@ -468,6 +471,9 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
         setFOutputToken(optVal(action.outputToken) ? principalToStr(optVal(action.outputToken)) : '');
         setFMinAmount(Number(action.minAmount) ? formatTokenAmount(action.minAmount, amountDec) : '');
         setFMaxAmount(Number(action.maxAmount) ? formatTokenAmount(action.maxAmount, amountDec) : '');
+        setFAmountMode(Number(action.amountMode) || 0);
+        const bpVal = optVal(action.balancePercent);
+        setFBalancePercent(bpVal != null ? String(Number(bpVal) / 100) : '100');
         setFEnabled(action.enabled);
         setFMinBalance(optVal(action.minBalance) != null ? formatTokenAmount(optVal(action.minBalance), balanceDec) : '');
         setFMaxBalance(optVal(action.maxBalance) != null ? formatTokenAmount(optVal(action.maxBalance), balanceDec) : '');
@@ -528,6 +534,8 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
             outputToken: fActionType === ACTION_TYPE_TRADE && fOutputToken ? [Principal.fromText(fOutputToken)] : [],
             minAmount: fMinAmount ? BigInt(parseTokenAmount(fMinAmount, amountDecimals)) : BigInt(0),
             maxAmount: fMaxAmount ? BigInt(parseTokenAmount(fMaxAmount, amountDecimals)) : BigInt(0),
+            amountMode: BigInt(fAmountMode),
+            balancePercent: fAmountMode === 1 ? [BigInt(Math.round(Number(fBalancePercent) * 100))] : [],
             preferredDex: [],
             sourceSubaccount: fSourceSubaccount !== '' ? [BigInt(fSourceSubaccount)] : [],
             targetSubaccount: fTargetSubaccount !== '' ? [BigInt(fTargetSubaccount)] : [],
@@ -626,6 +634,8 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                 outputToken: action.outputToken?.length > 0 ? action.outputToken : [],
                 minAmount: action.minAmount,
                 maxAmount: action.maxAmount,
+                amountMode: action.amountMode ?? BigInt(0),
+                balancePercent: action.balancePercent?.length > 0 ? action.balancePercent : [],
                 preferredDex: action.preferredDex?.length > 0 ? action.preferredDex : [],
                 sourceSubaccount: action.sourceSubaccount?.length > 0 ? action.sourceSubaccount : [],
                 targetSubaccount: action.targetSubaccount?.length > 0 ? action.targetSubaccount : [],
@@ -702,12 +712,39 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                     )}
                     {/* Force new row before amounts */}
                     <div style={{ gridColumn: '1 / -1', height: 0 }} />
+                    {/* Amount mode toggle */}
+                    <div style={{ gridColumn: '1 / -1' }}>
+                        <label style={labelStyle}>Amount Mode</label>
+                        <div style={{ display: 'flex', gap: '0', borderRadius: '6px', overflow: 'hidden', border: `1px solid ${theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.15)'}`, width: 'fit-content' }}>
+                            {[{ value: 0, label: 'Random in Range' }, { value: 1, label: '% of Balance' }].map(opt => (
+                                <button key={opt.value} type="button" onClick={() => setFAmountMode(opt.value)}
+                                    style={{
+                                        padding: '5px 14px', fontSize: '0.78rem', border: 'none', cursor: 'pointer',
+                                        background: fAmountMode === opt.value ? accentColor : 'transparent',
+                                        color: fAmountMode === opt.value ? '#fff' : (theme === 'dark' ? '#ccc' : '#555'),
+                                        fontWeight: fAmountMode === opt.value ? 600 : 400,
+                                        transition: 'all 0.15s',
+                                    }}>
+                                    {opt.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    {fAmountMode === 1 && (
+                        <div>
+                            <label style={labelStyle}>Balance %</label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <input value={fBalancePercent} onChange={(e) => setFBalancePercent(e.target.value)} style={{ ...inputStyle, width: '80px' }} type="text" inputMode="decimal" placeholder="100" />
+                                <span style={{ fontSize: '0.8rem', opacity: 0.7 }}>%</span>
+                            </div>
+                        </div>
+                    )}
                     <div>
-                        <label style={labelStyle}>Min Amount{amountSymLabel}</label>
+                        <label style={labelStyle}>{fAmountMode === 1 ? 'Min Amount (cap)' : 'Min Amount'}{amountSymLabel}</label>
                         <input value={fMinAmount} onChange={(e) => setFMinAmount(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="0.0" />
                     </div>
                     <div>
-                        <label style={labelStyle}>Max Amount{amountSymLabel}</label>
+                        <label style={labelStyle}>{fAmountMode === 1 ? 'Max Amount (cap)' : 'Max Amount'}{amountSymLabel}</label>
                         <input value={fMaxAmount} onChange={(e) => setFMaxAmount(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="0.0" />
                     </div>
                     {fActionType === ACTION_TYPE_TRADE && (
@@ -947,12 +984,26 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                                         <div style={{ marginTop: '8px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '6px', fontSize: '0.75rem', color: theme.colors.secondaryText }}>
                                             <div><strong>Input:</strong> {inputSym}</div>
                                             {action.outputToken?.length > 0 && <div><strong>Output:</strong> {getSymbol(action.outputToken[0])}</div>}
-                                            <div><strong>Min:</strong> {actTsDenom && hasCurrencySign(actTsDenom)
-                                                ? `${formatDenomAmount(Number(formatTokenAmount(action.minAmount, amtDec)), actTsDenom, amtSym)} of ${inputSym}`
-                                                : `${formatTokenAmount(action.minAmount, amtDec)} ${actTsDenom ? `${amtSym} of ${inputSym}` : inputSym}`}</div>
-                                            <div><strong>Max:</strong> {actTsDenom && hasCurrencySign(actTsDenom)
-                                                ? `${formatDenomAmount(Number(formatTokenAmount(action.maxAmount, amtDec)), actTsDenom, amtSym)} of ${inputSym}`
-                                                : `${formatTokenAmount(action.maxAmount, amtDec)} ${actTsDenom ? `${amtSym} of ${inputSym}` : inputSym}`}</div>
+                                            {Number(action.amountMode) === 1 ? (
+                                                <>
+                                                    <div><strong>Amount:</strong> {optVal(action.balancePercent) != null ? `${Number(optVal(action.balancePercent)) / 100}%` : '100%'} of balance</div>
+                                                    {Number(action.minAmount) > 0 && <div><strong>Min cap:</strong> {actTsDenom && hasCurrencySign(actTsDenom)
+                                                        ? `${formatDenomAmount(Number(formatTokenAmount(action.minAmount, amtDec)), actTsDenom, amtSym)} of ${inputSym}`
+                                                        : `${formatTokenAmount(action.minAmount, amtDec)} ${actTsDenom ? `${amtSym} of ${inputSym}` : inputSym}`}</div>}
+                                                    {Number(action.maxAmount) > 0 && <div><strong>Max cap:</strong> {actTsDenom && hasCurrencySign(actTsDenom)
+                                                        ? `${formatDenomAmount(Number(formatTokenAmount(action.maxAmount, amtDec)), actTsDenom, amtSym)} of ${inputSym}`
+                                                        : `${formatTokenAmount(action.maxAmount, amtDec)} ${actTsDenom ? `${amtSym} of ${inputSym}` : inputSym}`}</div>}
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <div><strong>Min:</strong> {actTsDenom && hasCurrencySign(actTsDenom)
+                                                        ? `${formatDenomAmount(Number(formatTokenAmount(action.minAmount, amtDec)), actTsDenom, amtSym)} of ${inputSym}`
+                                                        : `${formatTokenAmount(action.minAmount, amtDec)} ${actTsDenom ? `${amtSym} of ${inputSym}` : inputSym}`}</div>
+                                                    <div><strong>Max:</strong> {actTsDenom && hasCurrencySign(actTsDenom)
+                                                        ? `${formatDenomAmount(Number(formatTokenAmount(action.maxAmount, amtDec)), actTsDenom, amtSym)} of ${inputSym}`
+                                                        : `${formatTokenAmount(action.maxAmount, amtDec)} ${actTsDenom ? `${amtSym} of ${inputSym}` : inputSym}`}</div>
+                                                </>
+                                            )}
                                             {optVal(action.destinationOwner) && <div><strong>Dest:</strong> {shortPrincipal(optVal(action.destinationOwner))}</div>}
                                             {optVal(action.targetSubaccount) != null && (() => {
                                                 const sub = subaccounts.find(s => Number(s.number) === Number(optVal(action.targetSubaccount)));

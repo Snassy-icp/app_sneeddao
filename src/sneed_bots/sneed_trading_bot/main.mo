@@ -1226,6 +1226,28 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     // TRADE ACTION EXECUTION
     // ============================================
 
+    /// Compute action amount based on amountMode.
+    /// Mode 0 (default): random in [minAmount, maxAmount].
+    /// Mode 1: (balancePercent / 10000) * balance, clamped to [minAmount, maxAmount].
+    func computeActionAmount(action: T.ActionConfig, balance: Nat, effectiveMin: Nat, effectiveMax: Nat): Nat {
+        if (action.amountMode == 1) {
+            // Percentage of balance mode
+            let pct = switch (action.balancePercent) { case (?p) p; case null 10000 }; // default 100%
+            let pctAmount = (balance * pct) / 10000;
+            // Clamp to [effectiveMin, effectiveMax]
+            let clamped = Nat.min(effectiveMax, Nat.max(effectiveMin, pctAmount));
+            clamped
+        } else {
+            // Random in range (mode 0 / default)
+            if (effectiveMin == effectiveMax) { effectiveMin }
+            else if (effectiveMax > effectiveMin) {
+                let range = effectiveMax - effectiveMin;
+                let entropy = Int.abs(Time.now()) % (range + 1);
+                effectiveMin + entropy
+            } else { effectiveMin }
+        }
+    };
+
     /// Execute a single trade action. Returns true if executed, false if skipped.
     func executeTradeAction(action: T.ActionConfig, instanceId: Text): async Bool {
         let src = "chore:" # instanceId;
@@ -1330,15 +1352,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case null { (action.minAmount, action.maxAmount) };
         };
 
-        let tradeSize = if (effectiveMinAmount == effectiveMaxAmount) {
-            effectiveMinAmount
-        } else if (effectiveMaxAmount > effectiveMinAmount) {
-            let range = effectiveMaxAmount - effectiveMinAmount;
-            let entropy = Int.abs(Time.now()) % (range + 1);
-            effectiveMinAmount + entropy
-        } else {
-            effectiveMinAmount
-        };
+        let tradeSize = computeActionAmount(action, balance, effectiveMinAmount, effectiveMaxAmount);
 
         // Clamp to available balance (minus fees)
         let inputFee = try { (await getTokenInfoOrFetch(action.inputToken)).fee } catch (_) { 0 };
@@ -1550,8 +1564,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         };
 
         let fee = switch (getTokenInfo(action.inputToken)) { case (?i) i.fee; case null 0 };
-        let amount = Nat.min(action.maxAmount, if (balance > fee) { balance - fee } else { 0 });
-        if (amount < action.minAmount) return false;
+        let affordable = if (balance > fee) { balance - fee } else { 0 };
+        let amount = computeActionAmount(action, balance, action.minAmount, Nat.min(action.maxAmount, affordable));
+        if (amount < action.minAmount or amount == 0) return false;
 
         let targetBlob = subaccountNumberToBlob(targetSub);
         let result = await transferTokens(
@@ -1628,8 +1643,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         };
 
         let fee = switch (getTokenInfo(action.inputToken)) { case (?i) i.fee; case null 0 };
-        let amount = Nat.min(action.maxAmount, if (balance > fee) { balance - fee } else { 0 });
-        if (amount < action.minAmount) return false;
+        let affordable = if (balance > fee) { balance - fee } else { 0 };
+        let amount = computeActionAmount(action, balance, action.minAmount, Nat.min(action.maxAmount, affordable));
+        if (amount < action.minAmount or amount == 0) return false;
 
         let result = await transferTokens(
             action.inputToken,
@@ -1705,8 +1721,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         };
 
         let fee = switch (getTokenInfo(action.inputToken)) { case (?i) i.fee; case null 0 };
-        let amount = Nat.min(action.maxAmount, if (balance > fee) { balance - fee } else { 0 });
-        if (amount < action.minAmount) return false;
+        let affordable = if (balance > fee) { balance - fee } else { 0 };
+        let amount = computeActionAmount(action, balance, action.minAmount, Nat.min(action.maxAmount, affordable));
+        if (amount < action.minAmount or amount == 0) return false;
 
         let result = await transferTokens(
             action.inputToken,
@@ -3443,6 +3460,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             outputToken = config.outputToken;
             minAmount = config.minAmount;
             maxAmount = config.maxAmount;
+            amountMode = config.amountMode;
+            balancePercent = config.balancePercent;
             preferredDex = config.preferredDex;
             sourceSubaccount = config.sourceSubaccount;
             targetSubaccount = config.targetSubaccount;
@@ -3482,6 +3501,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     outputToken = config.outputToken;
                     minAmount = config.minAmount;
                     maxAmount = config.maxAmount;
+                    amountMode = config.amountMode;
+                    balancePercent = config.balancePercent;
                     preferredDex = config.preferredDex;
                     sourceSubaccount = config.sourceSubaccount;
                     targetSubaccount = config.targetSubaccount;
@@ -3559,6 +3580,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             outputToken = null; // No trading
             minAmount = config.minAmount;
             maxAmount = config.maxAmount;
+            amountMode = config.amountMode;
+            balancePercent = config.balancePercent;
             preferredDex = null;
             sourceSubaccount = config.sourceSubaccount;
             targetSubaccount = config.targetSubaccount;
@@ -3597,6 +3620,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     inputToken = config.inputToken;
                     minAmount = config.minAmount;
                     maxAmount = config.maxAmount;
+                    amountMode = config.amountMode;
+                    balancePercent = config.balancePercent;
                     sourceSubaccount = config.sourceSubaccount;
                     targetSubaccount = config.targetSubaccount;
                     destinationOwner = config.destinationOwner;

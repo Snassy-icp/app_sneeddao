@@ -334,6 +334,11 @@ module {
         minAmount: Nat;                     // Trade: minTradeSize, others: min transfer amount
         maxAmount: Nat;                     // Trade: maxTradeSize, others: max transfer amount
 
+        // Amount mode: 0 = random in [min,max] range (default), 1 = percentage of balance
+        amountMode: Nat;
+        // When amountMode=1: percentage in basis points (0-10000 = 0-100%), capped by min/max
+        balancePercent: ?Nat;
+
         // DEX preference (Trade only)
         preferredDex: ?Nat;                 // null = best across all enabled DEXes
 
@@ -378,6 +383,8 @@ module {
         outputToken: ?Principal;
         minAmount: Nat;
         maxAmount: Nat;
+        amountMode: Nat;
+        balancePercent: ?Nat;
         preferredDex: ?Nat;
         sourceSubaccount: ?Nat;
         targetSubaccount: ?Nat;
