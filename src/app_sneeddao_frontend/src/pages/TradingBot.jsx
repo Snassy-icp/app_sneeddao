@@ -22,6 +22,7 @@ import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt, FaSea
 import TokenIcon from '../components/TokenIcon';
 import PrincipalInput from '../components/PrincipalInput';
 import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
+import priceService from '../services/PriceService';
 
 // Trading bot accent colors — green/teal for trading
 const ACCENT = '#10b981';
@@ -2417,62 +2418,57 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
 
     useEffect(() => { loadData(); }, [loadData]);
 
-    // Fetch denomination prices for all tokens in registry using two-hop via ICP
-    const fetchDenomPrices = useCallback(async () => {
+    // Fetch denomination prices using frontend-only PriceService (fast, cached)
+    // Uses two-hop via ICP: get each token's ICP price + denom token's ICP price, then divide.
+    const denomCacheKeyRef = useRef('');
+    useEffect(() => {
         if (!denomToken || tokenRegistry.length === 0) { setDenomPrices({}); return; }
+        // Stable key: denom + sorted token IDs
+        const ids = tokenRegistry.map(t => typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId)).sort().join(',');
+        const cacheKey = `${denomToken}:${ids}`;
+        if (cacheKey === denomCacheKeyRef.current) return; // already fetched for this exact set
+        denomCacheKeyRef.current = cacheKey;
+        let cancelled = false;
         setLoadingPrices(true);
-        try {
-            const bot = await getReadyBotActor();
-            const denomDec = getDecimals(denomToken);
-            const oneUnit = (dec) => BigInt(10 ** dec);
-            const prices = {};
-            // If denomination IS the token, price is 1
-            const denomId = denomToken;
-
-            for (const t of tokenRegistry) {
-                const tid = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
-                if (tid === denomId) { prices[tid] = 1; continue; }
-                const tDec = Number(t.decimals ?? getDecimals(tid));
-                try {
-                    // Try direct quote: token -> denomToken
-                    const directQuotes = await bot.getQuote([], Principal.fromText(tid), Principal.fromText(denomId), oneUnit(tDec));
-                    if (directQuotes.length > 0) {
-                        const q = directQuotes[0];
-                        prices[tid] = Number(q.expectedOutput) / (10 ** denomDec);
-                        continue;
-                    }
-                } catch (_) {}
-                // Two-hop via ICP: token->ICP, ICP->denomToken
-                if (tid === ICP_LEDGER) {
-                    // ICP -> denomToken direct
-                    try {
-                        const icpQuotes = await bot.getQuote([], Principal.fromText(ICP_LEDGER), Principal.fromText(denomId), oneUnit(8));
-                        if (icpQuotes.length > 0) {
-                            prices[tid] = Number(icpQuotes[0].expectedOutput) / (10 ** denomDec);
-                            continue;
-                        }
-                    } catch (_) {}
+        (async () => {
+            try {
+                const tokenIds = ids.split(',');
+                // Set decimals in PriceService for better accuracy
+                for (const t of tokenRegistry) {
+                    const tid = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
+                    if (t.decimals != null) priceService.setTokenDecimals(tid, Number(t.decimals));
                 }
-                try {
-                    const [leg1Quotes, leg2Quotes] = await Promise.all([
-                        bot.getQuote([], Principal.fromText(tid), Principal.fromText(ICP_LEDGER), oneUnit(tDec)),
-                        bot.getQuote([], Principal.fromText(ICP_LEDGER), Principal.fromText(denomId), oneUnit(8)),
-                    ]);
-                    if (leg1Quotes.length > 0 && leg2Quotes.length > 0) {
-                        const icpPerToken = Number(leg1Quotes[0].expectedOutput) / 1e8;
-                        const denomPerIcp = Number(leg2Quotes[0].expectedOutput) / (10 ** denomDec);
-                        prices[tid] = icpPerToken * denomPerIcp;
-                        continue;
+                // Fetch all token->ICP prices in parallel
+                const icpPricePromises = tokenIds.map(async (tid) => {
+                    if (tid === ICP_LEDGER) return { tid, icpPrice: 1 };
+                    try {
+                        const p = await priceService.getTokenICPPrice(tid);
+                        return { tid, icpPrice: p };
+                    } catch (_) { return { tid, icpPrice: null }; }
+                });
+                // Fetch denomination token -> ICP price
+                let denomIcpPrice = 1;
+                if (denomToken !== ICP_LEDGER) {
+                    try { denomIcpPrice = await priceService.getTokenICPPrice(denomToken); }
+                    catch (_) { denomIcpPrice = null; }
+                }
+                const results = await Promise.all(icpPricePromises);
+                if (cancelled) return;
+                const prices = {};
+                for (const { tid, icpPrice } of results) {
+                    if (tid === denomToken) { prices[tid] = 1; continue; }
+                    if (icpPrice != null && denomIcpPrice != null && denomIcpPrice > 0) {
+                        prices[tid] = icpPrice / denomIcpPrice;
+                    } else {
+                        prices[tid] = null;
                     }
-                } catch (_) {}
-                prices[tid] = null; // no price available
-            }
-            setDenomPrices(prices);
-        } catch (e) { console.warn('Failed to fetch denom prices:', e); }
-        finally { setLoadingPrices(false); }
-    }, [getReadyBotActor, denomToken, tokenRegistry, getDecimals]);
-
-    useEffect(() => { fetchDenomPrices(); }, [fetchDenomPrices]);
+                }
+                if (!cancelled) setDenomPrices(prices);
+            } catch (e) { console.warn('Failed to fetch denom prices:', e); }
+            finally { if (!cancelled) setLoadingPrices(false); }
+        })();
+        return () => { cancelled = true; };
+    }, [denomToken, tokenRegistry]); // stable deps only
 
     // --- Subaccount handlers ---
     const handleCreate = async () => {
