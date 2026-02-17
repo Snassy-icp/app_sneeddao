@@ -66,6 +66,31 @@ The token registry is stored as a single stable var: `var tokenRegistry: [TokenR
 
 Tokens can be added and removed via admin API. The bot needs token metadata (symbol, decimals, fee) for proper amount calculations, display, and fee deduction.
 
+### Global Token Pause & Freeze
+
+Tokens can be **paused** or **frozen** at the account level (globally, across all chores):
+
+- **Paused** (`pausedTokens: [Principal]`): The token will **not be traded** by any rebalancer chore or trade action in any trade chore. Deposit, withdraw, send, and distribution actions are still allowed.
+- **Frozen** (`frozenTokens: [Principal]`): The token will **not be traded AND not be moved** — no trades, deposits, withdraws, sends, or distributions involving this token will execute. This is a superset of paused.
+
+A frozen token is implicitly paused (no need to add it to both lists). The checks are:
+- **Trade actions** (swap): Skip if input or output token is paused or frozen.
+- **Rebalancer**: Exclude paused/frozen tokens from active targets (same as per-target pause, but global).
+- **Deposit/Withdraw/Send actions**: Skip if the token is frozen.
+- **Distribution chore**: Skip distribution lists whose token is frozen.
+- **Fallback routing**: Skip paused/frozen intermediary tokens.
+
+#### API
+
+```motoko
+getPausedTokens() : async [Principal]
+getFrozenTokens() : async [Principal]
+pauseToken(token: Principal) : async ()     // Requires ManageTokenRegistry
+unpauseToken(token: Principal) : async ()   // Requires ManageTokenRegistry
+freezeToken(token: Principal) : async ()    // Requires ManageTokenRegistry
+unfreezeToken(token: Principal) : async ()  // Requires ManageTokenRegistry
+```
+
 ### Well-Known Token Constants
 
 ```
@@ -616,6 +641,8 @@ var hotkeyPermissions: [(Principal, [Nat])]
 
 // Token Registry
 var tokenRegistry: [TokenRegistryEntry]
+var pausedTokens: [Principal]           // Globally paused (no trading)
+var frozenTokens: [Principal]           // Globally frozen (no trading or movement)
 
 // Subaccounts
 var namedSubaccounts: [(Nat, Text)]

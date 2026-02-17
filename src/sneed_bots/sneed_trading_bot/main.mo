@@ -101,6 +101,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     // Per-chore logging overrides: choreId -> overrides
     var choreLoggingOverrides: [(Text, T.ChoreLoggingOverrides)] = [];
 
+    // Global token pause/freeze (account-level, applies across all chores)
+    var pausedTokens: [Principal] = [];   // Won't be traded (rebalancers, trade actions)
+    var frozenTokens: [Principal] = [];   // Won't be traded AND won't be moved (deposit/withdraw/send/distribution)
+
     // Balance reconciliation: last known balance per (token, subaccount)
     var lastKnownBalances: [(Text, Nat)] = [];
 
@@ -633,6 +637,17 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     /// Get token info from the registry.
     func getTokenInfo(token: Principal): ?T.TokenRegistryEntry {
         Array.find<T.TokenRegistryEntry>(tokenRegistry, func(e) { e.ledgerCanisterId == token })
+    };
+
+    /// Check if a token is paused or frozen globally (should not be traded).
+    func isTokenPausedOrFrozen(token: Principal): Bool {
+        Array.find<Principal>(pausedTokens, func(t) { t == token }) != null
+        or Array.find<Principal>(frozenTokens, func(t) { t == token }) != null
+    };
+
+    /// Check if a token is frozen globally (should not be moved at all).
+    func isTokenFrozen(token: Principal): Bool {
+        Array.find<Principal>(frozenTokens, func(t) { t == token }) != null
     };
 
     // ============================================
@@ -1734,6 +1749,16 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             };
         };
 
+        // Global pause/freeze check — paused or frozen tokens cannot be traded
+        if (isTokenPausedOrFrozen(action.inputToken)) {
+            logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: input token is paused/frozen globally", null, []);
+            return false;
+        };
+        if (isTokenPausedOrFrozen(outputToken)) {
+            logEngine.logDebug(src, "Trade " # Nat.toText(action.id) # " skipped: output token is paused/frozen globally", null, []);
+            return false;
+        };
+
         // Check input balance (optionally denominated in another token)
         let balance = await getBalance(action.inputToken, null); // Main account only for trades
         reconcileBalance(action.inputToken, null, balance, src);
@@ -2003,6 +2028,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             };
         };
 
+        // Global freeze check — frozen tokens cannot be moved
+        if (isTokenFrozen(action.inputToken)) {
+            logEngine.logDebug(src, "Deposit " # Nat.toText(action.id) # " skipped: token is frozen globally", null, []);
+            return false;
+        };
+
         let balance = await getBalance(action.inputToken, null); // Main account
         reconcileBalance(action.inputToken, null, balance, src);
         switch (action.minBalance) {
@@ -2085,6 +2116,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             };
         };
 
+        // Global freeze check — frozen tokens cannot be moved
+        if (isTokenFrozen(action.inputToken)) {
+            logEngine.logDebug(src, "Withdraw " # Nat.toText(action.id) # " skipped: token is frozen globally", null, []);
+            return false;
+        };
+
         let sourceBlob = subaccountNumberToBlob(sourceSub);
         let balance = await getBalance(action.inputToken, ?sourceBlob);
         reconcileBalance(action.inputToken, ?sourceBlob, balance, src);
@@ -2165,6 +2202,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 logEngine.logError(src, "Send action " # Nat.toText(action.id) # " has no destination", null, []);
                 return false;
             };
+        };
+
+        // Global freeze check — frozen tokens cannot be moved
+        if (isTokenFrozen(action.inputToken)) {
+            logEngine.logDebug(src, "Send " # Nat.toText(action.id) # " skipped: token is frozen globally", null, []);
+            return false;
         };
 
         let sourceBlob = getSubaccountBlob(action.sourceSubaccount);
@@ -2374,8 +2417,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             return false;
         };
 
-        // Filter out paused tokens and renormalize targets
-        let activeTargets = Array.filter<T.RebalanceTarget>(allTargets, func(t) { not t.paused });
+        // Filter out paused tokens (per-target pause OR global pause/freeze) and renormalize targets
+        let activeTargets = Array.filter<T.RebalanceTarget>(allTargets, func(t) { not t.paused and not isTokenPausedOrFrozen(t.token) });
         if (activeTargets.size() == 0) {
             logEngine.logInfo(src, "Rebalance skipped: all targets are paused", null, []);
             return false;
@@ -2810,8 +2853,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         // --- 6b. Fallback routing (sell → intermediary → buy) ---
         let fallbackTokens = getRebalFallbackRouteTokens(instanceId);
 
-        // Check if a token is paused in the rebalance targets
+        // Check if a token is paused in the rebalance targets or globally paused/frozen
         let isTokenPaused = func(token: Principal): Bool {
+            if (isTokenPausedOrFrozen(token)) return true;
             for (t in allTargets.vals()) {
                 if (t.token == token and t.paused) return true;
             };
@@ -3220,6 +3264,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     func _df_makeTaskFn(list: DistributionTypes.DistributionList): () -> async BotChoreTypes.TaskAction {
         func(): async BotChoreTypes.TaskAction {
             try {
+                // Global freeze check — frozen tokens cannot be distributed
+                if (isTokenFrozen(list.tokenLedgerCanisterId)) {
+                    logEngine.logDebug("distribution", "Distribution list " # list.name # " skipped: token is frozen globally", null, []);
+                    return #Done;
+                };
+
                 let ledger = getLedger(list.tokenLedgerCanisterId);
                 let fee = await ledger.icrc1_fee();
                 let balance = await ledger.icrc1_balance_of({
@@ -4491,6 +4541,48 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             } else { e }
         });
         logEngine.logInfo("api", "Refreshed metadata for " # Principal.toText(ledgerCanisterId), ?msg.caller, []);
+    };
+
+    // ============================================
+    // PUBLIC API — TOKEN PAUSE / FREEZE
+    // ============================================
+
+    public shared query (msg) func getPausedTokens(): async [Principal] {
+        assertPermission(msg.caller, T.TradingPermission.ViewPortfolio);
+        pausedTokens
+    };
+
+    public shared query (msg) func getFrozenTokens(): async [Principal] {
+        assertPermission(msg.caller, T.TradingPermission.ViewPortfolio);
+        frozenTokens
+    };
+
+    public shared (msg) func pauseToken(token: Principal): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageTokenRegistry);
+        if (Array.find<Principal>(pausedTokens, func(t) { t == token }) == null) {
+            pausedTokens := Array.append(pausedTokens, [token]);
+            logEngine.logInfo("api", "Paused token: " # Principal.toText(token), ?msg.caller, []);
+        };
+    };
+
+    public shared (msg) func unpauseToken(token: Principal): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageTokenRegistry);
+        pausedTokens := Array.filter<Principal>(pausedTokens, func(t) { t != token });
+        logEngine.logInfo("api", "Unpaused token: " # Principal.toText(token), ?msg.caller, []);
+    };
+
+    public shared (msg) func freezeToken(token: Principal): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageTokenRegistry);
+        if (Array.find<Principal>(frozenTokens, func(t) { t == token }) == null) {
+            frozenTokens := Array.append(frozenTokens, [token]);
+            logEngine.logInfo("api", "Frozen token: " # Principal.toText(token), ?msg.caller, []);
+        };
+    };
+
+    public shared (msg) func unfreezeToken(token: Principal): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageTokenRegistry);
+        frozenTokens := Array.filter<Principal>(frozenTokens, func(t) { t != token });
+        logEngine.logInfo("api", "Unfrozen token: " # Principal.toText(token), ?msg.caller, []);
     };
 
     // ============================================

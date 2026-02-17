@@ -3258,7 +3258,7 @@ function LoggingSettingsPanel({ getReadyBotActor, theme, accentColor, choreStatu
 // ============================================
 const DND_TOKEN_CHIP = 'TOKEN_CHIP';
 
-function DraggableTokenChip({ tid, index, symbol, showRemove, onRemove, onReorder, theme, borderColor }) {
+function DraggableTokenChip({ tid, index, symbol, showRemove, onRemove, onReorder, theme, borderColor, isPaused, isFrozen }) {
     const ref = React.useRef(null);
 
     const [{ isDragging }, drag] = useDrag(() => ({
@@ -3279,18 +3279,22 @@ function DraggableTokenChip({ tid, index, symbol, showRemove, onRemove, onReorde
 
     drag(drop(ref));
 
+    const statusColor = isFrozen ? '#3b82f6' : isPaused ? '#f59e0b' : null;
+
     return (
         <div ref={ref} style={{
             display: 'flex', alignItems: 'center', gap: '4px',
             padding: '3px 8px', borderRadius: '6px', background: theme.colors.primaryBg,
-            border: `1px solid ${isOver ? theme.colors.accentColor || '#10b981' : borderColor}`,
+            border: `1px solid ${isOver ? theme.colors.accentColor || '#10b981' : statusColor ? statusColor + '50' : borderColor}`,
             fontSize: '0.75rem', color: theme.colors.primaryText,
-            opacity: isDragging ? 0.4 : 1, cursor: 'grab',
+            opacity: isDragging ? 0.4 : (isPaused || isFrozen) ? 0.7 : 1, cursor: 'grab',
             transition: 'border-color 0.15s',
         }}>
             <FaGripVertical style={{ fontSize: '0.55rem', color: theme.colors.mutedText, flexShrink: 0 }} />
             <TokenIcon canisterId={tid} size={14} />
             <span>{symbol}</span>
+            {isFrozen && <FaLock style={{ fontSize: '0.5rem', color: '#3b82f6', flexShrink: 0 }} title="Frozen — no trading or movement" />}
+            {isPaused && !isFrozen && <FaPause style={{ fontSize: '0.5rem', color: '#f59e0b', flexShrink: 0 }} title="Paused — no trading" />}
             {showRemove && (
                 <button onClick={(e) => { e.stopPropagation(); onRemove(); }}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '0.6rem', padding: '0 2px', lineHeight: 1 }}
@@ -3366,6 +3370,10 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
     const [denomToken, setDenomToken] = useState(CKUSDC_LEDGER);
     const [denomPrices, setDenomPrices] = useState({}); // tokenId -> price in denom units per 1 token
     const [loadingPrices, setLoadingPrices] = useState(false);
+    // Token pause/freeze state
+    const [pausedTokens, setPausedTokens] = useState(new Set()); // Set of token principal strings
+    const [frozenTokens, setFrozenTokens] = useState(new Set()); // Set of token principal strings
+    const [togglingToken, setTogglingToken] = useState(null); // token id currently being toggled
 
     // Resolve token metadata for display
     const allTokenIds = React.useMemo(() => {
@@ -3395,16 +3403,20 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
         return tokenMeta[k]?.decimals ?? 8;
     };
 
-    // Load subaccounts + token registry only (fast query calls, no inter-canister)
+    // Load subaccounts + token registry + pause/freeze state (fast query calls, no inter-canister)
     const loadData = useCallback(async () => {
         try {
             const bot = await getReadyBotActor();
-            const [subs, registry] = await Promise.all([
+            const [subs, registry, paused, frozen] = await Promise.all([
                 bot.getSubaccounts ? bot.getSubaccounts() : [],
                 bot.getTokenRegistry ? bot.getTokenRegistry() : [],
+                bot.getPausedTokens ? bot.getPausedTokens() : [],
+                bot.getFrozenTokens ? bot.getFrozenTokens() : [],
             ]);
             setSubaccounts(subs);
             setTokenRegistry(registry);
+            setPausedTokens(new Set(paused.map(p => typeof p === 'string' ? p : p?.toText?.() || String(p))));
+            setFrozenTokens(new Set(frozen.map(p => typeof p === 'string' ? p : p?.toText?.() || String(p))));
         } catch (e) { setError('Failed to load accounts: ' + e.message); }
         finally { setLoading(false); }
     }, [getReadyBotActor]);
@@ -3657,6 +3669,41 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
         } catch (e) { setError('Failed to remove token: ' + e.message); }
     };
 
+    // Toggle pause/freeze for a token
+    const handleTogglePause = async (tokenId) => {
+        setTogglingToken(tokenId); setError(''); setSuccess('');
+        try {
+            const bot = await getReadyBotActor();
+            const p = Principal.fromText(tokenId);
+            if (pausedTokens.has(tokenId)) {
+                await bot.unpauseToken(p);
+                setSuccess(`${getSymbol(tokenId)} unpaused.`);
+            } else {
+                await bot.pauseToken(p);
+                setSuccess(`${getSymbol(tokenId)} paused — it will not be traded by any chore.`);
+            }
+            await loadData();
+        } catch (e) { setError('Failed to toggle pause: ' + e.message); }
+        finally { setTogglingToken(null); }
+    };
+
+    const handleToggleFreeze = async (tokenId) => {
+        setTogglingToken(tokenId); setError(''); setSuccess('');
+        try {
+            const bot = await getReadyBotActor();
+            const p = Principal.fromText(tokenId);
+            if (frozenTokens.has(tokenId)) {
+                await bot.unfreezeToken(p);
+                setSuccess(`${getSymbol(tokenId)} unfrozen.`);
+            } else {
+                await bot.freezeToken(p);
+                setSuccess(`${getSymbol(tokenId)} frozen — it will not be traded or moved by any chore.`);
+            }
+            await loadData();
+        } catch (e) { setError('Failed to toggle freeze: ' + e.message); }
+        finally { setTogglingToken(null); }
+    };
+
     // DnD reorder: swap in local state immediately, persist to backend
     const reorderTimeoutRef = useRef(null);
     const handleReorderTokens = useCallback((fromIdx, toIdx) => {
@@ -3817,6 +3864,8 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                                     onReorder={handleReorderTokens}
                                     theme={theme}
                                     borderColor={borderColor}
+                                    isPaused={pausedTokens.has(tid)}
+                                    isFrozen={frozenTokens.has(tid)}
                                 />
                             );
                         })
@@ -3939,7 +3988,7 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                         label: getSymbol(r.tid), value: r.denomValue, color: CHART_COLORS[i % CHART_COLORS.length],
                     })) : [];
 
-                    const colCount = denomToken ? (hasAnyDenomValue ? 5 : 4) : 2;
+                    const colCount = (denomToken ? (hasAnyDenomValue ? 5 : 4) : 2) + 1; // +1 for Status column
 
                     return (
                         <>
@@ -3957,15 +4006,22 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                                         {denomToken && <th style={{ padding: '4px 8px', textAlign: 'right' }}>Price ({denomSign || denomSym})</th>}
                                         {denomToken && <th style={{ padding: '4px 8px', textAlign: 'right' }}>{denomSign ? `Value (${denomSign})` : `Value (${denomSym})`}</th>}
                                         {denomToken && hasAnyDenomValue && <th style={{ padding: '4px 8px', textAlign: 'right' }}>%</th>}
+                                        <th style={{ padding: '4px 8px', textAlign: 'center', fontSize: '0.7rem' }}>Status</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {rows.map(({ tid, dec, balance, denomValue, price }) => (
-                                        <tr key={tid} style={{ borderTop: `1px solid ${borderColor}20` }}>
+                                    {rows.map(({ tid, dec, balance, denomValue, price }) => {
+                                        const tPaused = pausedTokens.has(tid);
+                                        const tFrozen = frozenTokens.has(tid);
+                                        const isToggling = togglingToken === tid;
+                                        return (
+                                        <tr key={tid} style={{ borderTop: `1px solid ${borderColor}20`, opacity: tFrozen ? 0.55 : tPaused ? 0.7 : 1 }}>
                                             <td style={{ padding: '5px 8px', color: theme.colors.primaryText }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                     <TokenIcon canisterId={tid} size={18} />
                                                     {getSymbol(tid)}
+                                                    {tFrozen && <span style={{ fontSize: '0.6rem', color: '#3b82f6', fontWeight: '600' }}>FROZEN</span>}
+                                                    {tPaused && !tFrozen && <span style={{ fontSize: '0.6rem', color: '#f59e0b', fontWeight: '600' }}>PAUSED</span>}
                                                 </div>
                                             </td>
                                             <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'monospace', color: theme.colors.secondaryText }}>
@@ -3992,8 +4048,39 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                                                         : '—'}
                                                 </td>
                                             )}
+                                            <td style={{ padding: '5px 8px', textAlign: 'center' }}>
+                                                <div style={{ display: 'flex', gap: '3px', justifyContent: 'center' }}>
+                                                    <button
+                                                        onClick={() => handleTogglePause(tid)}
+                                                        disabled={isToggling}
+                                                        title={tPaused ? 'Unpause — allow trading' : 'Pause — prevent trading by all chores'}
+                                                        style={{
+                                                            background: 'none', border: `1px solid ${tPaused ? '#f59e0b50' : borderColor}`,
+                                                            borderRadius: '4px', cursor: isToggling ? 'wait' : 'pointer', padding: '2px 5px',
+                                                            color: tPaused ? '#f59e0b' : theme.colors.mutedText, fontSize: '0.6rem',
+                                                            opacity: isToggling ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: '2px',
+                                                        }}
+                                                    >
+                                                        {tPaused ? <FaPlay style={{ fontSize: '0.5rem' }} /> : <FaPause style={{ fontSize: '0.5rem' }} />}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleToggleFreeze(tid)}
+                                                        disabled={isToggling}
+                                                        title={tFrozen ? 'Unfreeze — allow trading and movement' : 'Freeze — prevent trading and all movement'}
+                                                        style={{
+                                                            background: 'none', border: `1px solid ${tFrozen ? '#3b82f650' : borderColor}`,
+                                                            borderRadius: '4px', cursor: isToggling ? 'wait' : 'pointer', padding: '2px 5px',
+                                                            color: tFrozen ? '#3b82f6' : theme.colors.mutedText, fontSize: '0.6rem',
+                                                            opacity: isToggling ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: '2px',
+                                                        }}
+                                                    >
+                                                        {tFrozen ? <FaLockOpen style={{ fontSize: '0.5rem' }} /> : <FaLock style={{ fontSize: '0.5rem' }} />}
+                                                    </button>
+                                                </div>
+                                            </td>
                                         </tr>
-                                    ))}
+                                        );
+                                    })}
                                     {/* Total row */}
                                     {denomToken && hasAnyDenomValue && (
                                         <tr style={{ borderTop: `2px solid ${borderColor}40` }}>
@@ -4006,6 +4093,7 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                                                 {formatDenomAmount(totalDenomValue, denomToken, denomSym)}
                                             </td>
                                             <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '600', color: accentColor, fontSize: '0.75rem' }}>100%</td>
+                                            <td />
                                         </tr>
                                     )}
                                     {balancesLoading && !hasAnyDenomValue && (
@@ -4016,6 +4104,13 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                         </>
                     );
                 })()}
+                {/* Pause/Freeze legend */}
+                {(pausedTokens.size > 0 || frozenTokens.size > 0) && (
+                    <div style={{ marginTop: '8px', display: 'flex', gap: '12px', flexWrap: 'wrap', fontSize: '0.68rem', color: theme.colors.mutedText }}>
+                        {pausedTokens.size > 0 && <span><FaPause style={{ fontSize: '0.5rem', color: '#f59e0b', marginRight: '3px' }} />Paused — not traded by any chore</span>}
+                        {frozenTokens.size > 0 && <span><FaLock style={{ fontSize: '0.5rem', color: '#3b82f6', marginRight: '3px' }} />Frozen — not traded or moved by any chore</span>}
+                    </div>
+                )}
                 {/* Rename / Delete for non-main subaccounts */}
                 {selectedAccount !== 'main' && (
                     <div style={{ marginTop: '10px', display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
