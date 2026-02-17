@@ -1936,8 +1936,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 // Store trade log ID so the after-snapshot task can link to it
                 _trade_lastLogId := setInMap(_trade_lastLogId, instanceId, logId);
                 // Update lastKnown: input decreased by trade amount, output increased by received amount
+                // Subtract the quote's output fees (covers DEX-specific withdrawal/transfer fees)
+                let netAmountOut = if (r.amountOut > quote.outputFeesTotal) { r.amountOut - quote.outputFeesTotal } else { 0 };
                 setLastKnownBalance(action.inputToken, null, if (balance > actualTradeSize) { balance - actualTradeSize } else { 0 });
-                adjustLastKnownBalance(outputToken, null, r.amountOut);
+                adjustLastKnownBalance(outputToken, null, netAmountOut);
                 true
             };
             case (#Err(e)) {
@@ -2299,8 +2301,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 });
                 _rebal_lastLogId := setInMap(_rebal_lastLogId, instanceId, logId);
                 // Update lastKnown: sell token decreased, buy token increased
+                // Subtract the quote's output fees (covers DEX-specific withdrawal/transfer fees)
+                let netAmountOut = if (r.amountOut > quote.outputFeesTotal) { r.amountOut - quote.outputFeesTotal } else { 0 };
                 setLastKnownBalance(sellToken.token, null, if (sellToken.balance > tradeSize) { sellToken.balance - tradeSize } else { 0 });
-                adjustLastKnownBalance(buyToken.token, null, r.amountOut);
+                adjustLastKnownBalance(buyToken.token, null, netAmountOut);
                 true
             };
             case (#Err(e)) {
@@ -2943,12 +2947,15 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         let leg1Result = await executeSwap(leg1Quote, slippage);
         let intermediaryReceived = switch (leg1Result) {
             case (#Ok(r)) {
-                logEngine.logTrace(src, routeLabel # " leg1 executed OK: received " # Nat.toText(r.amountOut) # " " # intLabel, null, [
+                // Subtract the quote's output fees (intermediary withdrawal/transfer fee)
+                let netReceived = if (r.amountOut > leg1Quote.outputFeesTotal) { r.amountOut - leg1Quote.outputFeesTotal } else { 0 };
+                logEngine.logTrace(src, routeLabel # " leg1 executed OK: received " # Nat.toText(r.amountOut) # " " # intLabel # " (net after fee: " # Nat.toText(netReceived) # ")", null, [
                     ("leg", "1"),
                     ("amountOut", Nat.toText(r.amountOut)),
+                    ("netAmountOut", Nat.toText(netReceived)),
                     ("txId", switch (r.txId) { case (?t) Nat.toText(t); case null "none" }),
                 ]);
-                r.amountOut
+                netReceived
             };
             case (#Err(e)) {
                 logEngine.logError(src, "Rebalance " # routeLabel # " leg1 failed (" # tokenLabel(sellToken.token) # " → " # intLabel # "): " # e, null, [
@@ -3081,11 +3088,13 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 });
                 _rebal_lastLogId := setInMap(_rebal_lastLogId, instanceId, logId);
                 // Update lastKnown after leg 2: intermediary decreased, buyToken increased
+                // Subtract the quote's output fees (covers DEX-specific withdrawal/transfer fees)
+                let netAmountOut2 = if (r.amountOut > leg2FreshQuote.outputFeesTotal) { r.amountOut - leg2FreshQuote.outputFeesTotal } else { 0 };
                 switch (getLastKnownBalance(intermediary, null)) {
                     case (?prev) { setLastKnownBalance(intermediary, null, if (prev > intermediaryReceived) { prev - intermediaryReceived } else { 0 }) };
                     case null {};
                 };
-                adjustLastKnownBalance(buyToken.token, null, r.amountOut);
+                adjustLastKnownBalance(buyToken.token, null, netAmountOut2);
                 true
             };
             case (#Err(e)) {
