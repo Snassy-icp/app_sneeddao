@@ -651,6 +651,7 @@ module {
         tradeLogId: ?Nat;          // Link to the trade log entry that triggered this
         phase: SnapshotPhase;
         choreId: ?Text;            // Instance ID of the chore that triggered this
+        subaccount: ?Blob;         // null = main account, ?blob = named subaccount
         denominationToken: ?Principal;
         totalValueIcpE8s: ?Nat;
         totalValueUsdE8s: ?Nat;
@@ -673,6 +674,57 @@ module {
         entries: [PortfolioSnapshot];
         totalCount: Nat;
         hasMore: Bool;
+    };
+
+    // ============================================
+    // DAILY OHLC AGGREGATION
+    // ============================================
+
+    /// Daily portfolio value summary per account (main or subaccount).
+    public type DailyPortfolioSummary = {
+        date: Int;              // UTC day start (midnight) in nanoseconds
+        subaccount: ?Blob;      // null = main account
+        openValueIcpE8s: Nat;
+        highValueIcpE8s: Nat;
+        lowValueIcpE8s: Nat;
+        closeValueIcpE8s: Nat;
+        openValueUsdE8s: Nat;
+        highValueUsdE8s: Nat;
+        lowValueUsdE8s: Nat;
+        closeValueUsdE8s: Nat;
+        snapshotCount: Nat;
+        closeTokens: [TokenSnapshot];
+    };
+
+    /// Daily price candle per token pair.
+    public type DailyPriceCandle = {
+        pairKey: Text;
+        inputToken: Principal;
+        outputToken: Principal;
+        date: Int;              // UTC day start in nanoseconds
+        openE8s: Nat;
+        highE8s: Nat;
+        lowE8s: Nat;
+        closeE8s: Nat;
+        quoteCount: Nat;
+    };
+
+    /// Query for daily portfolio summaries.
+    public type DailyPortfolioSummaryQuery = {
+        fromDate: ?Int;
+        toDate: ?Int;
+        subaccount: ?(?Blob);   // null = all accounts, ?(null) = main only, ?(?blob) = specific subaccount
+        limit: ?Nat;
+        offset: ?Nat;
+    };
+
+    /// Query for daily price candles.
+    public type DailyPriceCandleQuery = {
+        pairKey: ?Text;
+        fromDate: ?Int;
+        toDate: ?Int;
+        limit: ?Nat;
+        offset: ?Nat;
     };
 
     // ============================================

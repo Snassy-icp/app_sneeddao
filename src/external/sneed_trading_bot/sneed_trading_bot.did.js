@@ -420,6 +420,7 @@ export const idlFactory = ({ IDL }) => {
         tradeLogId: IDL.Opt(IDL.Nat),
         phase: SnapshotPhase,
         choreId: IDL.Opt(IDL.Text),
+        subaccount: IDL.Opt(IDL.Vec(IDL.Nat8)),
         denominationToken: IDL.Opt(IDL.Principal),
         totalValueIcpE8s: IDL.Opt(IDL.Nat),
         totalValueUsdE8s: IDL.Opt(IDL.Nat),
@@ -440,6 +441,52 @@ export const idlFactory = ({ IDL }) => {
         entries: IDL.Vec(PortfolioSnapshot),
         totalCount: IDL.Nat,
         hasMore: IDL.Bool,
+    });
+
+    // ==========================================
+    // Daily OHLC Aggregation types
+    // ==========================================
+    const DailyPortfolioSummary = IDL.Record({
+        date: IDL.Int,
+        subaccount: IDL.Opt(IDL.Vec(IDL.Nat8)),
+        openValueIcpE8s: IDL.Nat,
+        highValueIcpE8s: IDL.Nat,
+        lowValueIcpE8s: IDL.Nat,
+        closeValueIcpE8s: IDL.Nat,
+        openValueUsdE8s: IDL.Nat,
+        highValueUsdE8s: IDL.Nat,
+        lowValueUsdE8s: IDL.Nat,
+        closeValueUsdE8s: IDL.Nat,
+        snapshotCount: IDL.Nat,
+        closeTokens: IDL.Vec(TokenSnapshot),
+    });
+
+    const DailyPriceCandle = IDL.Record({
+        pairKey: IDL.Text,
+        inputToken: IDL.Principal,
+        outputToken: IDL.Principal,
+        date: IDL.Int,
+        openE8s: IDL.Nat,
+        highE8s: IDL.Nat,
+        lowE8s: IDL.Nat,
+        closeE8s: IDL.Nat,
+        quoteCount: IDL.Nat,
+    });
+
+    const DailyPortfolioSummaryQuery = IDL.Record({
+        fromDate: IDL.Opt(IDL.Int),
+        toDate: IDL.Opt(IDL.Int),
+        subaccount: IDL.Opt(IDL.Opt(IDL.Vec(IDL.Nat8))),
+        limit: IDL.Opt(IDL.Nat),
+        offset: IDL.Opt(IDL.Nat),
+    });
+
+    const DailyPriceCandleQuery = IDL.Record({
+        pairKey: IDL.Opt(IDL.Text),
+        fromDate: IDL.Opt(IDL.Int),
+        toDate: IDL.Opt(IDL.Int),
+        limit: IDL.Opt(IDL.Nat),
+        offset: IDL.Opt(IDL.Nat),
     });
 
     // ==========================================
@@ -618,6 +665,10 @@ export const idlFactory = ({ IDL }) => {
         setPriceHistoryMaxSize: IDL.Func([IDL.Nat], [], []),
         getLastKnownPrices: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Text, CachedPrice))], ['query']),
         getPriceHistory: IDL.Func([PriceHistoryQuery], [PriceHistoryResult], ['query']),
+
+        // Daily OHLC Summaries
+        getDailyPortfolioSummaries: IDL.Func([DailyPortfolioSummaryQuery], [IDL.Record({ entries: IDL.Vec(DailyPortfolioSummary), totalCount: IDL.Nat })], ['query']),
+        getDailyPriceCandles: IDL.Func([DailyPriceCandleQuery], [IDL.Record({ entries: IDL.Vec(DailyPriceCandle), totalCount: IDL.Nat })], ['query']),
     });
 };
 

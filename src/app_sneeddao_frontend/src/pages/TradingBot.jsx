@@ -25,7 +25,7 @@ import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
 import priceService from '../services/PriceService';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Line } from 'recharts';
 
 // Trading bot accent colors — green/teal for trading
 const ACCENT = '#10b981';
@@ -76,7 +76,7 @@ const PERMISSION_DESCRIPTIONS = {
 };
 
 // Chore types that support multiple instances
-const MULTI_INSTANCE_CHORE_TYPES = ['trade', 'move-funds', 'distribute-funds', 'rebalance'];
+const MULTI_INSTANCE_CHORE_TYPES = ['trade', 'move-funds', 'distribute-funds', 'rebalance', 'snapshot'];
 
 // ============================================
 // ACTION TYPE CONSTANTS
@@ -2559,18 +2559,34 @@ function PortfolioSnapshotViewer({ getReadyBotActor, theme, accentColor }) {
     const [stats, setStats] = useState(null);
     const [hasMore, setHasMore] = useState(false);
     const [expandedKey, setExpandedKey] = useState(null);
+    const [subaccounts, setSubaccounts] = useState([]);
+
+    const resolveSubaccountLabel = useCallback((subBlob) => {
+        if (!subBlob || subBlob.length === 0) return null;
+        const blob = subBlob[0];
+        if (!blob || blob.length === 0) return null;
+        const bytes = Array.from(blob);
+        if (bytes.every(b => b === 0)) return null;
+        const match = subaccounts.find(s => {
+            const sBytes = Array.from(s.subaccount || []);
+            return sBytes.length === bytes.length && sBytes.every((b, i) => b === bytes[i]);
+        });
+        return match ? `${match.name} (#${Number(match.number)})` : 'Subaccount';
+    }, [subaccounts]);
 
     const loadData = useCallback(async () => {
         try {
             const bot = await getReadyBotActor();
             if (!bot) return;
-            const [result, st] = await Promise.all([
+            const [result, st, subs] = await Promise.all([
                 bot.getPortfolioSnapshots({ startId: [], limit: [100], tradeLogId: [], phase: [], fromTime: [], toTime: [] }),
                 bot.getPortfolioSnapshotStats(),
+                bot.getSubaccounts ? bot.getSubaccounts() : [],
             ]);
             setSnapshots(result.entries);
             setHasMore(result.hasMore);
             setStats(st);
+            setSubaccounts(subs);
         } catch (err) {
             setError('Failed to load portfolio snapshots: ' + err.message);
         } finally {
@@ -2660,6 +2676,7 @@ function PortfolioSnapshotViewer({ getReadyBotActor, theme, accentColor }) {
         const isExpanded = expandedKey === itemKey;
         const trigger = (before?.trigger || after?.trigger || '').replace(/ pre-swap| post-swap/, '');
         const ts = new Date(Number((before || after).timestamp) / 1_000_000).toLocaleString();
+        const subLabel = resolveSubaccountLabel((before || after)?.subaccount);
 
         // Merge tokens from both snapshots
         const tokenMap = new Map();
@@ -2687,6 +2704,9 @@ function PortfolioSnapshotViewer({ getReadyBotActor, theme, accentColor }) {
                         <span style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: '600',
                             background: `${accentColor}20`, color: accentColor,
                         }}>Before / After</span>
+                        {subLabel && <span style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: '500',
+                            background: '#8b5cf620', color: '#8b5cf6',
+                        }}>{subLabel}</span>}
                         <span style={{ color: theme.colors.secondaryText }}>{trigger}</span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -2757,6 +2777,7 @@ function PortfolioSnapshotViewer({ getReadyBotActor, theme, accentColor }) {
         const isExpanded = expandedKey === itemKey;
         const phaseKey = getPhase(snap);
         const ts = new Date(Number(snap.timestamp) / 1_000_000).toLocaleString();
+        const subLabel = resolveSubaccountLabel(snap.subaccount);
 
         return (
             <div key={itemKey} style={{
@@ -2771,6 +2792,9 @@ function PortfolioSnapshotViewer({ getReadyBotActor, theme, accentColor }) {
                             background: phaseKey === 'Before' ? '#3b82f620' : '#22c55e20',
                             color: phaseKey === 'Before' ? '#3b82f6' : '#22c55e',
                         }}>{phaseKey || 'Snapshot'}</span>
+                        {subLabel && <span style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: '500',
+                            background: '#8b5cf620', color: '#8b5cf6',
+                        }}>{subLabel}</span>}
                         <span style={{ color: theme.colors.secondaryText }}>{snap.trigger}</span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -4084,10 +4108,15 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [denomination, setDenomination] = useState('icp'); // 'icp' or 'usd'
+    const [equityView, setEquityView] = useState('detailed'); // 'detailed' or 'daily'
     const [tokenRegistry, setTokenRegistry] = useState([]);
     const [lastKnownPrices, setLastKnownPrices] = useState([]);
     const [priceHistory, setPriceHistory] = useState([]);
     const [selectedPricepair, setSelectedPricePair] = useState(null);
+    const [dailyPortfolioSummaries, setDailyPortfolioSummaries] = useState([]);
+    const [dailyPriceCandles, setDailyPriceCandles] = useState([]);
+    const [subaccounts, setSubaccounts] = useState([]);
+    const [selectedSubaccount, setSelectedSubaccount] = useState('main'); // 'main' or 'all' or subaccount blob key
 
     const loadData = useCallback(async () => {
         setLoading(true);
@@ -4095,18 +4124,24 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
         try {
             const bot = await getReadyBotActor();
             if (!bot) return;
-            const [snapResult, flows, registry, prices, history] = await Promise.all([
+            const [snapResult, flows, registry, prices, history, dailyPortfolio, dailyPrices, subs] = await Promise.all([
                 bot.getPortfolioSnapshots({ startId: [], limit: [500], tradeLogId: [], phase: [{ After: null }], fromTime: [], toTime: [] }),
                 bot.getCapitalFlows(),
                 bot.getTokenRegistry ? bot.getTokenRegistry() : Promise.resolve([]),
                 bot.getLastKnownPrices ? bot.getLastKnownPrices() : Promise.resolve([]),
                 bot.getPriceHistory ? bot.getPriceHistory({ pairKey: [], limit: [5000], offset: [] }) : Promise.resolve({ entries: [], totalCount: 0n }),
+                bot.getDailyPortfolioSummaries ? bot.getDailyPortfolioSummaries({ fromDate: [], toDate: [], subaccount: [], limit: [1000], offset: [] }) : Promise.resolve({ entries: [], totalCount: 0n }),
+                bot.getDailyPriceCandles ? bot.getDailyPriceCandles({ pairKey: [], fromDate: [], toDate: [], limit: [1000], offset: [] }) : Promise.resolve({ entries: [], totalCount: 0n }),
+                bot.getSubaccounts ? bot.getSubaccounts() : Promise.resolve([]),
             ]);
             setSnapshots(snapResult.entries);
             setCapitalFlows(flows);
             setTokenRegistry(registry);
             setLastKnownPrices(prices);
             setPriceHistory(history.entries);
+            setDailyPortfolioSummaries(dailyPortfolio.entries || []);
+            setDailyPriceCandles(dailyPrices.entries || []);
+            setSubaccounts(subs);
         } catch (err) {
             setError('Failed to load performance data: ' + err.message);
         } finally {
@@ -4118,10 +4153,17 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
 
     const optVal = (arr) => (arr?.length > 0 ? arr[0] : null);
 
-    // Build chart data from After-phase snapshots
+    // Build chart data from After-phase snapshots (detailed view)
     const chartData = React.useMemo(() => {
         return snapshots
             .filter(s => Object.keys(s.phase || {})[0] === 'After')
+            .filter(s => {
+                // Filter by selected subaccount
+                const sub = s.subaccount?.length > 0 ? s.subaccount[0] : null;
+                if (selectedSubaccount === 'all') return true;
+                if (selectedSubaccount === 'main') return !sub || (sub && Array.from(sub).every(b => b === 0));
+                return false;
+            })
             .sort((a, b) => Number(a.timestamp) - Number(b.timestamp))
             .map(s => {
                 const ts = Number(s.timestamp) / 1_000_000; // ns -> ms
@@ -4135,7 +4177,56 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
                 };
             })
             .filter(d => (denomination === 'icp' ? d.icp != null : d.usd != null));
-    }, [snapshots, denomination]);
+    }, [snapshots, denomination, selectedSubaccount]);
+
+    // Build daily OHLC chart data for portfolio value
+    const dailyChartData = React.useMemo(() => {
+        return dailyPortfolioSummaries
+            .filter(s => {
+                const sub = s.subaccount?.length > 0 ? s.subaccount[0] : null;
+                if (selectedSubaccount === 'all') return true;
+                if (selectedSubaccount === 'main') return !sub || (sub && Array.from(sub).every(b => b === 0));
+                return false;
+            })
+            .sort((a, b) => Number(a.date) - Number(b.date))
+            .map(s => {
+                const ts = Number(s.date) / 1_000_000; // ns -> ms
+                const scale = denomination === 'icp' ? 1e8 : 1e6;
+                const o = denomination === 'icp' ? Number(s.openValueIcpE8s) / scale : Number(s.openValueUsdE8s) / scale;
+                const h = denomination === 'icp' ? Number(s.highValueIcpE8s) / scale : Number(s.highValueUsdE8s) / scale;
+                const l = denomination === 'icp' ? Number(s.lowValueIcpE8s) / scale : Number(s.lowValueUsdE8s) / scale;
+                const c = denomination === 'icp' ? Number(s.closeValueIcpE8s) / scale : Number(s.closeValueUsdE8s) / scale;
+                return {
+                    time: ts,
+                    label: new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+                    open: o, high: h, low: l, close: c,
+                    range: [l, h],
+                    snapshotCount: Number(s.snapshotCount),
+                };
+            })
+            .filter(d => d.close > 0);
+    }, [dailyPortfolioSummaries, denomination, selectedSubaccount]);
+
+    // Build daily OHLC data for price candles
+    const dailyPriceCandleData = React.useMemo(() => {
+        const map = new Map();
+        for (const c of dailyPriceCandles) {
+            if (!map.has(c.pairKey)) map.set(c.pairKey, []);
+            map.get(c.pairKey).push(c);
+        }
+        // Sort each pair by date
+        for (const [, entries] of map) entries.sort((a, b) => Number(a.date) - Number(b.date));
+        return map;
+    }, [dailyPriceCandles]);
+
+    // Available subaccount options for the equity curve
+    const subaccountOptions = React.useMemo(() => {
+        const opts = [{ value: 'main', label: 'Main Account' }, { value: 'all', label: 'All Accounts' }];
+        for (const s of subaccounts) {
+            opts.push({ value: 'sub-' + Number(s.number), label: `${s.name} (#${Number(s.number)})` });
+        }
+        return opts;
+    }, [subaccounts]);
 
     // Latest portfolio value
     const latestSnap = chartData.length > 0 ? chartData[chartData.length - 1] : null;
@@ -4219,12 +4310,30 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
 
             {/* Equity Curve Chart */}
             <div style={{ ...cardStyle, padding: '16px 12px 8px 0' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', paddingLeft: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', paddingLeft: '16px', flexWrap: 'wrap', gap: '8px' }}>
                     <span style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.text }}>Equity Curve</span>
-                    <div style={{ display: 'flex', gap: '4px' }}>
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        {subaccountOptions.length > 2 && (
+                            <select value={selectedSubaccount} onChange={e => setSelectedSubaccount(e.target.value)} style={{
+                                padding: '3px 8px', fontSize: '0.72rem', borderRadius: '4px',
+                                border: `1px solid ${theme.colors.border}`, background: theme.colors.primaryBg,
+                                color: theme.colors.text, marginRight: '4px', appearance: 'auto',
+                            }}>
+                                {subaccountOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            </select>
+                        )}
+                        {['detailed', 'daily'].map(v => (
+                            <button key={v} onClick={() => setEquityView(v)} style={{
+                                padding: '3px 10px', fontSize: '0.72rem', fontWeight: '500', cursor: 'pointer',
+                                borderRadius: '4px', border: `1px solid ${equityView === v ? accentColor : theme.colors.border}`,
+                                background: equityView === v ? accentColor + '22' : 'transparent',
+                                color: equityView === v ? accentColor : theme.colors.secondaryText,
+                            }}>{v === 'detailed' ? 'Detailed' : 'Daily OHLC'}</button>
+                        ))}
+                        <span style={{ width: '1px', height: '16px', background: theme.colors.border, margin: '0 2px' }} />
                         {['icp', 'usd'].map(d => (
                             <button key={d} onClick={() => setDenomination(d)} style={{
-                                padding: '3px 10px', fontSize: '0.75rem', fontWeight: '500', cursor: 'pointer',
+                                padding: '3px 10px', fontSize: '0.72rem', fontWeight: '500', cursor: 'pointer',
                                 borderRadius: '4px', border: `1px solid ${denomination === d ? accentColor : theme.colors.border}`,
                                 background: denomination === d ? accentColor + '22' : 'transparent',
                                 color: denomination === d ? accentColor : theme.colors.secondaryText,
@@ -4232,31 +4341,62 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
                         ))}
                     </div>
                 </div>
-                {chartData.length > 1 ? (
-                    <ResponsiveContainer width="100%" height={280}>
-                        <AreaChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-                            <defs>
-                                <linearGradient id="equityGrad" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor={accentColor} stopOpacity={0.3} />
-                                    <stop offset="95%" stopColor={accentColor} stopOpacity={0.02} />
-                                </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" stroke={theme.colors.border} opacity={0.5} />
-                            <XAxis dataKey="label" tick={{ fontSize: 11, fill: theme.colors.secondaryText }} tickLine={false} axisLine={{ stroke: theme.colors.border }} />
-                            <YAxis tick={{ fontSize: 11, fill: theme.colors.secondaryText }} tickLine={false} axisLine={false}
-                                tickFormatter={v => denomination === 'usd' ? '$' + v.toLocaleString() : v.toLocaleString()} domain={['auto', 'auto']} />
-                            <Tooltip
-                                contentStyle={{ background: theme.colors.surface, border: `1px solid ${theme.colors.border}`, borderRadius: '8px', fontSize: '0.82rem' }}
-                                labelStyle={{ color: theme.colors.text }}
-                                formatter={(v) => [denomination === 'usd' ? '$' + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2 }) : Number(v).toLocaleString(undefined, { minimumFractionDigits: 4 }) + ' ICP', 'Portfolio Value']}
-                            />
-                            <Area type="monotone" dataKey={denomination} stroke={accentColor} fill="url(#equityGrad)" strokeWidth={2} dot={false} />
-                        </AreaChart>
-                    </ResponsiveContainer>
+                {equityView === 'detailed' ? (
+                    chartData.length > 1 ? (
+                        <ResponsiveContainer width="100%" height={280}>
+                            <AreaChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                                <defs>
+                                    <linearGradient id="equityGrad" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor={accentColor} stopOpacity={0.3} />
+                                        <stop offset="95%" stopColor={accentColor} stopOpacity={0.02} />
+                                    </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="3 3" stroke={theme.colors.border} opacity={0.5} />
+                                <XAxis dataKey="label" tick={{ fontSize: 11, fill: theme.colors.secondaryText }} tickLine={false} axisLine={{ stroke: theme.colors.border }} />
+                                <YAxis tick={{ fontSize: 11, fill: theme.colors.secondaryText }} tickLine={false} axisLine={false}
+                                    tickFormatter={v => denomination === 'usd' ? '$' + v.toLocaleString() : v.toLocaleString()} domain={['auto', 'auto']} />
+                                <Tooltip
+                                    contentStyle={{ background: theme.colors.surface, border: `1px solid ${theme.colors.border}`, borderRadius: '8px', fontSize: '0.82rem' }}
+                                    labelStyle={{ color: theme.colors.text }}
+                                    formatter={(v) => [denomination === 'usd' ? '$' + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2 }) : Number(v).toLocaleString(undefined, { minimumFractionDigits: 4 }) + ' ICP', 'Portfolio Value']}
+                                />
+                                <Area type="monotone" dataKey={denomination} stroke={accentColor} fill="url(#equityGrad)" strokeWidth={2} dot={false} />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    ) : (
+                        <div style={{ textAlign: 'center', padding: '40px 20px', color: theme.colors.secondaryText, fontSize: '0.85rem' }}>
+                            {chartData.length === 0 ? 'No snapshot data yet. Equity curve will appear after the bot runs and takes portfolio snapshots.' : 'At least 2 snapshots are needed to draw the equity curve.'}
+                        </div>
+                    )
                 ) : (
-                    <div style={{ textAlign: 'center', padding: '40px 20px', color: theme.colors.secondaryText, fontSize: '0.85rem' }}>
-                        {chartData.length === 0 ? 'No snapshot data yet. Equity curve will appear after the bot runs and takes portfolio snapshots.' : 'At least 2 snapshots are needed to draw the equity curve.'}
-                    </div>
+                    dailyChartData.length > 0 ? (
+                        <ResponsiveContainer width="100%" height={280}>
+                            <ComposedChart data={dailyChartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke={theme.colors.border} opacity={0.5} />
+                                <XAxis dataKey="label" tick={{ fontSize: 11, fill: theme.colors.secondaryText }} tickLine={false} axisLine={{ stroke: theme.colors.border }} />
+                                <YAxis tick={{ fontSize: 11, fill: theme.colors.secondaryText }} tickLine={false} axisLine={false}
+                                    tickFormatter={v => denomination === 'usd' ? '$' + v.toLocaleString() : v.toLocaleString()} domain={['auto', 'auto']} />
+                                <Tooltip
+                                    contentStyle={{ background: theme.colors.surface, border: `1px solid ${theme.colors.border}`, borderRadius: '8px', fontSize: '0.8rem' }}
+                                    labelStyle={{ color: theme.colors.text }}
+                                    formatter={(v, name) => {
+                                        const fmt = denomination === 'usd'
+                                            ? '$' + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2 })
+                                            : Number(v).toLocaleString(undefined, { minimumFractionDigits: 4 }) + ' ICP';
+                                        const labels = { open: 'Open', high: 'High', low: 'Low', close: 'Close' };
+                                        return [fmt, labels[name] || name];
+                                    }}
+                                />
+                                <Bar dataKey="range" fill={accentColor + '18'} stroke={accentColor + '40'} barSize={12} radius={[2, 2, 2, 2]} isAnimationActive={false} />
+                                <Line type="monotone" dataKey="open" stroke="#3b82f6" strokeWidth={1.5} dot={{ r: 2, fill: '#3b82f6' }} name="open" />
+                                <Line type="monotone" dataKey="close" stroke={accentColor} strokeWidth={2} dot={{ r: 3, fill: accentColor }} name="close" />
+                            </ComposedChart>
+                        </ResponsiveContainer>
+                    ) : (
+                        <div style={{ textAlign: 'center', padding: '40px 20px', color: theme.colors.secondaryText, fontSize: '0.85rem' }}>
+                            No daily summaries yet. Daily OHLC data will accumulate as the bot takes snapshots over time.
+                        </div>
+                    )
                 )}
             </div>
 
@@ -4302,6 +4442,7 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
             <PriceHistorySection
                 lastKnownPrices={lastKnownPrices}
                 priceHistory={priceHistory}
+                dailyPriceCandleData={dailyPriceCandleData}
                 tokenRegistry={tokenRegistry}
                 selectedPricepair={selectedPricepair}
                 setSelectedPricePair={setSelectedPricePair}
@@ -4313,7 +4454,8 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
     );
 }
 
-function PriceHistorySection({ lastKnownPrices, priceHistory, tokenRegistry, selectedPricepair, setSelectedPricePair, theme, accentColor, cardStyle }) {
+function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleData, tokenRegistry, selectedPricepair, setSelectedPricePair, theme, accentColor, cardStyle }) {
+    const [priceView, setPriceView] = useState('detailed'); // 'detailed' or 'daily'
     // Resolve token symbol from principal text
     const sym = (principalText) => {
         const entry = tokenRegistry.find(t => (t.ledgerCanisterId?.toText?.() || t.ledgerCanisterId?.toString?.() || '') === principalText);
@@ -4390,6 +4532,26 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, tokenRegistry, sel
         return { current, first, high, low, change, count: prices.length };
     }, [chartData]);
 
+    // Build daily candle chart data for the selected pair
+    const dailyCandleChartData = React.useMemo(() => {
+        if (!activePair || !dailyPriceCandleData) return [];
+        const entries = dailyPriceCandleData.get(activePair) || [];
+        return entries.map(c => {
+            const ts = Number(c.date) / 1_000_000;
+            const o = Number(c.openE8s) / 1e8;
+            const h = Number(c.highE8s) / 1e8;
+            const l = Number(c.lowE8s) / 1e8;
+            const cl = Number(c.closeE8s) / 1e8;
+            return {
+                time: ts,
+                label: new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+                open: o, high: h, low: l, close: cl,
+                range: [l, h],
+                quoteCount: Number(c.quoteCount),
+            };
+        }).filter(d => d.close > 0);
+    }, [activePair, dailyPriceCandleData]);
+
     if (lastKnownPrices.length === 0 && priceHistory.length === 0) {
         return (
             <div style={{ ...cardStyle, textAlign: 'center', padding: '20px', color: theme.colors.secondaryText, fontSize: '0.85rem' }}>
@@ -4434,56 +4596,98 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, tokenRegistry, sel
             {/* Price Chart for Selected Pair */}
             {activePair && (
                 <div style={{ ...cardStyle, padding: '16px 12px 8px 0' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', paddingLeft: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', paddingLeft: '16px', flexWrap: 'wrap', gap: '6px' }}>
                         <div>
                             <span style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.text }}>
                                 {activePairInfo ? `${activePairInfo.inputSymbol} / ${activePairInfo.outputSymbol}` : 'Price History'}
                             </span>
-                            {priceStats && (
+                            {priceStats && priceView === 'detailed' && (
                                 <span style={{ fontSize: '0.78rem', marginLeft: '12px', color: priceStats.change >= 0 ? '#10b981' : '#ef4444', fontWeight: '500' }}>
                                     {priceStats.change >= 0 ? '+' : ''}{priceStats.change.toFixed(2)}%
                                 </span>
                             )}
                         </div>
-                        {priceStats && (
-                            <div style={{ display: 'flex', gap: '12px', fontSize: '0.72rem', color: theme.colors.secondaryText }}>
-                                <span>H: <span style={{ color: '#10b981', fontWeight: '500' }}>{priceStats.high.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span></span>
-                                <span>L: <span style={{ color: '#ef4444', fontWeight: '500' }}>{priceStats.low.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span></span>
-                                <span>{priceStats.count} pts</span>
-                            </div>
-                        )}
-                    </div>
-                    {chartData.length > 1 ? (
-                        <ResponsiveContainer width="100%" height={250}>
-                            <AreaChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-                                <defs>
-                                    <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.25} />
-                                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.02} />
-                                    </linearGradient>
-                                </defs>
-                                <CartesianGrid strokeDasharray="3 3" stroke={theme.colors.border} opacity={0.5} />
-                                <XAxis dataKey="label" tick={{ fontSize: 10, fill: theme.colors.secondaryText }} tickLine={false} axisLine={{ stroke: theme.colors.border }} />
-                                <YAxis tick={{ fontSize: 10, fill: theme.colors.secondaryText }} tickLine={false} axisLine={false}
-                                    domain={['auto', 'auto']}
-                                    tickFormatter={v => v > 0.001 ? v.toLocaleString(undefined, { maximumFractionDigits: 4 }) : v.toExponential(2)} />
-                                <Tooltip
-                                    contentStyle={{ background: theme.colors.surface, border: `1px solid ${theme.colors.border}`, borderRadius: '8px', fontSize: '0.8rem' }}
-                                    labelStyle={{ color: theme.colors.text }}
-                                    formatter={(v, name) => [
-                                        Number(v) > 0.001
-                                            ? Number(v).toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 8 })
-                                            : Number(v).toExponential(4),
-                                        name === 'price' ? 'Quote Price' : 'Spot Price'
-                                    ]}
-                                />
-                                <Area type="monotone" dataKey="price" stroke="#3b82f6" fill="url(#priceGrad)" strokeWidth={2} dot={false} name="price" />
-                            </AreaChart>
-                        </ResponsiveContainer>
-                    ) : (
-                        <div style={{ textAlign: 'center', padding: '30px 20px', color: theme.colors.secondaryText, fontSize: '0.85rem', paddingLeft: '16px' }}>
-                            {chartData.length === 0 ? 'No history for this pair yet.' : 'At least 2 data points are needed to draw a chart.'}
+                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                            {['detailed', 'daily'].map(v => (
+                                <button key={v} onClick={() => setPriceView(v)} style={{
+                                    padding: '3px 8px', fontSize: '0.7rem', fontWeight: '500', cursor: 'pointer',
+                                    borderRadius: '4px', border: `1px solid ${priceView === v ? '#3b82f6' : theme.colors.border}`,
+                                    background: priceView === v ? '#3b82f622' : 'transparent',
+                                    color: priceView === v ? '#3b82f6' : theme.colors.secondaryText,
+                                }}>{v === 'detailed' ? 'Detailed' : 'Daily OHLC'}</button>
+                            ))}
+                            {priceView === 'detailed' && priceStats && (
+                                <div style={{ display: 'flex', gap: '10px', fontSize: '0.7rem', color: theme.colors.secondaryText, marginLeft: '8px' }}>
+                                    <span>H: <span style={{ color: '#10b981', fontWeight: '500' }}>{priceStats.high.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span></span>
+                                    <span>L: <span style={{ color: '#ef4444', fontWeight: '500' }}>{priceStats.low.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span></span>
+                                    <span>{priceStats.count} pts</span>
+                                </div>
+                            )}
                         </div>
+                    </div>
+                    {priceView === 'detailed' ? (
+                        chartData.length > 1 ? (
+                            <ResponsiveContainer width="100%" height={250}>
+                                <AreaChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                                    <defs>
+                                        <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.25} />
+                                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.02} />
+                                        </linearGradient>
+                                    </defs>
+                                    <CartesianGrid strokeDasharray="3 3" stroke={theme.colors.border} opacity={0.5} />
+                                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: theme.colors.secondaryText }} tickLine={false} axisLine={{ stroke: theme.colors.border }} />
+                                    <YAxis tick={{ fontSize: 10, fill: theme.colors.secondaryText }} tickLine={false} axisLine={false}
+                                        domain={['auto', 'auto']}
+                                        tickFormatter={v => v > 0.001 ? v.toLocaleString(undefined, { maximumFractionDigits: 4 }) : v.toExponential(2)} />
+                                    <Tooltip
+                                        contentStyle={{ background: theme.colors.surface, border: `1px solid ${theme.colors.border}`, borderRadius: '8px', fontSize: '0.8rem' }}
+                                        labelStyle={{ color: theme.colors.text }}
+                                        formatter={(v, name) => [
+                                            Number(v) > 0.001
+                                                ? Number(v).toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 8 })
+                                                : Number(v).toExponential(4),
+                                            name === 'price' ? 'Quote Price' : 'Spot Price'
+                                        ]}
+                                    />
+                                    <Area type="monotone" dataKey="price" stroke="#3b82f6" fill="url(#priceGrad)" strokeWidth={2} dot={false} name="price" />
+                                </AreaChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <div style={{ textAlign: 'center', padding: '30px 20px', color: theme.colors.secondaryText, fontSize: '0.85rem', paddingLeft: '16px' }}>
+                                {chartData.length === 0 ? 'No history for this pair yet.' : 'At least 2 data points are needed to draw a chart.'}
+                            </div>
+                        )
+                    ) : (
+                        dailyCandleChartData.length > 0 ? (
+                            <ResponsiveContainer width="100%" height={250}>
+                                <ComposedChart data={dailyCandleChartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke={theme.colors.border} opacity={0.5} />
+                                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: theme.colors.secondaryText }} tickLine={false} axisLine={{ stroke: theme.colors.border }} />
+                                    <YAxis tick={{ fontSize: 10, fill: theme.colors.secondaryText }} tickLine={false} axisLine={false}
+                                        domain={['auto', 'auto']}
+                                        tickFormatter={v => v > 0.001 ? v.toLocaleString(undefined, { maximumFractionDigits: 4 }) : v.toExponential(2)} />
+                                    <Tooltip
+                                        contentStyle={{ background: theme.colors.surface, border: `1px solid ${theme.colors.border}`, borderRadius: '8px', fontSize: '0.8rem' }}
+                                        labelStyle={{ color: theme.colors.text }}
+                                        formatter={(v, name) => {
+                                            const fmtV = Number(v) > 0.001
+                                                ? Number(v).toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 8 })
+                                                : Number(v).toExponential(4);
+                                            const labels = { open: 'Open', high: 'High', low: 'Low', close: 'Close' };
+                                            return [fmtV, labels[name] || name];
+                                        }}
+                                    />
+                                    <Bar dataKey="range" fill="#3b82f618" stroke="#3b82f640" barSize={12} radius={[2, 2, 2, 2]} isAnimationActive={false} />
+                                    <Line type="monotone" dataKey="open" stroke="#8b5cf6" strokeWidth={1.5} dot={{ r: 2, fill: '#8b5cf6' }} name="open" />
+                                    <Line type="monotone" dataKey="close" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3, fill: '#3b82f6' }} name="close" />
+                                </ComposedChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <div style={{ textAlign: 'center', padding: '30px 20px', color: theme.colors.secondaryText, fontSize: '0.85rem', paddingLeft: '16px' }}>
+                                No daily price candles for this pair yet.
+                            </div>
+                        )
                     )}
                 </div>
             )}
@@ -4549,6 +4753,43 @@ function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, iden
             {activeTab === 'trade' && <TradeLogViewer getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
             {activeTab === 'snapshots' && <PortfolioSnapshotViewer getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
             {activeTab === 'settings' && <LoggingSettingsPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} choreStatuses={choreStatuses} />}
+        </div>
+    );
+}
+
+// ============================================
+// SNAPSHOT CHORE CONFIG PANEL
+// ============================================
+function SnapshotChoreConfigPanel({ instanceId, theme, accentColor, cardStyle }) {
+    const features = [
+        { icon: '📊', label: 'Balance Snapshots', desc: 'Captures balances of all registered tokens across main account and all named subaccounts.' },
+        { icon: '💹', label: 'Price Snapshots', desc: 'Fetches fresh quotes for all registered token pairs, updating price history and daily candles.' },
+        { icon: '📁', label: 'Daily Archive', desc: 'Finalizes the previous day\'s OHLC summaries for portfolio value and prices, patching any gaps.' },
+    ];
+
+    return (
+        <div style={{ ...cardStyle, padding: '16px' }}>
+            <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText, marginBottom: '12px' }}>
+                This chore runs a full snapshot cycle each time it fires. Use the interval setting above to control how often snapshots are taken.
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {features.map((f, i) => (
+                    <div key={i} style={{
+                        display: 'flex', alignItems: 'flex-start', gap: '10px',
+                        padding: '10px 12px', borderRadius: '8px',
+                        background: theme.colors.primaryBg, border: `1px solid ${theme.colors.border}`,
+                    }}>
+                        <span style={{ fontSize: '1.2rem', lineHeight: '1' }}>{f.icon}</span>
+                        <div>
+                            <div style={{ fontWeight: '600', fontSize: '0.8rem', color: theme.colors.primaryText, marginBottom: '2px' }}>{f.label}</div>
+                            <div style={{ fontSize: '0.72rem', color: theme.colors.mutedText }}>{f.desc}</div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+            <div style={{ marginTop: '12px', padding: '8px 12px', borderRadius: '6px', background: `${accentColor}08`, border: `1px solid ${accentColor}20`, fontSize: '0.72rem', color: theme.colors.secondaryText }}>
+                <strong>Pipeline:</strong> Metadata Refresh → Price Fetch → Balance Snapshots → Daily Archive
+            </div>
         </div>
     );
 }
@@ -4630,6 +4871,17 @@ function renderTradingBotChoreConfig({ chore, config, choreTypeId, instanceId, g
                     inputStyle={inputStyle}
                     buttonStyle={buttonStyle}
                     secondaryButtonStyle={secondaryButtonStyle}
+                />
+            );
+
+        case 'snapshot':
+            return (
+                <SnapshotChoreConfigPanel
+                    key={instanceId}
+                    instanceId={instanceId}
+                    theme={theme}
+                    accentColor={accentColor}
+                    cardStyle={cardStyle}
                 />
             );
 
