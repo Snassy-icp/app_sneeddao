@@ -351,6 +351,16 @@ export const idlFactory = ({ IDL }) => {
         Err: OperationError,
     });
 
+    const WithdrawResult = IDL.Variant({
+        Ok: IDL.Record({ transfer_block_height: IDL.Nat64 }),
+        Err: OperationError,
+    });
+
+    const ManualOperationResult = IDL.Variant({
+        Ok: IDL.Record({ blockIndex: IDL.Nat }),
+        Err: OperationError,
+    });
+
     // ==========================================
     // Trade Log types
     // ==========================================
@@ -567,6 +577,12 @@ export const idlFactory = ({ IDL }) => {
         unpauseToken: IDL.Func([IDL.Principal], [], []),
         freezeToken: IDL.Func([IDL.Principal], [], []),
         unfreezeToken: IDL.Func([IDL.Principal], [], []),
+
+        // Manual Operations (Accounts tab + Info tab withdraw)
+        withdrawIcp: IDL.Func([IDL.Nat64, Account], [WithdrawResult], []),
+        withdrawToken: IDL.Func([IDL.Principal, IDL.Nat, Account], [WithdrawResult], []),
+        manualTransfer: IDL.Func([IDL.Principal, IDL.Opt(IDL.Nat), IDL.Opt(IDL.Nat), IDL.Nat], [ManualOperationResult], []),
+        manualSend: IDL.Func([IDL.Principal, IDL.Opt(IDL.Nat), IDL.Principal, IDL.Opt(IDL.Vec(IDL.Nat8)), IDL.Nat], [ManualOperationResult], []),
 
         // Subaccounts
         getSubaccounts: IDL.Func([], [IDL.Vec(SubaccountInfo)], ['query']),

@@ -516,6 +516,19 @@ module {
         #TransferFailed: Text;
     };
 
+    /// Result type for withdraw/transfer operations — includes block index.
+    /// Compatible with the staking bot's DisburseResult shape for BotManagementPanel.
+    public type WithdrawResult = {
+        #Ok: { transfer_block_height: Nat64 };
+        #Err: OperationError;
+    };
+
+    /// Result type for manual operations (transfer/send) from Accounts tab.
+    public type ManualOperationResult = {
+        #Ok: { blockIndex: Nat };
+        #Err: OperationError;
+    };
+
     // ============================================
     // CACHES (transient, for chore pipeline phases)
     // ============================================

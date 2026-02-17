@@ -4586,6 +4586,268 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     };
 
     // ============================================
+    // PUBLIC API — MANUAL OPERATIONS (Accounts tab)
+    // ============================================
+
+    /// Withdraw ICP from the bot's main account to an external destination.
+    /// Compatible with the staking bot's withdrawIcp for BotManagementPanel.
+    public shared (msg) func withdrawIcp(
+        amount_e8s: Nat64,
+        to_account: T.Account
+    ): async T.WithdrawResult {
+        assertPermission(msg.caller, T.TradingPermission.WithdrawFunds);
+        let token = Principal.fromText(T.ICP_LEDGER);
+
+        if (isTokenFrozen(token)) {
+            return #Err(#InvalidOperation("Token is frozen"));
+        };
+
+        let amount = Nat64.toNat(amount_e8s);
+        let balance = await getBalance(token, null);
+        reconcileBalance(token, null, balance, "api");
+        let fee = switch (getTokenInfo(token)) { case (?i) i.fee; case null 10_000 };
+        if (balance < amount + fee) {
+            return #Err(#TransferFailed("Insufficient balance"));
+        };
+
+        let result = await transferTokens(token, null, to_account, amount);
+        switch (result) {
+            case (#Ok(blockIdx)) {
+                logEngine.logInfo("api", "withdrawIcp: " # Nat.toText(amount) # " to " # Principal.toText(to_account.owner), ?msg.caller, []);
+                ignore appendTradeLog({
+                    choreId = null; choreTypeId = null; actionId = null;
+                    actionType = 3; // Send
+                    inputToken = token; outputToken = null;
+                    inputAmount = amount; outputAmount = null;
+                    priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                    status = #Success; errorMessage = null;
+                    txId = ?blockIdx; destinationOwner = ?to_account.owner;
+                });
+                setLastKnownBalance(token, null, if (balance > amount + fee) { balance - amount - fee } else { 0 });
+                let (icpVal, usdVal) = valueTokenInIcpAndUsd(token, amount);
+                capitalDeployedIcpE8s -= icpVal;
+                capitalDeployedUsdE8s -= usdVal;
+                recordTokenOutflow(token, amount);
+                #Ok({ transfer_block_height = Nat64.fromNat(blockIdx) })
+            };
+            case (#Err(e)) {
+                logEngine.logError("api", "withdrawIcp failed: " # debug_show(e), ?msg.caller, []);
+                ignore appendTradeLog({
+                    choreId = null; choreTypeId = null; actionId = null;
+                    actionType = 3; inputToken = token; outputToken = null;
+                    inputAmount = amount; outputAmount = null;
+                    priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                    status = #Failed; errorMessage = ?debug_show(e);
+                    txId = null; destinationOwner = ?to_account.owner;
+                });
+                #Err(#TransferFailed(debug_show(e)))
+            };
+        };
+    };
+
+    /// Withdraw any ICRC-1 token from the bot's main account to an external destination.
+    /// Compatible with the staking bot's withdrawToken for BotManagementPanel.
+    public shared (msg) func withdrawToken(
+        ledger_canister_id: Principal,
+        amount: Nat,
+        to_account: T.Account
+    ): async T.WithdrawResult {
+        assertPermission(msg.caller, T.TradingPermission.WithdrawFunds);
+
+        if (isTokenFrozen(ledger_canister_id)) {
+            return #Err(#InvalidOperation("Token is frozen"));
+        };
+
+        let balance = await getBalance(ledger_canister_id, null);
+        reconcileBalance(ledger_canister_id, null, balance, "api");
+        let fee = switch (getTokenInfo(ledger_canister_id)) { case (?i) i.fee; case null 0 };
+        if (balance < amount + fee) {
+            return #Err(#TransferFailed("Insufficient balance"));
+        };
+
+        let result = await transferTokens(ledger_canister_id, null, to_account, amount);
+        switch (result) {
+            case (#Ok(blockIdx)) {
+                logEngine.logInfo("api", "withdrawToken: " # Nat.toText(amount) # " of " # Principal.toText(ledger_canister_id) # " to " # Principal.toText(to_account.owner), ?msg.caller, []);
+                ignore appendTradeLog({
+                    choreId = null; choreTypeId = null; actionId = null;
+                    actionType = 3; // Send
+                    inputToken = ledger_canister_id; outputToken = null;
+                    inputAmount = amount; outputAmount = null;
+                    priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                    status = #Success; errorMessage = null;
+                    txId = ?blockIdx; destinationOwner = ?to_account.owner;
+                });
+                setLastKnownBalance(ledger_canister_id, null, if (balance > amount + fee) { balance - amount - fee } else { 0 });
+                let (icpVal, usdVal) = valueTokenInIcpAndUsd(ledger_canister_id, amount);
+                capitalDeployedIcpE8s -= icpVal;
+                capitalDeployedUsdE8s -= usdVal;
+                recordTokenOutflow(ledger_canister_id, amount);
+                #Ok({ transfer_block_height = Nat64.fromNat(blockIdx) })
+            };
+            case (#Err(e)) {
+                logEngine.logError("api", "withdrawToken failed: " # debug_show(e), ?msg.caller, []);
+                ignore appendTradeLog({
+                    choreId = null; choreTypeId = null; actionId = null;
+                    actionType = 3; inputToken = ledger_canister_id; outputToken = null;
+                    inputAmount = amount; outputAmount = null;
+                    priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                    status = #Failed; errorMessage = ?debug_show(e);
+                    txId = null; destinationOwner = ?to_account.owner;
+                });
+                #Err(#TransferFailed(debug_show(e)))
+            };
+        };
+    };
+
+    /// Transfer tokens between the bot's own accounts (main ↔ subaccounts).
+    /// fromSubaccount/toSubaccount: null = main account, ?n = subaccount number.
+    public shared (msg) func manualTransfer(
+        token: Principal,
+        fromSubaccountNum: ?Nat,
+        toSubaccountNum: ?Nat,
+        amount: Nat
+    ): async T.ManualOperationResult {
+        assertPermission(msg.caller, T.TradingPermission.ManageSubaccounts);
+
+        if (isTokenFrozen(token)) {
+            return #Err(#InvalidOperation("Token is frozen"));
+        };
+
+        let fromBlob: ?Blob = switch (fromSubaccountNum) {
+            case (?n) ?subaccountNumberToBlob(n);
+            case null null;
+        };
+        let toBlob: ?Blob = switch (toSubaccountNum) {
+            case (?n) ?subaccountNumberToBlob(n);
+            case null null;
+        };
+
+        let balance = await getBalance(token, fromBlob);
+        reconcileBalance(token, fromBlob, balance, "api");
+        let fee = switch (getTokenInfo(token)) { case (?i) i.fee; case null 0 };
+        if (balance < amount + fee) {
+            return #Err(#TransferFailed("Insufficient balance"));
+        };
+
+        let result = await transferTokens(
+            token, fromBlob,
+            { owner = Principal.fromActor(this); subaccount = toBlob },
+            amount
+        );
+
+        // Determine action type: deposit (main→sub) or withdraw (sub→main) or internal
+        let actionType: Nat = switch (fromSubaccountNum) {
+            case null 1; // Deposit: main → subaccount
+            case (?_) switch (toSubaccountNum) {
+                case null 2; // Withdraw: subaccount → main
+                case (?_) 1; // Deposit: subaccount → subaccount (treat as deposit)
+            };
+        };
+
+        switch (result) {
+            case (#Ok(blockIdx)) {
+                let fromLabel = switch (fromSubaccountNum) { case null "main"; case (?n) "sub#" # Nat.toText(n) };
+                let toLabel = switch (toSubaccountNum) { case null "main"; case (?n) "sub#" # Nat.toText(n) };
+                logEngine.logInfo("api", "manualTransfer: " # Nat.toText(amount) # " " # fromLabel # " → " # toLabel, ?msg.caller, []);
+                ignore appendTradeLog({
+                    choreId = null; choreTypeId = null; actionId = null;
+                    actionType = actionType;
+                    inputToken = token; outputToken = null;
+                    inputAmount = amount; outputAmount = null;
+                    priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                    status = #Success; errorMessage = null;
+                    txId = ?blockIdx; destinationOwner = null;
+                });
+                setLastKnownBalance(token, fromBlob, if (balance > amount + fee) { balance - amount - fee } else { 0 });
+                adjustLastKnownBalance(token, toBlob, amount);
+                #Ok({ blockIndex = blockIdx })
+            };
+            case (#Err(e)) {
+                logEngine.logError("api", "manualTransfer failed: " # debug_show(e), ?msg.caller, []);
+                ignore appendTradeLog({
+                    choreId = null; choreTypeId = null; actionId = null;
+                    actionType = actionType;
+                    inputToken = token; outputToken = null;
+                    inputAmount = amount; outputAmount = null;
+                    priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                    status = #Failed; errorMessage = ?debug_show(e);
+                    txId = null; destinationOwner = null;
+                });
+                #Err(#TransferFailed(debug_show(e)))
+            };
+        };
+    };
+
+    /// Send tokens from the bot to any external ICRC-1 account.
+    /// fromSubaccountNum: null = main account, ?n = subaccount number.
+    public shared (msg) func manualSend(
+        token: Principal,
+        fromSubaccountNum: ?Nat,
+        destinationOwner: Principal,
+        destinationSubaccount: ?Blob,
+        amount: Nat
+    ): async T.ManualOperationResult {
+        assertPermission(msg.caller, T.TradingPermission.WithdrawFunds);
+
+        if (isTokenFrozen(token)) {
+            return #Err(#InvalidOperation("Token is frozen"));
+        };
+
+        let fromBlob: ?Blob = switch (fromSubaccountNum) {
+            case (?n) ?subaccountNumberToBlob(n);
+            case null null;
+        };
+
+        let balance = await getBalance(token, fromBlob);
+        reconcileBalance(token, fromBlob, balance, "api");
+        let fee = switch (getTokenInfo(token)) { case (?i) i.fee; case null 0 };
+        if (balance < amount + fee) {
+            return #Err(#TransferFailed("Insufficient balance"));
+        };
+
+        let result = await transferTokens(
+            token, fromBlob,
+            { owner = destinationOwner; subaccount = destinationSubaccount },
+            amount
+        );
+
+        switch (result) {
+            case (#Ok(blockIdx)) {
+                let fromLabel = switch (fromSubaccountNum) { case null "main"; case (?n) "sub#" # Nat.toText(n) };
+                logEngine.logInfo("api", "manualSend: " # Nat.toText(amount) # " from " # fromLabel # " to " # Principal.toText(destinationOwner), ?msg.caller, []);
+                ignore appendTradeLog({
+                    choreId = null; choreTypeId = null; actionId = null;
+                    actionType = 3; // Send
+                    inputToken = token; outputToken = null;
+                    inputAmount = amount; outputAmount = null;
+                    priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                    status = #Success; errorMessage = null;
+                    txId = ?blockIdx; destinationOwner = ?destinationOwner;
+                });
+                setLastKnownBalance(token, fromBlob, if (balance > amount + fee) { balance - amount - fee } else { 0 });
+                let (icpVal, usdVal) = valueTokenInIcpAndUsd(token, amount);
+                capitalDeployedIcpE8s -= icpVal;
+                capitalDeployedUsdE8s -= usdVal;
+                recordTokenOutflow(token, amount);
+                #Ok({ blockIndex = blockIdx })
+            };
+            case (#Err(e)) {
+                logEngine.logError("api", "manualSend failed: " # debug_show(e), ?msg.caller, []);
+                ignore appendTradeLog({
+                    choreId = null; choreTypeId = null; actionId = null;
+                    actionType = 3; inputToken = token; outputToken = null;
+                    inputAmount = amount; outputAmount = null;
+                    priceE8s = null; priceImpactBps = null; slippageBps = null; dexId = null;
+                    status = #Failed; errorMessage = ?debug_show(e);
+                    txId = null; destinationOwner = ?destinationOwner;
+                });
+                #Err(#TransferFailed(debug_show(e)))
+            };
+        };
+    };
+
+    // ============================================
     // PUBLIC API — SUBACCOUNTS
     // ============================================
 

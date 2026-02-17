@@ -18,7 +18,7 @@ import { useAuth } from '../AuthContext';
 import { createActor as createBotActor } from 'external/sneed_trading_bot';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { decodeIcrcAccount, encodeIcrcAccount } from '@dfinity/ledger-icrc';
-import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt, FaSearch, FaGripVertical, FaLock, FaLockOpen, FaPause, FaPlay } from 'react-icons/fa';
+import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt, FaSearch, FaGripVertical, FaLock, FaLockOpen, FaPause, FaPlay, FaArrowUp, FaArrowDown, FaPaperPlane, FaExchangeAlt, FaWallet } from 'react-icons/fa';
 import TokenIcon from '../components/TokenIcon';
 import PrincipalInput from '../components/PrincipalInput';
 import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
@@ -3375,6 +3375,15 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
     const [frozenTokens, setFrozenTokens] = useState(new Set()); // Set of token principal strings
     const [togglingToken, setTogglingToken] = useState(null); // token id currently being toggled
 
+    // Manual operation state (Withdraw / Deposit / Send)
+    const [activeOp, setActiveOp] = useState(null); // 'withdraw' | 'deposit' | 'send' | null
+    const [opToken, setOpToken] = useState(''); // token ledger ID
+    const [opAmount, setOpAmount] = useState('');
+    const [opDestination, setOpDestination] = useState(''); // principal string for send
+    const [opDestSubaccount, setOpDestSubaccount] = useState(''); // hex subaccount for send
+    const [opTargetSubaccount, setOpTargetSubaccount] = useState(''); // subaccount number string for deposit
+    const [opExecuting, setOpExecuting] = useState(false);
+
     // Resolve token metadata for display
     const allTokenIds = React.useMemo(() => {
         const ids = new Set();
@@ -3702,6 +3711,89 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
             await loadData();
         } catch (e) { setError('Failed to toggle freeze: ' + e.message); }
         finally { setTogglingToken(null); }
+    };
+
+    // Get the current account's subaccount number (null for main)
+    const currentSubaccountNum = selectedAccount === 'main' ? null : Number(selectedAccount);
+
+    // Get the balance of opToken in the currently selected account
+    const opTokenBalance = React.useMemo(() => {
+        if (!opToken) return null;
+        const acctBals = selectedAccount === 'main'
+            ? allBalances.find(b => Number(b.subaccountNumber) === 0)
+            : allBalances.find(b => Number(b.subaccountNumber) === Number(selectedAccount));
+        if (!acctBals) return null;
+        const bal = acctBals.balances.find(b => {
+            const t = typeof b.token === 'string' ? b.token : b.token?.toText?.() || String(b.token);
+            return t === opToken;
+        });
+        return bal ? bal.balance : 0n;
+    }, [opToken, selectedAccount, allBalances]);
+
+    const handleExecuteOp = async () => {
+        if (!opToken || !opAmount) return;
+        setOpExecuting(true); setError(''); setSuccess('');
+        try {
+            const bot = await getReadyBotActor();
+            const dec = getDecimals(opToken);
+            const amount = BigInt(Math.round(parseFloat(opAmount) * (10 ** dec)));
+            if (amount <= 0n) { setError('Amount must be greater than 0'); setOpExecuting(false); return; }
+            const tokenPrincipal = Principal.fromText(opToken);
+            const fromSub = currentSubaccountNum != null ? [BigInt(currentSubaccountNum)] : [];
+
+            if (activeOp === 'withdraw') {
+                // Send to user's wallet
+                const userPrincipal = identity.getPrincipal();
+                const result = await bot.manualSend(tokenPrincipal, fromSub, userPrincipal, [], amount);
+                if ('Ok' in result) {
+                    setSuccess(`Withdrew ${opAmount} ${getSymbol(opToken)} to your wallet. Block: ${result.Ok.blockIndex.toString()}`);
+                    setActiveOp(null); setOpAmount(''); setOpToken('');
+                    balanceFetchKeyRef.current = ''; loadData();
+                } else {
+                    setError('Withdraw failed: ' + JSON.stringify(result.Err));
+                }
+            } else if (activeOp === 'deposit') {
+                // Transfer between bot's own accounts
+                const toSub = opTargetSubaccount === 'main' ? [] : [BigInt(opTargetSubaccount)];
+                const result = await bot.manualTransfer(tokenPrincipal, fromSub, toSub, amount);
+                if ('Ok' in result) {
+                    const toLabel = opTargetSubaccount === 'main' ? 'Main Account' : `Subaccount #${opTargetSubaccount}`;
+                    setSuccess(`Transferred ${opAmount} ${getSymbol(opToken)} to ${toLabel}. Block: ${result.Ok.blockIndex.toString()}`);
+                    setActiveOp(null); setOpAmount(''); setOpToken(''); setOpTargetSubaccount('');
+                    balanceFetchKeyRef.current = ''; loadData();
+                } else {
+                    setError('Transfer failed: ' + JSON.stringify(result.Err));
+                }
+            } else if (activeOp === 'send') {
+                // Send to external account
+                if (!opDestination) { setError('Please enter a destination principal'); setOpExecuting(false); return; }
+                let destPrincipal;
+                try { destPrincipal = Principal.fromText(opDestination); }
+                catch { setError('Invalid destination principal'); setOpExecuting(false); return; }
+                let destSubBlob = [];
+                if (opDestSubaccount.trim()) {
+                    // Parse hex subaccount
+                    const hex = opDestSubaccount.replace(/^0x/, '').trim();
+                    if (hex.length > 0 && hex.length <= 64) {
+                        const bytes = [];
+                        const padded = hex.padStart(64, '0');
+                        for (let i = 0; i < padded.length; i += 2) {
+                            bytes.push(parseInt(padded.substr(i, 2), 16));
+                        }
+                        destSubBlob = [bytes];
+                    }
+                }
+                const result = await bot.manualSend(tokenPrincipal, fromSub, destPrincipal, destSubBlob, amount);
+                if ('Ok' in result) {
+                    setSuccess(`Sent ${opAmount} ${getSymbol(opToken)} to ${opDestination.slice(0, 10)}... Block: ${result.Ok.blockIndex.toString()}`);
+                    setActiveOp(null); setOpAmount(''); setOpToken(''); setOpDestination(''); setOpDestSubaccount('');
+                    balanceFetchKeyRef.current = ''; loadData();
+                } else {
+                    setError('Send failed: ' + JSON.stringify(result.Err));
+                }
+            }
+        } catch (e) { setError('Operation failed: ' + e.message); }
+        finally { setOpExecuting(false); }
     };
 
     // DnD reorder: swap in local state immediately, persist to backend
@@ -4111,6 +4203,146 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                         {frozenTokens.size > 0 && <span><FaLock style={{ fontSize: '0.5rem', color: '#3b82f6', marginRight: '3px' }} />Frozen — not traded or moved by any chore</span>}
                     </div>
                 )}
+                {/* ── Operation Buttons (Withdraw / Deposit / Send) ── */}
+                <div style={{ marginTop: '10px', display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <button onClick={() => { setActiveOp(activeOp === 'withdraw' ? null : 'withdraw'); setOpToken(''); setOpAmount(''); }}
+                        style={{ ...btnStyle, background: activeOp === 'withdraw' ? `${accentColor}15` : 'none', borderColor: activeOp === 'withdraw' ? accentColor : `${accentColor}40`, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <FaWallet style={{ fontSize: '0.6rem' }} /> Withdraw to Wallet
+                    </button>
+                    <button onClick={() => { setActiveOp(activeOp === 'deposit' ? null : 'deposit'); setOpToken(''); setOpAmount(''); setOpTargetSubaccount(''); }}
+                        style={{ ...btnStyle, background: activeOp === 'deposit' ? `${accentColor}15` : 'none', borderColor: activeOp === 'deposit' ? accentColor : `${accentColor}40`, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <FaExchangeAlt style={{ fontSize: '0.6rem' }} /> {selectedAccount === 'main' ? 'Transfer to Subaccount' : 'Transfer'}
+                    </button>
+                    <button onClick={() => { setActiveOp(activeOp === 'send' ? null : 'send'); setOpToken(''); setOpAmount(''); setOpDestination(''); setOpDestSubaccount(''); }}
+                        style={{ ...btnStyle, background: activeOp === 'send' ? `${accentColor}15` : 'none', borderColor: activeOp === 'send' ? accentColor : `${accentColor}40`, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <FaPaperPlane style={{ fontSize: '0.6rem' }} /> Send
+                    </button>
+                </div>
+
+                {/* ── Operation Form ── */}
+                {activeOp && (
+                    <div style={{ marginTop: '10px', padding: '12px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${borderColor}` }}>
+                        <div style={{ fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '8px' }}>
+                            {activeOp === 'withdraw' && <>Withdraw to Your Wallet</>}
+                            {activeOp === 'deposit' && <>{selectedAccount === 'main' ? 'Transfer to Subaccount' : 'Transfer Between Accounts'}</>}
+                            {activeOp === 'send' && <>Send to External Account</>}
+                            <span style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginLeft: '8px' }}>
+                                (from {selectedAccount === 'main' ? 'Main Account' : (() => { const s = subaccounts.find(s => String(Number(s.number)) === selectedAccount); return s ? s.name : `#${selectedAccount}`; })()})
+                            </span>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                            {/* Token selector */}
+                            <div style={{ minWidth: '140px' }}>
+                                <label style={{ fontSize: '0.68rem', color: theme.colors.mutedText, display: 'block', marginBottom: '3px' }}>Token</label>
+                                <select value={opToken} onChange={(e) => setOpToken(e.target.value)}
+                                    style={{ ...inputStyle, width: '100%' }}>
+                                    <option value="">Select token...</option>
+                                    {selectedBalances.map(b => {
+                                        const t = typeof b.token === 'string' ? b.token : b.token?.toText?.() || String(b.token);
+                                        return <option key={t} value={t}>{getSymbol(t)}</option>;
+                                    })}
+                                    {/* Also show registered tokens not in balances */}
+                                    {tokenRegistry.filter(t => {
+                                        const tid = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
+                                        return !selectedBalances.some(b => {
+                                            const bt = typeof b.token === 'string' ? b.token : b.token?.toText?.() || String(b.token);
+                                            return bt === tid;
+                                        });
+                                    }).map(t => {
+                                        const tid = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
+                                        return <option key={tid} value={tid}>{t.symbol || getSymbol(tid)} (0)</option>;
+                                    })}
+                                </select>
+                            </div>
+
+                            {/* Amount */}
+                            <div style={{ minWidth: '120px', flex: 1 }}>
+                                <label style={{ fontSize: '0.68rem', color: theme.colors.mutedText, display: 'block', marginBottom: '3px' }}>
+                                    Amount
+                                    {opToken && opTokenBalance != null && (
+                                        <span style={{ marginLeft: '6px', color: theme.colors.secondaryText }}>
+                                            (bal: {formatTokenAmount(opTokenBalance, getDecimals(opToken))})
+                                        </span>
+                                    )}
+                                </label>
+                                <div style={{ display: 'flex', gap: '4px' }}>
+                                    <input type="text" inputMode="decimal" value={opAmount} onChange={(e) => setOpAmount(e.target.value)}
+                                        placeholder="0.00" style={{ ...inputStyle, flex: 1 }} />
+                                    {opToken && opTokenBalance != null && opTokenBalance > 0n && (
+                                        <button onClick={() => {
+                                            const dec = getDecimals(opToken);
+                                            const fee = tokenRegistry.find(t => {
+                                                const tid = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
+                                                return tid === opToken;
+                                            })?.fee || 0n;
+                                            const maxRaw = BigInt(opTokenBalance) > BigInt(fee) ? BigInt(opTokenBalance) - BigInt(fee) : 0n;
+                                            setOpAmount((Number(maxRaw) / (10 ** dec)).toString());
+                                        }} style={{ ...btnStyle, padding: '4px 6px', fontSize: '0.65rem' }}>Max</button>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Deposit: target subaccount selector */}
+                            {activeOp === 'deposit' && (
+                                <div style={{ minWidth: '160px' }}>
+                                    <label style={{ fontSize: '0.68rem', color: theme.colors.mutedText, display: 'block', marginBottom: '3px' }}>Destination</label>
+                                    <select value={opTargetSubaccount} onChange={(e) => setOpTargetSubaccount(e.target.value)}
+                                        style={{ ...inputStyle, width: '100%' }}>
+                                        <option value="">Select destination...</option>
+                                        {selectedAccount !== 'main' && <option value="main">Main Account</option>}
+                                        {subaccounts.filter(s => String(Number(s.number)) !== selectedAccount).map(s => (
+                                            <option key={Number(s.number)} value={String(Number(s.number))}>{s.name} (#{Number(s.number)})</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+
+                            {/* Send: destination principal */}
+                            {activeOp === 'send' && (
+                                <div style={{ minWidth: '200px', flex: 2 }}>
+                                    <label style={{ fontSize: '0.68rem', color: theme.colors.mutedText, display: 'block', marginBottom: '3px' }}>Destination Principal</label>
+                                    <input type="text" value={opDestination} onChange={(e) => setOpDestination(e.target.value)}
+                                        placeholder="Principal ID..." style={{ ...inputStyle, width: '100%' }} />
+                                </div>
+                            )}
+                            {activeOp === 'send' && (
+                                <div style={{ minWidth: '160px' }}>
+                                    <label style={{ fontSize: '0.68rem', color: theme.colors.mutedText, display: 'block', marginBottom: '3px' }}>Subaccount (optional, hex)</label>
+                                    <input type="text" value={opDestSubaccount} onChange={(e) => setOpDestSubaccount(e.target.value)}
+                                        placeholder="0x00...00" style={{ ...inputStyle, width: '100%' }} />
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Withdraw: show destination info */}
+                        {activeOp === 'withdraw' && identity && (
+                            <div style={{ marginTop: '6px', fontSize: '0.72rem', color: theme.colors.secondaryText }}>
+                                Destination: <span style={{ fontFamily: 'monospace', color: accentColor }}>{identity.getPrincipal().toText()}</span>
+                            </div>
+                        )}
+
+                        {/* Execute button */}
+                        <div style={{ marginTop: '10px', display: 'flex', gap: '6px', alignItems: 'center' }}>
+                            <button onClick={handleExecuteOp} disabled={opExecuting || !opToken || !opAmount || (activeOp === 'deposit' && !opTargetSubaccount) || (activeOp === 'send' && !opDestination)}
+                                style={{
+                                    ...btnStyle, padding: '6px 14px', fontWeight: '600',
+                                    opacity: (opExecuting || !opToken || !opAmount) ? 0.5 : 1,
+                                    background: `${accentColor}15`, borderColor: accentColor,
+                                }}>
+                                {opExecuting ? 'Executing...' : (
+                                    activeOp === 'withdraw' ? 'Withdraw' :
+                                    activeOp === 'deposit' ? 'Transfer' :
+                                    'Send'
+                                )}
+                            </button>
+                            <button onClick={() => setActiveOp(null)} style={{ ...btnStyle, color: theme.colors.mutedText, borderColor: borderColor }}>
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 {/* Rename / Delete for non-main subaccounts */}
                 {selectedAccount !== 'main' && (
                     <div style={{ marginTop: '10px', display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
