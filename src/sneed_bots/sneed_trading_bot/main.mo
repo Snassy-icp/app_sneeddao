@@ -1967,7 +1967,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 });
                 // Store trade log ID so the after-snapshot task can link to it
                 _trade_lastLogId := setInMap(_trade_lastLogId, instanceId, logId);
-                // On failure, balance should be unchanged (lastKnown was already set by reconcileBalance above)
+                // On failure the DEX refunds input tokens, but input fees are lost
+                // (transfer fee + any deposit fee already committed to the DEX)
+                let feeLost = quote.inputFeesTotal;
+                if (feeLost > 0) {
+                    setLastKnownBalance(action.inputToken, null, if (balance > feeLost) { balance - feeLost } else { 0 });
+                };
                 false
             };
         };
@@ -2336,7 +2341,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     destinationOwner = null;
                 });
                 _rebal_lastLogId := setInMap(_rebal_lastLogId, instanceId, logId);
-                // On failure, balance should be unchanged (lastKnown was already set by reconcileBalance)
+                // On failure the DEX refunds input tokens, but input fees are lost
+                let feeLost = quote.inputFeesTotal;
+                if (feeLost > 0) {
+                    setLastKnownBalance(sellToken.token, null, if (sellToken.balance > feeLost) { sellToken.balance - feeLost } else { 0 });
+                };
                 false
             };
         };
@@ -2986,6 +2995,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     destinationOwner = null;
                 });
                 _rebal_lastLogId := setInMap(_rebal_lastLogId, instanceId, logId);
+                // On failure the DEX refunds input tokens, but input fees are lost
+                let feeLost1 = leg1Quote.inputFeesTotal;
+                if (feeLost1 > 0) {
+                    setLastKnownBalance(sellToken.token, null, if (sellToken.balance > feeLost1) { sellToken.balance - feeLost1 } else { 0 });
+                };
                 return false;
             };
         };
@@ -3126,6 +3140,14 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     destinationOwner = null;
                 });
                 _rebal_lastLogId := setInMap(_rebal_lastLogId, instanceId, logId);
+                // On leg2 failure the DEX refunds intermediary tokens, but input fees are lost
+                let intFeeLost = leg2FreshQuote.inputFeesTotal;
+                if (intFeeLost > 0) {
+                    switch (getLastKnownBalance(intermediary, null)) {
+                        case (?prev) { setLastKnownBalance(intermediary, null, if (prev > intFeeLost) { prev - intFeeLost } else { 0 }) };
+                        case null {};
+                    };
+                };
                 false
             };
         };
