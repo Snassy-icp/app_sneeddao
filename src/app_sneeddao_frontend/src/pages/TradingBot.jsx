@@ -2861,6 +2861,10 @@ function LoggingSettingsPanel({ getReadyBotActor, theme, accentColor, choreStatu
     const [overrides, setOverrides] = useState([]);
     const [metaStaleness, setMetaStaleness] = useState(null);
     const [metaInput, setMetaInput] = useState('');
+    const [priceStaleness, setPriceStaleness] = useState(null);
+    const [priceStaleInput, setPriceStaleInput] = useState('');
+    const [priceHistMaxSize, setPriceHistMaxSize] = useState(null);
+    const [priceHistMaxInput, setPriceHistMaxInput] = useState('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
@@ -2870,16 +2874,24 @@ function LoggingSettingsPanel({ getReadyBotActor, theme, accentColor, choreStatu
         try {
             const bot = await getReadyBotActor();
             if (!bot) return;
-            const [s, o, ms] = await Promise.all([
+            const [s, o, ms, ps, phMax] = await Promise.all([
                 bot.getLoggingSettings(),
                 bot.getChoreLoggingOverrides(),
                 bot.getMetadataStaleness ? bot.getMetadataStaleness() : Promise.resolve(3600n),
+                bot.getPriceStaleness ? bot.getPriceStaleness() : Promise.resolve(300n),
+                bot.getPriceHistoryMaxSize ? bot.getPriceHistoryMaxSize() : Promise.resolve(5000n),
             ]);
             setSettings(s);
             setOverrides(o);
             const staleSec = Number(ms);
             setMetaStaleness(staleSec);
             setMetaInput(String(staleSec));
+            const priceSec = Number(ps);
+            setPriceStaleness(priceSec);
+            setPriceStaleInput(String(priceSec));
+            const histMax = Number(phMax);
+            setPriceHistMaxSize(histMax);
+            setPriceHistMaxInput(String(histMax));
         } catch (err) {
             setError('Failed to load settings: ' + err.message);
         } finally {
@@ -2930,6 +2942,34 @@ function LoggingSettingsPanel({ getReadyBotActor, theme, accentColor, choreStatu
             setSuccess('Metadata staleness updated to ' + val + 's.');
             setTimeout(() => setSuccess(''), 3000);
         } catch (err) { setError('Failed to update staleness: ' + err.message); }
+        finally { setSaving(false); }
+    };
+
+    const handleSavePriceStaleness = async () => {
+        const val = parseInt(priceStaleInput, 10);
+        if (isNaN(val) || val < 0) { setError('Price staleness must be a non-negative number of seconds.'); return; }
+        setSaving(true); setError(''); setSuccess('');
+        try {
+            const bot = await getReadyBotActor();
+            await bot.setPriceStaleness(BigInt(val));
+            setPriceStaleness(val);
+            setSuccess('Price staleness updated to ' + val + 's.');
+            setTimeout(() => setSuccess(''), 3000);
+        } catch (err) { setError('Failed to update price staleness: ' + err.message); }
+        finally { setSaving(false); }
+    };
+
+    const handleSavePriceHistMaxSize = async () => {
+        const val = parseInt(priceHistMaxInput, 10);
+        if (isNaN(val) || val < 0) { setError('Max size must be a non-negative number.'); return; }
+        setSaving(true); setError(''); setSuccess('');
+        try {
+            const bot = await getReadyBotActor();
+            await bot.setPriceHistoryMaxSize(BigInt(val));
+            setPriceHistMaxSize(val);
+            setSuccess('Price history max size updated to ' + val + '.');
+            setTimeout(() => setSuccess(''), 3000);
+        } catch (err) { setError('Failed to update price history max size: ' + err.message); }
         finally { setSaving(false); }
     };
 
@@ -2984,6 +3024,62 @@ function LoggingSettingsPanel({ getReadyBotActor, theme, accentColor, choreStatu
                             padding: '4px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: '500',
                             border: `1px solid ${accentColor}40`, background: `${accentColor}15`, color: accentColor,
                             opacity: saving || metaInput === String(metaStaleness) ? 0.5 : 1,
+                        }}
+                    >Save</button>
+                </div>
+            </div>
+
+            {/* Price Staleness Setting */}
+            <div style={{ padding: '12px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}`, marginBottom: '16px' }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '4px' }}>Price Staleness</div>
+                <p style={{ margin: '0 0 8px 0', fontSize: '0.75rem', color: theme.colors.mutedText, lineHeight: '1.4' }}>
+                    How old a cached price quote can be before it must be re-fetched in the prep phase of a chore run. Lower values mean fresher prices but more DEX calls.
+                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                        type="number" min="0" step="30"
+                        value={priceStaleInput}
+                        onChange={(e) => setPriceStaleInput(e.target.value)}
+                        disabled={saving || loading}
+                        style={{ width: '100px', padding: '4px 8px', fontSize: '0.8rem', background: theme.colors.inputBg, border: `1px solid ${theme.colors.border}`, borderRadius: '6px', color: theme.colors.primaryText }}
+                    />
+                    <span style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>seconds</span>
+                    {priceStaleness != null && <span style={{ fontSize: '0.72rem', color: theme.colors.mutedText }}>({formatDuration(priceStaleness)})</span>}
+                    <button
+                        disabled={saving || priceStaleInput === String(priceStaleness)}
+                        onClick={handleSavePriceStaleness}
+                        style={{
+                            padding: '4px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: '500',
+                            border: `1px solid ${accentColor}40`, background: `${accentColor}15`, color: accentColor,
+                            opacity: saving || priceStaleInput === String(priceStaleness) ? 0.5 : 1,
+                        }}
+                    >Save</button>
+                </div>
+            </div>
+
+            {/* Price History Buffer Size */}
+            <div style={{ padding: '12px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}`, marginBottom: '16px' }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '4px' }}>Price History Buffer Size</div>
+                <p style={{ margin: '0 0 8px 0', fontSize: '0.75rem', color: theme.colors.mutedText, lineHeight: '1.4' }}>
+                    Maximum number of historical price quotes to retain. Older entries are overwritten in a ring buffer. Used for circuit breakers and price charts.
+                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                        type="number" min="0" step="500"
+                        value={priceHistMaxInput}
+                        onChange={(e) => setPriceHistMaxInput(e.target.value)}
+                        disabled={saving || loading}
+                        style={{ width: '100px', padding: '4px 8px', fontSize: '0.8rem', background: theme.colors.inputBg, border: `1px solid ${theme.colors.border}`, borderRadius: '6px', color: theme.colors.primaryText }}
+                    />
+                    <span style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>entries</span>
+                    {priceHistMaxSize != null && <span style={{ fontSize: '0.72rem', color: theme.colors.mutedText }}>(current: {priceHistMaxSize.toLocaleString()})</span>}
+                    <button
+                        disabled={saving || priceHistMaxInput === String(priceHistMaxSize)}
+                        onClick={handleSavePriceHistMaxSize}
+                        style={{
+                            padding: '4px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: '500',
+                            border: `1px solid ${accentColor}40`, background: `${accentColor}15`, color: accentColor,
+                            opacity: saving || priceHistMaxInput === String(priceHistMaxSize) ? 0.5 : 1,
                         }}
                     >Save</button>
                 </div>

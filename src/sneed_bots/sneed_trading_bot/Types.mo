@@ -536,6 +536,19 @@ module {
         fetchedAt: Int;
     };
 
+    /// Query parameters for paginated price history retrieval.
+    public type PriceHistoryQuery = {
+        pairKey: ?Text;
+        limit: ?Nat;
+        offset: ?Nat;
+    };
+
+    /// Result of a price history query.
+    public type PriceHistoryResult = {
+        entries: [CachedPrice];
+        totalCount: Nat;
+    };
+
     // ============================================
     // TRADE LOG
     // ============================================

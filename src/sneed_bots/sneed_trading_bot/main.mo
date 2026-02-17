@@ -112,6 +112,17 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     // Key: token principal text, Value: (totalInflowNative, totalOutflowNative)
     var tokenCapitalFlows: [(Text, (Nat, Nat))] = [];
 
+    // Persistent last known prices: pairKey -> CachedPrice
+    var lastKnownPrices: [(Text, T.CachedPrice)] = [];
+
+    // Price history ring buffer
+    var priceHistory: [T.CachedPrice] = [];
+    var priceHistoryNextIdx: Nat = 0;
+    var priceHistoryMaxSize: Nat = 5000;
+
+    // Price staleness threshold (seconds) — prices older than this are re-fetched in prep
+    var priceStalenessSeconds: Nat = 300; // 5 minutes default
+
     // Metadata staleness threshold (seconds). Metadata older than this is re-fetched.
     var metadataStalenessSeconds: Nat = 3600; // 1 hour
 
@@ -681,21 +692,54 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         null
     };
 
-    /// Store a price/quote in the transient cache.
+    /// Push an entry to the price history ring buffer.
+    func pushPriceHistory(entry: T.CachedPrice) {
+        if (priceHistoryMaxSize == 0) return;
+        if (priceHistory.size() < priceHistoryMaxSize) {
+            priceHistory := Array.append(priceHistory, [entry]);
+        } else {
+            priceHistory := Array.tabulate<T.CachedPrice>(priceHistory.size(), func(i) {
+                if (i == priceHistoryNextIdx) entry else priceHistory[i]
+            });
+            priceHistoryNextIdx := (priceHistoryNextIdx + 1) % priceHistoryMaxSize;
+        };
+    };
+
+    /// Store a price/quote in the transient cache, persist to lastKnownPrices,
+    /// and push the old entry (if any) to the price history ring buffer.
     func setCachedQuote(inputToken: Principal, outputToken: Principal, quote: T.SwapQuote) {
         let key = pairKey(inputToken, outputToken);
         let cached: T.CachedPrice = { inputToken = inputToken; outputToken = outputToken; quote = quote; fetchedAt = Time.now() };
+
+        // Update transient cache
         var found = false;
         let updated = Array.map<(Text, T.CachedPrice), (Text, T.CachedPrice)>(
             _priceCache,
             func((k, c)) { if (k == key) { found := true; (k, cached) } else { (k, c) } }
         );
         _priceCache := if (found) updated else Array.append(updated, [(key, cached)]);
+
+        // Persist: push old entry to history, then overwrite
+        var persistFound = false;
+        lastKnownPrices := Array.map<(Text, T.CachedPrice), (Text, T.CachedPrice)>(lastKnownPrices, func((k, old)) {
+            if (k == key) {
+                persistFound := true;
+                pushPriceHistory(old);
+                (k, cached)
+            } else { (k, old) }
+        });
+        if (not persistFound) { lastKnownPrices := Array.append(lastKnownPrices, [(key, cached)]) };
     };
 
-    /// Clear the price cache (called at the start of each chore run).
-    func clearPriceCache() {
-        _priceCache := [];
+    /// Reset the transient price cache: seed it from persistent lastKnownPrices
+    /// entries that are still fresh (within priceStalenessSeconds), so the prep
+    /// task only fetches stale or missing prices.
+    func resetPriceCache() {
+        let now = Time.now();
+        let thresholdNs: Int = priceStalenessSeconds * 1_000_000_000;
+        _priceCache := Array.filter<(Text, T.CachedPrice)>(lastKnownPrices, func((_, cached)) {
+            (now - cached.fetchedAt) < thresholdNs
+        });
     };
 
     /// Convert an amount from one token to another using the cached price data.
@@ -3296,8 +3340,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                         logEngine.logInfo(src, "Starting: " # Nat.toText(enabledActions.size()) # " enabled actions", null, []);
                         if (enabledActions.size() == 0) { return #Done };
 
-                        // Clear price cache for this run
-                        clearPriceCache();
+                        // Reset price cache: seed from fresh persistent prices
+                        resetPriceCache();
 
                         // Start Phase 0: metadata refresh
                         let tokens = _collectTokens(enabledActions);
@@ -3460,7 +3504,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             return #Done;
                         };
 
-                        clearPriceCache();
+                        resetPriceCache();
 
                         // Phase 0: metadata refresh
                         let tokens = collectAllTokens();
@@ -4523,6 +4567,77 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         assertPermission(msg.caller, T.TradingPermission.ManageDexSettings);
         metadataStalenessSeconds := seconds;
         logEngine.logInfo("settings", "Metadata staleness set to " # Nat.toText(seconds) # "s", ?msg.caller, []);
+    };
+
+    // ============================================
+    // PUBLIC API — PRICE SETTINGS & HISTORY
+    // ============================================
+
+    public shared query (msg) func getPriceStaleness(): async Nat {
+        assertPermission(msg.caller, T.TradingPermission.ViewPortfolio);
+        priceStalenessSeconds
+    };
+
+    public shared (msg) func setPriceStaleness(seconds: Nat): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageDexSettings);
+        priceStalenessSeconds := seconds;
+        logEngine.logInfo("settings", "Price staleness set to " # Nat.toText(seconds) # "s", ?msg.caller, []);
+    };
+
+    public shared query (msg) func getPriceHistoryMaxSize(): async Nat {
+        assertPermission(msg.caller, T.TradingPermission.ViewPortfolio);
+        priceHistoryMaxSize
+    };
+
+    public shared (msg) func setPriceHistoryMaxSize(size: Nat): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageDexSettings);
+        priceHistoryMaxSize := size;
+        // Truncate history if new size is smaller
+        if (size < priceHistory.size()) {
+            // Keep the most recent entries: the ring buffer write position tells us ordering.
+            // Rebuild as a simple array of the newest `size` entries.
+            let len = priceHistory.size();
+            priceHistory := Array.tabulate<T.CachedPrice>(size, func(i) {
+                priceHistory[(priceHistoryNextIdx + len - size + i) % len]
+            });
+            priceHistoryNextIdx := 0;
+        };
+        logEngine.logInfo("settings", "Price history max size set to " # Nat.toText(size), ?msg.caller, []);
+    };
+
+    public shared query (msg) func getLastKnownPrices(): async [(Text, T.CachedPrice)] {
+        assertPermission(msg.caller, T.TradingPermission.ViewPortfolio);
+        lastKnownPrices
+    };
+
+    public shared query (msg) func getPriceHistory(q: T.PriceHistoryQuery): async T.PriceHistoryResult {
+        assertPermission(msg.caller, T.TradingPermission.ViewLogs);
+        // Linearize ring buffer: oldest first
+        let len = priceHistory.size();
+        let linearized = if (len < priceHistoryMaxSize) {
+            priceHistory
+        } else {
+            Array.tabulate<T.CachedPrice>(len, func(i) {
+                priceHistory[(priceHistoryNextIdx + i) % len]
+            })
+        };
+        // Filter by pairKey if specified
+        let filtered = switch (q.pairKey) {
+            case (?pk) {
+                Array.filter<T.CachedPrice>(linearized, func(entry) {
+                    pairKey(entry.inputToken, entry.outputToken) == pk
+                })
+            };
+            case null linearized;
+        };
+        let total = filtered.size();
+        let off = switch (q.offset) { case (?o) Nat.min(o, total); case null 0 };
+        let lim = switch (q.limit) { case (?l) l; case null 100 };
+        let end = Nat.min(off + lim, total);
+        let page = if (off >= total) { [] } else {
+            Array.tabulate<T.CachedPrice>(end - off, func(i) { filtered[off + i] })
+        };
+        { entries = page; totalCount = total }
     };
 
 };

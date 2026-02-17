@@ -458,6 +458,43 @@ export const idlFactory = ({ IDL }) => {
     });
 
     // ==========================================
+    // Price types
+    // ==========================================
+    const SwapQuote = IDL.Record({
+        dexId: IDL.Nat,
+        inputToken: IDL.Principal,
+        outputToken: IDL.Principal,
+        inputAmount: IDL.Nat,
+        effectiveInputAmount: IDL.Nat,
+        expectedOutput: IDL.Nat,
+        spotPriceE8s: IDL.Nat,
+        priceImpactBps: IDL.Nat,
+        dexFeeBps: IDL.Nat,
+        inputFeesTotal: IDL.Nat,
+        outputFeesTotal: IDL.Nat,
+        poolCanisterId: IDL.Opt(IDL.Principal),
+        timestamp: IDL.Int,
+    });
+
+    const CachedPrice = IDL.Record({
+        inputToken: IDL.Principal,
+        outputToken: IDL.Principal,
+        quote: SwapQuote,
+        fetchedAt: IDL.Int,
+    });
+
+    const PriceHistoryQuery = IDL.Record({
+        pairKey: IDL.Opt(IDL.Text),
+        limit: IDL.Opt(IDL.Nat),
+        offset: IDL.Opt(IDL.Nat),
+    });
+
+    const PriceHistoryResult = IDL.Record({
+        entries: IDL.Vec(CachedPrice),
+        totalCount: IDL.Nat,
+    });
+
+    // ==========================================
     // Service definition
     // ==========================================
     return IDL.Service({
@@ -589,6 +626,14 @@ export const idlFactory = ({ IDL }) => {
         // Metadata Staleness
         getMetadataStaleness: IDL.Func([], [IDL.Nat], ['query']),
         setMetadataStaleness: IDL.Func([IDL.Nat], [], []),
+
+        // Price Settings & History
+        getPriceStaleness: IDL.Func([], [IDL.Nat], ['query']),
+        setPriceStaleness: IDL.Func([IDL.Nat], [], []),
+        getPriceHistoryMaxSize: IDL.Func([], [IDL.Nat], ['query']),
+        setPriceHistoryMaxSize: IDL.Func([IDL.Nat], [], []),
+        getLastKnownPrices: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Text, CachedPrice))], ['query']),
+        getPriceHistory: IDL.Func([PriceHistoryQuery], [PriceHistoryResult], ['query']),
     });
 };
 
