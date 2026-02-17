@@ -438,62 +438,58 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         };
     };
 
-    /// Compare the current balance to the last known balance.
+    /// Compare the current balance to the last known balance (0 if never seen before).
     /// If a discrepancy is found, log it as a trade log entry (actionType 4=inflow, 5=outflow).
     /// Then update lastKnown to the current balance.
     func reconcileBalance(token: Principal, subaccount: ?Blob, currentBalance: Nat, source: Text) {
-        switch (getLastKnownBalance(token, subaccount)) {
-            case null {
-                // First observation — establish baseline, no discrepancy to report
-            };
-            case (?lastKnown) {
-                if (currentBalance > lastKnown) {
-                    let inflow = currentBalance - lastKnown;
-                    let subLabel = switch (subaccount) { case null "main"; case _ balanceKey(token, subaccount) };
-                    logEngine.logInfo(source, "Reconciliation: detected untracked inflow of " # Nat.toText(inflow) # " for " # tokenLabel(token) # " (" # subLabel # ")", null, []);
-                    ignore appendTradeLog({
-                        choreId = null;
-                        choreTypeId = ?"reconciliation";
-                        actionId = null;
-                        actionType = T.ActionType.DetectedInflow;
-                        inputToken = token;
-                        outputToken = null;
-                        inputAmount = inflow;
-                        outputAmount = null;
-                        priceE8s = null;
-                        priceImpactBps = null;
-                        slippageBps = null;
-                        dexId = null;
-                        status = #Success;
-                        errorMessage = null;
-                        txId = null;
-                        destinationOwner = null;
-                    });
-                } else if (currentBalance < lastKnown) {
-                    let outflow = lastKnown - currentBalance;
-                    let subLabel = switch (subaccount) { case null "main"; case _ balanceKey(token, subaccount) };
-                    logEngine.logWarning(source, "Reconciliation: detected untracked outflow of " # Nat.toText(outflow) # " for " # tokenLabel(token) # " (" # subLabel # ")", null, []);
-                    ignore appendTradeLog({
-                        choreId = null;
-                        choreTypeId = ?"reconciliation";
-                        actionId = null;
-                        actionType = T.ActionType.DetectedOutflow;
-                        inputToken = token;
-                        outputToken = null;
-                        inputAmount = outflow;
-                        outputAmount = null;
-                        priceE8s = null;
-                        priceImpactBps = null;
-                        slippageBps = null;
-                        dexId = null;
-                        status = #Success;
-                        errorMessage = null;
-                        txId = null;
-                        destinationOwner = null;
-                    });
-                };
-                // If equal, no action needed
-            };
+        let lastKnown: Nat = switch (getLastKnownBalance(token, subaccount)) {
+            case null 0;
+            case (?v) v;
+        };
+        if (currentBalance > lastKnown) {
+            let inflow = currentBalance - lastKnown;
+            let subLabel = switch (subaccount) { case null "main"; case _ balanceKey(token, subaccount) };
+            logEngine.logInfo(source, "Reconciliation: detected untracked inflow of " # Nat.toText(inflow) # " for " # tokenLabel(token) # " (" # subLabel # ")", null, []);
+            ignore appendTradeLog({
+                choreId = null;
+                choreTypeId = ?"reconciliation";
+                actionId = null;
+                actionType = T.ActionType.DetectedInflow;
+                inputToken = token;
+                outputToken = null;
+                inputAmount = inflow;
+                outputAmount = null;
+                priceE8s = null;
+                priceImpactBps = null;
+                slippageBps = null;
+                dexId = null;
+                status = #Success;
+                errorMessage = null;
+                txId = null;
+                destinationOwner = null;
+            });
+        } else if (currentBalance < lastKnown) {
+            let outflow = lastKnown - currentBalance;
+            let subLabel = switch (subaccount) { case null "main"; case _ balanceKey(token, subaccount) };
+            logEngine.logWarning(source, "Reconciliation: detected untracked outflow of " # Nat.toText(outflow) # " for " # tokenLabel(token) # " (" # subLabel # ")", null, []);
+            ignore appendTradeLog({
+                choreId = null;
+                choreTypeId = ?"reconciliation";
+                actionId = null;
+                actionType = T.ActionType.DetectedOutflow;
+                inputToken = token;
+                outputToken = null;
+                inputAmount = outflow;
+                outputAmount = null;
+                priceE8s = null;
+                priceImpactBps = null;
+                slippageBps = null;
+                dexId = null;
+                status = #Success;
+                errorMessage = null;
+                txId = null;
+                destinationOwner = null;
+            });
         };
         // Always update lastKnown to current balance
         setLastKnownBalance(token, subaccount, currentBalance);
