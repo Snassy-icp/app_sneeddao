@@ -1178,7 +1178,7 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
     const priceFetchRef = useRef('');
     const refreshTimerRef = useRef(null);
 
-    // Resolve token metadata for all target tokens + denomination token
+    // Resolve token metadata for all target tokens + denomination token + fallback route tokens
     const allTokenIds = React.useMemo(() => {
         const ids = new Set();
         for (const t of targets) {
@@ -1187,6 +1187,10 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
         }
         if (settings?.denominationToken) {
             const key = typeof settings.denominationToken === 'string' ? settings.denominationToken : settings.denominationToken?.toText?.() || String(settings.denominationToken);
+            ids.add(key);
+        }
+        for (const ft of (settings?.fallbackRouteTokens || [])) {
+            const key = typeof ft === 'string' ? ft : ft?.toText?.() || String(ft);
             ids.add(key);
         }
         return [...ids];
