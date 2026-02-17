@@ -35,7 +35,7 @@ import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/P
 import PrincipalInput from './PrincipalInput';
 import TokenSelector from './TokenSelector';
 import { getNeuronManagerSettings, getCyclesColor } from '../utils/NeuronManagerSettings';
-import { FaRobot, FaChevronUp, FaChevronDown, FaShieldAlt, FaGasPump } from 'react-icons/fa';
+import { FaRobot, FaChevronUp, FaChevronDown, FaShieldAlt, FaGasPump, FaTrash } from 'react-icons/fa';
 import TokenIcon from './TokenIcon';
 import { getTokenMetadataSync, fetchAndCacheTokenMetadata } from '../hooks/useTokenCache';
 import StatusLamp, {
@@ -234,6 +234,7 @@ export default function BotManagementPanel({
     const [newInstanceLabel, setNewInstanceLabel] = useState('');
     const [renamingInstance, setRenamingInstance] = useState(null);
     const [renameLabel, setRenameLabel] = useState('');
+    const [confirmingDelete, setConfirmingDelete] = useState(null); // choreId awaiting delete confirmation
     const chorePollingRef = useRef(null); // Interval ID for post-action status polling
 
     // Log
@@ -2117,6 +2118,41 @@ export default function BotManagementPanel({
                                                                             finally { setSavingChore(false); }
                                                                         }}
                                                                     >{isStopped ? 'Run Once' : 'Run Now'}</button>
+                                                                    )}
+
+                                                                    {/* Delete — shown when Stopped, requires confirmation */}
+                                                                    {isStopped && (
+                                                                        confirmingDelete === chore.choreId ? (
+                                                                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 10px', background: '#ef444412', borderRadius: '8px', border: '1px solid #ef444430' }}>
+                                                                                <span style={{ fontSize: '0.75rem', color: '#ef4444' }}>Delete this instance?</span>
+                                                                                <button
+                                                                                    style={{ ...buttonStyle, fontSize: '0.7rem', padding: '2px 8px', background: '#ef4444', color: '#fff', border: 'none' }}
+                                                                                    disabled={savingChore}
+                                                                                    onClick={async () => {
+                                                                                        setSavingChore(true); setChoreError(''); setChoreSuccess('');
+                                                                                        try {
+                                                                                            const bot = await getReadyBotActor();
+                                                                                            const ok = await bot.deleteChoreInstance(chore.choreId);
+                                                                                            if (ok) {
+                                                                                                setChoreSuccess(`Deleted "${chore.instanceLabel || chore.choreName}".`);
+                                                                                                setChoreActiveInstance(null);
+                                                                                            } else { setChoreError('Failed to delete instance.'); }
+                                                                                            setConfirmingDelete(null);
+                                                                                            await loadChoreData(true);
+                                                                                        } catch (err) { setChoreError('Failed to delete: ' + err.message); }
+                                                                                        finally { setSavingChore(false); }
+                                                                                    }}
+                                                                                >Confirm</button>
+                                                                                <button style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '2px 8px' }}
+                                                                                    onClick={() => setConfirmingDelete(null)}>Cancel</button>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <button
+                                                                                style={{ ...buttonStyle, background: '#ef444410', color: '#ef4444', border: '1px solid #ef444425', opacity: savingChore ? 0.6 : 1, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                                                                disabled={savingChore}
+                                                                                onClick={() => setConfirmingDelete(chore.choreId)}
+                                                                            ><FaTrash style={{ fontSize: '0.6rem' }} /> Delete</button>
+                                                                        )
                                                                     )}
                                                                 </div>
 
