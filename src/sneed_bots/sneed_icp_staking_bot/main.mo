@@ -64,7 +64,6 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     var botLogNextId: Nat = 0;
     var botLogLevel: Nat = 3; // Info (default)
     var botLogMaxEntries: Nat = 10_000;
-    var userLastSeenLogId: [(Principal, Nat)] = [];
 
     // ============================================
     // PER-INSTANCE SETTINGS HELPERS
@@ -1416,30 +1415,6 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
     public shared query ({ caller }) func getLogAlertSummary(sinceId: Nat): async BotLogTypes.LogAlertSummary {
         assertPermission(caller, T.NeuronPermission.ViewLogs);
         logEngine.getAlertSummary(sinceId)
-    };
-
-    // Get the caller's last-seen log ID (for cross-device sync)
-    public shared query ({ caller }) func getLastSeenLogId(): async Nat {
-        assertPermission(caller, T.NeuronPermission.ViewLogs);
-        for ((p, id) in userLastSeenLogId.vals()) {
-            if (Principal.equal(p, caller)) return id;
-        };
-        0
-    };
-
-    // Mark logs as seen up to the given log ID
-    public shared ({ caller }) func markLogsSeen(logId: Nat): async () {
-        assertPermission(caller, T.NeuronPermission.ViewLogs);
-        var found = false;
-        userLastSeenLogId := Array.map<(Principal, Nat), (Principal, Nat)>(userLastSeenLogId,
-            func((p, id)) {
-                if (Principal.equal(p, caller)) { found := true; (p, Nat.max(id, logId)) }
-                else { (p, id) }
-            }
-        );
-        if (not found) {
-            userLastSeenLogId := Array.append(userLastSeenLogId, [(caller, logId)]);
-        };
     };
 
     // ============================================

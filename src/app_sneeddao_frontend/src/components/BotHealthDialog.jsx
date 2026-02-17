@@ -81,7 +81,7 @@ export default function BotHealthDialog({ isOpen, onClose, unhealthyManagers = [
         }
     }, [isOpen]);
 
-    // --- Mark log alerts as seen ---
+    // --- Mark log alerts as seen (stored in backend canister, not on the bot) ---
     const markSeenForBot = useCallback(async (canisterId, highestId) => {
         const key = `lastSeenLogId:${canisterId}`;
         const current = parseInt(localStorage.getItem(key) || '0', 10);
@@ -90,12 +90,9 @@ export default function BotHealthDialog({ isOpen, onClose, unhealthyManagers = [
         try {
             const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging'
                 ? 'https://ic0.app' : 'http://localhost:4943';
-            const agent = new HttpAgent({ identity, host });
-            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                await agent.fetchRootKey();
-            }
-            const actor = Actor.createActor(botLogIdlFactory, { agent, canisterId });
-            await actor.markLogsSeen(BigInt(newId));
+            const { createActor: createBackendActor, canisterId: backendCanisterId } = await import('declarations/app_sneeddao_backend');
+            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity, host } });
+            await backendActor.mark_logs_seen(Principal.fromText(canisterId), BigInt(newId));
         } catch (_) {}
         if (refreshBotLogAlerts) refreshBotLogAlerts();
     }, [identity, refreshBotLogAlerts]);

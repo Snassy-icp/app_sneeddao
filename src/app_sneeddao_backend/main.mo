@@ -144,7 +144,12 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   stable var stable_user_setting_notify_outdated_bots : [(Principal, Bool)] = [];
   stable var stable_user_setting_notify_low_cycles : [(Principal, Bool)] = [];
   stable var stable_user_setting_notify_bot_chores : [(Principal, Bool)] = [];
+  stable var stable_user_setting_notify_bot_log_errors : [(Principal, Bool)] = [];
+  stable var stable_user_setting_notify_bot_log_warnings : [(Principal, Bool)] = [];
   stable var stable_user_setting_notify_updates : [(Principal, Bool)] = [];
+  
+  // Per-user per-canister last-seen log ID (for cross-device bot log alert tracking)
+  stable var stable_user_last_seen_log_id : [(Principal, [(Principal, Nat)])] = [];
 
   // Stable storage for neuron names and nicknames
   stable var stable_neuron_names : [(NeuronNameKey, (Text, Bool))] = [];
@@ -267,6 +272,8 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   transient let default_notify_outdated_bots : Bool = true;
   transient let default_notify_low_cycles : Bool = true;
   transient let default_notify_bot_chores : Bool = true;
+  transient let default_notify_bot_log_errors : Bool = true;
+  transient let default_notify_bot_log_warnings : Bool = true;
   transient let default_notify_updates : Bool = true;
 
   // Runtime storage for user settings
@@ -295,7 +302,12 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   transient var user_setting_notify_outdated_bots : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
   transient var user_setting_notify_low_cycles : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
   transient var user_setting_notify_bot_chores : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
+  transient var user_setting_notify_bot_log_errors : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
+  transient var user_setting_notify_bot_log_warnings : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
   transient var user_setting_notify_updates : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(100, Principal.equal, Principal.hash);
+
+  // Per-user per-canister last-seen log ID
+  transient var user_last_seen_log_id : HashMap.HashMap<Principal, HashMap.HashMap<Principal, Nat>> = HashMap.HashMap<Principal, HashMap.HashMap<Principal, Nat>>(100, Principal.equal, Principal.hash);
 
   // Add after other runtime variables
   private transient var blacklisted_words = HashMap.fromIter<Text, Bool>(
@@ -516,6 +528,14 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         case (?value) value;
         case null default_notify_bot_chores;
       };
+      notify_bot_log_errors = switch (user_setting_notify_bot_log_errors.get(user)) {
+        case (?value) value;
+        case null default_notify_bot_log_errors;
+      };
+      notify_bot_log_warnings = switch (user_setting_notify_bot_log_warnings.get(user)) {
+        case (?value) value;
+        case null default_notify_bot_log_warnings;
+      };
       notify_updates = switch (user_setting_notify_updates.get(user)) {
         case (?value) value;
         case null default_notify_updates;
@@ -624,6 +644,14 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       case (?value) { user_setting_notify_bot_chores.put(user, value) };
       case null {};
     };
+    switch (update.notify_bot_log_errors) {
+      case (?value) { user_setting_notify_bot_log_errors.put(user, value) };
+      case null {};
+    };
+    switch (update.notify_bot_log_warnings) {
+      case (?value) { user_setting_notify_bot_log_warnings.put(user, value) };
+      case null {};
+    };
     switch (update.notify_updates) {
       case (?value) { user_setting_notify_updates.put(user, value) };
       case null {};
@@ -659,6 +687,8 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         notify_outdated_bots = default_notify_outdated_bots;
         notify_low_cycles = default_notify_low_cycles;
         notify_bot_chores = default_notify_bot_chores;
+        notify_bot_log_errors = default_notify_bot_log_errors;
+        notify_bot_log_warnings = default_notify_bot_log_warnings;
         notify_updates = default_notify_updates;
       };
     };
@@ -671,6 +701,45 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     };
     apply_user_settings_update(caller, update);
     #ok(get_user_settings(caller))
+  };
+
+  // Bot log alert last-seen tracking (per user, per canister/bot)
+  public query ({ caller }) func get_last_seen_log_id(canister_id : Principal) : async Nat {
+    if (Principal.isAnonymous(caller)) { return 0 };
+    switch (user_last_seen_log_id.get(caller)) {
+      case (?inner) {
+        switch (inner.get(canister_id)) {
+          case (?id) id;
+          case null 0;
+        };
+      };
+      case null 0;
+    };
+  };
+
+  public query ({ caller }) func get_all_last_seen_log_ids() : async [(Principal, Nat)] {
+    if (Principal.isAnonymous(caller)) { return [] };
+    switch (user_last_seen_log_id.get(caller)) {
+      case (?inner) Iter.toArray(inner.entries());
+      case null [];
+    };
+  };
+
+  public shared ({ caller }) func mark_logs_seen(canister_id : Principal, log_id : Nat) : async () {
+    if (Principal.isAnonymous(caller)) { return };
+    let inner = switch (user_last_seen_log_id.get(caller)) {
+      case (?existing) existing;
+      case null {
+        let newMap = HashMap.HashMap<Principal, Nat>(10, Principal.equal, Principal.hash);
+        user_last_seen_log_id.put(caller, newMap);
+        newMap;
+      };
+    };
+    let current = switch (inner.get(canister_id)) {
+      case (?existing) existing;
+      case null 0;
+    };
+    inner.put(canister_id, Nat.max(current, log_id));
   };
 
   // Helper functions for counting canister groups
@@ -3403,7 +3472,16 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     stable_user_setting_notify_outdated_bots := Iter.toArray(user_setting_notify_outdated_bots.entries());
     stable_user_setting_notify_low_cycles := Iter.toArray(user_setting_notify_low_cycles.entries());
     stable_user_setting_notify_bot_chores := Iter.toArray(user_setting_notify_bot_chores.entries());
+    stable_user_setting_notify_bot_log_errors := Iter.toArray(user_setting_notify_bot_log_errors.entries());
+    stable_user_setting_notify_bot_log_warnings := Iter.toArray(user_setting_notify_bot_log_warnings.entries());
     stable_user_setting_notify_updates := Iter.toArray(user_setting_notify_updates.entries());
+
+    // Serialize per-user per-canister last-seen log IDs
+    var lastSeenEntries = List.nil<(Principal, [(Principal, Nat)])>();
+    for ((user, innerMap) in user_last_seen_log_id.entries()) {
+      lastSeenEntries := List.push((user, Iter.toArray(innerMap.entries())), lastSeenEntries);
+    };
+    stable_user_last_seen_log_id := List.toArray(lastSeenEntries);
   };
 
   // initialize ephemeral state and empty stable arrays to save memory
@@ -3643,10 +3721,28 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         user_setting_notify_bot_chores.put(user, value);
       };
       stable_user_setting_notify_bot_chores := [];
+      for ((user, value) in stable_user_setting_notify_bot_log_errors.vals()) {
+        user_setting_notify_bot_log_errors.put(user, value);
+      };
+      stable_user_setting_notify_bot_log_errors := [];
+      for ((user, value) in stable_user_setting_notify_bot_log_warnings.vals()) {
+        user_setting_notify_bot_log_warnings.put(user, value);
+      };
+      stable_user_setting_notify_bot_log_warnings := [];
       for ((user, value) in stable_user_setting_notify_updates.vals()) {
         user_setting_notify_updates.put(user, value);
       };
       stable_user_setting_notify_updates := [];
+
+      // Restore per-user per-canister last-seen log IDs
+      for ((user, pairs) in stable_user_last_seen_log_id.vals()) {
+        let innerMap = HashMap.HashMap<Principal, Nat>(pairs.size(), Principal.equal, Principal.hash);
+        for ((canisterId, logId) in pairs.vals()) {
+          innerMap.put(canisterId, logId);
+        };
+        user_last_seen_log_id.put(user, innerMap);
+      };
+      stable_user_last_seen_log_id := [];
 
       // Update next_project_id to be one more than the highest existing ID
       var max_project_id : Nat = 0;

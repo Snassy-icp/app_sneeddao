@@ -74,6 +74,8 @@ module {
         notify_outdated_bots: Bool;
         notify_low_cycles: Bool;
         notify_bot_chores: Bool;
+        notify_bot_log_errors: Bool;
+        notify_bot_log_warnings: Bool;
         notify_updates: Bool;
     };
 
@@ -104,6 +106,8 @@ module {
         notify_outdated_bots: ?Bool;
         notify_low_cycles: ?Bool;
         notify_bot_chores: ?Bool;
+        notify_bot_log_errors: ?Bool;
+        notify_bot_log_warnings: ?Bool;
         notify_updates: ?Bool;
     };
 

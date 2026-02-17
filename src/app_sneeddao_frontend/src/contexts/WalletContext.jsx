@@ -2093,11 +2093,26 @@ export const WalletProvider = ({ children }) => {
             if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
                 await agent.fetchRootKey();
             }
+
+            // Fetch all last-seen log IDs from backend canister in one call
+            let backendSeenMap = {};
+            try {
+                const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity, host } });
+                const pairs = await backendActor.get_all_last_seen_log_ids();
+                for (const [principal, id] of pairs) {
+                    backendSeenMap[principal.toString()] = Number(id);
+                }
+            } catch (_) {}
+
             const results = {};
             await Promise.allSettled(allBotEntries.map(async (entry) => {
                 const cid = entry.canisterId.toString();
                 try {
-                    const lastSeen = parseInt(localStorage.getItem(`lastSeenLogId:${cid}`) || '0', 10);
+                    const localSeen = parseInt(localStorage.getItem(`lastSeenLogId:${cid}`) || '0', 10);
+                    const backendSeen = backendSeenMap[cid] || 0;
+                    const lastSeen = Math.max(localSeen, backendSeen);
+                    // Keep localStorage in sync with highest known value
+                    if (backendSeen > localSeen) localStorage.setItem(`lastSeenLogId:${cid}`, String(backendSeen));
                     const actor = Actor.createActor(botLogIdlFactory, { agent, canisterId: entry.canisterId });
                     const summary = await actor.getLogAlertSummary(BigInt(lastSeen));
                     results[cid] = {

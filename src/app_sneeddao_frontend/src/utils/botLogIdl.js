@@ -65,8 +65,6 @@ const LogConfig = IDL.Record({
 export const botLogIdlFactory = ({ IDL: _IDL }) => {
     return IDL.Service({
         getLogAlertSummary: IDL.Func([IDL.Nat], [LogAlertSummary], ['query']),
-        getLastSeenLogId: IDL.Func([], [IDL.Nat], ['query']),
-        markLogsSeen: IDL.Func([IDL.Nat], [], []),
         getLogConfig: IDL.Func([], [LogConfig], ['query']),
         getLogs: IDL.Func([LogFilter], [LogResult], ['query']),
     });

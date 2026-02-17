@@ -638,8 +638,6 @@ export const idlFactory = ({ IDL }) => {
         getLogs: IDL.Func([LogFilter], [LogResult], ['query']),
         getLogConfig: IDL.Func([], [LogConfig], ['query']),
         getLogAlertSummary: IDL.Func([IDL.Nat], [LogAlertSummary], ['query']),
-        getLastSeenLogId: IDL.Func([], [IDL.Nat], ['query']),
-        markLogsSeen: IDL.Func([IDL.Nat], [], []),
         setLogLevel: IDL.Func([LogLevel], [], []),
         clearLogs: IDL.Func([], [], []),
 

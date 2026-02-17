@@ -622,13 +622,19 @@ export default function BotManagementPanel({
         try {
             const bot = await getReadyBotActor();
             if (!bot?.getLogAlertSummary) return;
-            // Merge localStorage and canister-stored lastSeen (use the higher)
+            // Merge localStorage and backend-stored lastSeen (use the higher)
             const lsKey = `lastSeenLogId:${canisterId}`;
             const localSeen = parseInt(localStorage.getItem(lsKey) || '0', 10);
-            let canisterSeen = 0;
-            try { canisterSeen = Number(await bot.getLastSeenLogId()); } catch (_) {}
-            const lastSeen = Math.max(localSeen, canisterSeen);
-            if (canisterSeen > localSeen) localStorage.setItem(lsKey, String(canisterSeen));
+            let backendSeen = 0;
+            try {
+                const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging'
+                    ? 'https://ic0.app' : 'http://localhost:4943';
+                const { createActor: createBackendActor, canisterId: backendCanisterId } = await import('declarations/app_sneeddao_backend');
+                const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity, host } });
+                backendSeen = Number(await backendActor.get_last_seen_log_id(Principal.fromText(canisterId)));
+            } catch (_) {}
+            const lastSeen = Math.max(localSeen, backendSeen);
+            if (backendSeen > localSeen) localStorage.setItem(lsKey, String(backendSeen));
             const summary = await bot.getLogAlertSummary(BigInt(lastSeen));
             setLogAlertSummary({
                 unseenErrorCount: Number(summary.unseenErrorCount),
@@ -648,16 +654,15 @@ export default function BotManagementPanel({
         const lsKey = `lastSeenLogId:${canisterId}`;
         localStorage.setItem(lsKey, String(highestId));
         try {
-            const bot = await getReadyBotActor();
-            if (bot?.markLogsSeen) await bot.markLogsSeen(BigInt(highestId));
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging'
+                ? 'https://ic0.app' : 'http://localhost:4943';
+            const { createActor: createBackendActor, canisterId: backendCanisterId } = await import('declarations/app_sneeddao_backend');
+            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity, host } });
+            await backendActor.mark_logs_seen(Principal.fromText(canisterId), BigInt(highestId));
         } catch (_) {}
         setLogAlertSummary(null);
         setMarkingLogsSeen(false);
-        // Trigger WalletContext refresh if available
-        try {
-            const { refreshBotLogAlerts } = await import('../contexts/WalletContext');
-        } catch (_) {}
-    }, [logAlertSummary, canisterId, getReadyBotActor]);
+    }, [logAlertSummary, canisterId, identity]);
 
     // Refresh alert summary when log tab is active
     useEffect(() => {
