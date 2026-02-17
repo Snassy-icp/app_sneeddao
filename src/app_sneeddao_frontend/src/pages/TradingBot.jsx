@@ -5597,20 +5597,23 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
                                                     ? { ...c, valueSources: c.valueSources.filter((_, j) => j !== vi) } : c) }))}><FaTrash /></button>
                                         </div>
                                     ))}
-                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px' }}>
-                                        <span style={label}>Denomination:</span>
-                                        <select value={cond.denominationToken} onChange={e => updateCond(ci, { denominationToken: e.target.value })}
-                                            style={sel({ minWidth: '140px' })}>
-                                            <option value="">ICP (default)</option>
-                                            {tokenRegistry.map(t => <option key={t.ledgerCanisterId.toText()} value={t.ledgerCanisterId.toText()}>{t.symbol}</option>)}
-                                        </select>
+                                    <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', marginTop: '8px' }}>
+                                        <div style={{ minWidth: '160px', flex: '0 1 200px' }}>
+                                            <div style={label}>Denomination (default: ICP)</div>
+                                            <TokenSelector value={cond.denominationToken} onChange={v => updateCond(ci, { denominationToken: v })}
+                                                allowCustom placeholder="ICP (default)" style={{ marginTop: '4px' }} />
+                                        </div>
                                     </div>
                                 </div>
                             )}
 
                             {/* Row 3: Operator-specific */}
                             {(cond.operator === 0 || cond.operator === 1) && (() => {
-                                const decimals = cond.conditionType === 2 ? getTokenDecimals(cond.balanceToken) : 8;
+                                const unitToken = cond.conditionType === 0 ? cond.priceToken2
+                                    : cond.conditionType === 1 ? (cond.denominationToken || ICP_LEDGER)
+                                    : cond.balanceToken;
+                                const decimals = getTokenDecimals(unitToken);
+                                const unitSym = tokenSymbol(unitToken);
                                 const displayVal = toTokenUnits(cond.threshold, decimals);
                                 return (
                                     <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '10px', flexWrap: 'wrap' }}>
@@ -5618,14 +5621,16 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
                                         <input type="text" value={displayVal} placeholder="0.00"
                                             onChange={e => updateCond(ci, { threshold: fromTokenUnits(e.target.value, decimals) })}
                                             style={inp({ width: '140px' })} />
-                                        <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>
-                                            {cond.conditionType === 2 ? tokenSymbol(cond.balanceToken) : 'token units'}
-                                        </span>
+                                        <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>{unitSym}</span>
                                     </div>
                                 );
                             })()}
                             {(cond.operator === 2 || cond.operator === 3) && (() => {
-                                const decimals = cond.conditionType === 2 ? getTokenDecimals(cond.balanceToken) : 8;
+                                const unitToken = cond.conditionType === 0 ? cond.priceToken2
+                                    : cond.conditionType === 1 ? (cond.denominationToken || ICP_LEDGER)
+                                    : cond.balanceToken;
+                                const decimals = getTokenDecimals(unitToken);
+                                const unitSym = tokenSymbol(unitToken);
                                 return (
                                     <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '10px', flexWrap: 'wrap' }}>
                                         <span style={label}>Min:</span>
@@ -5636,9 +5641,7 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
                                         <input type="text" value={toTokenUnits(cond.rangeMax, decimals)} placeholder="0.00"
                                             onChange={e => updateCond(ci, { rangeMax: fromTokenUnits(e.target.value, decimals) })}
                                             style={inp({ width: '120px' })} />
-                                        <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>
-                                            {cond.conditionType === 2 ? tokenSymbol(cond.balanceToken) : 'token units'}
-                                        </span>
+                                        <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>{unitSym}</span>
                                     </div>
                                 );
                             })()}
@@ -5660,7 +5663,7 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
                                     <div>
                                         <div style={label}>Over period</div>
                                         <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
-                                            <input type="number" min="1" value={cond.changePeriodValue} placeholder="1"
+                                            <input type="text" value={cond.changePeriodValue} placeholder="1"
                                                 onChange={e => updateCond(ci, { changePeriodValue: e.target.value })}
                                                 style={inp({ width: '60px' })} />
                                             <select value={cond.changePeriodUnit} onChange={e => updateCond(ci, { changePeriodUnit: e.target.value })}
