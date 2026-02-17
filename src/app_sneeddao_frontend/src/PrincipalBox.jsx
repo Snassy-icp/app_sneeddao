@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaCopy, FaCheck, FaWallet, FaPaperPlane, FaKey, FaIdCard, FaExternalLinkAlt, FaSync, FaCoins, FaWater, FaLock, FaBug, FaTimes, FaBrain, FaBox, FaCrown, FaMicrochip, FaChevronDown, FaExchangeAlt } from 'react-icons/fa';
+import { FaCopy, FaCheck, FaWallet, FaPaperPlane, FaKey, FaIdCard, FaExternalLinkAlt, FaSync, FaCoins, FaWater, FaLock, FaBug, FaTimes, FaBrain, FaBox, FaCrown, FaMicrochip, FaChevronDown, FaExchangeAlt, FaChartLine } from 'react-icons/fa';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { Principal } from '@dfinity/principal';
 import { principalToSubAccount } from '@dfinity/utils';
@@ -158,6 +158,19 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const neuronManagerIsController = walletContext?.neuronManagerIsController || {};
     const trackedCanisterIsController = walletContext?.trackedCanisterIsController || {};
     
+    // All bot entries from sneedapp (with appId) - for bot type icon detection
+    const allBotEntries = walletContext?.allBotEntries || [];
+
+    // Build canisterId → appId map for quick lookup (detect trading bots etc.)
+    const botAppIdMap = useMemo(() => {
+        const map = {};
+        for (const entry of allBotEntries) {
+            const cid = typeof entry.canisterId === 'string' ? entry.canisterId : entry.canisterId?.toString?.() || '';
+            if (cid && entry.appId) map[cid] = entry.appId;
+        }
+        return map;
+    }, [allBotEntries]);
+
     // Get shared ICP price from context (ensures same value as Wallet page)
     const icpPrice = walletContext?.icpPrice;
 
@@ -2871,6 +2884,9 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                   const status = trackedCanisterStatus[canisterId];
                                   const detectedManager = detectedNeuronManagers[canisterId];
                                   const isNeuronManager = detectedManager?.isValid;
+                                  const appId = botAppIdMap[canisterId] || '';
+                                  const isTradingBot = appId === 'sneed-trading-bot';
+                                  const isKnownBot = isNeuronManager || isTradingBot;
                                   // Use shared controller status from context
                                   const isController = trackedCanisterIsController[canisterId];
                                   const cycles = status?.cycles;
@@ -2887,6 +2903,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                           onClick={() => openDappDetailModal({
                                               canisterId,
                                               isNeuronManager,
+                                              isTradingBot,
+                                              appId,
                                               neuronManagerVersion: detectedManager?.version || null,
                                               neuronCount: detectedManager?.neuronCount || 0,
                                               cycles,
@@ -2920,7 +2938,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                                       width: '28px',
                                                       height: '28px',
                                                       borderRadius: '50%',
-                                                      backgroundColor: isNeuronManager 
+                                                      backgroundColor: isKnownBot 
                                                           ? `${theme.colors.accent}20` 
                                                           : `${theme.colors.mutedText}20`,
                                                       display: 'flex',
@@ -2928,7 +2946,9 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                                       justifyContent: 'center'
                                                   }}
                                               >
-                                                  {isNeuronManager ? (
+                                                  {isTradingBot ? (
+                                                      <FaChartLine size={13} style={{ color: '#10b981' }} />
+                                                  ) : isNeuronManager ? (
                                                       <FaBrain size={14} style={{ color: theme.colors.accent }} />
                                                   ) : (
                                                       <FaBox size={12} style={{ color: theme.colors.mutedText }} />
@@ -3010,7 +3030,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                                       </span>
                                                   ) : null}
                                                   {cycles === null && memory === null && (
-                                                      <span>{isNeuronManager ? 'Staking Bot' : 'App'}</span>
+                                                      <span>{isTradingBot ? 'Trading Bot' : isNeuronManager ? 'Staking Bot' : 'App'}</span>
                                                   )}
                                               </span>
                                           </div>
@@ -3229,6 +3249,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
           memory={detailDapp?.memory}
           isController={detailDapp?.isController}
           isNeuronManager={detailDapp?.isNeuronManager}
+          isTradingBot={detailDapp?.isTradingBot || false}
+          appId={detailDapp?.appId || ''}
           neuronManagerVersion={detailDapp?.neuronManagerVersion}
           neuronCount={detailDapp?.neuronCount}
           handleRefresh={handleRefreshDapp}

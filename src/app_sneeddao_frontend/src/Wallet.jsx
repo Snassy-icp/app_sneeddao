@@ -71,7 +71,7 @@ import UpgradeBotsDialog from './components/UpgradeBotsDialog';
 import TopUpCyclesDialog from './components/TopUpCyclesDialog';
 import { PERM } from './utils/NeuronPermissionUtils.jsx';
 import { IDL } from '@dfinity/candid';
-import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle, FaTint, FaSeedling, FaGift, FaHourglassHalf, FaWater, FaUnlock, FaCheck, FaExclamationTriangle, FaCrown, FaBox, FaDatabase, FaCog, FaExternalLinkAlt, FaTimes, FaLightbulb, FaArrowRight, FaDollarSign, FaChartBar, FaBullseye, FaMoneyBillWave, FaBug, FaCopy, FaExpandAlt, FaSearch, FaArrowUp, FaBolt, FaSpinner } from 'react-icons/fa';
+import { FaWallet, FaCoins, FaExchangeAlt, FaLock, FaBrain, FaSync, FaChevronDown, FaChevronRight, FaQuestionCircle, FaTint, FaSeedling, FaGift, FaHourglassHalf, FaWater, FaUnlock, FaCheck, FaExclamationTriangle, FaCrown, FaBox, FaDatabase, FaCog, FaExternalLinkAlt, FaTimes, FaLightbulb, FaArrowRight, FaDollarSign, FaChartBar, FaBullseye, FaMoneyBillWave, FaBug, FaCopy, FaExpandAlt, FaSearch, FaArrowUp, FaBolt, FaSpinner, FaChartLine } from 'react-icons/fa';
 
 // Custom CSS for Wallet page animations
 const walletCustomStyles = `
@@ -587,10 +587,22 @@ function Wallet() {
         setNeuronManagerCycles: contextSetNeuronManagerCycles,
         setTrackedCanisterCycles: contextSetTrackedCanisterCycles,
         lowCyclesCanisters: contextLowCyclesCanisters,
+        // All bot entries from sneedapp (with appId) — for bot type icon detection
+        allBotEntries: contextAllBotEntries,
     } = useWallet();
     const walletLayoutCtx = useWalletLayout();
     const navigate = useNavigate();
     
+    // Build canisterId → appId map for quick lookup (detect trading bots etc.)
+    const botAppIdMap = useMemo(() => {
+        const map = {};
+        for (const entry of (contextAllBotEntries || [])) {
+            const cid = typeof entry.canisterId === 'string' ? entry.canisterId : entry.canisterId?.toString?.() || '';
+            if (cid && entry.appId) map[cid] = entry.appId;
+        }
+        return map;
+    }, [contextAllBotEntries]);
+
     // Compute account ID for the logged-in user
     const userAccountId = useMemo(() => {
         if (!identity) return null;
@@ -9209,6 +9221,10 @@ function Wallet() {
                                         );
                                     }
                                     
+                                    // Check if this is a known trading bot via allBotEntries
+                                    const trackedAppId = botAppIdMap[canisterId] || '';
+                                    const isTradingBot = trackedAppId === 'sneed-trading-bot';
+
                                     // Regular canister card
                                     return (
                                         <DraggableWalletCard key={canisterId} dragType={DRAG_TYPE_APP} itemId={canisterId} onDrop={handleAppDrop}>
@@ -9221,7 +9237,9 @@ function Wallet() {
                                                 onClick={() => setExpandedCanisterCards(prev => ({ ...prev, [canisterId]: !prev[canisterId] }))}
                                             >
                                                 <div className="header-logo-column" style={{ alignSelf: 'flex-start', minWidth: '48px', minHeight: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-                                                    {getCanisterTypeIcon(displayInfo?.canisterTypes, 36, theme.colors.mutedText)}
+                                                    {isTradingBot
+                                                        ? <FaChartLine size={36} style={{ color: '#10b981' }} />
+                                                        : getCanisterTypeIcon(displayInfo?.canisterTypes, 36, theme.colors.mutedText)}
                                                     {isController && (
                                                         <span 
                                                             style={{ 
@@ -9315,6 +9333,8 @@ function Wallet() {
                                                                     openDappDetailModal({
                                                                         canisterId,
                                                                         isNeuronManager: false,
+                                                                        isTradingBot,
+                                                                        appId: trackedAppId,
                                                                         neuronManagerVersion: null,
                                                                         neuronCount: 0,
                                                                         cycles,
@@ -10408,6 +10428,8 @@ function Wallet() {
                     memory={detailDapp?.memory}
                     isController={detailDapp?.isController}
                     isNeuronManager={detailDapp?.isNeuronManager}
+                    isTradingBot={detailDapp?.isTradingBot || false}
+                    appId={detailDapp?.appId || ''}
                     neuronManagerVersion={detailDapp?.neuronManagerVersion}
                     neuronCount={detailDapp?.neuronCount}
                     handleRefresh={handleRefreshDappModal}

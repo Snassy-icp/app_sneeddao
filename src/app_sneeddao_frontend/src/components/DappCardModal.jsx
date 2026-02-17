@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { FaTimes, FaSync, FaBrain, FaBox, FaCrown, FaExternalLinkAlt, FaTrash, FaCoins, FaMicrochip, FaChevronDown, FaChevronRight, FaLock, FaHourglassHalf, FaCheck, FaQuestionCircle, FaSeedling, FaPaperPlane, FaArrowRight } from 'react-icons/fa';
+import { FaTimes, FaSync, FaBrain, FaBox, FaCrown, FaExternalLinkAlt, FaTrash, FaCoins, FaMicrochip, FaChevronDown, FaChevronRight, FaLock, FaHourglassHalf, FaCheck, FaQuestionCircle, FaSeedling, FaPaperPlane, FaArrowRight, FaChartLine } from 'react-icons/fa';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
 import StatusLamp, {
@@ -30,6 +30,8 @@ const DappCardModal = ({
     isController = false,
     // Neuron manager specific info (if detected as neuron manager)
     isNeuronManager = false,
+    isTradingBot = false,
+    appId = '',
     neuronManagerVersion = null,
     neuronCount = 0,
     // Neurons data for neuron managers
@@ -175,7 +177,7 @@ const DappCardModal = ({
 
     if (!show || !canisterId) return null;
 
-    const accentColor = isNeuronManager ? '#8b5cf6' : theme.colors.accent;
+    const accentColor = isNeuronManager ? '#8b5cf6' : isTradingBot ? '#10b981' : theme.colors.accent;
     const neurons = neuronsData?.neurons || [];
     const neuronsLoading = neuronsData?.loading;
     const neuronsError = neuronsData?.error;
@@ -254,7 +256,9 @@ const DappCardModal = ({
                             position: 'relative',
                             flexShrink: 0,
                         }}>
-                            {isNeuronManager ? (
+                            {isTradingBot ? (
+                                <FaChartLine size={22} style={{ color: accentColor }} />
+                            ) : isNeuronManager ? (
                                 <FaBrain size={24} style={{ color: accentColor }} />
                             ) : (
                                 <FaBox size={20} style={{ color: theme.colors.mutedText }} />
@@ -285,7 +289,7 @@ const DappCardModal = ({
                                 fontSize: '12px',
                                 fontWeight: '500',
                             }}>
-                                {isNeuronManager ? 'ICP Staking Bot' : 'App'}
+                                {isTradingBot ? 'Trading Bot' : isNeuronManager ? 'ICP Staking Bot' : 'App'}
                             </div>
                         </div>
                     </div>
@@ -984,6 +988,35 @@ const DappCardModal = ({
                             >
                                 <FaBrain size={14} />
                                 Manage Neurons
+                            </button>
+                        )}
+
+                        {/* Primary action: Manage Trading Bot */}
+                        {isTradingBot && (
+                            <button
+                                onClick={() => {
+                                    onClose();
+                                    navigate(`/trading_bot/${canisterId}`);
+                                }}
+                                style={{
+                                    width: '100%',
+                                    padding: '12px 16px',
+                                    backgroundColor: accentColor,
+                                    color: '#fff',
+                                    border: 'none',
+                                    borderRadius: '10px',
+                                    fontSize: '14px',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '8px',
+                                    transition: 'all 0.2s ease',
+                                }}
+                            >
+                                <FaChartLine size={14} />
+                                Manage Trading Bot
                             </button>
                         )}
 

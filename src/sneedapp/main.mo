@@ -299,8 +299,19 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             };
             case (?existing) {
                 let found = Array.find<UserCanisterEntry>(existing, func(e) { Principal.equal(e.canisterId, canisterId) });
-                if (found == null) {
-                    userWalletMap.put(user, Array.append(existing, [entry]));
+                switch (found) {
+                    case null {
+                        userWalletMap.put(user, Array.append(existing, [entry]));
+                    };
+                    case (?f) {
+                        // Update appId if the existing entry has an empty one and a non-empty one is provided
+                        if (f.appId == "" and appId != "") {
+                            let updated = Array.map<UserCanisterEntry, UserCanisterEntry>(existing, func(e) {
+                                if (Principal.equal(e.canisterId, canisterId)) { { canisterId = canisterId; appId = appId } } else { e }
+                            });
+                            userWalletMap.put(user, updated);
+                        };
+                    };
                 };
             };
         };
