@@ -141,6 +141,12 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         const hasLogError = logAlertBots.some(b => (b.unseenErrorCount || 0) > 0);
         return (hasChoreError || hasLogError) ? '#ef4444' : '#f59e0b';
     }, [choreUnhealthyManagers, logAlertBots]);
+
+    // Low cycles badge color: red if any critical, orange if only warnings
+    const lowCyclesColor = React.useMemo(() => {
+        return lowCyclesCanisters.some(c => c.severity === 'critical') ? '#ef4444' : '#f59e0b';
+    }, [lowCyclesCanisters]);
+
     const frontendUpdate = useFrontendUpdate();
     const hasUpdateAvailable = frontendUpdate?.hasUpdateAvailable ?? false;
     const countdownSeconds = frontendUpdate?.countdownSeconds ?? 0;
@@ -1939,9 +1945,9 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                     gap: '4px',
                                     padding: '3px 8px',
                                     borderRadius: '12px',
-                                    background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(239, 68, 68, 0.1))',
-                                    border: '1px solid rgba(239, 68, 68, 0.3)',
-                                    color: '#ef4444',
+                                    background: `linear-gradient(135deg, ${lowCyclesColor}33, ${lowCyclesColor}1a)`,
+                                    border: `1px solid ${lowCyclesColor}4d`,
+                                    color: lowCyclesColor,
                                     fontSize: '11px',
                                     fontWeight: '600',
                                     cursor: 'pointer',

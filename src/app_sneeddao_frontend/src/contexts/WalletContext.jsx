@@ -2225,12 +2225,14 @@ export const WalletProvider = ({ children }) => {
             const cycles = neuronManagerCycles[cid];
             if (cycles === null || cycles === undefined) continue;
             const criticalLevel = _getNeuronManagerCriticalLevel();
-            if (cycles < criticalLevel) {
+            const healthyLevel = _getNeuronManagerHealthyLevel();
+            if (cycles < healthyLevel) {
                 result.push({
                     canisterId: cid,
                     cycles,
                     criticalLevel,
-                    healthyLevel: _getNeuronManagerHealthyLevel(),
+                    healthyLevel,
+                    severity: cycles < criticalLevel ? 'critical' : 'warning',
                     type: 'neuron_manager',
                     label: 'ICP Staking Bot',
                     version: manager.version,
@@ -2250,12 +2252,14 @@ export const WalletProvider = ({ children }) => {
             const cycles = trackedCanisterCycles[canisterId];
             if (cycles === null || cycles === undefined) continue;
             const criticalLevel = _getCanisterCriticalLevel();
-            if (cycles < criticalLevel) {
+            const healthyLevel = _getCanisterHealthyLevel();
+            if (cycles < healthyLevel) {
                 result.push({
                     canisterId,
                     cycles,
                     criticalLevel,
-                    healthyLevel: _getCanisterHealthyLevel(),
+                    healthyLevel,
+                    severity: cycles < criticalLevel ? 'critical' : 'warning',
                     type: 'canister',
                     label: 'Wallet',
                     isController: trackedCanisterIsController[canisterId] === true,
@@ -2271,12 +2275,14 @@ export const WalletProvider = ({ children }) => {
             const cycles = appManagerCanisterCycles[canisterId];
             if (cycles === null || cycles === undefined) continue;
             const criticalLevel = _getCanisterCriticalLevel();
-            if (cycles < criticalLevel) {
+            const healthyLevel = _getCanisterHealthyLevel();
+            if (cycles < healthyLevel) {
                 result.push({
                     canisterId,
                     cycles,
                     criticalLevel,
-                    healthyLevel: _getCanisterHealthyLevel(),
+                    healthyLevel,
+                    severity: cycles < criticalLevel ? 'critical' : 'warning',
                     type: 'canister',
                     label: appManagerCanisterIsController[canisterId] === true ? 'App' : 'App (SNS)',
                     isController: appManagerCanisterIsController[canisterId] === true,
