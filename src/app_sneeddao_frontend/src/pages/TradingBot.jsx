@@ -2891,6 +2891,8 @@ function LoggingSettingsPanel({ getReadyBotActor, theme, accentColor, choreStatu
     const [priceStaleInput, setPriceStaleInput] = useState('');
     const [priceHistMaxSize, setPriceHistMaxSize] = useState(null);
     const [priceHistMaxInput, setPriceHistMaxInput] = useState('');
+    const [tradeLogMaxInput, setTradeLogMaxInput] = useState('');
+    const [portfolioLogMaxInput, setPortfolioLogMaxInput] = useState('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
@@ -2909,6 +2911,8 @@ function LoggingSettingsPanel({ getReadyBotActor, theme, accentColor, choreStatu
             ]);
             setSettings(s);
             setOverrides(o);
+            setTradeLogMaxInput(String(Number(s.maxTradeLogEntries)));
+            setPortfolioLogMaxInput(String(Number(s.maxPortfolioLogEntries)));
             const staleSec = Number(ms);
             setMetaStaleness(staleSec);
             setMetaInput(String(staleSec));
@@ -3127,8 +3131,31 @@ function LoggingSettingsPanel({ getReadyBotActor, theme, accentColor, choreStatu
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
                         <div style={{ padding: '12px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
                             <div style={{ fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '6px' }}>Trade Log</div>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                <span style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>Max entries: {Number(settings.maxTradeLogEntries).toLocaleString()}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: theme.colors.secondaryText }}>
+                                    <span>Max:</span>
+                                    <input type="number" min="100" step="1000"
+                                        value={tradeLogMaxInput}
+                                        onChange={e => setTradeLogMaxInput(e.target.value)}
+                                        style={{ width: '80px', padding: '2px 6px', fontSize: '0.78rem', borderRadius: '4px', border: `1px solid ${theme.colors.border}`, background: theme.colors.secondaryBg, color: theme.colors.primaryText, fontFamily: 'monospace' }}
+                                    />
+                                    {Number(tradeLogMaxInput) !== Number(settings.maxTradeLogEntries) && (
+                                        <button disabled={saving} onClick={async () => {
+                                            const val = parseInt(tradeLogMaxInput, 10);
+                                            if (isNaN(val) || val < 100) { setError('Min 100 entries'); return; }
+                                            setSaving(true); setError(''); setSuccess('');
+                                            try {
+                                                const bot = await getReadyBotActor();
+                                                const updated = { ...settings, maxTradeLogEntries: BigInt(val) };
+                                                await bot.setLoggingSettings(updated);
+                                                setSettings(updated);
+                                                setSuccess('Trade log buffer size updated.');
+                                                setTimeout(() => setSuccess(''), 3000);
+                                            } catch (err) { setError(err.message); }
+                                            finally { setSaving(false); }
+                                        }} style={{ padding: '1px 6px', fontSize: '0.7rem', borderRadius: '4px', background: accentColor, color: '#fff', border: 'none', cursor: 'pointer' }}>Save</button>
+                                    )}
+                                </div>
                                 <button disabled={saving} onClick={() => handleToggleMaster('tradeLogEnabled')} style={toggleBtnStyle(settings.tradeLogEnabled)}>
                                     {settings.tradeLogEnabled ? 'ON' : 'OFF'}
                                 </button>
@@ -3136,8 +3163,31 @@ function LoggingSettingsPanel({ getReadyBotActor, theme, accentColor, choreStatu
                         </div>
                         <div style={{ padding: '12px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
                             <div style={{ fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '6px' }}>Portfolio Snapshots</div>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                <span style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>Max entries: {Number(settings.maxPortfolioLogEntries).toLocaleString()}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: theme.colors.secondaryText }}>
+                                    <span>Max:</span>
+                                    <input type="number" min="100" step="1000"
+                                        value={portfolioLogMaxInput}
+                                        onChange={e => setPortfolioLogMaxInput(e.target.value)}
+                                        style={{ width: '80px', padding: '2px 6px', fontSize: '0.78rem', borderRadius: '4px', border: `1px solid ${theme.colors.border}`, background: theme.colors.secondaryBg, color: theme.colors.primaryText, fontFamily: 'monospace' }}
+                                    />
+                                    {Number(portfolioLogMaxInput) !== Number(settings.maxPortfolioLogEntries) && (
+                                        <button disabled={saving} onClick={async () => {
+                                            const val = parseInt(portfolioLogMaxInput, 10);
+                                            if (isNaN(val) || val < 100) { setError('Min 100 entries'); return; }
+                                            setSaving(true); setError(''); setSuccess('');
+                                            try {
+                                                const bot = await getReadyBotActor();
+                                                const updated = { ...settings, maxPortfolioLogEntries: BigInt(val) };
+                                                await bot.setLoggingSettings(updated);
+                                                setSettings(updated);
+                                                setSuccess('Portfolio snapshot buffer size updated.');
+                                                setTimeout(() => setSuccess(''), 3000);
+                                            } catch (err) { setError(err.message); }
+                                            finally { setSaving(false); }
+                                        }} style={{ padding: '1px 6px', fontSize: '0.7rem', borderRadius: '4px', background: accentColor, color: '#fff', border: 'none', cursor: 'pointer' }}>Save</button>
+                                    )}
+                                </div>
                                 <button disabled={saving} onClick={() => handleToggleMaster('portfolioLogEnabled')} style={toggleBtnStyle(settings.portfolioLogEnabled)}>
                                     {settings.portfolioLogEnabled ? 'ON' : 'OFF'}
                                 </button>
