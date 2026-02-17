@@ -2608,6 +2608,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
         // 4. Calculate trade size — check if target-reaching is possible,
         //    otherwise use conservative partial sizing.
+        //    minTrade/maxTrade are configured in denomination token units (e.g. ICP e8s).
+        //    tradeSize is in sell token native units. Convert min/max to sell token units.
         let fee = getFee(sellToken.token);
         let maxAffordable = if (sellToken.balance > fee * 3) { sellToken.balance - fee * 3 } else { 0 };
         let excessSellValue = (totalValue * sellToken.deviationBps) / 10000;
@@ -2617,6 +2619,14 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             (capDenomValue * sellToken.balance) / sellToken.value
         } else { 0 };
         let effectiveTargetReach = Nat.min(targetReachUnits, maxAffordable);
+
+        // Convert min/max trade from denomination units to sell token native units
+        let minTradeUnits = if (sellToken.value > 0 and sellToken.balance > 0) {
+            (minTrade * sellToken.balance) / sellToken.value
+        } else { minTrade };
+        let maxTradeUnits = if (sellToken.value > 0 and sellToken.balance > 0) {
+            (maxTrade * sellToken.balance) / sellToken.value
+        } else { maxTrade };
 
         logEngine.logTrace(src, "Trade size calculation for " # tokenLabel(sellToken.token) # " → " # tokenLabel(buyToken.token), null, [
             ("sellToken", tokenLabel(sellToken.token)),
@@ -2632,15 +2642,17 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             ("capDenomValue", Nat.toText(capDenomValue)),
             ("targetReachUnits", Nat.toText(targetReachUnits)),
             ("effectiveTargetReach", Nat.toText(effectiveTargetReach)),
-            ("minTrade", Nat.toText(minTrade)),
-            ("maxTrade", Nat.toText(maxTrade)),
+            ("minTradeDenom", Nat.toText(minTrade)),
+            ("maxTradeDenom", Nat.toText(maxTrade)),
+            ("minTradeUnits", Nat.toText(minTradeUnits)),
+            ("maxTradeUnits", Nat.toText(maxTradeUnits)),
             ("balanceDiv4", Nat.toText(sellToken.balance / 4)),
             ("totalValue", Nat.toText(totalValue)),
         ]);
 
         var tradeSize: Nat = 0;
 
-        if (effectiveTargetReach >= minTrade and effectiveTargetReach <= maxTrade) {
+        if (effectiveTargetReach >= minTradeUnits and effectiveTargetReach <= maxTradeUnits) {
             // Target-reaching: this pair can be completed in one trade
             tradeSize := effectiveTargetReach;
             logEngine.logInfo(src, "Pair selected (target-reaching): sell " # tokenLabel(sellToken.token) # " (+" # Nat.toText(sellToken.deviationBps / 100) # "." # Nat.toText(sellToken.deviationBps % 100) # "% over) → buy " # tokenLabel(buyToken.token) # " (-" # Nat.toText(buyToken.deviationBps / 100) # "." # Nat.toText(buyToken.deviationBps % 100) # "% under), trade " # Nat.toText(tradeSize) # " units", null, [
@@ -2657,15 +2669,15 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         } else {
             // Partial trade: use conservative sizing with overshoot cap
             let overshootCap = targetReachUnits;
-            tradeSize := Nat.min(maxTrade, Nat.min(maxAffordable, Nat.min(sellToken.balance / 4, overshootCap)));
+            tradeSize := Nat.min(maxTradeUnits, Nat.min(maxAffordable, Nat.min(sellToken.balance / 4, overshootCap)));
 
             logEngine.logTrace(src, "Partial trade sizing breakdown", null, [
                 ("overshootCap", Nat.toText(overshootCap)),
                 ("balanceDiv4", Nat.toText(sellToken.balance / 4)),
                 ("maxAffordable", Nat.toText(maxAffordable)),
-                ("maxTrade", Nat.toText(maxTrade)),
+                ("maxTradeUnits", Nat.toText(maxTradeUnits)),
                 ("resultTradeSize", Nat.toText(tradeSize)),
-                ("limitingFactor", if (tradeSize == overshootCap) { "overshootCap" } else if (tradeSize == sellToken.balance / 4) { "balanceDiv4" } else if (tradeSize == maxAffordable) { "maxAffordable" } else { "maxTrade" }),
+                ("limitingFactor", if (tradeSize == overshootCap) { "overshootCap" } else if (tradeSize == sellToken.balance / 4) { "balanceDiv4" } else if (tradeSize == maxAffordable) { "maxAffordable" } else { "maxTradeUnits" }),
             ]);
 
             logEngine.logInfo(src, "Pair selected (partial): sell " # tokenLabel(sellToken.token) # " (+" # Nat.toText(sellToken.deviationBps / 100) # "." # Nat.toText(sellToken.deviationBps % 100) # "% over) → buy " # tokenLabel(buyToken.token) # " (-" # Nat.toText(buyToken.deviationBps / 100) # "." # Nat.toText(buyToken.deviationBps % 100) # "% under), trade " # Nat.toText(tradeSize) # " units (cap: " # Nat.toText(overshootCap) # ", targetReach: " # Nat.toText(targetReachUnits) # ")", null, [
@@ -2684,12 +2696,16 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             ]);
         };
 
-        if (tradeSize < minTrade) {
-            logEngine.logInfo(src, "Rebalance skipped: trade size " # Nat.toText(tradeSize) # " < min " # Nat.toText(minTrade) # " for " # tokenLabel(sellToken.token) # " → " # tokenLabel(buyToken.token), null, [
+        if (tradeSize < minTradeUnits) {
+            // Convert tradeSize back to denomination value for the log message
+            let tradeSizeDenom = if (sellToken.balance > 0) { (tradeSize * sellToken.value) / sellToken.balance } else { 0 };
+            logEngine.logInfo(src, "Rebalance skipped: trade value " # Nat.toText(tradeSizeDenom) # " " # tokenLabel(denomToken) # " < min " # Nat.toText(minTrade) # " for " # tokenLabel(sellToken.token) # " → " # tokenLabel(buyToken.token), null, [
                 ("sellToken", tokenLabel(sellToken.token)),
                 ("buyToken", tokenLabel(buyToken.token)),
-                ("tradeSize", Nat.toText(tradeSize)),
-                ("minTrade", Nat.toText(minTrade)),
+                ("tradeSizeUnits", Nat.toText(tradeSize)),
+                ("tradeSizeDenom", Nat.toText(tradeSizeDenom)),
+                ("minTradeDenom", Nat.toText(minTrade)),
+                ("minTradeUnits", Nat.toText(minTradeUnits)),
             ]);
             // Log as skipped in trade log
             ignore appendTradeLog({
@@ -2706,7 +2722,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 slippageBps = null;
                 dexId = null;
                 status = #Skipped;
-                errorMessage = ?("Trade size " # Nat.toText(tradeSize) # " < min " # Nat.toText(minTrade));
+                errorMessage = ?("Trade value " # Nat.toText(tradeSizeDenom) # " " # tokenLabel(denomToken) # " < min " # Nat.toText(minTrade));
                 txId = null;
                 destinationOwner = null;
             });
