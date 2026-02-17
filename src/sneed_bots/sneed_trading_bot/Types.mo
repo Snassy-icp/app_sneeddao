@@ -420,6 +420,7 @@ module {
         maxPriceImpactBps: Nat;
         maxSlippageBps: Nat;
         thresholdBps: Nat;        // Min deviation to trigger a trade
+        fallbackRouteTokens: [Principal]; // Ordered list of intermediary tokens for fallback routing
     };
 
     public type PortfolioTokenStatus = {

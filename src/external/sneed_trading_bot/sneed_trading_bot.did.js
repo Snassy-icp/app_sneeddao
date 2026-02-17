@@ -168,6 +168,7 @@ export const idlFactory = ({ IDL }) => {
         maxPriceImpactBps: IDL.Nat,
         maxSlippageBps: IDL.Nat,
         thresholdBps: IDL.Nat,
+        fallbackRouteTokens: IDL.Vec(IDL.Principal),
     });
 
     const PortfolioTokenStatus = IDL.Record({
@@ -527,6 +528,7 @@ export const idlFactory = ({ IDL }) => {
         setRebalanceMaxPriceImpactBps: IDL.Func([IDL.Text, IDL.Nat], [], []),
         setRebalanceMaxSlippageBps: IDL.Func([IDL.Text, IDL.Nat], [], []),
         setRebalanceThresholdBps: IDL.Func([IDL.Text, IDL.Nat], [], []),
+        setRebalanceFallbackRouteTokens: IDL.Func([IDL.Text, IDL.Vec(IDL.Principal)], [], []),
         // REMOVED: getPortfolioStatus — portfolio status is now computed on frontend
 
         // Distribution

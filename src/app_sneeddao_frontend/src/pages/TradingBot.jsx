@@ -1611,6 +1611,69 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                     </div>
                                 </div>
                             </div>
+
+                            {/* Fallback Route Tokens */}
+                            <div style={{ marginTop: '10px', padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+                                <div style={{ fontSize: '0.7rem', color: theme.colors.secondaryText, marginBottom: '6px' }}>Fallback Route Tokens</div>
+                                <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, marginBottom: '6px', lineHeight: '1.4' }}>
+                                    When a direct swap has no liquidity or high price impact, the rebalancer routes through these intermediary tokens in order. Paused tokens in the portfolio are automatically skipped.
+                                </div>
+                                {(settings.fallbackRouteTokens || []).length > 0 ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '6px' }}>
+                                        {(settings.fallbackRouteTokens || []).map((ft, i) => {
+                                            const ftKey = typeof ft === 'string' ? ft : ft?.toText?.() || String(ft);
+                                            return (
+                                                <div key={ftKey} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 8px', background: `${accentColor}08`, borderRadius: '6px', border: `1px solid ${theme.colors.border}` }}>
+                                                    <span style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '500', width: '16px', textAlign: 'center' }}>{i + 1}.</span>
+                                                    <span style={{ flex: 1, fontSize: '0.78rem', color: theme.colors.primaryText, fontWeight: '500' }}>{getTokenLabel(ft)}</span>
+                                                    {i > 0 && (
+                                                        <button onClick={async () => {
+                                                            const arr = [...(settings.fallbackRouteTokens || [])];
+                                                            [arr[i - 1], arr[i]] = [arr[i], arr[i - 1]];
+                                                            await handleSaveSetting('setRebalanceFallbackRouteTokens', arr);
+                                                        }} disabled={saving} style={{ ...secondaryButtonStyle, fontSize: '0.55rem', padding: '1px 4px' }} title="Move up">▲</button>
+                                                    )}
+                                                    {i < (settings.fallbackRouteTokens || []).length - 1 && (
+                                                        <button onClick={async () => {
+                                                            const arr = [...(settings.fallbackRouteTokens || [])];
+                                                            [arr[i], arr[i + 1]] = [arr[i + 1], arr[i]];
+                                                            await handleSaveSetting('setRebalanceFallbackRouteTokens', arr);
+                                                        }} disabled={saving} style={{ ...secondaryButtonStyle, fontSize: '0.55rem', padding: '1px 4px' }} title="Move down">▼</button>
+                                                    )}
+                                                    <button onClick={async () => {
+                                                        const arr = (settings.fallbackRouteTokens || []).filter((_, j) => j !== i);
+                                                        await handleSaveSetting('setRebalanceFallbackRouteTokens', arr);
+                                                    }} disabled={saving} style={{ ...secondaryButtonStyle, fontSize: '0.55rem', padding: '1px 4px', color: '#ef4444', borderColor: '#ef444440' }} title="Remove">
+                                                        <FaTrash style={{ fontSize: '0.5rem' }} />
+                                                    </button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                ) : (
+                                    <div style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginBottom: '6px', fontStyle: 'italic' }}>
+                                        Default: ICP only
+                                    </div>
+                                )}
+                                <div style={{ display: 'flex', gap: '4px', alignItems: 'flex-end' }}>
+                                    <div style={{ flex: 1 }}>
+                                        <TokenSelector
+                                            value=""
+                                            onChange={async (v) => {
+                                                if (!v) return;
+                                                const existing = (settings.fallbackRouteTokens || []).map(ft => typeof ft === 'string' ? ft : ft?.toText?.() || String(ft));
+                                                if (existing.includes(v)) return;
+                                                const arr = [...(settings.fallbackRouteTokens || []), Principal.fromText(v)];
+                                                await handleSaveSetting('setRebalanceFallbackRouteTokens', arr);
+                                            }}
+                                            onSelectToken={cacheTokenMeta}
+                                            allowCustom={true}
+                                            placeholder="Add fallback token..."
+                                            style={{ fontSize: '0.7rem' }}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     )}
 

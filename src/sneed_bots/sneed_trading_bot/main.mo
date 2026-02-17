@@ -67,6 +67,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     var rebalanceMaxPriceImpactBps: [(Text, Nat)] = [];
     var rebalanceMaxSlippageBps: [(Text, Nat)] = [];
     var rebalanceThresholdBps: [(Text, Nat)] = [];
+    var rebalanceFallbackRouteTokens: [(Text, [Principal])] = [];
 
     // Move Funds Chore: per-instance action lists
     var moveFundsActions: [(Text, [T.ActionConfig])] = [];
@@ -208,6 +209,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     };
     func getRebalThreshold(instanceId: Text): Nat {
         getFromMap(rebalanceThresholdBps, instanceId, 200) // 2% minimum deviation
+    };
+    func getRebalFallbackRouteTokens(instanceId: Text): [Principal] {
+        let configured = getFromMap(rebalanceFallbackRouteTokens, instanceId, []);
+        if (configured.size() > 0) { configured }
+        else { [Principal.fromText(T.ICP_LEDGER)] } // Default: ICP as sole fallback
     };
 
     // ============================================
@@ -2267,10 +2273,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             return false;
         };
 
-        // 5. Get quote and validate — with ICP-routed fallback for illiquid pairs
+        // 5. Get quote and validate — with configurable fallback routing for illiquid pairs
         let maxImpact = maxImpactCfg;
         let slippage = slippageCfg;
-        let icpToken = Principal.fromText(T.ICP_LEDGER);
 
         logEngine.logDebug(src, "Fetching direct quote: " # tokenLabel(sellToken.token) # " → " # tokenLabel(buyToken.token) # " amount " # Nat.toText(tradeSize), null, [
             ("sellToken", tokenLabel(sellToken.token)),
@@ -2318,188 +2323,159 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             return await _rebalExecuteAndLog(instanceId, src, sellToken, buyToken, quote, slippage, tradeSize, "direct");
         };
 
-        // --- 6b. ICP-routed fallback (sell → ICP → buy) ---
-        // Only attempt if neither token is already ICP
-        if (sellToken.token == icpToken or buyToken.token == icpToken) {
-            // One side is already ICP — direct path was the only option
-            let reason = switch (directQuoteOpt) {
-                case null { "no liquidity" };
-                case (?q) { "price impact " # Nat.toText(q.priceImpactBps) # " bps > max " # Nat.toText(maxImpact) # " bps" };
+        // --- 6b. Fallback routing (sell → intermediary → buy) ---
+        let fallbackTokens = getRebalFallbackRouteTokens(instanceId);
+
+        // Check if a token is paused in the rebalance targets
+        let isTokenPaused = func(token: Principal): Bool {
+            for (t in allTargets.vals()) {
+                if (t.token == token and t.paused) return true;
             };
-            logEngine.logWarning(src, "Rebalance skipped (" # tokenLabel(sellToken.token) # " → " # tokenLabel(buyToken.token) # "): " # reason, null, [
-                ("sellToken", tokenLabel(sellToken.token)),
-                ("sellTokenId", Principal.toText(sellToken.token)),
-                ("buyToken", tokenLabel(buyToken.token)),
-                ("buyTokenId", Principal.toText(buyToken.token)),
-                ("tradeSize", Nat.toText(tradeSize)),
-                ("reason", reason),
-            ]);
-            // Log as skipped in trade log
-            ignore appendTradeLog({
-                choreId = ?instanceId;
-                choreTypeId = getInstanceTypeId(instanceId);
-                actionId = null;
-                actionType = 0;
-                inputToken = sellToken.token;
-                outputToken = ?buyToken.token;
-                inputAmount = tradeSize;
-                outputAmount = null;
-                priceE8s = switch (directQuoteOpt) { case (?q) ?q.spotPriceE8s; case null null };
-                priceImpactBps = switch (directQuoteOpt) { case (?q) ?q.priceImpactBps; case null null };
-                slippageBps = ?slippage;
-                dexId = switch (directQuoteOpt) { case (?q) ?q.dexId; case null null };
-                status = #Skipped;
-                errorMessage = ?reason;
-                txId = null;
-                destinationOwner = null;
-            });
-            return false;
+            false
         };
 
-        logEngine.logInfo(src, "Direct quote insufficient for " # tokenLabel(sellToken.token) # " → " # tokenLabel(buyToken.token) # ", trying ICP route", null, [
+        logEngine.logInfo(src, "Direct quote insufficient for " # tokenLabel(sellToken.token) # " → " # tokenLabel(buyToken.token) # ", trying fallback routes (" # Nat.toText(fallbackTokens.size()) # " candidates)", null, [
             ("sellToken", tokenLabel(sellToken.token)),
             ("buyToken", tokenLabel(buyToken.token)),
             ("directImpact", switch (directQuoteOpt) { case (?q) Nat.toText(q.priceImpactBps) # " bps"; case null "no quote" }),
+            ("fallbackCount", Nat.toText(fallbackTokens.size())),
         ]);
 
-        // Leg 1 quote: sell token → ICP
-        logEngine.logDebug(src, "Fetching ICP-route leg1 quote: " # tokenLabel(sellToken.token) # " → ICP, amount " # Nat.toText(tradeSize), null, [
-            ("leg", "1"),
-            ("sellToken", tokenLabel(sellToken.token)),
-            ("sellTokenId", Principal.toText(sellToken.token)),
-            ("amount", Nat.toText(tradeSize)),
-        ]);
-        let leg1QuoteOpt = await getBestQuote(sellToken.token, icpToken, tradeSize);
-        let leg1Quote = switch (leg1QuoteOpt) {
-            case (?q) {
-                logEngine.logTrace(src, "ICP-route leg1 quote received: " # Nat.toText(q.expectedOutput) # " ICP (dex " # Nat.toText(q.dexId) # ", impact " # Nat.toText(q.priceImpactBps) # " bps)", null, [
+        // Phase 1: Find a viable fallback route (quotes only, no execution yet)
+        var chosenIntermediary: ?Principal = null;
+        var chosenLeg1: ?T.SwapQuote = null;
+        var chosenLeg2: ?T.SwapQuote = null;
+        var routeIdx: Nat = 0;
+        while (chosenIntermediary == null and routeIdx < fallbackTokens.size()) {
+            let intermediary = fallbackTokens[routeIdx];
+            routeIdx += 1;
+            let intLabel = tokenLabel(intermediary);
+
+            // Skip if intermediary is same as sell or buy token
+            if (intermediary == sellToken.token or intermediary == buyToken.token) {
+                logEngine.logTrace(src, "Skipping fallback via " # intLabel # ": same as sell/buy token", null, [
+                    ("intermediary", intLabel),
+                    ("intermediaryId", Principal.toText(intermediary)),
+                ]);
+            } else if (isTokenPaused(intermediary)) {
+                // Skip paused intermediary tokens
+                logEngine.logTrace(src, "Skipping fallback via " # intLabel # ": token is paused", null, [
+                    ("intermediary", intLabel),
+                    ("intermediaryId", Principal.toText(intermediary)),
+                ]);
+            } else {
+                // Try leg 1: sell → intermediary
+                logEngine.logDebug(src, "Trying fallback via " # intLabel # " — leg1: " # tokenLabel(sellToken.token) # " → " # intLabel # ", amount " # Nat.toText(tradeSize), null, [
+                    ("intermediary", intLabel),
                     ("leg", "1"),
-                    ("expectedOutput", Nat.toText(q.expectedOutput)),
-                    ("spotPriceE8s", Nat.toText(q.spotPriceE8s)),
-                    ("priceImpactBps", Nat.toText(q.priceImpactBps)),
-                    ("dexId", Nat.toText(q.dexId)),
-                    ("maxImpactBps", Nat.toText(maxImpact)),
-                    ("impactOk", if (q.priceImpactBps <= maxImpact) { "yes" } else { "no" }),
-                ]);
-                if (q.priceImpactBps > maxImpact) {
-                    let reason = "ICP route leg1 (" # tokenLabel(sellToken.token) # " → ICP) impact " # Nat.toText(q.priceImpactBps) # " bps > max " # Nat.toText(maxImpact) # " bps";
-                    logEngine.logWarning(src, "Rebalance skipped: " # reason, null, [
-                        ("sellToken", tokenLabel(sellToken.token)),
-                        ("buyToken", tokenLabel(buyToken.token)),
-                        ("leg", "1"),
-                        ("priceImpactBps", Nat.toText(q.priceImpactBps)),
-                        ("maxImpactBps", Nat.toText(maxImpact)),
-                    ]);
-                    ignore appendTradeLog({
-                        choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId);
-                        actionId = null; actionType = 0;
-                        inputToken = sellToken.token; outputToken = ?buyToken.token;
-                        inputAmount = tradeSize; outputAmount = null;
-                        priceE8s = ?q.spotPriceE8s; priceImpactBps = ?q.priceImpactBps;
-                        slippageBps = ?slippage; dexId = ?q.dexId;
-                        status = #Skipped; errorMessage = ?reason;
-                        txId = null; destinationOwner = null;
-                    });
-                    return false;
-                };
-                q
-            };
-            case null {
-                let reason = "no quote for " # tokenLabel(sellToken.token) # " → ICP";
-                logEngine.logWarning(src, "Rebalance skipped: " # reason, null, [
                     ("sellToken", tokenLabel(sellToken.token)),
-                    ("buyToken", tokenLabel(buyToken.token)),
-                    ("route", "via-ICP"),
+                    ("amount", Nat.toText(tradeSize)),
                 ]);
-                ignore appendTradeLog({
-                    choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId);
-                    actionId = null; actionType = 0;
-                    inputToken = sellToken.token; outputToken = ?buyToken.token;
-                    inputAmount = tradeSize; outputAmount = null;
-                    priceE8s = null; priceImpactBps = null;
-                    slippageBps = ?slippage; dexId = null;
-                    status = #Skipped; errorMessage = ?reason;
-                    txId = null; destinationOwner = null;
-                });
-                return false;
+                let leg1Opt = await getBestQuote(sellToken.token, intermediary, tradeSize);
+                switch (leg1Opt) {
+                    case (?q1) {
+                        if (q1.priceImpactBps > maxImpact) {
+                            logEngine.logTrace(src, "Fallback via " # intLabel # " leg1 impact too high: " # Nat.toText(q1.priceImpactBps) # " bps > max " # Nat.toText(maxImpact) # " bps", null, [
+                                ("intermediary", intLabel),
+                                ("leg", "1"),
+                                ("priceImpactBps", Nat.toText(q1.priceImpactBps)),
+                            ]);
+                        } else {
+                            // Leg 1 OK — try leg 2: intermediary → buy
+                            let leg2Opt = await getBestQuote(intermediary, buyToken.token, q1.expectedOutput);
+                            switch (leg2Opt) {
+                                case (?q2) {
+                                    if (q2.priceImpactBps > maxImpact) {
+                                        logEngine.logTrace(src, "Fallback via " # intLabel # " leg2 impact too high: " # Nat.toText(q2.priceImpactBps) # " bps > max " # Nat.toText(maxImpact) # " bps", null, [
+                                            ("intermediary", intLabel),
+                                            ("leg", "2"),
+                                            ("priceImpactBps", Nat.toText(q2.priceImpactBps)),
+                                        ]);
+                                    } else {
+                                        // Both legs viable — choose this route
+                                        chosenIntermediary := ?intermediary;
+                                        chosenLeg1 := ?q1;
+                                        chosenLeg2 := ?q2;
+                                        logEngine.logDebug(src, "Viable fallback route found via " # intLabel # " (leg1 impact: " # Nat.toText(q1.priceImpactBps) # " bps, leg2 impact: " # Nat.toText(q2.priceImpactBps) # " bps)", null, [
+                                            ("intermediary", intLabel),
+                                            ("leg1ImpactBps", Nat.toText(q1.priceImpactBps)),
+                                            ("leg2ImpactBps", Nat.toText(q2.priceImpactBps)),
+                                        ]);
+                                    };
+                                };
+                                case null {
+                                    logEngine.logTrace(src, "Fallback via " # intLabel # " leg2: no quote for " # intLabel # " → " # tokenLabel(buyToken.token), null, [
+                                        ("intermediary", intLabel),
+                                        ("leg", "2"),
+                                    ]);
+                                };
+                            };
+                        };
+                    };
+                    case null {
+                        logEngine.logTrace(src, "Fallback via " # intLabel # " leg1: no quote for " # tokenLabel(sellToken.token) # " → " # intLabel, null, [
+                            ("intermediary", intLabel),
+                            ("leg", "1"),
+                        ]);
+                    };
+                };
             };
         };
 
-        // Leg 2 quote: ICP → buy token (using expected ICP output from leg 1)
-        let icpAmount = leg1Quote.expectedOutput;
-        logEngine.logDebug(src, "Fetching ICP-route leg2 quote: ICP → " # tokenLabel(buyToken.token) # ", amount " # Nat.toText(icpAmount) # " ICP", null, [
-            ("leg", "2"),
-            ("buyToken", tokenLabel(buyToken.token)),
-            ("buyTokenId", Principal.toText(buyToken.token)),
-            ("icpAmount", Nat.toText(icpAmount)),
-        ]);
-        let leg2QuoteOpt = await getBestQuote(icpToken, buyToken.token, icpAmount);
-        let leg2Quote = switch (leg2QuoteOpt) {
-            case (?q) {
-                logEngine.logTrace(src, "ICP-route leg2 quote received: " # Nat.toText(q.expectedOutput) # " " # tokenLabel(buyToken.token) # " (dex " # Nat.toText(q.dexId) # ", impact " # Nat.toText(q.priceImpactBps) # " bps)", null, [
-                    ("leg", "2"),
-                    ("expectedOutput", Nat.toText(q.expectedOutput)),
-                    ("spotPriceE8s", Nat.toText(q.spotPriceE8s)),
-                    ("priceImpactBps", Nat.toText(q.priceImpactBps)),
-                    ("dexId", Nat.toText(q.dexId)),
-                    ("maxImpactBps", Nat.toText(maxImpact)),
-                    ("impactOk", if (q.priceImpactBps <= maxImpact) { "yes" } else { "no" }),
-                ]);
-                if (q.priceImpactBps > maxImpact) {
-                    let reason = "ICP route leg2 (ICP → " # tokenLabel(buyToken.token) # ") impact " # Nat.toText(q.priceImpactBps) # " bps > max " # Nat.toText(maxImpact) # " bps";
-                    logEngine.logWarning(src, "Rebalance skipped: " # reason, null, [
-                        ("sellToken", tokenLabel(sellToken.token)),
-                        ("buyToken", tokenLabel(buyToken.token)),
-                        ("leg", "2"),
-                        ("priceImpactBps", Nat.toText(q.priceImpactBps)),
-                        ("maxImpactBps", Nat.toText(maxImpact)),
-                    ]);
-                    ignore appendTradeLog({
-                        choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId);
-                        actionId = null; actionType = 0;
-                        inputToken = sellToken.token; outputToken = ?buyToken.token;
-                        inputAmount = tradeSize; outputAmount = null;
-                        priceE8s = ?q.spotPriceE8s; priceImpactBps = ?q.priceImpactBps;
-                        slippageBps = ?slippage; dexId = ?q.dexId;
-                        status = #Skipped; errorMessage = ?reason;
-                        txId = null; destinationOwner = null;
-                    });
-                    return false;
-                };
-                q
-            };
+        // Phase 2: If no viable route found, log and skip
+        let intermediary = switch (chosenIntermediary) {
             case null {
-                let reason = "no quote for ICP → " # tokenLabel(buyToken.token);
-                logEngine.logWarning(src, "Rebalance skipped: " # reason, null, [
+                let reason = switch (directQuoteOpt) {
+                    case null { "no liquidity (direct or via " # Nat.toText(fallbackTokens.size()) # " fallback tokens)" };
+                    case (?q) { "price impact too high (direct: " # Nat.toText(q.priceImpactBps) # " bps, " # Nat.toText(fallbackTokens.size()) # " fallback tokens also failed)" };
+                };
+                logEngine.logWarning(src, "Rebalance skipped (" # tokenLabel(sellToken.token) # " → " # tokenLabel(buyToken.token) # "): " # reason, null, [
                     ("sellToken", tokenLabel(sellToken.token)),
                     ("buyToken", tokenLabel(buyToken.token)),
-                    ("route", "via-ICP"),
+                    ("tradeSize", Nat.toText(tradeSize)),
+                    ("reason", reason),
+                    ("fallbackTokensTried", Nat.toText(fallbackTokens.size())),
                 ]);
                 ignore appendTradeLog({
-                    choreId = ?instanceId; choreTypeId = getInstanceTypeId(instanceId);
-                    actionId = null; actionType = 0;
-                    inputToken = sellToken.token; outputToken = ?buyToken.token;
-                    inputAmount = tradeSize; outputAmount = null;
-                    priceE8s = null; priceImpactBps = null;
-                    slippageBps = ?slippage; dexId = null;
-                    status = #Skipped; errorMessage = ?reason;
-                    txId = null; destinationOwner = null;
+                    choreId = ?instanceId;
+                    choreTypeId = getInstanceTypeId(instanceId);
+                    actionId = null;
+                    actionType = 0;
+                    inputToken = sellToken.token;
+                    outputToken = ?buyToken.token;
+                    inputAmount = tradeSize;
+                    outputAmount = null;
+                    priceE8s = switch (directQuoteOpt) { case (?q) ?q.spotPriceE8s; case null null };
+                    priceImpactBps = switch (directQuoteOpt) { case (?q) ?q.priceImpactBps; case null null };
+                    slippageBps = ?slippage;
+                    dexId = switch (directQuoteOpt) { case (?q) ?q.dexId; case null null };
+                    status = #Skipped;
+                    errorMessage = ?reason;
+                    txId = null;
+                    destinationOwner = null;
                 });
                 return false;
             };
+            case (?p) p;
         };
+        let leg1Quote = switch (chosenLeg1) { case (?q) q; case null { return false } };
+        let leg2Quote = switch (chosenLeg2) { case (?q) q; case null { return false } };
+        let intLabel = tokenLabel(intermediary);
+        let routeLabel = "via-" # intLabel;
 
-        logEngine.logInfo(src, "Routing via ICP: " # tokenLabel(sellToken.token) # " → ICP → " # tokenLabel(buyToken.token) # " (leg1 impact: " # Nat.toText(leg1Quote.priceImpactBps) # " bps, leg2 impact: " # Nat.toText(leg2Quote.priceImpactBps) # " bps)", null, [
+        logEngine.logInfo(src, "Routing via " # intLabel # ": " # tokenLabel(sellToken.token) # " → " # intLabel # " → " # tokenLabel(buyToken.token) # " (leg1 impact: " # Nat.toText(leg1Quote.priceImpactBps) # " bps, leg2 impact: " # Nat.toText(leg2Quote.priceImpactBps) # " bps)", null, [
             ("sellToken", tokenLabel(sellToken.token)),
             ("buyToken", tokenLabel(buyToken.token)),
+            ("intermediary", intLabel),
+            ("intermediaryId", Principal.toText(intermediary)),
             ("leg1ImpactBps", Nat.toText(leg1Quote.priceImpactBps)),
             ("leg2ImpactBps", Nat.toText(leg2Quote.priceImpactBps)),
             ("tradeSize", Nat.toText(tradeSize)),
-            ("icpAmount", Nat.toText(icpAmount)),
+            ("leg1ExpectedOutput", Nat.toText(leg1Quote.expectedOutput)),
         ]);
 
-        // Execute leg 1: sell token → ICP
-        logEngine.logDebug(src, "Executing ICP-route leg1: " # tokenLabel(sellToken.token) # " → ICP on dex " # Nat.toText(leg1Quote.dexId) # " amount " # Nat.toText(tradeSize) # " expected " # Nat.toText(leg1Quote.expectedOutput) # " ICP", null, [
+        // Phase 3: Execute leg 1 (sell → intermediary)
+        logEngine.logDebug(src, "Executing " # routeLabel # " leg1: " # tokenLabel(sellToken.token) # " → " # intLabel # " on dex " # Nat.toText(leg1Quote.dexId) # " amount " # Nat.toText(tradeSize) # " expected " # Nat.toText(leg1Quote.expectedOutput) # " " # intLabel, null, [
             ("leg", "1"),
             ("dexId", Nat.toText(leg1Quote.dexId)),
             ("tradeSize", Nat.toText(tradeSize)),
@@ -2507,9 +2483,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             ("slippageBps", Nat.toText(slippage)),
         ]);
         let leg1Result = await executeSwap(leg1Quote, slippage);
-        let icpReceived = switch (leg1Result) {
+        let intermediaryReceived = switch (leg1Result) {
             case (#Ok(r)) {
-                logEngine.logTrace(src, "ICP-route leg1 executed OK: received " # Nat.toText(r.amountOut) # " ICP", null, [
+                logEngine.logTrace(src, routeLabel # " leg1 executed OK: received " # Nat.toText(r.amountOut) # " " # intLabel, null, [
                     ("leg", "1"),
                     ("amountOut", Nat.toText(r.amountOut)),
                     ("txId", switch (r.txId) { case (?t) Nat.toText(t); case null "none" }),
@@ -2517,12 +2493,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 r.amountOut
             };
             case (#Err(e)) {
-                logEngine.logError(src, "Rebalance ICP-route leg1 failed (" # tokenLabel(sellToken.token) # " → ICP): " # e, null, [
+                logEngine.logError(src, "Rebalance " # routeLabel # " leg1 failed (" # tokenLabel(sellToken.token) # " → " # intLabel # "): " # e, null, [
                     ("sellToken", tokenLabel(sellToken.token)),
-                    ("sellTokenId", Principal.toText(sellToken.token)),
                     ("buyToken", tokenLabel(buyToken.token)),
-                    ("buyTokenId", Principal.toText(buyToken.token)),
-                    ("route", "via-ICP"),
+                    ("intermediary", intLabel),
+                    ("route", routeLabel),
                     ("leg", "1"),
                     ("tradeSize", Nat.toText(tradeSize)),
                     ("error", e),
@@ -2533,7 +2508,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     actionId = null;
                     actionType = 0;
                     inputToken = sellToken.token;
-                    outputToken = ?icpToken;
+                    outputToken = ?intermediary;
                     inputAmount = tradeSize;
                     outputAmount = null;
                     priceE8s = ?leg1Quote.spotPriceE8s;
@@ -2541,7 +2516,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     slippageBps = ?slippage;
                     dexId = ?leg1Quote.dexId;
                     status = #Failed;
-                    errorMessage = ?("ICP-route leg1: " # e);
+                    errorMessage = ?(routeLabel # " leg1: " # e);
                     txId = null;
                     destinationOwner = null;
                 });
@@ -2557,9 +2532,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             actionId = null;
             actionType = 0;
             inputToken = sellToken.token;
-            outputToken = ?icpToken;
+            outputToken = ?intermediary;
             inputAmount = tradeSize;
-            outputAmount = ?icpReceived;
+            outputAmount = ?intermediaryReceived;
             priceE8s = ?leg1Quote.spotPriceE8s;
             priceImpactBps = ?leg1Quote.priceImpactBps;
             slippageBps = ?slippage;
@@ -2570,14 +2545,14 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             destinationOwner = null;
         });
 
-        // Get fresh quote for leg 2 with actual ICP received
-        logEngine.logDebug(src, "Fetching fresh leg2 quote with actual ICP received: " # Nat.toText(icpReceived) # " ICP → " # tokenLabel(buyToken.token), null, [
+        // Phase 4: Execute leg 2 (intermediary → buy) with fresh quote
+        logEngine.logDebug(src, "Fetching fresh leg2 quote with actual " # intLabel # " received: " # Nat.toText(intermediaryReceived) # " " # intLabel # " → " # tokenLabel(buyToken.token), null, [
             ("leg", "2-fresh"),
-            ("icpReceived", Nat.toText(icpReceived)),
+            ("intermediaryReceived", Nat.toText(intermediaryReceived)),
             ("buyToken", tokenLabel(buyToken.token)),
             ("buyTokenId", Principal.toText(buyToken.token)),
         ]);
-        let leg2FreshQuoteOpt = await getBestQuote(icpToken, buyToken.token, icpReceived);
+        let leg2FreshQuoteOpt = await getBestQuote(intermediary, buyToken.token, intermediaryReceived);
         let leg2FreshQuote = switch (leg2FreshQuoteOpt) {
             case (?q) {
                 logEngine.logTrace(src, "Fresh leg2 quote received: " # Nat.toText(q.expectedOutput) # " " # tokenLabel(buyToken.token) # " (dex " # Nat.toText(q.dexId) # ", impact " # Nat.toText(q.priceImpactBps) # " bps)", null, [
@@ -2590,9 +2565,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 q
             };
             case null {
-                // We have ICP in hand but can't swap it — log and return
-                logEngine.logError(src, "Rebalance ICP-route: leg1 succeeded (" # Nat.toText(icpReceived) # " ICP) but no quote for leg2 ICP → " # tokenLabel(buyToken.token) # " (ICP stuck)", null, [
-                    ("icpReceived", Nat.toText(icpReceived)),
+                logEngine.logError(src, "Rebalance " # routeLabel # ": leg1 succeeded (" # Nat.toText(intermediaryReceived) # " " # intLabel # ") but no quote for leg2 " # intLabel # " → " # tokenLabel(buyToken.token) # " (" # intLabel # " stuck in canister)", null, [
+                    ("intermediaryReceived", Nat.toText(intermediaryReceived)),
+                    ("intermediary", intLabel),
                     ("buyToken", tokenLabel(buyToken.token)),
                     ("buyTokenId", Principal.toText(buyToken.token)),
                 ]);
@@ -2600,30 +2575,29 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             };
         };
 
-        // Execute leg 2: ICP → buy token
-        logEngine.logDebug(src, "Executing ICP-route leg2: ICP → " # tokenLabel(buyToken.token) # " on dex " # Nat.toText(leg2FreshQuote.dexId) # " amount " # Nat.toText(icpReceived) # " ICP expected " # Nat.toText(leg2FreshQuote.expectedOutput) # " " # tokenLabel(buyToken.token), null, [
+        logEngine.logDebug(src, "Executing " # routeLabel # " leg2: " # intLabel # " → " # tokenLabel(buyToken.token) # " on dex " # Nat.toText(leg2FreshQuote.dexId) # " amount " # Nat.toText(intermediaryReceived) # " " # intLabel # " expected " # Nat.toText(leg2FreshQuote.expectedOutput) # " " # tokenLabel(buyToken.token), null, [
             ("leg", "2"),
             ("dexId", Nat.toText(leg2FreshQuote.dexId)),
-            ("icpAmount", Nat.toText(icpReceived)),
+            ("intermediaryAmount", Nat.toText(intermediaryReceived)),
             ("expectedOutput", Nat.toText(leg2FreshQuote.expectedOutput)),
             ("slippageBps", Nat.toText(slippage)),
         ]);
         let leg2Result = await executeSwap(leg2FreshQuote, slippage);
         switch (leg2Result) {
             case (#Ok(r)) {
-                logEngine.logInfo(src, "Rebalance ICP-route complete: sold " # Nat.toText(tradeSize) # " " # tokenLabel(sellToken.token) # " → " # Nat.toText(icpReceived) # " ICP → " # Nat.toText(r.amountOut) # " " # tokenLabel(buyToken.token), null, [
+                logEngine.logInfo(src, "Rebalance " # routeLabel # " complete: sold " # Nat.toText(tradeSize) # " " # tokenLabel(sellToken.token) # " → " # Nat.toText(intermediaryReceived) # " " # intLabel # " → " # Nat.toText(r.amountOut) # " " # tokenLabel(buyToken.token), null, [
                     ("sellToken", tokenLabel(sellToken.token)),
-                    ("sellTokenId", Principal.toText(sellToken.token)),
                     ("buyToken", tokenLabel(buyToken.token)),
-                    ("buyTokenId", Principal.toText(buyToken.token)),
+                    ("intermediary", intLabel),
+                    ("intermediaryId", Principal.toText(intermediary)),
                     ("sellAmount", Nat.toText(tradeSize)),
-                    ("icpIntermediate", Nat.toText(icpReceived)),
+                    ("intermediaryAmount", Nat.toText(intermediaryReceived)),
                     ("buyAmount", Nat.toText(r.amountOut)),
                     ("leg1DexId", Nat.toText(leg1Quote.dexId)),
                     ("leg2DexId", Nat.toText(leg2FreshQuote.dexId)),
                     ("leg1ImpactBps", Nat.toText(leg1Quote.priceImpactBps)),
                     ("leg2ImpactBps", Nat.toText(leg2FreshQuote.priceImpactBps)),
-                    ("route", "via-ICP"),
+                    ("route", routeLabel),
                     ("txId", switch (r.txId) { case (?t) Nat.toText(t); case null "none" }),
                 ]);
                 let logId = appendTradeLog({
@@ -2631,9 +2605,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     choreTypeId = getInstanceTypeId(instanceId);
                     actionId = null;
                     actionType = 0;
-                    inputToken = icpToken;
+                    inputToken = intermediary;
                     outputToken = ?buyToken.token;
-                    inputAmount = icpReceived;
+                    inputAmount = intermediaryReceived;
                     outputAmount = ?r.amountOut;
                     priceE8s = ?leg2FreshQuote.spotPriceE8s;
                     priceImpactBps = ?leg2FreshQuote.priceImpactBps;
@@ -2648,12 +2622,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 true
             };
             case (#Err(e)) {
-                logEngine.logError(src, "Rebalance ICP-route leg2 failed (ICP → " # tokenLabel(buyToken.token) # "): " # e # " — " # Nat.toText(icpReceived) # " ICP stuck in canister", null, [
+                logEngine.logError(src, "Rebalance " # routeLabel # " leg2 failed (" # intLabel # " → " # tokenLabel(buyToken.token) # "): " # e # " — " # Nat.toText(intermediaryReceived) # " " # intLabel # " stuck in canister", null, [
                     ("sellToken", tokenLabel(sellToken.token)),
                     ("buyToken", tokenLabel(buyToken.token)),
-                    ("buyTokenId", Principal.toText(buyToken.token)),
-                    ("icpAmount", Nat.toText(icpReceived)),
-                    ("route", "via-ICP"),
+                    ("intermediary", intLabel),
+                    ("intermediaryAmount", Nat.toText(intermediaryReceived)),
+                    ("route", routeLabel),
                     ("leg", "2"),
                     ("error", e),
                 ]);
@@ -2662,16 +2636,16 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     choreTypeId = getInstanceTypeId(instanceId);
                     actionId = null;
                     actionType = 0;
-                    inputToken = icpToken;
+                    inputToken = intermediary;
                     outputToken = ?buyToken.token;
-                    inputAmount = icpReceived;
+                    inputAmount = intermediaryReceived;
                     outputAmount = null;
                     priceE8s = ?leg2FreshQuote.spotPriceE8s;
                     priceImpactBps = ?leg2FreshQuote.priceImpactBps;
                     slippageBps = ?slippage;
                     dexId = ?leg2FreshQuote.dexId;
                     status = #Failed;
-                    errorMessage = ?("ICP-route leg2: " # e);
+                    errorMessage = ?(routeLabel # " leg2: " # e);
                     txId = null;
                     destinationOwner = null;
                 });
@@ -3940,6 +3914,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             maxPriceImpactBps = getRebalMaxImpact(instanceId);
             maxSlippageBps = getRebalMaxSlippage(instanceId);
             thresholdBps = getRebalThreshold(instanceId);
+            fallbackRouteTokens = getRebalFallbackRouteTokens(instanceId);
         }
     };
 
@@ -3971,6 +3946,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     public shared (msg) func setRebalanceThresholdBps(instanceId: Text, bps: Nat): async () {
         assertPermission(msg.caller, T.TradingPermission.ManageRebalancer);
         rebalanceThresholdBps := setInMap(rebalanceThresholdBps, instanceId, bps);
+    };
+
+    public shared (msg) func setRebalanceFallbackRouteTokens(instanceId: Text, tokens: [Principal]): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageRebalancer);
+        rebalanceFallbackRouteTokens := setInMap(rebalanceFallbackRouteTokens, instanceId, tokens);
+        logEngine.logInfo("api", "Set rebalance fallback route tokens for " # instanceId # ": " # Nat.toText(tokens.size()) # " tokens", ?msg.caller, []);
     };
 
     // REMOVED: getPortfolioStatus was an expensive update method (N balance + N quote
