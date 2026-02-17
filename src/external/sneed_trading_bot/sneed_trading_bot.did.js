@@ -572,6 +572,11 @@ export const idlFactory = ({ IDL }) => {
         // Portfolio Snapshot Log
         getPortfolioSnapshots: IDL.Func([PortfolioSnapshotQuery], [PortfolioSnapshotResult], ['query']),
         getPortfolioSnapshotStats: IDL.Func([], [IDL.Record({ totalEntries: IDL.Nat, nextId: IDL.Nat })], ['query']),
+        getCapitalFlows: IDL.Func([], [IDL.Record({
+            capitalDeployedIcpE8s: IDL.Int,
+            capitalDeployedUsdE8s: IDL.Int,
+            perToken: IDL.Vec(IDL.Tuple(IDL.Text, IDL.Record({ totalInflowNative: IDL.Nat, totalOutflowNative: IDL.Nat }))),
+        })], ['query']),
         clearPortfolioSnapshots: IDL.Func([], [], []),
 
         // Logging Settings

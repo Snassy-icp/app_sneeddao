@@ -29,6 +29,7 @@
     "react-icons": "^5.5.0",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^6.26.0",
-    "reactflow": "^11.11.4"
+    "reactflow": "^11.11.4",
+    "recharts": "^3.7.0"
   }
 }

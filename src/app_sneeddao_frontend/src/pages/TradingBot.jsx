@@ -25,6 +25,7 @@ import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
 import priceService from '../services/PriceService';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 // Trading bot accent colors — green/teal for trading
 const ACCENT = '#10b981';
@@ -3979,6 +3980,225 @@ function DexSettingsPanel({ canisterId, createBotActor, identity }) {
 }
 
 // ============================================
+// Performance Panel — Equity Curve + P&L Summary + Per-Token Flows
+// ============================================
+function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
+    const [snapshots, setSnapshots] = useState([]);
+    const [capitalFlows, setCapitalFlows] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [denomination, setDenomination] = useState('icp'); // 'icp' or 'usd'
+    const [tokenRegistry, setTokenRegistry] = useState([]);
+
+    const loadData = useCallback(async () => {
+        setLoading(true);
+        setError('');
+        try {
+            const bot = await getReadyBotActor();
+            if (!bot) return;
+            const [snapResult, flows, registry] = await Promise.all([
+                bot.getPortfolioSnapshots({ startId: [], limit: [500], tradeLogId: [], phase: [{ After: null }], fromTime: [], toTime: [] }),
+                bot.getCapitalFlows(),
+                bot.getTokenRegistry ? bot.getTokenRegistry() : Promise.resolve([]),
+            ]);
+            setSnapshots(snapResult.entries);
+            setCapitalFlows(flows);
+            setTokenRegistry(registry);
+        } catch (err) {
+            setError('Failed to load performance data: ' + err.message);
+        } finally {
+            setLoading(false);
+        }
+    }, [getReadyBotActor]);
+
+    useEffect(() => { loadData(); }, [loadData]);
+
+    const optVal = (arr) => (arr?.length > 0 ? arr[0] : null);
+
+    // Build chart data from After-phase snapshots
+    const chartData = React.useMemo(() => {
+        return snapshots
+            .filter(s => Object.keys(s.phase || {})[0] === 'After')
+            .sort((a, b) => Number(a.timestamp) - Number(b.timestamp))
+            .map(s => {
+                const ts = Number(s.timestamp) / 1_000_000; // ns -> ms
+                const icpVal = optVal(s.totalValueIcpE8s);
+                const usdVal = optVal(s.totalValueUsdE8s);
+                return {
+                    time: ts,
+                    label: new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+                    icp: icpVal != null ? Number(icpVal) / 1e8 : null,
+                    usd: usdVal != null ? Number(usdVal) / 1e6 : null,
+                };
+            })
+            .filter(d => (denomination === 'icp' ? d.icp != null : d.usd != null));
+    }, [snapshots, denomination]);
+
+    // Latest portfolio value
+    const latestSnap = chartData.length > 0 ? chartData[chartData.length - 1] : null;
+    const latestValueIcp = latestSnap?.icp;
+    const latestValueUsd = latestSnap?.usd;
+
+    // Capital deployed
+    const capitalIcp = capitalFlows ? Number(capitalFlows.capitalDeployedIcpE8s) / 1e8 : null;
+    const capitalUsd = capitalFlows ? Number(capitalFlows.capitalDeployedUsdE8s) / 1e6 : null;
+
+    // Trading P&L
+    const pnlIcp = (latestValueIcp != null && capitalIcp != null) ? latestValueIcp - capitalIcp : null;
+    const pnlUsd = (latestValueUsd != null && capitalUsd != null) ? latestValueUsd - capitalUsd : null;
+    const pnlPctIcp = (pnlIcp != null && capitalIcp && capitalIcp !== 0) ? (pnlIcp / Math.abs(capitalIcp)) * 100 : null;
+    const pnlPctUsd = (pnlUsd != null && capitalUsd && capitalUsd !== 0) ? (pnlUsd / Math.abs(capitalUsd)) * 100 : null;
+
+    // Resolve token symbol from registry
+    const tokenSymbol = (principalText) => {
+        const entry = tokenRegistry.find(t => (t.ledgerCanisterId?.toText?.() || t.ledgerCanisterId?.toString?.() || '') === principalText);
+        return entry?.symbol || principalText.slice(0, 10) + '...';
+    };
+    const tokenDecimals = (principalText) => {
+        const entry = tokenRegistry.find(t => (t.ledgerCanisterId?.toText?.() || t.ledgerCanisterId?.toString?.() || '') === principalText);
+        return entry?.decimals != null ? Number(entry.decimals) : 8;
+    };
+
+    const formatNum = (val, denom) => {
+        if (val == null) return '—';
+        const prefix = val >= 0 ? '' : '';
+        if (denom === 'usd') return prefix + '$' + Math.abs(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        return prefix + Math.abs(val).toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 }) + ' ICP';
+    };
+
+    const pnlColor = (val) => val == null ? theme.colors.secondaryText : val >= 0 ? '#10b981' : '#ef4444';
+
+    const cardStyle = {
+        background: theme.colors.surface, border: `1px solid ${theme.colors.border}`,
+        borderRadius: '10px', padding: '16px', marginBottom: '12px',
+    };
+
+    if (loading) return <div style={{ padding: '20px', color: theme.colors.secondaryText, textAlign: 'center' }}>Loading performance data...</div>;
+    if (error) return <div style={{ padding: '20px', color: '#ef4444' }}>{error}</div>;
+
+    return (
+        <div>
+            {/* P&L Summary Cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+                {/* Portfolio Value */}
+                <div style={cardStyle}>
+                    <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Portfolio Value</div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: '700', color: theme.colors.text }}>
+                        {formatNum(latestValueIcp, 'icp')}
+                    </div>
+                    <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText }}>
+                        {formatNum(latestValueUsd, 'usd')}
+                    </div>
+                </div>
+                {/* Net Capital Deployed */}
+                <div style={cardStyle}>
+                    <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Net Capital Deployed</div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: '700', color: theme.colors.text }}>
+                        {formatNum(capitalIcp, 'icp')}
+                    </div>
+                    <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText }}>
+                        {formatNum(capitalUsd, 'usd')}
+                    </div>
+                </div>
+                {/* Trading P&L */}
+                <div style={cardStyle}>
+                    <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>Trading P&L</div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: '700', color: pnlColor(pnlIcp) }}>
+                        {pnlIcp != null ? (pnlIcp >= 0 ? '+' : '-') : ''}{formatNum(pnlIcp, 'icp')}
+                        {pnlPctIcp != null && <span style={{ fontSize: '0.8rem', marginLeft: '6px' }}>({pnlPctIcp >= 0 ? '+' : ''}{pnlPctIcp.toFixed(1)}%)</span>}
+                    </div>
+                    <div style={{ fontSize: '0.85rem', color: pnlColor(pnlUsd) }}>
+                        {pnlUsd != null ? (pnlUsd >= 0 ? '+' : '-') : ''}{formatNum(pnlUsd, 'usd')}
+                        {pnlPctUsd != null && <span style={{ fontSize: '0.8rem', marginLeft: '6px' }}>({pnlPctUsd >= 0 ? '+' : ''}{pnlPctUsd.toFixed(1)}%)</span>}
+                    </div>
+                </div>
+            </div>
+
+            {/* Equity Curve Chart */}
+            <div style={{ ...cardStyle, padding: '16px 12px 8px 0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', paddingLeft: '16px' }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.text }}>Equity Curve</span>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                        {['icp', 'usd'].map(d => (
+                            <button key={d} onClick={() => setDenomination(d)} style={{
+                                padding: '3px 10px', fontSize: '0.75rem', fontWeight: '500', cursor: 'pointer',
+                                borderRadius: '4px', border: `1px solid ${denomination === d ? accentColor : theme.colors.border}`,
+                                background: denomination === d ? accentColor + '22' : 'transparent',
+                                color: denomination === d ? accentColor : theme.colors.secondaryText,
+                            }}>{d.toUpperCase()}</button>
+                        ))}
+                    </div>
+                </div>
+                {chartData.length > 1 ? (
+                    <ResponsiveContainer width="100%" height={280}>
+                        <AreaChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                            <defs>
+                                <linearGradient id="equityGrad" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor={accentColor} stopOpacity={0.3} />
+                                    <stop offset="95%" stopColor={accentColor} stopOpacity={0.02} />
+                                </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke={theme.colors.border} opacity={0.5} />
+                            <XAxis dataKey="label" tick={{ fontSize: 11, fill: theme.colors.secondaryText }} tickLine={false} axisLine={{ stroke: theme.colors.border }} />
+                            <YAxis tick={{ fontSize: 11, fill: theme.colors.secondaryText }} tickLine={false} axisLine={false}
+                                tickFormatter={v => denomination === 'usd' ? '$' + v.toLocaleString() : v.toLocaleString()} domain={['auto', 'auto']} />
+                            <Tooltip
+                                contentStyle={{ background: theme.colors.surface, border: `1px solid ${theme.colors.border}`, borderRadius: '8px', fontSize: '0.82rem' }}
+                                labelStyle={{ color: theme.colors.text }}
+                                formatter={(v) => [denomination === 'usd' ? '$' + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2 }) : Number(v).toLocaleString(undefined, { minimumFractionDigits: 4 }) + ' ICP', 'Portfolio Value']}
+                            />
+                            <Area type="monotone" dataKey={denomination} stroke={accentColor} fill="url(#equityGrad)" strokeWidth={2} dot={false} />
+                        </AreaChart>
+                    </ResponsiveContainer>
+                ) : (
+                    <div style={{ textAlign: 'center', padding: '40px 20px', color: theme.colors.secondaryText, fontSize: '0.85rem' }}>
+                        {chartData.length === 0 ? 'No snapshot data yet. Equity curve will appear after the bot runs and takes portfolio snapshots.' : 'At least 2 snapshots are needed to draw the equity curve.'}
+                    </div>
+                )}
+            </div>
+
+            {/* Per-Token Capital Flows */}
+            {capitalFlows?.perToken?.length > 0 && (
+                <div style={cardStyle}>
+                    <div style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.text, marginBottom: '10px' }}>Capital Flows by Token</div>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                        <thead>
+                            <tr style={{ borderBottom: `1px solid ${theme.colors.border}` }}>
+                                <th style={{ textAlign: 'left', padding: '6px 8px', color: theme.colors.secondaryText, fontWeight: '500' }}>Token</th>
+                                <th style={{ textAlign: 'right', padding: '6px 8px', color: '#10b981', fontWeight: '500' }}>Total Inflow</th>
+                                <th style={{ textAlign: 'right', padding: '6px 8px', color: '#ef4444', fontWeight: '500' }}>Total Outflow</th>
+                                <th style={{ textAlign: 'right', padding: '6px 8px', color: theme.colors.secondaryText, fontWeight: '500' }}>Net</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {capitalFlows.perToken.map(([tokenPrincipal, flows]) => {
+                                const dec = tokenDecimals(tokenPrincipal);
+                                const infl = Number(flows.totalInflowNative);
+                                const outfl = Number(flows.totalOutflowNative);
+                                const net = infl - outfl;
+                                const fmt = (v) => formatTokenAmount(v, dec);
+                                return (
+                                    <tr key={tokenPrincipal} style={{ borderBottom: `1px solid ${theme.colors.border}22` }}>
+                                        <td style={{ padding: '6px 8px', color: theme.colors.text }}>
+                                            <span style={{ fontWeight: '500' }}>{tokenSymbol(tokenPrincipal)}</span>
+                                        </td>
+                                        <td style={{ padding: '6px 8px', textAlign: 'right', color: '#10b981' }}>+{fmt(infl)}</td>
+                                        <td style={{ padding: '6px 8px', textAlign: 'right', color: '#ef4444' }}>-{fmt(outfl)}</td>
+                                        <td style={{ padding: '6px 8px', textAlign: 'right', color: net >= 0 ? '#10b981' : '#ef4444', fontWeight: '500' }}>
+                                            {net >= 0 ? '+' : '-'}{fmt(Math.abs(net))}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ============================================
 // Trading Bot Logs Section (combines trade log, portfolio snapshots, logging settings)
 // ============================================
 function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, identity }) {
@@ -4025,12 +4245,14 @@ function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, iden
             {/* Tab bar */}
             <div style={{ display: 'flex', gap: '4px', marginBottom: '12px', borderBottom: `1px solid ${theme.colors.border}`, paddingBottom: '0' }}>
                 <button onClick={() => setActiveTab('accounts')} style={tabStyle(activeTab === 'accounts')}>Accounts</button>
+                <button onClick={() => setActiveTab('performance')} style={tabStyle(activeTab === 'performance')}>Performance</button>
                 <button onClick={() => setActiveTab('trade')} style={tabStyle(activeTab === 'trade')}>Trade Log</button>
                 <button onClick={() => setActiveTab('snapshots')} style={tabStyle(activeTab === 'snapshots')}>Portfolio Snapshots</button>
                 <button onClick={() => setActiveTab('settings')} style={tabStyle(activeTab === 'settings')}>Logging Settings</button>
             </div>
 
             {activeTab === 'accounts' && <AccountsPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} canisterId={canisterId} />}
+            {activeTab === 'performance' && <PerformancePanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
             {activeTab === 'trade' && <TradeLogViewer getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
             {activeTab === 'snapshots' && <PortfolioSnapshotViewer getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
             {activeTab === 'settings' && <LoggingSettingsPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} choreStatuses={choreStatuses} />}

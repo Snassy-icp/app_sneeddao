@@ -104,6 +104,14 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     // Balance reconciliation: last known balance per (token, subaccount)
     var lastKnownBalances: [(Text, Nat)] = [];
 
+    // Net capital deployed tracking (for P&L computation)
+    var capitalDeployedIcpE8s: Int = 0;
+    var capitalDeployedUsdE8s: Int = 0;
+
+    // Per-token capital flows in native token amounts
+    // Key: token principal text, Value: (totalInflowNative, totalOutflowNative)
+    var tokenCapitalFlows: [(Text, (Nat, Nat))] = [];
+
     // Metadata staleness threshold (seconds). Metadata older than this is re-fetched.
     var metadataStalenessSeconds: Nat = 3600; // 1 hour
 
@@ -438,6 +446,26 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         };
     };
 
+    /// Record a native-amount inflow for a token.
+    func recordTokenInflow(token: Principal, amount: Nat) {
+        let key = Principal.toText(token);
+        var found = false;
+        tokenCapitalFlows := Array.map<(Text, (Nat, Nat)), (Text, (Nat, Nat))>(tokenCapitalFlows, func((k, (infl, outfl))) {
+            if (k == key) { found := true; (k, (infl + amount, outfl)) } else { (k, (infl, outfl)) }
+        });
+        if (not found) { tokenCapitalFlows := Array.append(tokenCapitalFlows, [(key, (amount, 0))]) };
+    };
+
+    /// Record a native-amount outflow for a token.
+    func recordTokenOutflow(token: Principal, amount: Nat) {
+        let key = Principal.toText(token);
+        var found = false;
+        tokenCapitalFlows := Array.map<(Text, (Nat, Nat)), (Text, (Nat, Nat))>(tokenCapitalFlows, func((k, (infl, outfl))) {
+            if (k == key) { found := true; (k, (infl, outfl + amount)) } else { (k, (infl, outfl)) }
+        });
+        if (not found) { tokenCapitalFlows := Array.append(tokenCapitalFlows, [(key, (0, amount))]) };
+    };
+
     /// Compare the current balance to the last known balance (0 if never seen before).
     /// If a discrepancy is found, log it as a trade log entry (actionType 4=inflow, 5=outflow).
     /// Then update lastKnown to the current balance.
@@ -468,6 +496,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 txId = null;
                 destinationOwner = null;
             });
+            let (icpVal, usdVal) = valueTokenInIcpAndUsd(token, inflow);
+            capitalDeployedIcpE8s += icpVal;
+            capitalDeployedUsdE8s += usdVal;
+            recordTokenInflow(token, inflow);
         } else if (currentBalance < lastKnown) {
             let outflow = lastKnown - currentBalance;
             let subLabel = switch (subaccount) { case null "main"; case _ balanceKey(token, subaccount) };
@@ -490,6 +522,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 txId = null;
                 destinationOwner = null;
             });
+            let (icpVal, usdVal) = valueTokenInIcpAndUsd(token, outflow);
+            capitalDeployedIcpE8s -= icpVal;
+            capitalDeployedUsdE8s -= usdVal;
+            recordTokenOutflow(token, outflow);
         };
         // Always update lastKnown to current balance
         setLastKnownBalance(token, subaccount, currentBalance);
@@ -697,6 +733,22 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             };
         };
         null
+    };
+
+    /// Value a token amount in ICP and USD using the price cache.
+    /// Returns (icpValue, usdValue) as Int. Returns 0 for either if price is unavailable.
+    func valueTokenInIcpAndUsd(token: Principal, amount: Nat): (Int, Int) {
+        let icpToken = Principal.fromText(T.ICP_LEDGER);
+        let ckusdcToken = Principal.fromText(T.CKUSDC_LEDGER);
+        let icpVal: Int = switch (convertAmountViaCache(amount, token, icpToken)) {
+            case (?v) v;
+            case null 0;
+        };
+        let usdVal: Int = switch (convertAmountViaCache(amount, token, ckusdcToken)) {
+            case (?v) v;
+            case null 0;
+        };
+        (icpVal, usdVal)
     };
 
     /// Get token info from registry, then metadata cache, then fetch on-the-fly.
@@ -1328,19 +1380,20 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     case (#Before) { "Trade " # Nat.toText(actionId) # " pre-swap" };
                     case (#After) { "Trade " # Nat.toText(actionId) # " post-swap" };
                 };
-                // For after-snapshots, link to the trade log entry produced by the trade task
                 let tradeLogId: ?Nat = switch (phase) {
                     case (#After) { getFromMap(_trade_lastLogId, instanceId, null) };
                     case (#Before) { null };
                 };
+                let totalIcp = Array.foldLeft<T.TokenSnapshot, Nat>(snaps, 0, func(acc, s) { acc + (switch (s.valueIcpE8s) { case (?v) v; case null 0 }) });
+                let totalUsd = Array.foldLeft<T.TokenSnapshot, Nat>(snaps, 0, func(acc, s) { acc + (switch (s.valueUsdE8s) { case (?v) v; case null 0 }) });
                 ignore appendPortfolioSnapshot({
                     trigger = trigger;
                     tradeLogId = tradeLogId;
                     phase = phase;
                     choreId = ?instanceId;
                     denominationToken = null;
-                    totalValueIcpE8s = null;
-                    totalValueUsdE8s = null;
+                    totalValueIcpE8s = ?totalIcp;
+                    totalValueUsdE8s = ?totalUsd;
                     totalValueDenomE8s = null;
                     tokens = snaps;
                 });
@@ -1900,6 +1953,11 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 });
                 // Update lastKnown: source decreased by amount + fee
                 setLastKnownBalance(action.inputToken, sourceBlob, if (balance > amount + fee) { balance - amount - fee } else { 0 });
+                // Track capital outflow (sent outside the canister)
+                let (icpVal, usdVal) = valueTokenInIcpAndUsd(action.inputToken, amount);
+                capitalDeployedIcpE8s -= icpVal;
+                capitalDeployedUsdE8s -= usdVal;
+                recordTokenOutflow(action.inputToken, amount);
                 true
             };
             case (#Err(e)) {
@@ -2824,14 +2882,16 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     case (#After) { getFromMap(_rebal_lastLogId, instanceId, null) };
                     case (#Before) { null };
                 };
+                let totalIcp = Array.foldLeft<T.TokenSnapshot, Nat>(snaps, 0, func(acc, s) { acc + (switch (s.valueIcpE8s) { case (?v) v; case null 0 }) });
+                let totalUsd = Array.foldLeft<T.TokenSnapshot, Nat>(snaps, 0, func(acc, s) { acc + (switch (s.valueUsdE8s) { case (?v) v; case null 0 }) });
                 ignore appendPortfolioSnapshot({
                     trigger = trigger;
                     tradeLogId = tradeLogId;
                     phase = phase;
                     choreId = ?instanceId;
                     denominationToken = null;
-                    totalValueIcpE8s = null;
-                    totalValueUsdE8s = null;
+                    totalValueIcpE8s = ?totalIcp;
+                    totalValueUsdE8s = ?totalUsd;
                     totalValueDenomE8s = null;
                     tokens = snaps;
                 });
@@ -2919,6 +2979,14 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 // Update lastKnown: source decreased by distributed amounts + fees
                 let totalSpent = totalDistributed + (fee * transferCount);
                 setLastKnownBalance(list.tokenLedgerCanisterId, list.sourceSubaccount, if (balance > totalSpent) { balance - totalSpent } else { 0 });
+
+                // Track capital outflow (distributed to external recipients)
+                if (totalDistributed > 0) {
+                    let (icpVal, usdVal) = valueTokenInIcpAndUsd(list.tokenLedgerCanisterId, totalDistributed);
+                    capitalDeployedIcpE8s -= icpVal;
+                    capitalDeployedUsdE8s -= usdVal;
+                    recordTokenOutflow(list.tokenLedgerCanisterId, totalDistributed);
+                };
 
                 #Done
             } catch (e) {
@@ -4380,6 +4448,21 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     public shared query (msg) func getPortfolioSnapshotStats(): async { totalEntries: Nat; nextId: Nat } {
         assertPermission(msg.caller, T.TradingPermission.ViewLogs);
         { totalEntries = portfolioSnapshots.size(); nextId = portfolioSnapshotNextId }
+    };
+
+    public shared query (msg) func getCapitalFlows(): async {
+        capitalDeployedIcpE8s: Int;
+        capitalDeployedUsdE8s: Int;
+        perToken: [(Text, { totalInflowNative: Nat; totalOutflowNative: Nat })];
+    } {
+        assertPermission(msg.caller, T.TradingPermission.ViewLogs);
+        {
+            capitalDeployedIcpE8s = capitalDeployedIcpE8s;
+            capitalDeployedUsdE8s = capitalDeployedUsdE8s;
+            perToken = Array.map<(Text, (Nat, Nat)), (Text, { totalInflowNative: Nat; totalOutflowNative: Nat })>(
+                tokenCapitalFlows, func((k, (infl, outfl))) { (k, { totalInflowNative = infl; totalOutflowNative = outfl }) }
+            );
+        }
     };
 
     public shared (msg) func clearPortfolioSnapshots(): async () {
