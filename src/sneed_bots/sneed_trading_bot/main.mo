@@ -1896,11 +1896,25 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     /// Execute one rebalancing trade for the given instance.
     func executeRebalance(instanceId: Text): async Bool {
         let src = "chore:" # instanceId;
-        let targets = getRebalTargets(instanceId);
-        if (targets.size() == 0) {
+        let allTargets = getRebalTargets(instanceId);
+        if (allTargets.size() == 0) {
             logEngine.logInfo(src, "Rebalance skipped: no targets configured", null, []);
             return false;
         };
+
+        // Filter out paused tokens and renormalize targets
+        let activeTargets = Array.filter<T.RebalanceTarget>(allTargets, func(t) { not t.paused });
+        if (activeTargets.size() == 0) {
+            logEngine.logInfo(src, "Rebalance skipped: all targets are paused", null, []);
+            return false;
+        };
+        let activeTotalBps = Array.foldLeft<T.RebalanceTarget, Nat>(activeTargets, 0, func(acc, t) { acc + t.targetBps });
+        // Renormalize: scale each active target's bps so they sum to 10000
+        let targets = if (activeTotalBps > 0 and activeTotalBps != 10000) {
+            Array.map<T.RebalanceTarget, T.RebalanceTarget>(activeTargets, func(t) {
+                { token = t.token; targetBps = (t.targetBps * 10000) / activeTotalBps; paused = t.paused }
+            })
+        } else { activeTargets };
 
         let denomToken = getRebalDenomToken(instanceId);
         let threshold = getRebalThreshold(instanceId);
@@ -1919,9 +1933,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             ("maxImpactBps", Nat.toText(maxImpactCfg)),
             ("maxSlippageBps", Nat.toText(slippageCfg)),
             ("targetCount", Nat.toText(targets.size())),
+            ("pausedCount", Nat.toText(allTargets.size() - activeTargets.size())),
         ]);
 
-        // 1. Value portfolio
+        // 1. Value portfolio (only active/unpaused tokens)
         let tokenValues = Buffer.Buffer<{
             token: Principal;
             balance: Nat;

@@ -158,6 +158,7 @@ export const idlFactory = ({ IDL }) => {
     const RebalanceTarget = IDL.Record({
         token: IDL.Principal,
         targetBps: IDL.Nat,
+        paused: IDL.Bool,
     });
 
     const RebalanceSettings = IDL.Record({

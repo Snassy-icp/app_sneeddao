@@ -410,6 +410,7 @@ module {
     public type RebalanceTarget = {
         token: Principal;
         targetBps: Nat;           // Basis points (10000 = 100%)
+        paused: Bool;             // If true, token is excluded from rebalancing
     };
 
     public type RebalanceSettings = {

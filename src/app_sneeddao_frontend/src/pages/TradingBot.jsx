@@ -18,7 +18,7 @@ import { useAuth } from '../AuthContext';
 import { createActor as createBotActor } from 'external/sneed_trading_bot';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { decodeIcrcAccount, encodeIcrcAccount } from '@dfinity/ledger-icrc';
-import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt, FaSearch, FaGripVertical } from 'react-icons/fa';
+import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt, FaSearch, FaGripVertical, FaLock, FaLockOpen, FaPause, FaPlay } from 'react-icons/fa';
 import TokenIcon from '../components/TokenIcon';
 import PrincipalInput from '../components/PrincipalInput';
 import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
@@ -1351,9 +1351,13 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
     [editingTargets]);
     const editingIsValid = editingTargets ? Math.abs(editingTotal - 100) < 0.01 : false;
 
-    // Linked slider: when token i changes to newPct, redistribute delta among others
+    // Linked slider: when token i changes to newPct, redistribute delta among unlocked others
     const setLinkedTarget = useCallback((idx, newPct) => {
-        if (!editingTargets || editingTargets.length <= 1) {
+        if (!editingTargets) return;
+        // Don't allow changing a locked token
+        if (editingTargets[idx]?.locked) return;
+
+        if (editingTargets.length <= 1) {
             const arr = [...editingTargets]; arr[idx] = { ...arr[idx], targetBps: newPct.toFixed(1) }; setEditingTargets(arr);
             return;
         }
@@ -1361,18 +1365,21 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
         const delta = newPct - oldPct; // positive = this token grew, others must shrink
         if (Math.abs(delta) < 0.01) return;
 
-        const others = editingTargets.map((t, i) => ({ val: i === idx ? 0 : (parseFloat(t.targetBps) || 0), i })).filter(o => o.i !== idx);
+        // Only redistribute among unlocked others
+        const others = editingTargets.map((t, i) => ({ val: i === idx ? 0 : (parseFloat(t.targetBps) || 0), i, locked: !!t.locked })).filter(o => o.i !== idx && !o.locked);
         const othersTotal = others.reduce((s, o) => s + o.val, 0);
+        const unlockCount = others.length;
 
         const arr = editingTargets.map((t, i) => {
             if (i === idx) return { ...t, targetBps: Math.max(0, Math.min(100, newPct)).toFixed(1) };
+            if (t.locked) return t; // locked tokens stay as-is
             const cur = parseFloat(t.targetBps) || 0;
             if (othersTotal <= 0) {
-                // All others are 0 — distribute evenly
-                const share = (100 - newPct) / (editingTargets.length - 1);
+                // All unlocked others are 0 — distribute evenly among them
+                const share = unlockCount > 0 ? (100 - newPct - editingTargets.reduce((s, tt, j) => j !== idx && tt.locked ? s + (parseFloat(tt.targetBps) || 0) : s, 0)) / unlockCount : 0;
                 return { ...t, targetBps: Math.max(0, share).toFixed(1) };
             }
-            // Proportional redistribution
+            // Proportional redistribution among unlocked others
             const ratio = cur / othersTotal;
             const adjusted = cur - delta * ratio;
             return { ...t, targetBps: Math.max(0, adjusted).toFixed(1) };
@@ -1381,9 +1388,9 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
         // Fix rounding so total is exactly 100
         const total = arr.reduce((s, t) => s + parseFloat(t.targetBps), 0);
         if (Math.abs(total - 100) > 0.01) {
-            // Find biggest "other" to absorb rounding error
+            // Find biggest unlocked "other" to absorb rounding error
             let maxIdx = -1; let maxVal = -1;
-            arr.forEach((t, i) => { if (i !== idx) { const v = parseFloat(t.targetBps); if (v > maxVal) { maxVal = v; maxIdx = i; } } });
+            arr.forEach((t, i) => { if (i !== idx && !t.locked) { const v = parseFloat(t.targetBps); if (v > maxVal) { maxVal = v; maxIdx = i; } } });
             if (maxIdx >= 0) {
                 arr[maxIdx] = { ...arr[maxIdx], targetBps: Math.max(0, parseFloat(arr[maxIdx].targetBps) + (100 - total)).toFixed(1) };
             }
@@ -1393,31 +1400,44 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
 
     const equalSplitTargets = () => {
         if (!editingTargets || editingTargets.length === 0) return;
-        const n = editingTargets.length;
-        const base = Math.floor((1000 / n)) / 10; // one decimal place
-        const arr = editingTargets.map(t => ({ ...t, targetBps: base.toFixed(1) }));
-        // Give remainder to first token
-        const total = base * n;
-        if (Math.abs(total - 100) > 0.001) {
-            arr[0] = { ...arr[0], targetBps: (base + (100 - total)).toFixed(1) };
+        const lockedTotal = editingTargets.reduce((s, t) => t.locked ? s + (parseFloat(t.targetBps) || 0) : s, 0);
+        const unlockCount = editingTargets.filter(t => !t.locked).length;
+        if (unlockCount === 0) return;
+        const remaining = 100 - lockedTotal;
+        const base = Math.floor((remaining * 10 / unlockCount)) / 10;
+        let unlockedIdx = 0;
+        const arr = editingTargets.map(t => {
+            if (t.locked) return t;
+            unlockedIdx++;
+            return { ...t, targetBps: base.toFixed(1) };
+        });
+        // Give remainder to first unlocked token
+        const total = base * unlockCount;
+        if (Math.abs(total - remaining) > 0.001) {
+            const firstUnlocked = arr.findIndex(t => !t.locked);
+            if (firstUnlocked >= 0) arr[firstUnlocked] = { ...arr[firstUnlocked], targetBps: (base + (remaining - total)).toFixed(1) };
         }
         setEditingTargets(arr);
     };
 
     const addEditingToken = () => {
         if (!editingTargets) return;
-        const n = editingTargets.length + 1;
-        const newShare = Math.round(1000 / n) / 10; // % for the new token
-        const scale = (100 - newShare) / 100;
-        const arr = editingTargets.map(t => ({
-            ...t,
-            targetBps: (Math.max(0, (parseFloat(t.targetBps) || 0) * scale)).toFixed(1),
-        }));
-        arr.push({ token: '', targetBps: newShare.toFixed(1) });
-        // Fix rounding
+        const lockedTotal = editingTargets.reduce((s, t) => t.locked ? s + (parseFloat(t.targetBps) || 0) : s, 0);
+        const unlockedPctTotal = editingTargets.reduce((s, t) => !t.locked ? s + (parseFloat(t.targetBps) || 0) : s, 0);
+        const unlockCount = editingTargets.filter(t => !t.locked).length;
+        const available = 100 - lockedTotal;
+        const newShare = unlockCount > 0 ? Math.round((available * 10) / (unlockCount + 1)) / 10 : Math.round(available * 10) / 10;
+        const scale = unlockedPctTotal > 0 ? (available - newShare) / unlockedPctTotal : 1;
+        const arr = editingTargets.map(t => {
+            if (t.locked) return t;
+            return { ...t, targetBps: (Math.max(0, (parseFloat(t.targetBps) || 0) * scale)).toFixed(1) };
+        });
+        arr.push({ token: '', targetBps: newShare.toFixed(1), paused: false, locked: false });
+        // Fix rounding — target first unlocked token
         const total = arr.reduce((s, t) => s + parseFloat(t.targetBps), 0);
         if (Math.abs(total - 100) > 0.01 && arr.length > 0) {
-            arr[0] = { ...arr[0], targetBps: (parseFloat(arr[0].targetBps) + (100 - total)).toFixed(1) };
+            const fixIdx = arr.findIndex(t => !t.locked);
+            if (fixIdx >= 0) arr[fixIdx] = { ...arr[fixIdx], targetBps: (parseFloat(arr[fixIdx].targetBps) + (100 - total)).toFixed(1) };
         }
         setEditingTargets(arr);
     };
@@ -1427,18 +1447,22 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
         const removed = parseFloat(editingTargets[idx].targetBps) || 0;
         const arr = editingTargets.filter((_, j) => j !== idx);
         if (arr.length === 0) { setEditingTargets(arr); return; }
-        const othersTotal = arr.reduce((s, t) => s + (parseFloat(t.targetBps) || 0), 0);
-        if (othersTotal <= 0) {
-            // All at 0, split the freed % evenly
-            const each = (100 / arr.length).toFixed(1);
-            setEditingTargets(arr.map(t => ({ ...t, targetBps: each })));
+        const lockedTotal = arr.reduce((s, t) => t.locked ? s + (parseFloat(t.targetBps) || 0) : s, 0);
+        const unlockedTotal = arr.reduce((s, t) => !t.locked ? s + (parseFloat(t.targetBps) || 0) : s, 0);
+        const unlockCount = arr.filter(t => !t.locked).length;
+        if (unlockCount === 0) { setEditingTargets(arr); return; }
+        if (unlockedTotal <= 0) {
+            const each = ((100 - lockedTotal) / unlockCount).toFixed(1);
+            setEditingTargets(arr.map(t => t.locked ? t : { ...t, targetBps: each }));
             return;
         }
-        const scale = 100 / othersTotal;
-        const result = arr.map(t => ({ ...t, targetBps: ((parseFloat(t.targetBps) || 0) * scale).toFixed(1) }));
+        const targetUnlocked = 100 - lockedTotal;
+        const scale = targetUnlocked / unlockedTotal;
+        const result = arr.map(t => t.locked ? t : { ...t, targetBps: ((parseFloat(t.targetBps) || 0) * scale).toFixed(1) });
         const total = result.reduce((s, t) => s + parseFloat(t.targetBps), 0);
         if (Math.abs(total - 100) > 0.01) {
-            result[0] = { ...result[0], targetBps: (parseFloat(result[0].targetBps) + (100 - total)).toFixed(1) };
+            const fixIdx = result.findIndex(t => !t.locked);
+            if (fixIdx >= 0) result[fixIdx] = { ...result[fixIdx], targetBps: (parseFloat(result[fixIdx].targetBps) + (100 - total)).toFixed(1) };
         }
         setEditingTargets(result);
     };
@@ -1464,6 +1488,7 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
             const formatted = editingTargets.map(t => ({
                 token: Principal.fromText(t.token),
                 targetBps: BigInt(Math.round(parseFloat(t.targetBps) * 100)),
+                paused: !!t.paused,
             }));
             await bot.setRebalanceTargets(instanceId, formatted);
             // Auto-register all target tokens to the token registry (idempotent)
@@ -1584,14 +1609,14 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                             </h4>
                             {editingTargets === null ? (
                                 <button onClick={() => {
-                                    const raw = targets.map(t => ({ token: t.token.toText ? t.token.toText() : String(t.token), targetBps: Number(t.targetBps) / 100 }));
+                                    const raw = targets.map(t => ({ token: t.token.toText ? t.token.toText() : String(t.token), targetBps: Number(t.targetBps) / 100, paused: !!t.paused, locked: false }));
                                     const total = raw.reduce((s, t) => s + t.targetBps, 0);
                                     const scale = total > 0 ? 100 / total : 1;
                                     const normed = raw.map(t => ({ ...t, targetBps: (t.targetBps * scale).toFixed(1) }));
                                     // Fix rounding
                                     const nTotal = normed.reduce((s, t) => s + parseFloat(t.targetBps), 0);
                                     if (normed.length > 0 && Math.abs(nTotal - 100) > 0.01) normed[0] = { ...normed[0], targetBps: (parseFloat(normed[0].targetBps) + (100 - nTotal)).toFixed(1) };
-                                    setEditingTargets(normed.length > 0 ? normed : [{ token: '', targetBps: '100.0' }]);
+                                    setEditingTargets(normed.length > 0 ? normed : [{ token: '', targetBps: '100.0', paused: false, locked: false }]);
                                 }} style={{ ...secondaryButtonStyle, fontSize: '0.7rem', padding: '3px 8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                     <FaEdit style={{ fontSize: '0.65rem' }} /> Edit
                                 </button>
@@ -1616,13 +1641,39 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                 <div style={{ display: 'grid', gap: '6px' }}>
                                     {targets.map((t, i) => {
                                         const tid = typeof t.token === 'string' ? t.token : t.token?.toText?.() || String(t.token);
+                                        const isPaused = !!t.paused;
                                         return (
-                                            <div key={tid} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+                                            <div key={tid} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${isPaused ? '#f59e0b40' : theme.colors.border}`, opacity: isPaused ? 0.6 : 1 }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                     <div style={{ width: 8, height: 8, borderRadius: '50%', background: CHART_COLORS[i % CHART_COLORS.length], flexShrink: 0 }} />
                                                     <span style={{ fontSize: '0.8rem', color: theme.colors.primaryText, fontWeight: '500' }}>{getTokenLabel(t.token)}</span>
+                                                    {isPaused && <span style={{ fontSize: '0.6rem', color: '#f59e0b', fontWeight: '600', padding: '1px 5px', background: '#f59e0b15', borderRadius: '4px', border: '1px solid #f59e0b30' }}>PAUSED</span>}
                                                 </div>
-                                                <span style={{ fontSize: '0.85rem', fontWeight: '600', color: accentColor }}>{(Number(t.targetBps) / 100).toFixed(1)}%</span>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <span style={{ fontSize: '0.85rem', fontWeight: '600', color: accentColor }}>{(Number(t.targetBps) / 100).toFixed(1)}%</span>
+                                                    <button
+                                                        onClick={async () => {
+                                                            setSaving(true); setError(''); setSuccess('');
+                                                            try {
+                                                                const bot = await getReadyBotActor();
+                                                                const updated = targets.map((tt, j) => ({
+                                                                    token: tt.token,
+                                                                    targetBps: tt.targetBps,
+                                                                    paused: j === i ? !isPaused : !!tt.paused,
+                                                                }));
+                                                                await bot.setRebalanceTargets(instanceId, updated);
+                                                                setSuccess(isPaused ? `${getSymbol(t.token)} unpaused.` : `${getSymbol(t.token)} paused.`);
+                                                                await loadData();
+                                                            } catch (err) { setError('Failed to update: ' + err.message); }
+                                                            finally { setSaving(false); }
+                                                        }}
+                                                        disabled={saving}
+                                                        style={{ ...secondaryButtonStyle, fontSize: '0.6rem', padding: '2px 6px', color: isPaused ? '#22c55e' : '#f59e0b', borderColor: isPaused ? '#22c55e40' : '#f59e0b40' }}
+                                                        title={isPaused ? 'Resume rebalancing for this token' : 'Pause rebalancing for this token'}
+                                                    >
+                                                        {isPaused ? <FaPlay style={{ fontSize: '0.5rem' }} /> : <FaPause style={{ fontSize: '0.5rem' }} />}
+                                                    </button>
+                                                </div>
                                             </div>
                                         );
                                     })}
@@ -1674,37 +1725,48 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                                             placeholder="Select token..."
                                                         />
                                                     </div>
+                                                    <button onClick={() => {
+                                                        const arr = [...editingTargets]; arr[i] = { ...arr[i], paused: !arr[i].paused }; setEditingTargets(arr);
+                                                    }} style={{ ...secondaryButtonStyle, fontSize: '0.65rem', padding: '2px 6px', color: t.paused ? '#f59e0b' : theme.colors.mutedText, borderColor: t.paused ? '#f59e0b40' : theme.colors.border }} title={t.paused ? 'Unpause token (include in rebalancing)' : 'Pause token (exclude from rebalancing)'}>
+                                                        {t.paused ? <FaPlay style={{ fontSize: '0.55rem' }} /> : <FaPause style={{ fontSize: '0.55rem' }} />}
+                                                    </button>
                                                     <button onClick={() => removeEditingToken(i)} style={{ ...secondaryButtonStyle, fontSize: '0.65rem', padding: '2px 6px', color: '#ef4444', borderColor: '#ef444440' }}>
                                                         <FaTrash style={{ fontSize: '0.6rem' }} />
                                                     </button>
                                                 </div>
                                                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                    <button onClick={() => {
+                                                        const arr = [...editingTargets]; arr[i] = { ...arr[i], locked: !arr[i].locked }; setEditingTargets(arr);
+                                                    }} style={{ ...secondaryButtonStyle, fontSize: '0.6rem', padding: '2px 5px', color: t.locked ? accentColor : theme.colors.mutedText, borderColor: t.locked ? `${accentColor}40` : theme.colors.border, flexShrink: 0 }} title={t.locked ? 'Unlock slider' : 'Lock slider (prevent adjustment)'}>
+                                                        {t.locked ? <FaLock style={{ fontSize: '0.55rem' }} /> : <FaLockOpen style={{ fontSize: '0.55rem' }} />}
+                                                    </button>
                                                     <input
                                                         type="range" min="0" max="100" step="0.1"
                                                         value={pct}
                                                         onChange={(e) => setLinkedTarget(i, parseFloat(e.target.value))}
-                                                        style={{ flex: 1, accentColor: CHART_COLORS[i % CHART_COLORS.length], cursor: 'pointer', height: '6px' }}
+                                                        disabled={!!t.locked}
+                                                        style={{ flex: 1, accentColor: CHART_COLORS[i % CHART_COLORS.length], cursor: t.locked ? 'not-allowed' : 'pointer', height: '6px', opacity: t.locked ? 0.5 : 1 }}
                                                     />
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
                                                         <input
                                                             value={t.targetBps}
                                                             onChange={(e) => {
+                                                                if (t.locked) return;
                                                                 const v = e.target.value;
-                                                                // Allow free typing — only link when it parses to a number
                                                                 const num = parseFloat(v);
                                                                 if (!isNaN(num) && v.trim() !== '' && num >= 0 && num <= 100) {
                                                                     setLinkedTarget(i, num);
                                                                 } else {
-                                                                    // Allow incomplete input (e.g. empty or trailing dot)
                                                                     const arr = [...editingTargets]; arr[i] = { ...arr[i], targetBps: v }; setEditingTargets(arr);
                                                                 }
                                                             }}
                                                             onBlur={() => {
-                                                                // On blur, normalize to linked value
+                                                                if (t.locked) return;
                                                                 const num = parseFloat(editingTargets[i].targetBps);
                                                                 if (!isNaN(num)) setLinkedTarget(i, Math.max(0, Math.min(100, num)));
                                                             }}
-                                                            style={{ ...inputStyle, width: '60px', fontSize: '0.75rem', textAlign: 'right' }}
+                                                            disabled={!!t.locked}
+                                                            style={{ ...inputStyle, width: '60px', fontSize: '0.75rem', textAlign: 'right', opacity: t.locked ? 0.5 : 1 }}
                                                             type="text" inputMode="decimal"
                                                         />
                                                         <span style={{ fontSize: '0.7rem', color: theme.colors.secondaryText }}>%</span>
@@ -1764,12 +1826,15 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {portfolioStatus.tokens.map((tok, i) => (
-                                                <tr key={i} style={{ borderTop: `1px solid ${theme.colors.border}` }}>
+                                            {portfolioStatus.tokens.map((tok, i) => {
+                                                const isPaused = !!targets[i]?.paused;
+                                                return (
+                                                <tr key={i} style={{ borderTop: `1px solid ${theme.colors.border}`, opacity: isPaused ? 0.5 : 1 }}>
                                                     <td style={{ padding: '6px 10px', color: theme.colors.primaryText }}>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                                                             <span style={{ width: 8, height: 8, borderRadius: '50%', background: CHART_COLORS[i % CHART_COLORS.length], flexShrink: 0 }} />
                                                             {tok.symbol}
+                                                            {isPaused && <span style={{ fontSize: '0.55rem', color: '#f59e0b', fontWeight: '600' }}>PAUSED</span>}
                                                         </div>
                                                     </td>
                                                     <td style={{ padding: '6px 10px', textAlign: 'right', fontFamily: 'monospace', color: theme.colors.secondaryText, fontSize: '0.72rem' }}>
@@ -1784,7 +1849,8 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                                         {tok.deviationBps > 0 ? '+' : ''}{(tok.deviationBps / 100).toFixed(1)}%
                                                     </td>
                                                 </tr>
-                                            ))}
+                                                );
+                                            })}
                                         </tbody>
                                     </table>
                                 </div>
