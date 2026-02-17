@@ -2453,52 +2453,66 @@ export default function BotManagementPanel({
                                         </div>
 
                                         {/* Unseen log alerts banner */}
-                                        {logAlertSummary && (logAlertSummary.unseenErrorCount > 0 || logAlertSummary.unseenWarningCount > 0) && (
-                                            <div style={{
-                                                ...cardStyle,
-                                                background: logAlertSummary.unseenErrorCount > 0
-                                                    ? 'linear-gradient(135deg, #ef444418, #ef444408)'
-                                                    : 'linear-gradient(135deg, #f59e0b18, #f59e0b08)',
-                                                border: `1px solid ${logAlertSummary.unseenErrorCount > 0 ? '#ef4444' : '#f59e0b'}30`,
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'space-between',
-                                                gap: '12px',
-                                            }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem' }}>
-                                                    <span style={{ color: logAlertSummary.unseenErrorCount > 0 ? '#ef4444' : '#f59e0b', fontSize: '1rem' }}>
-                                                        {logAlertSummary.unseenErrorCount > 0 ? '!' : '!'}
-                                                    </span>
-                                                    <span style={{ color: theme.colors.primaryText }}>
-                                                        {logAlertSummary.unseenErrorCount > 0 && (
-                                                            <strong style={{ color: '#ef4444' }}>{logAlertSummary.unseenErrorCount} unseen error{logAlertSummary.unseenErrorCount !== 1 ? 's' : ''}</strong>
-                                                        )}
-                                                        {logAlertSummary.unseenErrorCount > 0 && logAlertSummary.unseenWarningCount > 0 && ', '}
-                                                        {logAlertSummary.unseenWarningCount > 0 && (
-                                                            <strong style={{ color: '#f59e0b' }}>{logAlertSummary.unseenWarningCount} unseen warning{logAlertSummary.unseenWarningCount !== 1 ? 's' : ''}</strong>
-                                                        )}
-                                                    </span>
+                                        {logAlertSummary && (logAlertSummary.unseenErrorCount > 0 || logAlertSummary.unseenWarningCount > 0) && (() => {
+                                            const alertColor = logAlertSummary.unseenErrorCount > 0 ? '#ef4444' : '#f59e0b';
+                                            const filterLevel = logAlertSummary.unseenErrorCount > 0 ? 'Error' : 'Warning';
+                                            return (
+                                                <div style={{
+                                                    ...cardStyle,
+                                                    background: `linear-gradient(135deg, ${alertColor}18, ${alertColor}08)`,
+                                                    border: `1px solid ${alertColor}30`,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'space-between',
+                                                    gap: '12px',
+                                                }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', flex: 1 }}>
+                                                        <span style={{ color: alertColor, fontSize: '1rem', fontWeight: '700' }}>!</span>
+                                                        <span style={{ color: theme.colors.primaryText }}>
+                                                            {logAlertSummary.unseenErrorCount > 0 && (
+                                                                <strong style={{ color: '#ef4444' }}>{logAlertSummary.unseenErrorCount} unseen error{logAlertSummary.unseenErrorCount !== 1 ? 's' : ''}</strong>
+                                                            )}
+                                                            {logAlertSummary.unseenErrorCount > 0 && logAlertSummary.unseenWarningCount > 0 && ', '}
+                                                            {logAlertSummary.unseenWarningCount > 0 && (
+                                                                <strong style={{ color: '#f59e0b' }}>{logAlertSummary.unseenWarningCount} unseen warning{logAlertSummary.unseenWarningCount !== 1 ? 's' : ''}</strong>
+                                                            )}
+                                                        </span>
+                                                    </div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                                                        <button
+                                                            onClick={() => {
+                                                                const nf = { ...logFilter, minLevel: [{ [filterLevel]: null }], startId: [] };
+                                                                setLogFilter(nf);
+                                                                loadLogData(nf);
+                                                            }}
+                                                            style={{
+                                                                padding: '4px 12px', borderRadius: '6px',
+                                                                border: `1px solid ${alertColor}40`,
+                                                                background: `${alertColor}15`,
+                                                                color: alertColor, fontSize: '0.75rem',
+                                                                cursor: 'pointer', fontWeight: '600', whiteSpace: 'nowrap',
+                                                            }}
+                                                        >
+                                                            Show
+                                                        </button>
+                                                        <button
+                                                            onClick={handleMarkLogsSeen}
+                                                            disabled={markingLogsSeen}
+                                                            style={{
+                                                                padding: '4px 12px', borderRadius: '6px',
+                                                                border: `1px solid ${theme.colors.border}`,
+                                                                background: 'transparent',
+                                                                color: theme.colors.primaryText, fontSize: '0.75rem',
+                                                                cursor: 'pointer', fontWeight: '500', whiteSpace: 'nowrap',
+                                                                opacity: markingLogsSeen ? 0.5 : 1,
+                                                            }}
+                                                        >
+                                                            {markingLogsSeen ? 'Marking...' : 'Mark as seen'}
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                                <button
-                                                    onClick={handleMarkLogsSeen}
-                                                    disabled={markingLogsSeen}
-                                                    style={{
-                                                        padding: '4px 12px',
-                                                        borderRadius: '6px',
-                                                        border: `1px solid ${theme.colors.border}`,
-                                                        background: 'transparent',
-                                                        color: theme.colors.primaryText,
-                                                        fontSize: '0.75rem',
-                                                        cursor: 'pointer',
-                                                        fontWeight: '500',
-                                                        whiteSpace: 'nowrap',
-                                                        opacity: markingLogsSeen ? 0.5 : 1,
-                                                    }}
-                                                >
-                                                    {markingLogsSeen ? 'Marking...' : 'Mark as seen'}
-                                                </button>
-                                            </div>
-                                        )}
+                                            );
+                                        })()}
 
                                         {logError && <div style={{ ...cardStyle, background: `${theme.colors.error}15`, border: `1px solid ${theme.colors.error}30`, color: theme.colors.error, fontSize: '0.85rem' }}>{logError}</div>}
                                         {logSuccess && <div style={{ ...cardStyle, background: `${theme.colors.success || '#22c55e'}15`, border: `1px solid ${theme.colors.success || '#22c55e'}30`, color: theme.colors.success || '#22c55e', fontSize: '0.85rem' }}>{logSuccess}</div>}

@@ -14,12 +14,13 @@ export function useBotLogNotification() {
     const openDialog = useCallback(() => setIsDialogOpen(true), []);
     const closeDialog = useCallback(() => setIsDialogOpen(false), []);
 
-    // Read notification preferences from localStorage
-    const includeWarnings = typeof localStorage !== 'undefined'
-        ? localStorage.getItem('notifyBotLogWarnings') !== 'false'
-            ? localStorage.getItem('notifyBotLogWarnings') === 'true'
-            : false
-        : false;
+    // Read notification preferences from localStorage (default: true)
+    const includeWarnings = (() => {
+        try {
+            const val = localStorage.getItem('notifyBotLogWarnings');
+            return val !== null ? JSON.parse(val) : true;
+        } catch { return true; }
+    })();
 
     const { errorCount, warningCount, totalCount, botsWithAlerts, hasErrors } = useMemo(() => {
         const entries = Object.entries(botLogAlerts);

@@ -231,7 +231,7 @@ export default function Me() {
         notify_low_cycles: true,
         notify_bot_chores: true,
         notify_bot_log_errors: true,
-        notify_bot_log_warnings: false,
+        notify_bot_log_warnings: true,
         notify_updates: true,
     };
 
@@ -568,7 +568,7 @@ export default function Me() {
         try { const s = localStorage.getItem('notifyBotLogErrors'); return s !== null ? JSON.parse(s) : true; } catch { return true; }
     });
     const [notifyBotLogWarnings, setNotifyBotLogWarnings] = useState(() => {
-        try { const s = localStorage.getItem('notifyBotLogWarnings'); return s !== null ? JSON.parse(s) : false; } catch { return false; }
+        try { const s = localStorage.getItem('notifyBotLogWarnings'); return s !== null ? JSON.parse(s) : true; } catch { return true; }
     });
     const [notifyUpdates, setNotifyUpdates] = useState(() => {
         try { const s = localStorage.getItem('notifyUpdates'); return s !== null ? JSON.parse(s) : true; } catch { return true; }
