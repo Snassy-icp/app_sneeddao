@@ -1,6 +1,6 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaTimes, FaRobot, FaExclamationTriangle, FaExclamationCircle, FaCheckDouble } from 'react-icons/fa';
+import { FaTimes, FaRobot, FaExclamationTriangle, FaExclamationCircle, FaCheckDouble, FaSpinner } from 'react-icons/fa';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
 import { useWalletOptional } from '../contexts/WalletContext';
@@ -16,15 +16,10 @@ const APP_LABELS = {
     '': 'Bot',
 };
 
+const LOG_LEVEL_COLORS = { Error: '#ef4444', Warning: '#f59e0b', Info: '#3b82f6', Debug: '#8b5cf6', Trace: '#6b7280' };
+
 /**
- * Unified dialog for bot health: chore issues + unseen log alerts.
- * Groups both into a single per-bot row where applicable.
- *
- * Props:
- *   isOpen: boolean
- *   onClose: () => void
- *   unhealthyManagers: Array<{ canisterId, lamp, appId? }>
- *   botsWithAlerts: Array<{ canisterId, appId, unseenErrorCount, unseenWarningCount, highestErrorId, highestWarningId, nextId }>
+ * Unified dialog for bot health: chore issues + unseen log alerts with full log entries.
  */
 export default function BotHealthDialog({ isOpen, onClose, unhealthyManagers = [], botsWithAlerts = [] }) {
     const { theme } = useTheme();
@@ -33,6 +28,58 @@ export default function BotHealthDialog({ isOpen, onClose, unhealthyManagers = [
     const { identity } = useAuth();
     const walletContext = useWalletOptional();
     const refreshBotLogAlerts = walletContext?.refreshBotLogAlerts;
+
+    // Fetched log entries per bot: { canisterId -> LogEntry[] }
+    const [botLogEntries, setBotLogEntries] = useState({});
+    const [loadingLogs, setLoadingLogs] = useState(false);
+    const fetchedRef = useRef(false);
+
+    // Fetch actual log entries for bots with alerts when dialog opens
+    useEffect(() => {
+        if (!isOpen || !identity || botsWithAlerts.length === 0 || fetchedRef.current) return;
+        fetchedRef.current = true;
+        setLoadingLogs(true);
+
+        (async () => {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging'
+                ? 'https://ic0.app' : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey().catch(() => {});
+            }
+            const results = {};
+            await Promise.allSettled(botsWithAlerts.map(async (bot) => {
+                try {
+                    const cid = bot.canisterId;
+                    const lastSeen = parseInt(localStorage.getItem(`lastSeenLogId:${cid}`) || '0', 10);
+                    const actor = Actor.createActor(botLogIdlFactory, { agent, canisterId: cid });
+                    const res = await actor.getLogs({
+                        minLevel: [{ Warning: null }],
+                        source: [],
+                        caller: [],
+                        fromTime: [],
+                        toTime: [],
+                        startId: lastSeen > 0 ? [BigInt(lastSeen + 1)] : [],
+                        limit: [BigInt(50)],
+                    });
+                    results[cid] = (res.entries || []).filter(e => {
+                        const lvl = Object.keys(e.level)[0];
+                        return lvl === 'Error' || lvl === 'Warning';
+                    });
+                } catch (_) {}
+            }));
+            setBotLogEntries(results);
+            setLoadingLogs(false);
+        })();
+    }, [isOpen, identity, botsWithAlerts]);
+
+    // Reset when dialog closes
+    useEffect(() => {
+        if (!isOpen) {
+            fetchedRef.current = false;
+            setBotLogEntries({});
+        }
+    }, [isOpen]);
 
     // --- Mark log alerts as seen ---
     const markSeenForBot = useCallback(async (canisterId, highestId) => {
@@ -60,7 +107,6 @@ export default function BotHealthDialog({ isOpen, onClose, unhealthyManagers = [
         }
     }, [botsWithAlerts, markSeenForBot]);
 
-    // --- Navigation ---
     const navigateToBot = (canisterId, appId, tab) => {
         onClose();
         if (appId === 'sneed-trading-bot') {
@@ -72,9 +118,8 @@ export default function BotHealthDialog({ isOpen, onClose, unhealthyManagers = [
 
     if (!isOpen) return null;
 
-    // --- Merge bots from both sources into a unified per-canister view ---
-    const botMap = new Map(); // canisterId -> { choreIssue, logAlert, appId }
-
+    // --- Merge bots from both sources ---
+    const botMap = new Map();
     for (const m of unhealthyManagers) {
         const cid = m.canisterId;
         const existing = botMap.get(cid) || { appId: m.appId || '' };
@@ -88,7 +133,6 @@ export default function BotHealthDialog({ isOpen, onClose, unhealthyManagers = [
         if (!existing.appId && a.appId) existing.appId = a.appId;
         botMap.set(cid, existing);
     }
-
     const mergedBots = [...botMap.entries()].map(([canisterId, data]) => ({ canisterId, ...data }));
 
     const totalChoreErrors = unhealthyManagers.filter(m => m.lamp === LAMP_ERROR).length;
@@ -113,7 +157,7 @@ export default function BotHealthDialog({ isOpen, onClose, unhealthyManagers = [
                     backgroundColor: theme.colors.primaryBg,
                     borderRadius: '16px',
                     border: `1px solid ${theme.colors.border}`,
-                    maxWidth: '560px', width: '100%', maxHeight: '80vh',
+                    maxWidth: '680px', width: '100%', maxHeight: '85vh',
                     display: 'flex', flexDirection: 'column',
                     boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
                 }}
@@ -149,7 +193,7 @@ export default function BotHealthDialog({ isOpen, onClose, unhealthyManagers = [
                             {/* Summary line */}
                             <div style={{
                                 display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
-                                marginBottom: '12px', fontSize: '12px', color: theme.colors.mutedText,
+                                marginBottom: '14px', fontSize: '12px', color: theme.colors.mutedText,
                             }}>
                                 <span>{mergedBots.length} bot{mergedBots.length !== 1 ? 's' : ''} need{mergedBots.length === 1 ? 's' : ''} attention</span>
                                 {totalChoreErrors > 0 && (
@@ -174,7 +218,7 @@ export default function BotHealthDialog({ isOpen, onClose, unhealthyManagers = [
                                 )}
                             </div>
 
-                            {/* Per-bot rows */}
+                            {/* Per-bot sections */}
                             {mergedBots.map(({ canisterId, appId, choreIssue, logAlert }) => {
                                 const hasChoreError = choreIssue?.lamp === LAMP_ERROR;
                                 const hasLogErrors = (logAlert?.unseenErrorCount || 0) > 0;
@@ -182,30 +226,24 @@ export default function BotHealthDialog({ isOpen, onClose, unhealthyManagers = [
                                 const rowColor = rowHasError ? '#ef4444' : '#f59e0b';
                                 const displayInfo = getPrincipalDisplayName ? getPrincipalDisplayName(canisterId) : null;
                                 const botTypeLabel = APP_LABELS[appId] || APP_LABELS[''];
-
-                                const choreLabel = choreIssue
-                                    ? (LAMP_LABELS[choreIssue.lamp] || 'Issue')
-                                    : null;
-                                const choreLampColor = choreIssue
-                                    ? (LAMP_COLORS[choreIssue.lamp] || LAMP_COLORS.warn)
-                                    : null;
-
+                                const choreLabel = choreIssue ? (LAMP_LABELS[choreIssue.lamp] || 'Issue') : null;
+                                const choreLampColor = choreIssue ? (LAMP_COLORS[choreIssue.lamp] || LAMP_COLORS.warn) : null;
                                 const logHighestId = logAlert
                                     ? Math.max(logAlert.highestErrorId || 0, logAlert.highestWarningId || 0, (logAlert.nextId || 1) - 1)
                                     : 0;
+                                const entries = botLogEntries[canisterId] || [];
 
                                 return (
                                     <div
                                         key={canisterId}
                                         style={{
-                                            padding: '10px 12px', borderRadius: '10px', marginBottom: '6px',
-                                            background: rowHasError ? '#ef444410' : '#f59e0b10',
-                                            border: `1px solid ${rowColor}30`,
-                                            transition: 'all 0.15s ease',
+                                            padding: '12px', borderRadius: '10px', marginBottom: '8px',
+                                            background: rowHasError ? '#ef444408' : '#f59e0b08',
+                                            border: `1px solid ${rowColor}25`,
                                         }}
                                     >
-                                        {/* Top line: bot identity + type */}
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        {/* Bot identity row */}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
                                             <span style={{
                                                 display: 'inline-block', width: '10px', height: '10px',
                                                 borderRadius: '50%', backgroundColor: rowColor,
@@ -222,74 +260,143 @@ export default function BotHealthDialog({ isOpen, onClose, unhealthyManagers = [
                                                         noLink={true}
                                                         style={{ fontSize: '13px', fontWeight: '500', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                                                     />
+                                                    <span style={{ fontSize: '10px', color: theme.colors.mutedText, fontWeight: '400' }}>({botTypeLabel})</span>
                                                 </div>
-                                                <div style={{ fontSize: '11px', color: theme.colors.mutedText, marginTop: '2px' }}>
-                                                    {botTypeLabel}
-                                                </div>
+                                            </div>
+                                            {/* Actions */}
+                                            <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                                                {logAlert && (
+                                                    <button
+                                                        onClick={() => markSeenForBot(canisterId, logHighestId)}
+                                                        title="Mark log alerts as seen"
+                                                        style={{
+                                                            background: 'none', border: `1px solid ${theme.colors.border}`,
+                                                            borderRadius: '5px', padding: '2px 8px', cursor: 'pointer',
+                                                            color: theme.colors.secondaryText, fontSize: '10px',
+                                                            display: 'flex', alignItems: 'center', gap: '3px',
+                                                        }}
+                                                    >
+                                                        <FaCheckDouble size={8} /> Seen
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
 
-                                        {/* Issue lines */}
-                                        <div style={{ marginTop: '6px', marginLeft: '20px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                            {/* Chore issue */}
-                                            {choreIssue && (
-                                                <div
-                                                    style={{
-                                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                                        padding: '4px 8px', borderRadius: '6px',
-                                                        background: `${choreLampColor}10`, cursor: 'pointer',
-                                                    }}
-                                                    onClick={() => navigateToBot(canisterId, appId, 'chores')}
-                                                    onMouseEnter={(e) => { e.currentTarget.style.background = `${choreLampColor}20`; }}
-                                                    onMouseLeave={(e) => { e.currentTarget.style.background = `${choreLampColor}10`; }}
-                                                >
-                                                    <span style={{ fontSize: '11px', color: choreLampColor, fontWeight: '500', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                        {hasChoreError ? <FaExclamationCircle size={9} /> : <FaExclamationTriangle size={9} />}
-                                                        Chore: {choreLabel}
-                                                    </span>
-                                                    <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>›</span>
-                                                </div>
-                                            )}
+                                        {/* Chore issue */}
+                                        {choreIssue && (
+                                            <div
+                                                style={{
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                    padding: '6px 10px', borderRadius: '6px', marginBottom: '4px',
+                                                    background: `${choreLampColor}12`, cursor: 'pointer',
+                                                    border: `1px solid ${choreLampColor}15`,
+                                                }}
+                                                onClick={() => navigateToBot(canisterId, appId, 'chores')}
+                                                onMouseEnter={(e) => { e.currentTarget.style.background = `${choreLampColor}22`; }}
+                                                onMouseLeave={(e) => { e.currentTarget.style.background = `${choreLampColor}12`; }}
+                                            >
+                                                <span style={{ fontSize: '11px', color: choreLampColor, fontWeight: '600', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                    {hasChoreError ? <FaExclamationCircle size={9} /> : <FaExclamationTriangle size={9} />}
+                                                    Chore: {choreLabel}
+                                                </span>
+                                                <span style={{ color: theme.colors.mutedText, fontSize: '11px' }}>View chores ›</span>
+                                            </div>
+                                        )}
 
-                                            {/* Log alert */}
-                                            {logAlert && (
-                                                <div
-                                                    style={{
-                                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                                        padding: '4px 8px', borderRadius: '6px',
-                                                        background: `${rowColor}10`, cursor: 'pointer',
-                                                    }}
-                                                    onClick={() => navigateToBot(canisterId, appId, 'log')}
-                                                    onMouseEnter={(e) => { e.currentTarget.style.background = `${rowColor}20`; }}
-                                                    onMouseLeave={(e) => { e.currentTarget.style.background = `${rowColor}10`; }}
-                                                >
-                                                    <span style={{ fontSize: '11px', color: theme.colors.primaryText, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                        {hasLogErrors
-                                                            ? <><FaExclamationCircle size={9} style={{ color: '#ef4444' }} /><span style={{ color: '#ef4444', fontWeight: '500' }}>{logAlert.unseenErrorCount} error{logAlert.unseenErrorCount !== 1 ? 's' : ''}</span></>
-                                                            : null
-                                                        }
-                                                        {(logAlert.unseenWarningCount || 0) > 0 && (
-                                                            <><FaExclamationTriangle size={9} style={{ color: '#f59e0b' }} /><span style={{ color: '#f59e0b', fontWeight: '500' }}>{logAlert.unseenWarningCount} warning{logAlert.unseenWarningCount !== 1 ? 's' : ''}</span></>
-                                                        )}
-                                                    </span>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); markSeenForBot(canisterId, logHighestId); }}
-                                                            title="Mark as seen"
-                                                            style={{
-                                                                background: 'none', border: `1px solid ${theme.colors.border}`,
-                                                                borderRadius: '5px', padding: '2px 6px', cursor: 'pointer',
-                                                                color: theme.colors.secondaryText, fontSize: '10px',
-                                                                display: 'flex', alignItems: 'center', gap: '3px', flexShrink: 0,
-                                                            }}
-                                                        >
-                                                            <FaCheckDouble size={8} /> Seen
-                                                        </button>
-                                                        <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>›</span>
+                                        {/* Log entries */}
+                                        {logAlert && (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                                {loadingLogs && entries.length === 0 && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 10px', fontSize: '11px', color: theme.colors.mutedText }}>
+                                                        <FaSpinner size={10} className="fa-spin" style={{ animation: 'spin 1s linear infinite' }} />
+                                                        Loading log entries...
                                                     </div>
-                                                </div>
-                                            )}
-                                        </div>
+                                                )}
+                                                {entries.slice().reverse().map(entry => {
+                                                    const levelKey = Object.keys(entry.level)[0];
+                                                    const levelColor = LOG_LEVEL_COLORS[levelKey] || '#6b7280';
+                                                    const ts = new Date(Number(entry.timestamp) / 1_000_000);
+                                                    const timeStr = ts.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+                                                    const tagMap = {};
+                                                    for (const [k, v] of entry.tags) tagMap[k] = v;
+
+                                                    // Build readable tags
+                                                    const tagPills = entry.tags
+                                                        .filter(([k]) => k !== 'source' && k !== 'level')
+                                                        .map(([k, v], i) => (
+                                                            <span key={i} style={{
+                                                                padding: '1px 5px', borderRadius: '3px', fontSize: '0.65rem',
+                                                                background: `${theme.colors.border}60`, color: theme.colors.secondaryText,
+                                                                whiteSpace: 'nowrap',
+                                                            }}>
+                                                                <span style={{ opacity: 0.6 }}>{k}:</span> {v}
+                                                            </span>
+                                                        ));
+
+                                                    return (
+                                                        <div
+                                                            key={Number(entry.id)}
+                                                            style={{
+                                                                padding: '6px 10px', borderRadius: '6px',
+                                                                borderLeft: `3px solid ${levelColor}`,
+                                                                background: `${levelColor}08`,
+                                                                cursor: 'pointer',
+                                                            }}
+                                                            onClick={() => navigateToBot(canisterId, appId, 'log')}
+                                                            onMouseEnter={(e) => { e.currentTarget.style.background = `${levelColor}14`; }}
+                                                            onMouseLeave={(e) => { e.currentTarget.style.background = `${levelColor}08`; }}
+                                                        >
+                                                            {/* Entry header line */}
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                                <span style={{
+                                                                    padding: '0px 5px', borderRadius: '3px', fontSize: '0.65rem',
+                                                                    fontWeight: '700', background: `${levelColor}22`, color: levelColor,
+                                                                    minWidth: '38px', textAlign: 'center',
+                                                                }}>
+                                                                    {levelKey.toUpperCase()}
+                                                                </span>
+                                                                <span style={{
+                                                                    padding: '0px 5px', borderRadius: '3px', fontSize: '0.65rem',
+                                                                    background: `${theme.colors.border}40`, color: theme.colors.secondaryText,
+                                                                }}>
+                                                                    {entry.source}
+                                                                </span>
+                                                                <span style={{ fontSize: '0.75rem', color: theme.colors.primaryText, flex: 1, lineHeight: '1.3' }}>
+                                                                    {entry.message}
+                                                                </span>
+                                                                <span style={{ fontSize: '0.6rem', color: theme.colors.mutedText, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                                                    {timeStr}
+                                                                </span>
+                                                                <span style={{ fontSize: '0.55rem', color: theme.colors.mutedText, opacity: 0.5 }}>
+                                                                    #{Number(entry.id)}
+                                                                </span>
+                                                            </div>
+                                                            {/* Tags */}
+                                                            {tagPills.length > 0 && (
+                                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginTop: '3px', marginLeft: '44px' }}>
+                                                                    {tagPills}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                                {!loadingLogs && entries.length === 0 && (logAlert.unseenErrorCount > 0 || logAlert.unseenWarningCount > 0) && (
+                                                    <div
+                                                        style={{
+                                                            padding: '6px 10px', borderRadius: '6px', fontSize: '11px',
+                                                            color: theme.colors.mutedText, cursor: 'pointer',
+                                                            background: `${rowColor}08`,
+                                                        }}
+                                                        onClick={() => navigateToBot(canisterId, appId, 'log')}
+                                                    >
+                                                        {(logAlert.unseenErrorCount || 0) > 0 && <span style={{ color: '#ef4444', fontWeight: '500' }}>{logAlert.unseenErrorCount} unseen error{logAlert.unseenErrorCount !== 1 ? 's' : ''} </span>}
+                                                        {(logAlert.unseenWarningCount || 0) > 0 && <span style={{ color: '#f59e0b', fontWeight: '500' }}>{logAlert.unseenWarningCount} unseen warning{logAlert.unseenWarningCount !== 1 ? 's' : ''} </span>}
+                                                        — <span style={{ textDecoration: 'underline' }}>view in log</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
