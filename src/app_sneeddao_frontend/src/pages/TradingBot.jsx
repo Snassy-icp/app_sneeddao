@@ -4311,10 +4311,25 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
     const pnlPctIcp = (pnlIcp != null && capitalIcp && capitalIcp !== 0) ? (pnlIcp / Math.abs(capitalIcp)) * 100 : null;
     const pnlPctUsd = (pnlUsd != null && capitalUsd && capitalUsd !== 0) ? (pnlUsd / Math.abs(capitalUsd)) * 100 : null;
 
-    // Resolve token symbol from registry
+    // Build a principal→symbol map from token registry + snapshot token data
+    const symbolMap = React.useMemo(() => {
+        const map = {};
+        for (const entry of tokenRegistry) {
+            const key = entry.ledgerCanisterId?.toText?.() || entry.ledgerCanisterId?.toString?.() || '';
+            if (key && entry.symbol) map[key] = entry.symbol;
+        }
+        for (const snap of snapshots) {
+            for (const tok of (snap.tokens || [])) {
+                const key = tok.token?.toText?.() || tok.token?.toString?.() || '';
+                if (key && tok.symbol && tok.symbol !== '?' && !map[key]) map[key] = tok.symbol;
+            }
+        }
+        return map;
+    }, [tokenRegistry, snapshots]);
+
+    // Resolve token symbol from registry or snapshot data
     const tokenSymbol = (principalText) => {
-        const entry = tokenRegistry.find(t => (t.ledgerCanisterId?.toText?.() || t.ledgerCanisterId?.toString?.() || '') === principalText);
-        return entry?.symbol || principalText.slice(0, 10) + '...';
+        return symbolMap[principalText] || principalText.slice(0, 10) + '...';
     };
     const tokenDecimals = (principalText) => {
         const entry = tokenRegistry.find(t => (t.ledgerCanisterId?.toText?.() || t.ledgerCanisterId?.toString?.() || '') === principalText);
@@ -4512,6 +4527,7 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
                 priceHistory={priceHistory}
                 dailyPriceCandleData={dailyPriceCandleData}
                 tokenRegistry={tokenRegistry}
+                symbolMap={symbolMap}
                 selectedPricepair={selectedPricepair}
                 setSelectedPricePair={setSelectedPricePair}
                 theme={theme}
@@ -4522,10 +4538,11 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
     );
 }
 
-function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleData, tokenRegistry, selectedPricepair, setSelectedPricePair, theme, accentColor, cardStyle }) {
+function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleData, tokenRegistry, symbolMap, selectedPricepair, setSelectedPricePair, theme, accentColor, cardStyle }) {
     const [priceView, setPriceView] = useState('detailed'); // 'detailed' or 'daily'
-    // Resolve token symbol from principal text
+    // Resolve token symbol from principal text using symbolMap (includes registry + snapshot data)
     const sym = (principalText) => {
+        if (symbolMap && symbolMap[principalText]) return symbolMap[principalText];
         const entry = tokenRegistry.find(t => (t.ledgerCanisterId?.toText?.() || t.ledgerCanisterId?.toString?.() || '') === principalText);
         return entry?.symbol || principalText.slice(0, 8) + '..';
     };
@@ -4537,7 +4554,7 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
             const outText = cached.outputToken?.toText?.() || cached.outputToken?.toString?.() || '';
             return { key, inputSymbol: sym(inpText), outputSymbol: sym(outText), inputPrincipal: inpText, outputPrincipal: outText, cached };
         }).sort((a, b) => (a.inputSymbol + a.outputSymbol).localeCompare(b.inputSymbol + b.outputSymbol));
-    }, [lastKnownPrices, tokenRegistry]);
+    }, [lastKnownPrices, tokenRegistry, symbolMap]);
 
     // Group price history by pair key
     const historyByPair = React.useMemo(() => {

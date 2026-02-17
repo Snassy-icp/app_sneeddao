@@ -107,6 +107,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     // Net capital deployed tracking (for P&L computation)
     var capitalDeployedIcpE8s: Int = 0;
     var capitalDeployedUsdE8s: Int = 0;
+    // Migration flag: false on upgrade of existing bots (new var defaults to false).
+    // For new bots, capitalDeployedUsdE8s=0, so migrating 0*100=0 is harmless.
+    var capitalUsdE8sMigrated: Bool = false;
 
     // Per-token capital flows in native token amounts
     // Key: token principal text, Value: (totalInflowNative, totalOutflowNative)
@@ -484,8 +487,17 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
     /// Compare the current balance to the last known balance (0 if never seen before).
     /// If a discrepancy is found, log it as a trade log entry (actionType 4=inflow, 5=outflow).
+    func migrateCapitalUsdIfNeeded() {
+        if (not capitalUsdE8sMigrated) {
+            // Old values were stored in ckUSDC e6; multiply by 100 to convert to e8
+            capitalDeployedUsdE8s := capitalDeployedUsdE8s * 100;
+            capitalUsdE8sMigrated := true;
+        };
+    };
+
     /// Then update lastKnown to the current balance.
     func reconcileBalance(token: Principal, subaccount: ?Blob, currentBalance: Nat, source: Text) {
+        migrateCapitalUsdIfNeeded();
         let lastKnown: Nat = switch (getLastKnownBalance(token, subaccount)) {
             case null 0;
             case (?v) v;
@@ -796,8 +808,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case (?v) v;
             case null 0;
         };
+        // convertAmountViaCache returns ckUSDC native units (6 decimals).
+        // Multiply by 100 to convert to e8 format, consistent with snapshot totalValueUsdE8s.
         let usdVal: Int = switch (convertAmountViaCache(amount, token, ckusdcToken)) {
-            case (?v) v;
+            case (?v) v * 100;
             case null 0;
         };
         (icpVal, usdVal)

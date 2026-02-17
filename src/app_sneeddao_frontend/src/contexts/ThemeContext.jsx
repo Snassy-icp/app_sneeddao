@@ -24,6 +24,7 @@ export const themes = {
       modalBg: 'rgba(0, 0, 0, 0.8)',
       
       // Text
+      text: '#ffffff',
       primaryText: '#ffffff',
       secondaryText: '#cccccc',
       mutedText: '#888888',
@@ -63,6 +64,7 @@ export const themes = {
       modalBg: 'rgba(255, 255, 255, 0.95)',
       
       // Text
+      text: '#212529',
       primaryText: '#212529',
       secondaryText: '#495057',
       mutedText: '#6c757d',
