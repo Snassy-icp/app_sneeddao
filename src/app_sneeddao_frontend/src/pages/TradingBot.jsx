@@ -5291,6 +5291,17 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
         const periodSeconds = c.changePeriodValue && c.changePeriodUnit
             ? (parseFloat(c.changePeriodValue) * Number(c.changePeriodUnit)).toString() : '';
         const changePercentBps = c.changePercent ? Math.round(parseFloat(c.changePercent) * 100).toString() : '';
+        // Convert human-readable token-unit strings to e8s for the backend
+        const dec = condAmtDecimals(c);
+        const toE8s = (humanStr) => {
+            if (!humanStr && humanStr !== 0) return null;
+            const v = parseFloat(humanStr);
+            if (isNaN(v)) return null;
+            return BigInt(Math.round(v * Math.pow(10, dec)));
+        };
+        const threshE8s = toE8s(c.threshold);
+        const rMinE8s = toE8s(c.rangeMin);
+        const rMaxE8s = toE8s(c.rangeMax);
         return {
             conditionType: BigInt(c.conditionType),
             priceToken1: c.priceToken1?.length ? [Principal.fromText(c.priceToken1)] : [],
@@ -5304,9 +5315,9 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
                 choreInstanceId: vs.choreInstanceId?.length ? [vs.choreInstanceId] : [],
             })),
             operator: BigInt(c.operator),
-            threshold: c.threshold !== '' && c.threshold != null ? [BigInt(c.threshold)] : [],
-            rangeMin: c.rangeMin !== '' && c.rangeMin != null ? [BigInt(c.rangeMin)] : [],
-            rangeMax: c.rangeMax !== '' && c.rangeMax != null ? [BigInt(c.rangeMax)] : [],
+            threshold: threshE8s != null ? [threshE8s] : [],
+            rangeMin: rMinE8s != null ? [rMinE8s] : [],
+            rangeMax: rMaxE8s != null ? [rMaxE8s] : [],
             changePercentBps: changePercentBps ? [BigInt(changePercentBps)] : [],
             changeDirection: c.changeDirection !== '' && c.changeDirection != null ? [BigInt(c.changeDirection)] : [],
             changePeriodSeconds: periodSeconds ? [BigInt(Math.round(parseFloat(periodSeconds)))] : [],
@@ -5322,13 +5333,30 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
         };
     }
 
+    // Resolve decimals for the amount unit token of a condition (for display/serialization)
+    function condAmtDecimals(c) {
+        const ct = Number(c.conditionType);
+        if (ct === 0) return getTokenDecimals(c.priceToken2);
+        if (ct === 2) return getTokenDecimals(c.balanceToken);
+        return getTokenDecimals(c.denominationToken || ICP_LEDGER);
+    }
+
     // Deserialization: Candid -> UI
+    // threshold/rangeMin/rangeMax are stored in the editing state as human-readable
+    // token-unit strings (e.g. "1.5" for 1.5 ICP) so decimal input works naturally.
     function deserializeCondition(c) {
         const bps = c.changePercentBps?.[0] != null ? Number(c.changePercentBps[0]) : null;
         const periodSec = c.changePeriodSeconds?.[0] != null ? Number(c.changePeriodSeconds[0]) : null;
         const pvu = periodSec ? periodToValueUnit(periodSec) : { value: '1', unit: '3600' };
+        // Figure out decimals for amount conversion
+        const ct = Number(c.conditionType);
+        const denomPid = c.denominationToken?.[0]?.toText?.() || c.denominationToken?.[0]?.toString?.() || '';
+        const amtToken = ct === 0 ? (c.priceToken2?.[0]?.toText?.() || c.priceToken2?.[0]?.toString?.() || '')
+            : ct === 2 ? (c.balanceToken?.[0]?.toText?.() || c.balanceToken?.[0]?.toString?.() || '')
+            : (denomPid || ICP_LEDGER);
+        const dec = getTokenDecimals(amtToken);
         return {
-            conditionType: Number(c.conditionType),
+            conditionType: ct,
             priceToken1: c.priceToken1?.[0]?.toText?.() || c.priceToken1?.[0]?.toString?.() || '',
             priceToken2: c.priceToken2?.[0]?.toText?.() || c.priceToken2?.[0]?.toString?.() || '',
             balanceToken: c.balanceToken?.[0]?.toText?.() || c.balanceToken?.[0]?.toString?.() || '',
@@ -5339,13 +5367,13 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
                 choreInstanceId: vs.choreInstanceId?.[0] || '',
             })),
             operator: Number(c.operator),
-            threshold: c.threshold?.[0] != null ? Number(c.threshold[0]).toString() : '',
-            rangeMin: c.rangeMin?.[0] != null ? Number(c.rangeMin[0]).toString() : '',
-            rangeMax: c.rangeMax?.[0] != null ? Number(c.rangeMax[0]).toString() : '',
+            threshold: c.threshold?.[0] != null ? toTokenUnits(Number(c.threshold[0]).toString(), dec) : '',
+            rangeMin: c.rangeMin?.[0] != null ? toTokenUnits(Number(c.rangeMin[0]).toString(), dec) : '',
+            rangeMax: c.rangeMax?.[0] != null ? toTokenUnits(Number(c.rangeMax[0]).toString(), dec) : '',
             changePercent: bps != null ? (bps / 100).toString() : '',
             changeDirection: c.changeDirection?.[0] != null ? Number(c.changeDirection[0]).toString() : '2',
             changePeriodValue: pvu.value, changePeriodUnit: pvu.unit,
-            denominationToken: c.denominationToken?.[0]?.toText?.() || c.denominationToken?.[0]?.toString?.() || '',
+            denominationToken: denomPid,
         };
     }
     function deserializeAction(a) {
@@ -5706,19 +5734,17 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
                                 </div>
                             )}
 
-                            {/* Row 3: Operator-specific */}
+                            {/* Row 3: Operator-specific — values stored as human-readable token units */}
                             {(cond.operator === 0 || cond.operator === 1) && (() => {
                                 const unitToken = cond.conditionType === 0 ? cond.priceToken2
                                     : cond.conditionType === 1 ? (cond.denominationToken || ICP_LEDGER)
                                     : cond.balanceToken;
-                                const decimals = getTokenDecimals(unitToken);
                                 const unitSym = tokenSymbol(unitToken);
-                                const displayVal = toTokenUnits(cond.threshold, decimals);
                                 return (
                                     <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '10px', flexWrap: 'wrap' }}>
                                         <span style={label}>Threshold:</span>
-                                        <input type="text" value={displayVal} placeholder="0.00"
-                                            onChange={e => updateCond(ci, { threshold: fromTokenUnits(e.target.value, decimals) })}
+                                        <input type="text" value={cond.threshold} placeholder="0.00"
+                                            onChange={e => updateCond(ci, { threshold: e.target.value })}
                                             style={inp({ width: '140px' })} />
                                         <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>{unitSym}</span>
                                     </div>
@@ -5728,17 +5754,16 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
                                 const unitToken = cond.conditionType === 0 ? cond.priceToken2
                                     : cond.conditionType === 1 ? (cond.denominationToken || ICP_LEDGER)
                                     : cond.balanceToken;
-                                const decimals = getTokenDecimals(unitToken);
                                 const unitSym = tokenSymbol(unitToken);
                                 return (
                                     <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '10px', flexWrap: 'wrap' }}>
                                         <span style={label}>Min:</span>
-                                        <input type="text" value={toTokenUnits(cond.rangeMin, decimals)} placeholder="0.00"
-                                            onChange={e => updateCond(ci, { rangeMin: fromTokenUnits(e.target.value, decimals) })}
+                                        <input type="text" value={cond.rangeMin} placeholder="0.00"
+                                            onChange={e => updateCond(ci, { rangeMin: e.target.value })}
                                             style={inp({ width: '120px' })} />
                                         <span style={label}>Max:</span>
-                                        <input type="text" value={toTokenUnits(cond.rangeMax, decimals)} placeholder="0.00"
-                                            onChange={e => updateCond(ci, { rangeMax: fromTokenUnits(e.target.value, decimals) })}
+                                        <input type="text" value={cond.rangeMax} placeholder="0.00"
+                                            onChange={e => updateCond(ci, { rangeMax: e.target.value })}
                                             style={inp({ width: '120px' })} />
                                         <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>{unitSym}</span>
                                     </div>
