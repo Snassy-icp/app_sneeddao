@@ -5111,30 +5111,30 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
 // Circuit Breaker Panel
 // ============================================
 
-const CONDITION_TYPES = [
+const CB_CONDITION_TYPES = [
     { value: 0, label: 'Price' },
     { value: 1, label: 'Value' },
     { value: 2, label: 'Balance' },
 ];
-const OPERATORS = [
+const CB_OPERATORS = [
     { value: 0, label: 'Greater than' },
     { value: 1, label: 'Less than' },
     { value: 2, label: 'Inside range' },
     { value: 3, label: 'Outside range' },
     { value: 4, label: '% Change' },
 ];
-const CHANGE_DIRECTIONS = [
+const CB_CHANGE_DIRS = [
     { value: 0, label: 'Up' },
     { value: 1, label: 'Down' },
-    { value: 2, label: 'Either' },
+    { value: 2, label: 'Either direction' },
 ];
-const VALUE_SOURCE_TYPES = [
+const CB_VALUE_SRC_TYPES = [
     { value: 0, label: 'Specific token' },
-    { value: 1, label: 'All tokens in rebal chore' },
+    { value: 1, label: 'All tokens in rebalance portfolio' },
     { value: 2, label: 'All tokens in account' },
 ];
-const ACTION_TYPES = [
-    { value: 0, label: 'Pause token in rebal chore' },
+const CB_ACTION_TYPES = [
+    { value: 0, label: 'Pause token in rebalance portfolio' },
     { value: 1, label: 'Pause token globally' },
     { value: 2, label: 'Freeze token globally' },
     { value: 3, label: 'Stop chore' },
@@ -5144,36 +5144,27 @@ const ACTION_TYPES = [
     { value: 7, label: 'Stop ALL chores' },
     { value: 8, label: 'Pause ALL chores' },
 ];
-const CHORE_TYPE_OPTIONS = [
+const CB_CHORE_TYPES = [
     { value: 'trade', label: 'Trade' },
     { value: 'rebalance', label: 'Rebalance' },
     { value: 'move-funds', label: 'Move Funds' },
     { value: 'distribute-funds', label: 'Distribute Funds' },
     { value: 'snapshot', label: 'Snapshot' },
 ];
-
-const PERIOD_PRESETS = [
-    { label: '15 min', seconds: 900 },
-    { label: '1 hour', seconds: 3600 },
-    { label: '4 hours', seconds: 14400 },
-    { label: '12 hours', seconds: 43200 },
-    { label: '1 day', seconds: 86400 },
-    { label: '7 days', seconds: 604800 },
+const CB_PERIOD_UNITS = [
+    { value: 60, label: 'minutes' },
+    { value: 3600, label: 'hours' },
+    { value: 86400, label: 'days' },
 ];
 
-function emptyCondition() {
-    return {
-        conditionType: 0, priceToken1: [], priceToken2: [],
-        balanceToken: [], balanceSubaccount: [],
-        valueSources: [], operator: 0,
-        threshold: [], rangeMin: [], rangeMax: [],
-        changePercentBps: [], changeDirection: [], changePeriodSeconds: [],
-        denominationToken: [],
-    };
+function cbEmptyCondition() {
+    return { conditionType: 0, priceToken1: '', priceToken2: '', balanceToken: '', balanceSubaccount: '',
+        valueSources: [], operator: 4, threshold: '', rangeMin: '', rangeMax: '',
+        changePercent: '', changeDirection: '2', changePeriodValue: '1', changePeriodUnit: '3600',
+        denominationToken: '' };
 }
-
-function emptyAction() {
-    return { actionType: 0, token: [], choreInstanceId: [], choreTypeId: [] };
+function cbEmptyAction() {
+    return { actionType: 7, token: '', choreInstanceId: '', choreTypeId: '' };
 }
 
 function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatuses }) {
@@ -5184,100 +5175,122 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
-    const [editingRule, setEditingRule] = useState(null); // null = not editing, object = editing
+    const [editingRule, setEditingRule] = useState(null);
     const [showLog, setShowLog] = useState(false);
     const [tokenRegistry, setTokenRegistry] = useState([]);
     const [choreInstances, setChoreInstances] = useState([]);
+
+    // Themed select style — fixes white-on-white issue
+    const sel = (extra = {}) => ({
+        padding: '6px 10px', fontSize: '0.82rem', borderRadius: '6px',
+        border: `1px solid ${theme.colors.border}`, cursor: 'pointer',
+        background: theme.colors.inputBg || theme.colors.secondaryBg,
+        color: theme.colors.primaryText, ...extra,
+    });
+    const inp = (extra = {}) => ({
+        padding: '6px 10px', fontSize: '0.82rem', borderRadius: '6px',
+        border: `1px solid ${theme.colors.border}`,
+        background: theme.colors.inputBg || theme.colors.secondaryBg,
+        color: theme.colors.primaryText, outline: 'none', ...extra,
+    });
+    const cardSt = { background: theme.colors.cardBg, border: `1px solid ${theme.colors.border}`, borderRadius: '8px', padding: '14px', marginBottom: '10px' };
+    const btnSm = (extra = {}) => ({
+        padding: '5px 12px', fontSize: '0.8rem', border: `1px solid ${theme.colors.border}`,
+        borderRadius: '6px', cursor: 'pointer', background: theme.colors.cardBg, color: theme.colors.primaryText,
+        display: 'inline-flex', alignItems: 'center', gap: '4px', ...extra,
+    });
+    const label = { fontSize: '0.78rem', color: theme.colors.secondaryText, fontWeight: 500, whiteSpace: 'nowrap' };
+    const sectionTitle = { fontSize: '0.88rem', fontWeight: 600, color: theme.colors.primaryText, margin: '0 0 8px 0' };
+
+    // Token helpers
+    const getTokenDecimals = (principal) => {
+        if (!principal) return 8;
+        const p = typeof principal === 'string' ? principal : principal.toText?.() || principal.toString?.();
+        const entry = tokenRegistry.find(t => (t.ledgerCanisterId?.toText?.() || t.ledgerCanisterId?.toString?.()) === p);
+        return entry ? Number(entry.decimals) : 8;
+    };
+    const tokenSymbol = (principal) => {
+        if (!principal) return '?';
+        const p = typeof principal === 'string' ? principal : principal.toText?.() || principal.toString?.();
+        const entry = tokenRegistry.find(t => (t.ledgerCanisterId?.toText?.() || t.ledgerCanisterId?.toString?.()) === p);
+        return entry ? entry.symbol : (p?.substring?.(0, 8) + '...');
+    };
+    const choreInstanceLabel = (instanceId) => {
+        if (!instanceId) return '?';
+        const inst = choreInstances.find(([id]) => id === instanceId);
+        return inst ? (inst[1].label || inst[0]) : instanceId;
+    };
+    const toTokenUnits = (e8sStr, decimals) => {
+        if (!e8sStr && e8sStr !== 0) return '';
+        const v = Number(e8sStr);
+        if (isNaN(v)) return '';
+        return (v / Math.pow(10, decimals)).toString();
+    };
+    const fromTokenUnits = (unitStr, decimals) => {
+        if (!unitStr && unitStr !== 0) return '';
+        const v = parseFloat(unitStr);
+        if (isNaN(v)) return '';
+        return Math.round(v * Math.pow(10, decimals)).toString();
+    };
+
+    // Period helpers — convert raw seconds <-> value+unit for UI
+    const periodToValueUnit = (totalSeconds) => {
+        const s = Number(totalSeconds);
+        if (!s || isNaN(s)) return { value: '1', unit: '3600' };
+        if (s % 86400 === 0) return { value: (s / 86400).toString(), unit: '86400' };
+        if (s % 3600 === 0) return { value: (s / 3600).toString(), unit: '3600' };
+        return { value: (s / 60).toString(), unit: '60' };
+    };
+
+    const formatPeriod = (totalSeconds) => {
+        const s = Number(totalSeconds);
+        if (!s || isNaN(s)) return '?';
+        if (s >= 86400) { const d = s / 86400; return d === 1 ? '1 day' : `${d} days`; }
+        if (s >= 3600) { const h = s / 3600; return h === 1 ? '1 hour' : `${h} hours`; }
+        const m = s / 60; return m === 1 ? '1 minute' : `${m} minutes`;
+    };
 
     const loadData = useCallback(async () => {
         try {
             setLoading(true);
             const bot = await getReadyBotActor();
             const [rls, enabled, log, tokens, instances] = await Promise.all([
-                bot.getCircuitBreakerRules(),
-                bot.getCircuitBreakerEnabled(),
+                bot.getCircuitBreakerRules(), bot.getCircuitBreakerEnabled(),
                 bot.getCircuitBreakerLog({ startId: [], limit: [50], ruleId: [], fromTime: [], toTime: [] }),
-                bot.getTokenRegistry(),
-                bot.listChoreInstances([]),
+                bot.getTokenRegistry(), bot.listChoreInstances([]),
             ]);
-            setRules(rls);
-            setGlobalEnabled(enabled);
-            setEvents(log.entries);
-            setEventCount(Number(log.totalCount));
-            setTokenRegistry(tokens);
-            setChoreInstances(instances);
+            setRules(rls); setGlobalEnabled(enabled); setEvents(log.entries);
+            setEventCount(Number(log.totalCount)); setTokenRegistry(tokens); setChoreInstances(instances);
             setError(null);
-        } catch (e) {
-            setError('Failed to load circuit breaker data: ' + e.message);
-        } finally {
-            setLoading(false);
-        }
+        } catch (e) { setError('Failed to load circuit breaker data: ' + e.message); }
+        finally { setLoading(false); }
     }, [getReadyBotActor]);
-
     useEffect(() => { loadData(); }, [loadData]);
 
     const handleToggleGlobal = async () => {
-        try {
-            const bot = await getReadyBotActor();
-            await bot.setCircuitBreakerEnabled(!globalEnabled);
-            setGlobalEnabled(!globalEnabled);
-        } catch (e) { setError('Failed to toggle: ' + e.message); }
+        try { const bot = await getReadyBotActor(); await bot.setCircuitBreakerEnabled(!globalEnabled); setGlobalEnabled(!globalEnabled); }
+        catch (e) { setError('Failed to toggle: ' + e.message); }
     };
-
-    const handleToggleRule = async (id, currentEnabled) => {
-        try {
-            const bot = await getReadyBotActor();
-            await bot.enableCircuitBreakerRule(id, !currentEnabled);
-            setRules(prev => prev.map(r => r.id === id ? { ...r, enabled: !currentEnabled } : r));
-        } catch (e) { setError('Failed to toggle rule: ' + e.message); }
+    const handleToggleRule = async (id, en) => {
+        try { const bot = await getReadyBotActor(); await bot.enableCircuitBreakerRule(id, !en); setRules(prev => prev.map(r => r.id === id ? { ...r, enabled: !en } : r)); }
+        catch (e) { setError('Failed to toggle rule: ' + e.message); }
     };
-
     const handleDeleteRule = async (id) => {
         if (!window.confirm('Delete this circuit breaker rule?')) return;
-        try {
-            const bot = await getReadyBotActor();
-            await bot.removeCircuitBreakerRule(id);
-            setRules(prev => prev.filter(r => r.id !== id));
-        } catch (e) { setError('Failed to delete rule: ' + e.message); }
+        try { const bot = await getReadyBotActor(); await bot.removeCircuitBreakerRule(id); setRules(prev => prev.filter(r => r.id !== id)); }
+        catch (e) { setError('Failed to delete rule: ' + e.message); }
     };
-
-    const handleSaveRule = async () => {
-        if (!editingRule) return;
-        setSaving(true);
-        try {
-            const bot = await getReadyBotActor();
-            const input = {
-                name: editingRule.name,
-                enabled: editingRule.enabled,
-                conditions: editingRule.conditions.map(serializeCondition),
-                actions: editingRule.actions.map(serializeAction),
-            };
-            if (editingRule.id != null) {
-                await bot.updateCircuitBreakerRule(editingRule.id, input);
-            } else {
-                await bot.addCircuitBreakerRule(input);
-            }
-            setEditingRule(null);
-            await loadData();
-        } catch (e) {
-            setError('Failed to save rule: ' + e.message);
-        } finally {
-            setSaving(false);
-        }
-    };
-
     const handleClearLog = async () => {
         if (!window.confirm('Clear the entire circuit breaker event log?')) return;
-        try {
-            const bot = await getReadyBotActor();
-            await bot.clearCircuitBreakerLog();
-            setEvents([]);
-            setEventCount(0);
-        } catch (e) { setError('Failed to clear log: ' + e.message); }
+        try { const bot = await getReadyBotActor(); await bot.clearCircuitBreakerLog(); setEvents([]); setEventCount(0); }
+        catch (e) { setError('Failed to clear log: ' + e.message); }
     };
 
-    // Serialization helpers — convert UI state to Candid-compatible values
+    // Serialization: UI -> Candid
     function serializeCondition(c) {
+        const periodSeconds = c.changePeriodValue && c.changePeriodUnit
+            ? (parseFloat(c.changePeriodValue) * Number(c.changePeriodUnit)).toString() : '';
+        const changePercentBps = c.changePercent ? Math.round(parseFloat(c.changePercent) * 100).toString() : '';
         return {
             conditionType: BigInt(c.conditionType),
             priceToken1: c.priceToken1?.length ? [Principal.fromText(c.priceToken1)] : [],
@@ -5294,13 +5307,12 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
             threshold: c.threshold !== '' && c.threshold != null ? [BigInt(c.threshold)] : [],
             rangeMin: c.rangeMin !== '' && c.rangeMin != null ? [BigInt(c.rangeMin)] : [],
             rangeMax: c.rangeMax !== '' && c.rangeMax != null ? [BigInt(c.rangeMax)] : [],
-            changePercentBps: c.changePercentBps !== '' && c.changePercentBps != null ? [BigInt(c.changePercentBps)] : [],
+            changePercentBps: changePercentBps ? [BigInt(changePercentBps)] : [],
             changeDirection: c.changeDirection !== '' && c.changeDirection != null ? [BigInt(c.changeDirection)] : [],
-            changePeriodSeconds: c.changePeriodSeconds !== '' && c.changePeriodSeconds != null ? [BigInt(c.changePeriodSeconds)] : [],
+            changePeriodSeconds: periodSeconds ? [BigInt(Math.round(parseFloat(periodSeconds)))] : [],
             denominationToken: c.denominationToken?.length ? [Principal.fromText(c.denominationToken)] : [],
         };
     }
-
     function serializeAction(a) {
         return {
             actionType: BigInt(a.actionType),
@@ -5310,8 +5322,11 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
         };
     }
 
-    // Deserialization helpers — convert Candid response to UI state
+    // Deserialization: Candid -> UI
     function deserializeCondition(c) {
+        const bps = c.changePercentBps?.[0] != null ? Number(c.changePercentBps[0]) : null;
+        const periodSec = c.changePeriodSeconds?.[0] != null ? Number(c.changePeriodSeconds[0]) : null;
+        const pvu = periodSec ? periodToValueUnit(periodSec) : { value: '1', unit: '3600' };
         return {
             conditionType: Number(c.conditionType),
             priceToken1: c.priceToken1?.[0]?.toText?.() || c.priceToken1?.[0]?.toString?.() || '',
@@ -5319,8 +5334,7 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
             balanceToken: c.balanceToken?.[0]?.toText?.() || c.balanceToken?.[0]?.toString?.() || '',
             balanceSubaccount: c.balanceSubaccount?.[0] != null ? Number(c.balanceSubaccount[0]).toString() : '',
             valueSources: (c.valueSources || []).map(vs => ({
-                sourceType: Number(vs.sourceType),
-                token: vs.token?.[0]?.toText?.() || vs.token?.[0]?.toString?.() || '',
+                sourceType: Number(vs.sourceType), token: vs.token?.[0]?.toText?.() || vs.token?.[0]?.toString?.() || '',
                 subaccount: vs.subaccount?.[0] != null ? Number(vs.subaccount[0]).toString() : '',
                 choreInstanceId: vs.choreInstanceId?.[0] || '',
             })),
@@ -5328,248 +5342,265 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
             threshold: c.threshold?.[0] != null ? Number(c.threshold[0]).toString() : '',
             rangeMin: c.rangeMin?.[0] != null ? Number(c.rangeMin[0]).toString() : '',
             rangeMax: c.rangeMax?.[0] != null ? Number(c.rangeMax[0]).toString() : '',
-            changePercentBps: c.changePercentBps?.[0] != null ? Number(c.changePercentBps[0]).toString() : '',
-            changeDirection: c.changeDirection?.[0] != null ? Number(c.changeDirection[0]).toString() : '',
-            changePeriodSeconds: c.changePeriodSeconds?.[0] != null ? Number(c.changePeriodSeconds[0]).toString() : '',
+            changePercent: bps != null ? (bps / 100).toString() : '',
+            changeDirection: c.changeDirection?.[0] != null ? Number(c.changeDirection[0]).toString() : '2',
+            changePeriodValue: pvu.value, changePeriodUnit: pvu.unit,
             denominationToken: c.denominationToken?.[0]?.toText?.() || c.denominationToken?.[0]?.toString?.() || '',
         };
     }
-
     function deserializeAction(a) {
-        return {
-            actionType: Number(a.actionType),
-            token: a.token?.[0]?.toText?.() || a.token?.[0]?.toString?.() || '',
-            choreInstanceId: a.choreInstanceId?.[0] || '',
-            choreTypeId: a.choreTypeId?.[0] || '',
-        };
+        return { actionType: Number(a.actionType), token: a.token?.[0]?.toText?.() || a.token?.[0]?.toString?.() || '',
+            choreInstanceId: a.choreInstanceId?.[0] || '', choreTypeId: a.choreTypeId?.[0] || '' };
     }
 
-    const startNewRule = () => {
-        setEditingRule({
-            id: null,
-            name: '',
-            enabled: true,
-            conditions: [emptyCondition()],
-            actions: [emptyAction()],
-        });
+    const handleSaveRule = async () => {
+        if (!editingRule) return;
+        setSaving(true);
+        try {
+            const bot = await getReadyBotActor();
+            const input = { name: editingRule.name, enabled: editingRule.enabled,
+                conditions: editingRule.conditions.map(serializeCondition), actions: editingRule.actions.map(serializeAction) };
+            if (editingRule.id != null) await bot.updateCircuitBreakerRule(editingRule.id, input);
+            else await bot.addCircuitBreakerRule(input);
+            setEditingRule(null); await loadData();
+        } catch (e) { setError('Failed to save rule: ' + e.message); }
+        finally { setSaving(false); }
     };
 
-    const startEditRule = (rule) => {
-        setEditingRule({
-            id: Number(rule.id),
-            name: rule.name,
-            enabled: rule.enabled,
-            conditions: rule.conditions.map(deserializeCondition),
-            actions: rule.actions.map(deserializeAction),
-        });
-    };
+    const startNewRule = () => setEditingRule({ id: null, name: '', enabled: true, conditions: [cbEmptyCondition()], actions: [cbEmptyAction()] });
+    const startEditRule = (rule) => setEditingRule({ id: Number(rule.id), name: rule.name, enabled: rule.enabled,
+        conditions: rule.conditions.map(deserializeCondition), actions: rule.actions.map(deserializeAction) });
 
-    const tokenLabel = (principal) => {
-        if (!principal) return '?';
-        const p = typeof principal === 'string' ? principal : principal.toText?.() || principal.toString?.();
-        const entry = tokenRegistry.find(t => t.ledgerCanisterId?.toText?.() === p || t.ledgerCanisterId?.toString?.() === p);
-        return entry ? entry.symbol : (p?.substring?.(0, 8) + '...');
-    };
+    // Condition update helper
+    const updateCond = (ci, patch) => setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...c, ...patch } : c) }));
 
-    const choreLabel = (instanceId) => {
-        if (!instanceId) return '?';
-        const inst = choreInstances.find(([id]) => id === instanceId);
-        return inst ? `${inst[1].label || inst[0]}` : instanceId;
-    };
-
-    const conditionSummary = (c) => {
-        const typeLabel = CONDITION_TYPES.find(t => t.value === Number(c.conditionType))?.label || '?';
-        const opLabel = OPERATORS.find(o => o.value === Number(c.operator))?.label || '?';
-        if (Number(c.conditionType) === 0) {
-            const t1 = tokenLabel(c.priceToken1?.[0] || c.priceToken1);
-            const t2 = tokenLabel(c.priceToken2?.[0] || c.priceToken2);
-            return `${typeLabel}: ${t1}/${t2} ${opLabel}`;
+    // Rich rule summary for the card view
+    const conditionText = (c) => {
+        const ct = Number(c.conditionType);
+        const op = Number(c.operator);
+        if (ct === 0) { // Price
+            const t1 = tokenSymbol(c.priceToken1?.[0] || c.priceToken1);
+            const t2 = tokenSymbol(c.priceToken2?.[0] || c.priceToken2);
+            const pair = `${t1}/${t2} price`;
+            if (op === 4) {
+                const bps = c.changePercentBps?.[0] != null ? Number(c.changePercentBps[0]) : 0;
+                const pct = (bps / 100).toFixed(1);
+                const dir = Number(c.changeDirection?.[0] ?? 2);
+                const dirLabel = dir === 0 ? 'rises' : dir === 1 ? 'drops' : 'moves';
+                const period = c.changePeriodSeconds?.[0] != null ? formatPeriod(Number(c.changePeriodSeconds[0])) : '?';
+                return `${pair} ${dirLabel} ${pct}% or more over ${period}`;
+            }
+            const opLabel = ['>', '<', 'is between', 'is outside'][op] || '?';
+            return `${pair} ${opLabel} threshold`;
         }
-        if (Number(c.conditionType) === 2) {
-            const tok = tokenLabel(c.balanceToken?.[0] || c.balanceToken);
-            return `${typeLabel}: ${tok} ${opLabel}`;
+        if (ct === 2) { // Balance
+            const tok = tokenSymbol(c.balanceToken?.[0] || c.balanceToken);
+            const acct = c.balanceSubaccount?.[0] != null ? `subaccount #${Number(c.balanceSubaccount[0])}` : 'main account';
+            if (op === 4) {
+                const bps = c.changePercentBps?.[0] != null ? Number(c.changePercentBps[0]) : 0;
+                const pct = (bps / 100).toFixed(1);
+                const dir = Number(c.changeDirection?.[0] ?? 2);
+                const dirLabel = dir === 0 ? 'increases' : dir === 1 ? 'decreases' : 'changes';
+                const period = c.changePeriodSeconds?.[0] != null ? formatPeriod(Number(c.changePeriodSeconds[0])) : '?';
+                return `${tok} balance in ${acct} ${dirLabel} ${pct}%+ over ${period}`;
+            }
+            return `${tok} balance in ${acct} ${['>', '<', 'in range', 'out of range'][op]} threshold`;
         }
+        // Value (ct === 1)
         const srcCount = c.valueSources?.length || 0;
-        return `${typeLabel}: ${srcCount} source(s) ${opLabel}`;
+        const srcLabel = srcCount === 1 ? '1 source' : `${srcCount} sources`;
+        if (op === 4) {
+            const bps = c.changePercentBps?.[0] != null ? Number(c.changePercentBps[0]) : 0;
+            const pct = (bps / 100).toFixed(1);
+            const dir = Number(c.changeDirection?.[0] ?? 2);
+            const dirLabel = dir === 0 ? 'increases' : dir === 1 ? 'decreases' : 'changes';
+            const period = c.changePeriodSeconds?.[0] != null ? formatPeriod(Number(c.changePeriodSeconds[0])) : '?';
+            return `portfolio value (${srcLabel}) ${dirLabel} ${pct}%+ over ${period}`;
+        }
+        return `portfolio value (${srcLabel}) ${['>', '<', 'in range', 'out of range'][op]} threshold`;
     };
-
-    const actionSummary = (a) => {
-        const typeLabel = ACTION_TYPES.find(t => t.value === Number(a.actionType))?.label || '?';
+    const actionText = (a) => {
+        const at = Number(a.actionType);
         const tok = a.token?.[0] || a.token;
         const cid = a.choreInstanceId?.[0] || a.choreInstanceId;
         const ctid = a.choreTypeId?.[0] || a.choreTypeId;
-        if (tok) return `${typeLabel}: ${tokenLabel(tok)}${cid ? ' in ' + choreLabel(cid) : ''}`;
-        if (cid) return `${typeLabel}: ${choreLabel(cid)}`;
-        if (ctid) return `${typeLabel}: ${ctid}`;
-        return typeLabel;
-    };
-
-    const cardStyle = {
-        background: theme.colors.cardBg, border: `1px solid ${theme.colors.border}`,
-        borderRadius: '8px', padding: '12px', marginBottom: '8px',
-    };
-
-    const btnSmall = {
-        padding: '4px 10px', fontSize: '0.78rem', border: `1px solid ${theme.colors.border}`,
-        borderRadius: '4px', cursor: 'pointer', background: theme.colors.cardBg, color: theme.colors.primaryText,
+        switch (at) {
+            case 0: return `Pause ${tokenSymbol(tok)} in portfolio "${choreInstanceLabel(cid)}"`;
+            case 1: return `Pause ${tokenSymbol(tok)} globally`;
+            case 2: return `Freeze ${tokenSymbol(tok)} globally`;
+            case 3: return `Stop chore "${choreInstanceLabel(cid)}"`;
+            case 4: return `Pause chore "${choreInstanceLabel(cid)}"`;
+            case 5: return `Stop all ${ctid || '?'} chores`;
+            case 6: return `Pause all ${ctid || '?'} chores`;
+            case 7: return 'Stop ALL chores';
+            case 8: return 'Pause ALL chores';
+            default: return '?';
+        }
     };
 
     if (loading) return <div style={{ padding: '20px', color: theme.colors.secondaryText }}>Loading circuit breaker...</div>;
 
-    // RULE EDITOR
+    // ── RULE EDITOR ──
     if (editingRule) {
         return (
             <div style={{ padding: '8px 0' }}>
-                <h4 style={{ color: theme.colors.primaryText, marginBottom: '12px' }}>
-                    <FaShieldAlt style={{ marginRight: '6px', color: accentColor }} />
-                    {editingRule.id != null ? 'Edit' : 'New'} Circuit Breaker Rule
-                </h4>
-                {error && <div style={{ color: '#e74c3c', marginBottom: '8px', fontSize: '0.82rem' }}>{error}</div>}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                    <FaShieldAlt style={{ color: accentColor, fontSize: '1.1rem' }} />
+                    <h4 style={{ color: theme.colors.primaryText, margin: 0 }}>
+                        {editingRule.id != null ? 'Edit' : 'New'} Circuit Breaker Rule
+                    </h4>
+                </div>
+                {error && <div style={{ color: '#e74c3c', marginBottom: '10px', fontSize: '0.82rem', padding: '6px 10px', background: 'rgba(231,76,60,0.1)', borderRadius: '6px' }}>{error}</div>}
 
-                {/* Rule name */}
-                <div style={{ marginBottom: '12px' }}>
-                    <label style={{ fontSize: '0.82rem', color: theme.colors.secondaryText }}>Rule Name</label>
-                    <input type="text" value={editingRule.name} onChange={e => setEditingRule(r => ({ ...r, name: e.target.value }))}
-                        style={{ display: 'block', width: '100%', maxWidth: '400px', padding: '6px 10px', marginTop: '4px', borderRadius: '4px', border: `1px solid ${theme.colors.border}`, background: theme.colors.inputBg, color: theme.colors.primaryText, fontSize: '0.85rem' }} />
+                {/* Name + Enabled */}
+                <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-end', marginBottom: '16px', flexWrap: 'wrap' }}>
+                    <div style={{ flex: '1 1 300px' }}>
+                        <div style={label}>Rule Name</div>
+                        <input type="text" value={editingRule.name} placeholder="e.g. BTC crash protection"
+                            onChange={e => setEditingRule(r => ({ ...r, name: e.target.value }))}
+                            style={inp({ width: '100%', marginTop: '4px', boxSizing: 'border-box' })} />
+                    </div>
+                    <label style={{ ...label, display: 'flex', alignItems: 'center', gap: '6px', paddingBottom: '6px', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={editingRule.enabled} onChange={e => setEditingRule(r => ({ ...r, enabled: e.target.checked }))} />
+                        Enabled
+                    </label>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                    <label style={{ fontSize: '0.82rem', color: theme.colors.secondaryText }}>Enabled</label>
-                    <input type="checkbox" checked={editingRule.enabled} onChange={e => setEditingRule(r => ({ ...r, enabled: e.target.checked }))} />
-                </div>
-
-                {/* CONDITIONS */}
-                <div style={{ marginBottom: '16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                        <h5 style={{ color: theme.colors.primaryText, margin: 0 }}>Conditions (all must be true)</h5>
-                        <button style={{ ...btnSmall, color: accentColor, borderColor: accentColor }} onClick={() => setEditingRule(r => ({ ...r, conditions: [...r.conditions, emptyCondition()] }))}>
-                            <FaPlus /> Add
+                {/* ── CONDITIONS ── */}
+                <div style={{ marginBottom: '20px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                        <h5 style={sectionTitle}>Conditions</h5>
+                        <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>(all must be true to trigger)</span>
+                        <button style={btnSm({ color: accentColor, borderColor: accentColor, marginLeft: 'auto' })}
+                            onClick={() => setEditingRule(r => ({ ...r, conditions: [...r.conditions, cbEmptyCondition()] }))}>
+                            <FaPlus /> Add Condition
                         </button>
                     </div>
                     {editingRule.conditions.map((cond, ci) => (
-                        <div key={ci} style={{ ...cardStyle, position: 'relative' }}>
-                            <button style={{ position: 'absolute', top: '8px', right: '8px', background: 'none', border: 'none', cursor: 'pointer', color: '#e74c3c', fontSize: '0.9rem' }}
-                                onClick={() => setEditingRule(r => ({ ...r, conditions: r.conditions.filter((_, i) => i !== ci) }))}>
-                                <FaTrash />
-                            </button>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
-                                <select value={cond.conditionType} onChange={e => {
-                                    const v = Number(e.target.value);
-                                    setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...emptyCondition(), conditionType: v, operator: c.operator } : c) }));
-                                }} style={{ ...btnSmall, minWidth: '100px' }}>
-                                    {CONDITION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                                </select>
-                                <select value={cond.operator} onChange={e => {
-                                    const v = Number(e.target.value);
-                                    setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...c, operator: v } : c) }));
-                                }} style={{ ...btnSmall, minWidth: '120px' }}>
-                                    {OPERATORS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                </select>
+                        <div key={ci} style={{ ...cardSt, position: 'relative' }}>
+                            <button title="Remove condition" style={{ position: 'absolute', top: '10px', right: '10px', background: 'none', border: 'none', cursor: 'pointer', color: '#e74c3c', fontSize: '1rem' }}
+                                onClick={() => setEditingRule(r => ({ ...r, conditions: r.conditions.filter((_, i) => i !== ci) }))}><FaTrash /></button>
+
+                            {/* Row 1: Type + Operator */}
+                            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap' }}>
+                                <div>
+                                    <div style={label}>Type</div>
+                                    <select value={cond.conditionType} onChange={e => {
+                                        const v = Number(e.target.value);
+                                        setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...cbEmptyCondition(), conditionType: v, operator: c.operator } : c) }));
+                                    }} style={sel({ marginTop: '4px', minWidth: '110px' })}>
+                                        {CB_CONDITION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <div style={label}>Operator</div>
+                                    <select value={cond.operator} onChange={e => updateCond(ci, { operator: Number(e.target.value) })}
+                                        style={sel({ marginTop: '4px', minWidth: '130px' })}>
+                                        {CB_OPERATORS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                    </select>
+                                </div>
                             </div>
 
-                            {/* Type-specific fields */}
+                            {/* Row 2: Type-specific */}
                             {cond.conditionType === 0 && (
-                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '8px' }}>
-                                    <label style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>Token 1:</label>
-                                    <select value={cond.priceToken1} onChange={e => setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...c, priceToken1: e.target.value } : c) }))}
-                                        style={{ ...btnSmall, minWidth: '140px' }}>
-                                        <option value="">Select...</option>
-                                        {tokenRegistry.map(t => <option key={t.ledgerCanisterId.toText()} value={t.ledgerCanisterId.toText()}>{t.symbol}</option>)}
-                                    </select>
-                                    <label style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>Token 2:</label>
-                                    <select value={cond.priceToken2} onChange={e => setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...c, priceToken2: e.target.value } : c) }))}
-                                        style={{ ...btnSmall, minWidth: '140px' }}>
-                                        <option value="">Select...</option>
-                                        {tokenRegistry.map(t => <option key={t.ledgerCanisterId.toText()} value={t.ledgerCanisterId.toText()}>{t.symbol}</option>)}
-                                    </select>
+                                <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', marginBottom: '10px', flexWrap: 'wrap' }}>
+                                    <div style={{ minWidth: '160px', flex: '0 1 200px' }}>
+                                        <div style={label}>Token 1</div>
+                                        <TokenSelector value={cond.priceToken1} onChange={v => updateCond(ci, { priceToken1: v })}
+                                            allowCustom placeholder="Select token..." style={{ marginTop: '4px' }} />
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', paddingTop: '20px', color: theme.colors.secondaryText, fontWeight: 600 }}>/</div>
+                                    <div style={{ minWidth: '160px', flex: '0 1 200px' }}>
+                                        <div style={label}>Token 2</div>
+                                        <TokenSelector value={cond.priceToken2} onChange={v => updateCond(ci, { priceToken2: v })}
+                                            allowCustom placeholder="Select token..." style={{ marginTop: '4px' }} />
+                                    </div>
                                 </div>
                             )}
 
                             {cond.conditionType === 2 && (
-                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '8px' }}>
-                                    <label style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>Token:</label>
-                                    <select value={cond.balanceToken} onChange={e => setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...c, balanceToken: e.target.value } : c) }))}
-                                        style={{ ...btnSmall, minWidth: '140px' }}>
-                                        <option value="">Select...</option>
-                                        {tokenRegistry.map(t => <option key={t.ledgerCanisterId.toText()} value={t.ledgerCanisterId.toText()}>{t.symbol}</option>)}
-                                    </select>
-                                    <label style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>Account:</label>
-                                    <input type="text" value={cond.balanceSubaccount} placeholder="main (empty) or subaccount #"
-                                        onChange={e => setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...c, balanceSubaccount: e.target.value } : c) }))}
-                                        style={{ ...btnSmall, width: '160px' }} />
+                                <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', marginBottom: '10px', flexWrap: 'wrap' }}>
+                                    <div style={{ minWidth: '160px', flex: '0 1 200px' }}>
+                                        <div style={label}>Token</div>
+                                        <TokenSelector value={cond.balanceToken} onChange={v => updateCond(ci, { balanceToken: v })}
+                                            allowCustom placeholder="Select token..." style={{ marginTop: '4px' }} />
+                                    </div>
+                                    <div>
+                                        <div style={label}>Account</div>
+                                        <select value={cond.balanceSubaccount} onChange={e => updateCond(ci, { balanceSubaccount: e.target.value })}
+                                            style={sel({ marginTop: '4px', minWidth: '150px' })}>
+                                            <option value="">Main account</option>
+                                            {choreInstances.filter(([,info]) => info.typeId === 'move-funds').length === 0 ? null :
+                                                Array.from({ length: 10 }, (_, i) => i + 1).map(n => <option key={n} value={n}>Subaccount #{n}</option>)}
+                                        </select>
+                                    </div>
                                 </div>
                             )}
 
                             {cond.conditionType === 1 && (
-                                <div style={{ marginBottom: '8px' }}>
-                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '6px' }}>
-                                        <label style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>Value Sources</label>
-                                        <button style={{ ...btnSmall, fontSize: '0.72rem', color: accentColor }}
+                                <div style={{ marginBottom: '10px' }}>
+                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
+                                        <span style={label}>Value Sources</span>
+                                        <button style={btnSm({ fontSize: '0.75rem', color: accentColor, borderColor: accentColor })}
                                             onClick={() => setEditingRule(r => ({
                                                 ...r, conditions: r.conditions.map((c, i) => i === ci
                                                     ? { ...c, valueSources: [...(c.valueSources || []), { sourceType: 0, token: '', subaccount: '', choreInstanceId: '' }] } : c)
-                                            }))}>
-                                            <FaPlus /> Add Source
-                                        </button>
+                                            }))}><FaPlus /> Add Source</button>
                                     </div>
                                     {(cond.valueSources || []).map((vs, vi) => (
-                                        <div key={vi} style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '4px', paddingLeft: '12px' }}>
+                                        <div key={vi} style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '6px', paddingLeft: '8px', borderLeft: `2px solid ${theme.colors.border}` }}>
                                             <select value={vs.sourceType} onChange={e => {
                                                 const v = Number(e.target.value);
-                                                setEditingRule(r => ({
-                                                    ...r, conditions: r.conditions.map((c, i) => i === ci
-                                                        ? { ...c, valueSources: c.valueSources.map((s, j) => j === vi ? { ...s, sourceType: v } : s) } : c)
-                                                }));
-                                            }} style={{ ...btnSmall, minWidth: '160px', fontSize: '0.75rem' }}>
-                                                {VALUE_SOURCE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                                                setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci
+                                                    ? { ...c, valueSources: c.valueSources.map((s, j) => j === vi ? { ...s, sourceType: v } : s) } : c) }));
+                                            }} style={sel({ minWidth: '180px', fontSize: '0.8rem' })}>
+                                                {CB_VALUE_SRC_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                                             </select>
                                             {vs.sourceType === 0 && (
                                                 <>
-                                                    <select value={vs.token} onChange={e => setEditingRule(r => ({
-                                                        ...r, conditions: r.conditions.map((c, i) => i === ci
-                                                            ? { ...c, valueSources: c.valueSources.map((s, j) => j === vi ? { ...s, token: e.target.value } : s) } : c)
-                                                    }))} style={{ ...btnSmall, minWidth: '120px', fontSize: '0.75rem' }}>
-                                                        <option value="">Token...</option>
-                                                        {tokenRegistry.map(t => <option key={t.ledgerCanisterId.toText()} value={t.ledgerCanisterId.toText()}>{t.symbol}</option>)}
-                                                    </select>
-                                                    <input type="text" value={vs.subaccount} placeholder="Subaccount #"
-                                                        onChange={e => setEditingRule(r => ({
+                                                    <div style={{ minWidth: '140px', flex: '0 1 160px' }}>
+                                                        <TokenSelector value={vs.token} onChange={v => setEditingRule(r => ({
                                                             ...r, conditions: r.conditions.map((c, i) => i === ci
-                                                                ? { ...c, valueSources: c.valueSources.map((s, j) => j === vi ? { ...s, subaccount: e.target.value } : s) } : c)
-                                                        }))} style={{ ...btnSmall, width: '100px', fontSize: '0.75rem' }} />
+                                                                ? { ...c, valueSources: c.valueSources.map((s, j) => j === vi ? { ...s, token: v } : s) } : c)
+                                                        }))} allowCustom placeholder="Token..." style={{ width: '100%' }} />
+                                                    </div>
+                                                    <select value={vs.subaccount} onChange={e => setEditingRule(r => ({
+                                                        ...r, conditions: r.conditions.map((c, i) => i === ci
+                                                            ? { ...c, valueSources: c.valueSources.map((s, j) => j === vi ? { ...s, subaccount: e.target.value } : s) } : c)
+                                                    }))} style={sel({ minWidth: '120px', fontSize: '0.8rem' })}>
+                                                        <option value="">Main account</option>
+                                                        {Array.from({ length: 10 }, (_, i) => i + 1).map(n => <option key={n} value={n}>Sub #{n}</option>)}
+                                                    </select>
                                                 </>
                                             )}
                                             {vs.sourceType === 1 && (
                                                 <select value={vs.choreInstanceId} onChange={e => setEditingRule(r => ({
                                                     ...r, conditions: r.conditions.map((c, i) => i === ci
                                                         ? { ...c, valueSources: c.valueSources.map((s, j) => j === vi ? { ...s, choreInstanceId: e.target.value } : s) } : c)
-                                                }))} style={{ ...btnSmall, minWidth: '160px', fontSize: '0.75rem' }}>
-                                                    <option value="">Rebal chore...</option>
+                                                }))} style={sel({ minWidth: '180px', fontSize: '0.8rem' })}>
+                                                    <option value="">Select portfolio...</option>
                                                     {choreInstances.filter(([, info]) => info.typeId === 'rebalance').map(([id, info]) => (
-                                                        <option key={id} value={id}>{info.label || id}</option>
-                                                    ))}
+                                                        <option key={id} value={id}>{info.label || id}</option>))}
                                                 </select>
                                             )}
                                             {vs.sourceType === 2 && (
-                                                <input type="text" value={vs.subaccount} placeholder="Subaccount # (empty=main)"
-                                                    onChange={e => setEditingRule(r => ({
-                                                        ...r, conditions: r.conditions.map((c, i) => i === ci
-                                                            ? { ...c, valueSources: c.valueSources.map((s, j) => j === vi ? { ...s, subaccount: e.target.value } : s) } : c)
-                                                    }))} style={{ ...btnSmall, width: '160px', fontSize: '0.75rem' }} />
-                                            )}
-                                            <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e74c3c', fontSize: '0.8rem' }}
-                                                onClick={() => setEditingRule(r => ({
+                                                <select value={vs.subaccount} onChange={e => setEditingRule(r => ({
                                                     ...r, conditions: r.conditions.map((c, i) => i === ci
-                                                        ? { ...c, valueSources: c.valueSources.filter((_, j) => j !== vi) } : c)
-                                                }))}>
-                                                <FaTrash />
-                                            </button>
+                                                        ? { ...c, valueSources: c.valueSources.map((s, j) => j === vi ? { ...s, subaccount: e.target.value } : s) } : c)
+                                                }))} style={sel({ minWidth: '140px', fontSize: '0.8rem' })}>
+                                                    <option value="">Main account</option>
+                                                    {Array.from({ length: 10 }, (_, i) => i + 1).map(n => <option key={n} value={n}>Sub #{n}</option>)}
+                                                </select>
+                                            )}
+                                            <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e74c3c', padding: '4px' }}
+                                                onClick={() => setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci
+                                                    ? { ...c, valueSources: c.valueSources.filter((_, j) => j !== vi) } : c) }))}><FaTrash /></button>
                                         </div>
                                     ))}
-                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '6px' }}>
-                                        <label style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>Denomination:</label>
-                                        <select value={cond.denominationToken} onChange={e => setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...c, denominationToken: e.target.value } : c) }))}
-                                            style={{ ...btnSmall, minWidth: '140px' }}>
+                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px' }}>
+                                        <span style={label}>Denomination:</span>
+                                        <select value={cond.denominationToken} onChange={e => updateCond(ci, { denominationToken: e.target.value })}
+                                            style={sel({ minWidth: '140px' })}>
                                             <option value="">ICP (default)</option>
                                             {tokenRegistry.map(t => <option key={t.ledgerCanisterId.toText()} value={t.ledgerCanisterId.toText()}>{t.symbol}</option>)}
                                         </select>
@@ -5577,206 +5608,236 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
                                 </div>
                             )}
 
-                            {/* Operator-specific fields */}
-                            {(cond.operator === 0 || cond.operator === 1) && (
-                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px' }}>
-                                    <label style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>Threshold (e8s):</label>
-                                    <input type="text" value={cond.threshold}
-                                        onChange={e => setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...c, threshold: e.target.value } : c) }))}
-                                        style={{ ...btnSmall, width: '160px' }} />
-                                </div>
-                            )}
-                            {(cond.operator === 2 || cond.operator === 3) && (
-                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px', flexWrap: 'wrap' }}>
-                                    <label style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>Min (e8s):</label>
-                                    <input type="text" value={cond.rangeMin}
-                                        onChange={e => setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...c, rangeMin: e.target.value } : c) }))}
-                                        style={{ ...btnSmall, width: '140px' }} />
-                                    <label style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>Max (e8s):</label>
-                                    <input type="text" value={cond.rangeMax}
-                                        onChange={e => setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...c, rangeMax: e.target.value } : c) }))}
-                                        style={{ ...btnSmall, width: '140px' }} />
-                                </div>
-                            )}
+                            {/* Row 3: Operator-specific */}
+                            {(cond.operator === 0 || cond.operator === 1) && (() => {
+                                const decimals = cond.conditionType === 2 ? getTokenDecimals(cond.balanceToken) : 8;
+                                const displayVal = toTokenUnits(cond.threshold, decimals);
+                                return (
+                                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '10px', flexWrap: 'wrap' }}>
+                                        <span style={label}>Threshold:</span>
+                                        <input type="text" value={displayVal} placeholder="0.00"
+                                            onChange={e => updateCond(ci, { threshold: fromTokenUnits(e.target.value, decimals) })}
+                                            style={inp({ width: '140px' })} />
+                                        <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>
+                                            {cond.conditionType === 2 ? tokenSymbol(cond.balanceToken) : 'token units'}
+                                        </span>
+                                    </div>
+                                );
+                            })()}
+                            {(cond.operator === 2 || cond.operator === 3) && (() => {
+                                const decimals = cond.conditionType === 2 ? getTokenDecimals(cond.balanceToken) : 8;
+                                return (
+                                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '10px', flexWrap: 'wrap' }}>
+                                        <span style={label}>Min:</span>
+                                        <input type="text" value={toTokenUnits(cond.rangeMin, decimals)} placeholder="0.00"
+                                            onChange={e => updateCond(ci, { rangeMin: fromTokenUnits(e.target.value, decimals) })}
+                                            style={inp({ width: '120px' })} />
+                                        <span style={label}>Max:</span>
+                                        <input type="text" value={toTokenUnits(cond.rangeMax, decimals)} placeholder="0.00"
+                                            onChange={e => updateCond(ci, { rangeMax: fromTokenUnits(e.target.value, decimals) })}
+                                            style={inp({ width: '120px' })} />
+                                        <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>
+                                            {cond.conditionType === 2 ? tokenSymbol(cond.balanceToken) : 'token units'}
+                                        </span>
+                                    </div>
+                                );
+                            })()}
                             {cond.operator === 4 && (
-                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px', flexWrap: 'wrap' }}>
-                                    <label style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>Change %:</label>
-                                    <input type="text" value={cond.changePercentBps} placeholder="bps (100=1%)"
-                                        onChange={e => setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...c, changePercentBps: e.target.value } : c) }))}
-                                        style={{ ...btnSmall, width: '120px' }} />
-                                    <select value={cond.changeDirection ?? ''} onChange={e => setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...c, changeDirection: e.target.value } : c) }))}
-                                        style={{ ...btnSmall, minWidth: '80px' }}>
-                                        <option value="">Direction...</option>
-                                        {CHANGE_DIRECTIONS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
-                                    </select>
-                                    <label style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>Period:</label>
-                                    <select value={cond.changePeriodSeconds ?? ''} onChange={e => setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...c, changePeriodSeconds: e.target.value } : c) }))}
-                                        style={{ ...btnSmall, minWidth: '100px' }}>
-                                        <option value="">Custom...</option>
-                                        {PERIOD_PRESETS.map(p => <option key={p.seconds} value={p.seconds}>{p.label}</option>)}
-                                    </select>
-                                    {!PERIOD_PRESETS.find(p => String(p.seconds) === String(cond.changePeriodSeconds)) && (
-                                        <input type="text" value={cond.changePeriodSeconds} placeholder="seconds"
-                                            onChange={e => setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...c, changePeriodSeconds: e.target.value } : c) }))}
-                                            style={{ ...btnSmall, width: '100px' }} />
-                                    )}
+                                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '10px', flexWrap: 'wrap' }}>
+                                    <div>
+                                        <div style={label}>Change %</div>
+                                        <input type="text" value={cond.changePercent} placeholder="e.g. 5"
+                                            onChange={e => updateCond(ci, { changePercent: e.target.value })}
+                                            style={inp({ width: '80px', marginTop: '4px' })} />
+                                    </div>
+                                    <div>
+                                        <div style={label}>Direction</div>
+                                        <select value={cond.changeDirection ?? '2'} onChange={e => updateCond(ci, { changeDirection: e.target.value })}
+                                            style={sel({ marginTop: '4px', minWidth: '120px' })}>
+                                            {CB_CHANGE_DIRS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <div style={label}>Over period</div>
+                                        <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+                                            <input type="number" min="1" value={cond.changePeriodValue} placeholder="1"
+                                                onChange={e => updateCond(ci, { changePeriodValue: e.target.value })}
+                                                style={inp({ width: '60px' })} />
+                                            <select value={cond.changePeriodUnit} onChange={e => updateCond(ci, { changePeriodUnit: e.target.value })}
+                                                style={sel({ minWidth: '90px' })}>
+                                                {CB_PERIOD_UNITS.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
                                 </div>
                             )}
                         </div>
                     ))}
                 </div>
 
-                {/* ACTIONS */}
-                <div style={{ marginBottom: '16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                        <h5 style={{ color: theme.colors.primaryText, margin: 0 }}>Actions (all execute when triggered)</h5>
-                        <button style={{ ...btnSmall, color: accentColor, borderColor: accentColor }} onClick={() => setEditingRule(r => ({ ...r, actions: [...r.actions, emptyAction()] }))}>
-                            <FaPlus /> Add
+                {/* ── ACTIONS ── */}
+                <div style={{ marginBottom: '20px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                        <h5 style={sectionTitle}>Actions</h5>
+                        <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>(all execute when conditions are met)</span>
+                        <button style={btnSm({ color: accentColor, borderColor: accentColor, marginLeft: 'auto' })}
+                            onClick={() => setEditingRule(r => ({ ...r, actions: [...r.actions, cbEmptyAction()] }))}>
+                            <FaPlus /> Add Action
                         </button>
                     </div>
                     {editingRule.actions.map((act, ai) => (
-                        <div key={ai} style={{ ...cardStyle, position: 'relative' }}>
-                            <button style={{ position: 'absolute', top: '8px', right: '8px', background: 'none', border: 'none', cursor: 'pointer', color: '#e74c3c', fontSize: '0.9rem' }}
-                                onClick={() => setEditingRule(r => ({ ...r, actions: r.actions.filter((_, i) => i !== ai) }))}>
-                                <FaTrash />
-                            </button>
-                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                                <select value={act.actionType} onChange={e => {
-                                    const v = Number(e.target.value);
-                                    setEditingRule(r => ({ ...r, actions: r.actions.map((a, i) => i === ai ? { ...emptyAction(), actionType: v } : a) }));
-                                }} style={{ ...btnSmall, minWidth: '200px' }}>
-                                    {ACTION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                                </select>
-
-                                {/* Token selector for actions that need it */}
+                        <div key={ai} style={{ ...cardSt, position: 'relative' }}>
+                            <button title="Remove action" style={{ position: 'absolute', top: '10px', right: '10px', background: 'none', border: 'none', cursor: 'pointer', color: '#e74c3c', fontSize: '1rem' }}
+                                onClick={() => setEditingRule(r => ({ ...r, actions: r.actions.filter((_, i) => i !== ai) }))}><FaTrash /></button>
+                            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                                <div>
+                                    <div style={label}>Action</div>
+                                    <select value={act.actionType} onChange={e => {
+                                        const v = Number(e.target.value);
+                                        setEditingRule(r => ({ ...r, actions: r.actions.map((a, i) => i === ai ? { ...cbEmptyAction(), actionType: v } : a) }));
+                                    }} style={sel({ marginTop: '4px', minWidth: '220px' })}>
+                                        {CB_ACTION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                                    </select>
+                                </div>
                                 {[0, 1, 2].includes(act.actionType) && (
-                                    <select value={act.token} onChange={e => setEditingRule(r => ({ ...r, actions: r.actions.map((a, i) => i === ai ? { ...a, token: e.target.value } : a) }))}
-                                        style={{ ...btnSmall, minWidth: '140px' }}>
-                                        <option value="">Token...</option>
-                                        {tokenRegistry.map(t => <option key={t.ledgerCanisterId.toText()} value={t.ledgerCanisterId.toText()}>{t.symbol}</option>)}
-                                    </select>
+                                    <div style={{ minWidth: '160px', flex: '0 1 200px' }}>
+                                        <div style={label}>Token</div>
+                                        <TokenSelector value={act.token} onChange={v => setEditingRule(r => ({ ...r, actions: r.actions.map((a, i) => i === ai ? { ...a, token: v } : a) }))}
+                                            allowCustom placeholder="Select token..." style={{ marginTop: '4px' }} />
+                                    </div>
                                 )}
-
-                                {/* Chore instance selector */}
                                 {[0, 3, 4].includes(act.actionType) && (
-                                    <select value={act.choreInstanceId} onChange={e => setEditingRule(r => ({ ...r, actions: r.actions.map((a, i) => i === ai ? { ...a, choreInstanceId: e.target.value } : a) }))}
-                                        style={{ ...btnSmall, minWidth: '160px' }}>
-                                        <option value="">Chore...</option>
-                                        {choreInstances
-                                            .filter(([, info]) => act.actionType === 0 ? info.typeId === 'rebalance' : true)
-                                            .map(([id, info]) => <option key={id} value={id}>{info.label || id} ({info.typeId})</option>)}
-                                    </select>
+                                    <div>
+                                        <div style={label}>Chore</div>
+                                        <select value={act.choreInstanceId} onChange={e => setEditingRule(r => ({ ...r, actions: r.actions.map((a, i) => i === ai ? { ...a, choreInstanceId: e.target.value } : a) }))}
+                                            style={sel({ marginTop: '4px', minWidth: '180px' })}>
+                                            <option value="">Select chore...</option>
+                                            {choreInstances.filter(([, info]) => act.actionType === 0 ? info.typeId === 'rebalance' : true)
+                                                .map(([id, info]) => <option key={id} value={id}>{info.label || id} ({info.typeId})</option>)}
+                                        </select>
+                                    </div>
                                 )}
-
-                                {/* Chore type selector */}
                                 {[5, 6].includes(act.actionType) && (
-                                    <select value={act.choreTypeId} onChange={e => setEditingRule(r => ({ ...r, actions: r.actions.map((a, i) => i === ai ? { ...a, choreTypeId: e.target.value } : a) }))}
-                                        style={{ ...btnSmall, minWidth: '140px' }}>
-                                        <option value="">Type...</option>
-                                        {CHORE_TYPE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                                    </select>
+                                    <div>
+                                        <div style={label}>Chore type</div>
+                                        <select value={act.choreTypeId} onChange={e => setEditingRule(r => ({ ...r, actions: r.actions.map((a, i) => i === ai ? { ...a, choreTypeId: e.target.value } : a) }))}
+                                            style={sel({ marginTop: '4px', minWidth: '150px' })}>
+                                            <option value="">Select type...</option>
+                                            {CB_CHORE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                                        </select>
+                                    </div>
                                 )}
                             </div>
                         </div>
                     ))}
                 </div>
 
-                <div style={{ display: 'flex', gap: '8px' }}>
+                {/* Save / Cancel */}
+                <div style={{ display: 'flex', gap: '10px', paddingTop: '4px', borderTop: `1px solid ${theme.colors.border}`, paddingTop: '12px' }}>
                     <button onClick={handleSaveRule} disabled={saving || !editingRule.name}
-                        style={{ ...btnSmall, background: accentColor, color: '#fff', borderColor: accentColor, opacity: saving || !editingRule.name ? 0.5 : 1 }}>
-                        <FaSave style={{ marginRight: '4px' }} /> {saving ? 'Saving...' : 'Save Rule'}
+                        style={btnSm({ background: accentColor, color: '#fff', borderColor: accentColor, opacity: saving || !editingRule.name ? 0.5 : 1, padding: '8px 20px' })}>
+                        <FaSave /> {saving ? 'Saving...' : 'Save Rule'}
                     </button>
-                    <button onClick={() => { setEditingRule(null); setError(null); }} style={btnSmall}>
-                        <FaTimes style={{ marginRight: '4px' }} /> Cancel
+                    <button onClick={() => { setEditingRule(null); setError(null); }} style={btnSm({ padding: '8px 20px' })}>
+                        <FaTimes /> Cancel
                     </button>
                 </div>
             </div>
         );
     }
 
-    // MAIN VIEW
+    // ── MAIN VIEW ──
     return (
         <div style={{ padding: '8px 0' }}>
-            {error && <div style={{ color: '#e74c3c', marginBottom: '8px', fontSize: '0.82rem' }}>{error}</div>}
+            {error && <div style={{ color: '#e74c3c', marginBottom: '10px', fontSize: '0.82rem', padding: '6px 10px', background: 'rgba(231,76,60,0.1)', borderRadius: '6px' }}>{error}</div>}
 
-            {/* Header: global toggle + add button */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px', flexWrap: 'wrap' }}>
                 <h4 style={{ color: theme.colors.primaryText, margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <FaShieldAlt style={{ color: accentColor }} /> Circuit Breaker
                 </h4>
-                <button onClick={handleToggleGlobal} style={{ ...btnSmall, display: 'flex', alignItems: 'center', gap: '4px', color: globalEnabled ? '#27ae60' : '#e74c3c' }}>
+                <button onClick={handleToggleGlobal} style={btnSm({ color: globalEnabled ? '#27ae60' : '#e74c3c' })}>
                     {globalEnabled ? <FaToggleOn size={16} /> : <FaToggleOff size={16} />}
                     {globalEnabled ? 'Enabled' : 'Disabled'}
                 </button>
-                <button onClick={startNewRule} style={{ ...btnSmall, color: accentColor, borderColor: accentColor }}>
-                    <FaPlus style={{ marginRight: '4px' }} /> New Rule
+                <button onClick={startNewRule} style={btnSm({ color: accentColor, borderColor: accentColor })}>
+                    <FaPlus /> New Rule
                 </button>
-                <button onClick={() => setShowLog(v => !v)} style={{ ...btnSmall }}>
+                <button onClick={() => setShowLog(v => !v)} style={btnSm()}>
                     {showLog ? 'Hide' : 'Show'} Event Log ({eventCount})
                 </button>
-                <button onClick={loadData} style={btnSmall}><FaSyncAlt /></button>
+                <button onClick={loadData} style={btnSm()}><FaSyncAlt /></button>
             </div>
 
-            {/* Rules list */}
             {rules.length === 0 && (
-                <div style={{ color: theme.colors.secondaryText, fontSize: '0.85rem', padding: '16px', textAlign: 'center', ...cardStyle }}>
-                    No circuit breaker rules configured. Click "New Rule" to add one.
+                <div style={{ color: theme.colors.secondaryText, fontSize: '0.85rem', padding: '20px', textAlign: 'center', ...cardSt }}>
+                    No circuit breaker rules configured. Click "New Rule" to create one.
                 </div>
             )}
             {rules.map(rule => (
-                <div key={Number(rule.id)} style={{ ...cardStyle, opacity: rule.enabled ? 1 : 0.6, borderLeft: `3px solid ${rule.enabled ? '#27ae60' : theme.colors.border}` }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
-                        <strong style={{ color: theme.colors.primaryText, fontSize: '0.9rem' }}>{rule.name}</strong>
-                        <span style={{ fontSize: '0.72rem', padding: '1px 6px', borderRadius: '3px', background: rule.enabled ? 'rgba(39,174,96,0.15)' : 'rgba(231,76,60,0.15)', color: rule.enabled ? '#27ae60' : '#e74c3c' }}>
+                <div key={Number(rule.id)} style={{ ...cardSt, opacity: rule.enabled ? 1 : 0.55, borderLeft: `3px solid ${rule.enabled ? '#27ae60' : theme.colors.border}` }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                        <strong style={{ color: theme.colors.primaryText, fontSize: '0.92rem' }}>{rule.name}</strong>
+                        <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '4px',
+                            background: rule.enabled ? 'rgba(39,174,96,0.15)' : 'rgba(231,76,60,0.1)',
+                            color: rule.enabled ? '#27ae60' : '#e74c3c', fontWeight: 600 }}>
                             {rule.enabled ? 'Active' : 'Disabled'}
                         </span>
-                        <span style={{ fontSize: '0.72rem', color: theme.colors.secondaryText }}>
-                            {rule.conditions.length} condition{rule.conditions.length !== 1 ? 's' : ''}, {rule.actions.length} action{rule.actions.length !== 1 ? 's' : ''}
-                        </span>
                         <div style={{ marginLeft: 'auto', display: 'flex', gap: '4px' }}>
-                            <button onClick={() => handleToggleRule(Number(rule.id), rule.enabled)} style={btnSmall}>
+                            <button onClick={() => handleToggleRule(Number(rule.id), rule.enabled)} style={btnSm()} title={rule.enabled ? 'Disable' : 'Enable'}>
                                 {rule.enabled ? <FaPause /> : <FaPlay />}
                             </button>
-                            <button onClick={() => startEditRule(rule)} style={btnSmall}><FaEdit /></button>
-                            <button onClick={() => handleDeleteRule(Number(rule.id))} style={{ ...btnSmall, color: '#e74c3c' }}><FaTrash /></button>
+                            <button onClick={() => startEditRule(rule)} style={btnSm()} title="Edit"><FaEdit /></button>
+                            <button onClick={() => handleDeleteRule(Number(rule.id))} style={btnSm({ color: '#e74c3c' })} title="Delete"><FaTrash /></button>
                         </div>
                     </div>
-                    <div style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>
-                        <div><strong>IF</strong> {rule.conditions.map((c, i) => <span key={i}>{i > 0 ? ' AND ' : ''}{conditionSummary(c)}</span>)}</div>
-                        <div><strong>THEN</strong> {rule.actions.map((a, i) => <span key={i}>{i > 0 ? ', ' : ''}{actionSummary(a)}</span>)}</div>
+                    <div style={{ fontSize: '0.8rem', lineHeight: '1.5' }}>
+                        <div style={{ color: theme.colors.secondaryText }}>
+                            <span style={{ color: accentColor, fontWeight: 600 }}>IF </span>
+                            {rule.conditions.map((c, i) => (
+                                <span key={i}>
+                                    {i > 0 && <span style={{ color: accentColor, fontWeight: 600 }}> AND </span>}
+                                    <span style={{ color: theme.colors.primaryText }}>{conditionText(c)}</span>
+                                </span>
+                            ))}
+                        </div>
+                        <div style={{ color: theme.colors.secondaryText, marginTop: '2px' }}>
+                            <span style={{ color: '#e67e22', fontWeight: 600 }}>THEN </span>
+                            {rule.actions.map((a, i) => (
+                                <span key={i}>
+                                    {i > 0 && <span style={{ color: theme.colors.secondaryText }}>, </span>}
+                                    <span style={{ color: theme.colors.primaryText }}>{actionText(a)}</span>
+                                </span>
+                            ))}
+                        </div>
                     </div>
                 </div>
             ))}
 
-            {/* Event Log */}
             {showLog && (
                 <div style={{ marginTop: '16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                        <h5 style={{ color: theme.colors.primaryText, margin: 0 }}>Event Log</h5>
-                        <button onClick={handleClearLog} style={{ ...btnSmall, color: '#e74c3c', fontSize: '0.72rem' }}>Clear Log</button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                        <h5 style={sectionTitle}>Event Log</h5>
+                        <button onClick={handleClearLog} style={btnSm({ color: '#e74c3c', fontSize: '0.75rem' })}>Clear Log</button>
                     </div>
                     {events.length === 0 ? (
-                        <div style={{ color: theme.colors.secondaryText, fontSize: '0.82rem', ...cardStyle, textAlign: 'center' }}>No circuit breaker events recorded.</div>
+                        <div style={{ color: theme.colors.secondaryText, fontSize: '0.82rem', ...cardSt, textAlign: 'center' }}>No circuit breaker events recorded.</div>
                     ) : (
-                        <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                        <div style={{ maxHeight: '400px', overflowY: 'auto', borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
                             <table style={{ width: '100%', fontSize: '0.78rem', borderCollapse: 'collapse' }}>
-                                <thead>
-                                    <tr style={{ borderBottom: `1px solid ${theme.colors.border}` }}>
-                                        <th style={{ textAlign: 'left', padding: '4px 8px', color: theme.colors.secondaryText }}>Time</th>
-                                        <th style={{ textAlign: 'left', padding: '4px 8px', color: theme.colors.secondaryText }}>Rule</th>
-                                        <th style={{ textAlign: 'left', padding: '4px 8px', color: theme.colors.secondaryText }}>Conditions</th>
-                                        <th style={{ textAlign: 'left', padding: '4px 8px', color: theme.colors.secondaryText }}>Actions</th>
-                                    </tr>
-                                </thead>
+                                <thead><tr style={{ borderBottom: `2px solid ${theme.colors.border}`, background: theme.colors.cardBg }}>
+                                    {['Time', 'Rule', 'Conditions', 'Actions Taken'].map(h => (
+                                        <th key={h} style={{ textAlign: 'left', padding: '8px 10px', color: theme.colors.secondaryText, fontWeight: 600 }}>{h}</th>
+                                    ))}
+                                </tr></thead>
                                 <tbody>
                                     {[...events].reverse().map(evt => (
-                                        <tr key={Number(evt.id)} style={{ borderBottom: `1px solid ${theme.colors.border}22` }}>
-                                            <td style={{ padding: '4px 8px', color: theme.colors.primaryText, whiteSpace: 'nowrap' }}>
+                                        <tr key={Number(evt.id)} style={{ borderBottom: `1px solid ${theme.colors.border}30` }}>
+                                            <td style={{ padding: '6px 10px', color: theme.colors.primaryText, whiteSpace: 'nowrap' }}>
                                                 {new Date(Number(evt.timestamp) / 1_000_000).toLocaleString()}
                                             </td>
-                                            <td style={{ padding: '4px 8px', color: theme.colors.primaryText }}>{evt.ruleName}</td>
-                                            <td style={{ padding: '4px 8px', color: theme.colors.secondaryText }}>{evt.conditionSummary}</td>
-                                            <td style={{ padding: '4px 8px', color: theme.colors.secondaryText }}>{evt.actionsTaken.join('; ')}</td>
+                                            <td style={{ padding: '6px 10px', color: theme.colors.primaryText, fontWeight: 500 }}>{evt.ruleName}</td>
+                                            <td style={{ padding: '6px 10px', color: theme.colors.secondaryText }}>{evt.conditionSummary}</td>
+                                            <td style={{ padding: '6px 10px', color: theme.colors.secondaryText }}>{evt.actionsTaken.join('; ')}</td>
                                         </tr>
                                     ))}
                                 </tbody>
