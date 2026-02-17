@@ -105,6 +105,14 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     var pausedTokens: [Principal] = [];   // Won't be traded (rebalancers, trade actions)
     var frozenTokens: [Principal] = [];   // Won't be traded AND won't be moved (deposit/withdraw/send/distribution)
 
+    // Circuit Breaker
+    var circuitBreakerEnabled: Bool = true;
+    var circuitBreakerRules: [T.CircuitBreakerRule] = [];
+    var circuitBreakerNextRuleId: Nat = 1;
+    var circuitBreakerLog: [T.CircuitBreakerEvent] = [];
+    var circuitBreakerLogNextId: Nat = 0;
+    var circuitBreakerMaxLogEntries: Nat = 1000;
+
     // Balance reconciliation: last known balance per (token, subaccount)
     var lastKnownBalances: [(Text, Nat)] = [];
 
@@ -140,6 +148,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     // ============================================
     // TRANSIENT CACHES (cleared on canister upgrade)
     // ============================================
+
+    // Circuit Breaker: per-chore abort signal set by CB evaluation
+    transient var _cbAbortChore: [(Text, Bool)] = [];
 
     // Token metadata cache: Principal -> { entry, fetchedAt }
     transient var _tokenMetaCache: [(Principal, T.CachedTokenMeta)] = [];
@@ -273,6 +284,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         (209, #WithdrawFunds),
         (210, #ConfigureDistribution),
         (211, #ManageDistributeFunds),
+        (212, #ManageSnapshotChore),
+        (213, #ManageCircuitBreaker),
     ];
 
     func permissionVariantToId(perm: T.TradingPermissionType): Nat {
@@ -294,6 +307,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case (#WithdrawFunds) { 209 };
             case (#ConfigureDistribution) { 210 };
             case (#ManageDistributeFunds) { 211 };
+            case (#ManageSnapshotChore) { 212 };
+            case (#ManageCircuitBreaker) { 213 };
         }
     };
 
@@ -316,6 +331,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case (209) { ?#WithdrawFunds };
             case (210) { ?#ConfigureDistribution };
             case (211) { ?#ManageDistributeFunds };
+            case (212) { ?#ManageSnapshotChore };
+            case (213) { ?#ManageCircuitBreaker };
             case (_)   { null };
         }
     };
@@ -648,6 +665,638 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     /// Check if a token is frozen globally (should not be moved at all).
     func isTokenFrozen(token: Principal): Bool {
         Array.find<Principal>(frozenTokens, func(t) { t == token }) != null
+    };
+
+    // ============================================
+    // CIRCUIT BREAKER ENGINE
+    // ============================================
+
+    /// Append an event to the circuit breaker log (circular buffer).
+    func appendCBEvent(event: T.CircuitBreakerEvent) {
+        let buf = Buffer.fromArray<T.CircuitBreakerEvent>(circuitBreakerLog);
+        buf.add(event);
+        if (buf.size() > circuitBreakerMaxLogEntries) {
+            let excess = buf.size() - circuitBreakerMaxLogEntries : Nat;
+            let trimmed = Buffer.Buffer<T.CircuitBreakerEvent>(circuitBreakerMaxLogEntries);
+            var i = excess;
+            while (i < buf.size()) { trimmed.add(buf.get(i)); i += 1 };
+            circuitBreakerLog := Buffer.toArray(trimmed);
+        } else {
+            circuitBreakerLog := Buffer.toArray(buf);
+        };
+    };
+
+    /// Internally pause a token in a specific rebalancing chore.
+    func _cbPauseTokenInRebalChore(token: Principal, choreInstanceId: Text) {
+        let targets = getRebalTargets(choreInstanceId);
+        let updated = Array.map<T.RebalanceTarget, T.RebalanceTarget>(targets, func(t) {
+            if (t.token == token) { { t with paused = true } } else { t }
+        });
+        setRebalTargets(choreInstanceId, updated);
+    };
+
+    /// Internally pause a token globally (idempotent).
+    func _cbPauseTokenGlobally(token: Principal) {
+        if (Array.find<Principal>(pausedTokens, func(t) { t == token }) == null) {
+            pausedTokens := Array.append(pausedTokens, [token]);
+        };
+    };
+
+    /// Internally freeze a token globally (idempotent).
+    func _cbFreezeTokenGlobally(token: Principal) {
+        if (Array.find<Principal>(frozenTokens, func(t) { t == token }) == null) {
+            frozenTokens := Array.append(frozenTokens, [token]);
+        };
+    };
+
+    /// Execute a single circuit breaker action. Returns a human-readable description.
+    func executeCBAction(action: T.CircuitBreakerActionConfig, currentChoreId: Text): Text {
+        switch (action.actionType) {
+            case (0) { // PauseTokenInRebalChore
+                switch (action.token, action.choreInstanceId) {
+                    case (?tok, ?cid) {
+                        _cbPauseTokenInRebalChore(tok, cid);
+                        "Paused token " # Principal.toText(tok) # " in rebal chore " # cid
+                    };
+                    case _ { "PauseTokenInRebalChore: missing token or choreInstanceId" };
+                };
+            };
+            case (1) { // PauseTokenGlobally
+                switch (action.token) {
+                    case (?tok) { _cbPauseTokenGlobally(tok); "Paused token globally: " # Principal.toText(tok) };
+                    case null { "PauseTokenGlobally: missing token" };
+                };
+            };
+            case (2) { // FreezeTokenGlobally
+                switch (action.token) {
+                    case (?tok) { _cbFreezeTokenGlobally(tok); "Frozen token globally: " # Principal.toText(tok) };
+                    case null { "FreezeTokenGlobally: missing token" };
+                };
+            };
+            case (3) { // StopChore
+                switch (action.choreInstanceId) {
+                    case (?cid) {
+                        if (cid == currentChoreId) {
+                            _cbAbortChore := setInMap(_cbAbortChore, cid, true);
+                        };
+                        choreEngine.stop(cid);
+                        "Stopped chore: " # cid
+                    };
+                    case null { "StopChore: missing choreInstanceId" };
+                };
+            };
+            case (4) { // PauseChore
+                switch (action.choreInstanceId) {
+                    case (?cid) {
+                        if (cid == currentChoreId) {
+                            _cbAbortChore := setInMap(_cbAbortChore, cid, true);
+                        };
+                        choreEngine.pause(cid);
+                        "Paused chore: " # cid
+                    };
+                    case null { "PauseChore: missing choreInstanceId" };
+                };
+            };
+            case (5) { // StopAllChoresByType
+                switch (action.choreTypeId) {
+                    case (?tid) {
+                        let instances = choreEngine.listInstances(?tid);
+                        for ((iid, _) in instances.vals()) {
+                            if (iid == currentChoreId) {
+                                _cbAbortChore := setInMap(_cbAbortChore, iid, true);
+                            };
+                            choreEngine.stop(iid);
+                        };
+                        "Stopped all " # tid # " chores (" # Nat.toText(instances.size()) # ")"
+                    };
+                    case null { "StopAllChoresByType: missing choreTypeId" };
+                };
+            };
+            case (6) { // PauseAllChoresByType
+                switch (action.choreTypeId) {
+                    case (?tid) {
+                        let instances = choreEngine.listInstances(?tid);
+                        for ((iid, _) in instances.vals()) {
+                            if (iid == currentChoreId) {
+                                _cbAbortChore := setInMap(_cbAbortChore, iid, true);
+                            };
+                            choreEngine.pause(iid);
+                        };
+                        "Paused all " # tid # " chores (" # Nat.toText(instances.size()) # ")"
+                    };
+                    case null { "PauseAllChoresByType: missing choreTypeId" };
+                };
+            };
+            case (7) { // StopAllChores
+                let allInstances = choreEngine.listInstances(null);
+                for ((iid, _) in allInstances.vals()) {
+                    if (iid == currentChoreId) {
+                        _cbAbortChore := setInMap(_cbAbortChore, iid, true);
+                    };
+                    choreEngine.stop(iid);
+                };
+                "Stopped all chores (" # Nat.toText(allInstances.size()) # ")"
+            };
+            case (8) { // PauseAllChores
+                let allInstances = choreEngine.listInstances(null);
+                for ((iid, _) in allInstances.vals()) {
+                    if (iid == currentChoreId) {
+                        _cbAbortChore := setInMap(_cbAbortChore, iid, true);
+                    };
+                    choreEngine.pause(iid);
+                };
+                "Paused all chores (" # Nat.toText(allInstances.size()) # ")"
+            };
+            case _ { "Unknown action type: " # Nat.toText(action.actionType) };
+        }
+    };
+
+    /// Evaluate a single price condition (type 0).
+    func evaluatePriceCondition(cond: T.CircuitBreakerCondition): Bool {
+        let token1 = switch (cond.priceToken1) { case (?t) t; case null { return false } };
+        let token2 = switch (cond.priceToken2) { case (?t) t; case null { return false } };
+
+        switch (cond.operator) {
+            case (4) { // PercentChange
+                let changeBps = switch (cond.changePercentBps) { case (?v) v; case null { return false } };
+                let direction = switch (cond.changeDirection) { case (?v) v; case null { return false } };
+                let periodSec = switch (cond.changePeriodSeconds) { case (?v) v; case null { return false } };
+
+                let currentQuote = switch (getCachedQuote(token1, token2)) {
+                    case (?q) q;
+                    case null { return false };
+                };
+                if (currentQuote.inputAmount == 0) return false;
+                let currentPrice = currentQuote.expectedOutput * 100_000_000 / currentQuote.inputAmount;
+
+                let lookbackNs = periodSec * 1_000_000_000;
+                let cutoff = Time.now() - lookbackNs;
+                let pk = pairKey(token1, token2);
+
+                var historicalPrice: Nat = 0;
+                var bestTimeDiff: Int = lookbackNs;
+                for (entry in priceHistory.vals()) {
+                    if (pairKey(entry.inputToken, entry.outputToken) == pk and entry.fetchedAt <= cutoff + (lookbackNs / 4)) {
+                        let diff = if (entry.fetchedAt > cutoff) { entry.fetchedAt - cutoff } else { cutoff - entry.fetchedAt };
+                        if (diff < bestTimeDiff and entry.quote.inputAmount > 0) {
+                            bestTimeDiff := diff;
+                            if (entry.inputToken == token1) {
+                                historicalPrice := entry.quote.expectedOutput * 100_000_000 / entry.quote.inputAmount;
+                            } else {
+                                historicalPrice := entry.quote.inputAmount * 100_000_000 / entry.quote.expectedOutput;
+                            };
+                        };
+                    };
+                };
+                if (historicalPrice == 0) {
+                    logEngine.logWarning("circuit-breaker", "No historical price found for pair " # pk # " within lookback of " # Nat.toText(periodSec) # "s", null, []);
+                    return false;
+                };
+
+                let changeUp = currentPrice > historicalPrice;
+                let absDiff = if (changeUp) { currentPrice - historicalPrice } else { historicalPrice - currentPrice };
+                let changeBpsActual = absDiff * 10_000 / historicalPrice;
+
+                if (changeBpsActual < changeBps) return false;
+                switch (direction) {
+                    case (0) { changeUp };        // Up
+                    case (1) { not changeUp };    // Down
+                    case (2) { true };            // Either
+                    case _ { false };
+                };
+            };
+            case _ { // Absolute threshold comparisons
+                let currentQuote = switch (getCachedQuote(token1, token2)) {
+                    case (?q) q;
+                    case null { return false };
+                };
+                if (currentQuote.inputAmount == 0) return false;
+                let currentPrice = currentQuote.expectedOutput * 100_000_000 / currentQuote.inputAmount;
+
+                switch (cond.operator) {
+                    case (0) { // GreaterThan
+                        switch (cond.threshold) { case (?t) { currentPrice > t }; case null { false } };
+                    };
+                    case (1) { // LessThan
+                        switch (cond.threshold) { case (?t) { currentPrice < t }; case null { false } };
+                    };
+                    case (2) { // InsideRange
+                        switch (cond.rangeMin, cond.rangeMax) {
+                            case (?mn, ?mx) { currentPrice >= mn and currentPrice <= mx };
+                            case _ { false };
+                        };
+                    };
+                    case (3) { // OutsideRange
+                        switch (cond.rangeMin, cond.rangeMax) {
+                            case (?mn, ?mx) { currentPrice < mn or currentPrice > mx };
+                            case _ { false };
+                        };
+                    };
+                    case _ { false };
+                };
+            };
+        }
+    };
+
+    /// Resolve value sources to a set of unique (token, subaccountBlob) pairs.
+    func resolveValueSources(sources: [T.CBValueSource]): [(Principal, ?Blob)] {
+        let buf = Buffer.Buffer<(Principal, ?Blob)>(sources.size());
+        let addUnique = func(tok: Principal, sub: ?Blob) {
+            let key = balanceKey(tok, sub);
+            var exists = false;
+            for ((t, s) in buf.vals()) {
+                if (balanceKey(t, s) == key) { exists := true };
+            };
+            if (not exists) { buf.add((tok, sub)) };
+        };
+
+        for (src in sources.vals()) {
+            switch (src.sourceType) {
+                case (0) { // SpecificToken
+                    switch (src.token) {
+                        case (?tok) {
+                            let sub = getSubaccountBlob(src.subaccount);
+                            addUnique(tok, sub);
+                        };
+                        case null {};
+                    };
+                };
+                case (1) { // RebalChoreTokens
+                    switch (src.choreInstanceId) {
+                        case (?cid) {
+                            let targets = getRebalTargets(cid);
+                            for (t in targets.vals()) { addUnique(t.token, null) };
+                        };
+                        case null {};
+                    };
+                };
+                case (2) { // AllTokensInAccount
+                    let sub = getSubaccountBlob(src.subaccount);
+                    for (entry in tokenRegistry.vals()) {
+                        addUnique(entry.ledgerCanisterId, sub);
+                    };
+                };
+                case _ {};
+            };
+        };
+        Buffer.toArray(buf)
+    };
+
+    /// Evaluate a balance condition (type 2) — uses cached balance.
+    func evaluateBalanceCondition(cond: T.CircuitBreakerCondition): Bool {
+        let token = switch (cond.balanceToken) { case (?t) t; case null { return false } };
+        let sub = getSubaccountBlob(cond.balanceSubaccount);
+        let currentBal = switch (getLastKnownBalance(token, sub)) {
+            case (?b) b;
+            case null { return false };
+        };
+
+        switch (cond.operator) {
+            case (4) { // PercentChange
+                let changeBps = switch (cond.changePercentBps) { case (?v) v; case null { return false } };
+                let direction = switch (cond.changeDirection) { case (?v) v; case null { return false } };
+                let periodSec = switch (cond.changePeriodSeconds) { case (?v) v; case null { return false } };
+                let lookbackNs = periodSec * 1_000_000_000;
+                let cutoff = Time.now() - lookbackNs;
+
+                var historicalBal: Nat = 0;
+                var bestTimeDiff: Int = lookbackNs;
+                for (snap in portfolioSnapshots.vals()) {
+                    if (snap.timestamp <= cutoff + (lookbackNs / 4)) {
+                        let subMatch = switch (snap.subaccount, sub) {
+                            case (null, null) true;
+                            case (?a, ?b) { a == b };
+                            case _ false;
+                        };
+                        if (subMatch) {
+                            for (ts in snap.tokens.vals()) {
+                                if (ts.token == token) {
+                                    let diff = if (snap.timestamp > cutoff) { snap.timestamp - cutoff } else { cutoff - snap.timestamp };
+                                    if (diff < bestTimeDiff) {
+                                        bestTimeDiff := diff;
+                                        historicalBal := ts.balance;
+                                    };
+                                };
+                            };
+                        };
+                    };
+                };
+                if (historicalBal == 0) {
+                    logEngine.logWarning("circuit-breaker", "No historical balance for token " # Principal.toText(token) # " within lookback", null, []);
+                    return false;
+                };
+                let changeUp = currentBal > historicalBal;
+                let absDiff = if (changeUp) { currentBal - historicalBal } else { historicalBal - currentBal };
+                let changeBpsActual = absDiff * 10_000 / historicalBal;
+                if (changeBpsActual < changeBps) return false;
+                switch (direction) {
+                    case (0) { changeUp };
+                    case (1) { not changeUp };
+                    case (2) { true };
+                    case _ { false };
+                };
+            };
+            case (0) { switch (cond.threshold) { case (?t) { currentBal > t }; case null { false } } };
+            case (1) { switch (cond.threshold) { case (?t) { currentBal < t }; case null { false } } };
+            case (2) { switch (cond.rangeMin, cond.rangeMax) { case (?mn, ?mx) { currentBal >= mn and currentBal <= mx }; case _ { false } } };
+            case (3) { switch (cond.rangeMin, cond.rangeMax) { case (?mn, ?mx) { currentBal < mn or currentBal > mx }; case _ { false } } };
+            case _ { false };
+        }
+    };
+
+    /// Evaluate a value condition (type 1) — sums values of resolved sources, converts to denomination.
+    func evaluateValueCondition(cond: T.CircuitBreakerCondition): Bool {
+        let pairs = resolveValueSources(cond.valueSources);
+        let denomToken = switch (cond.denominationToken) {
+            case (?d) d;
+            case null { Principal.fromText(T.ICP_LEDGER) };
+        };
+
+        var totalValue: Nat = 0;
+        for ((tok, sub) in pairs.vals()) {
+            let bal = switch (getLastKnownBalance(tok, sub)) {
+                case (?b) b;
+                case null { 0 };
+            };
+            if (bal > 0) {
+                let value = switch (convertAmountViaCache(bal, tok, denomToken)) {
+                    case (?v) v;
+                    case null { 0 };
+                };
+                totalValue += value;
+            };
+        };
+
+        switch (cond.operator) {
+            case (4) { // PercentChange
+                let changeBps = switch (cond.changePercentBps) { case (?v) v; case null { return false } };
+                let direction = switch (cond.changeDirection) { case (?v) v; case null { return false } };
+                let periodSec = switch (cond.changePeriodSeconds) { case (?v) v; case null { return false } };
+                let lookbackNs = periodSec * 1_000_000_000;
+                let cutoff = Time.now() - lookbackNs;
+
+                var historicalValue: Nat = 0;
+                var bestTimeDiff: Int = lookbackNs;
+                for (snap in portfolioSnapshots.vals()) {
+                    if (snap.timestamp <= cutoff + (lookbackNs / 4)) {
+                        let diff = if (snap.timestamp > cutoff) { snap.timestamp - cutoff } else { cutoff - snap.timestamp };
+                        if (diff < bestTimeDiff) {
+                            var snapValue: Nat = 0;
+                            let subMatch = func(sub_: ?Blob): Bool {
+                                switch (snap.subaccount, sub_) {
+                                    case (null, null) true;
+                                    case (?a, ?b) { a == b };
+                                    case _ false;
+                                };
+                            };
+                            for ((tok, sub_) in pairs.vals()) {
+                                if (subMatch(sub_)) {
+                                    for (ts in snap.tokens.vals()) {
+                                        if (ts.token == tok) {
+                                            // Use ICP value from snapshot if denomination is ICP
+                                            if (denomToken == Principal.fromText(T.ICP_LEDGER)) {
+                                                switch (ts.valueIcpE8s) {
+                                                    case (?v) { snapValue += v };
+                                                    case null {};
+                                                };
+                                            } else {
+                                                switch (ts.valueDenomE8s) {
+                                                    case (?v) { snapValue += v };
+                                                    case null {};
+                                                };
+                                            };
+                                        };
+                                    };
+                                };
+                            };
+                            if (snapValue > 0) {
+                                bestTimeDiff := diff;
+                                historicalValue := snapValue;
+                            };
+                        };
+                    };
+                };
+
+                if (historicalValue == 0) {
+                    logEngine.logWarning("circuit-breaker", "No historical value data within lookback", null, []);
+                    return false;
+                };
+                let changeUp = totalValue > historicalValue;
+                let absDiff = if (changeUp) { totalValue - historicalValue } else { historicalValue - totalValue };
+                let changeBpsActual = absDiff * 10_000 / historicalValue;
+                if (changeBpsActual < changeBps) return false;
+                switch (direction) {
+                    case (0) { changeUp };
+                    case (1) { not changeUp };
+                    case (2) { true };
+                    case _ { false };
+                };
+            };
+            case (0) { switch (cond.threshold) { case (?t) { totalValue > t }; case null { false } } };
+            case (1) { switch (cond.threshold) { case (?t) { totalValue < t }; case null { false } } };
+            case (2) { switch (cond.rangeMin, cond.rangeMax) { case (?mn, ?mx) { totalValue >= mn and totalValue <= mx }; case _ { false } } };
+            case (3) { switch (cond.rangeMin, cond.rangeMax) { case (?mn, ?mx) { totalValue < mn or totalValue > mx }; case _ { false } } };
+            case _ { false };
+        }
+    };
+
+    /// Evaluate a single condition (dispatches by conditionType).
+    func evaluateCondition(cond: T.CircuitBreakerCondition): Bool {
+        switch (cond.conditionType) {
+            case (0) { evaluatePriceCondition(cond) };
+            case (1) { evaluateValueCondition(cond) };
+            case (2) { evaluateBalanceCondition(cond) };
+            case _ { false };
+        }
+    };
+
+    /// Build a human-readable summary of a condition.
+    func conditionSummaryText(cond: T.CircuitBreakerCondition): Text {
+        let typeLabel = switch (cond.conditionType) {
+            case (0) { "Price" };
+            case (1) { "Value" };
+            case (2) { "Balance" };
+            case _ { "Unknown" };
+        };
+        let opLabel = switch (cond.operator) {
+            case (0) { ">" };
+            case (1) { "<" };
+            case (2) { "in range" };
+            case (3) { "out of range" };
+            case (4) { "% change" };
+            case _ { "?" };
+        };
+        typeLabel # " condition (" # opLabel # ") triggered"
+    };
+
+    /// Main circuit breaker evaluation — runs all enabled rules.
+    /// Called from chore conductors before trade/rebalance execution.
+    func evaluateCircuitBreakerRules(choreId: Text): () {
+        if (not circuitBreakerEnabled) return;
+
+        for (rule in circuitBreakerRules.vals()) {
+            if (rule.enabled) {
+                var allConditionsMet = true;
+                let condSummaries = Buffer.Buffer<Text>(rule.conditions.size());
+
+                for (cond in rule.conditions.vals()) {
+                    if (not evaluateCondition(cond)) {
+                        allConditionsMet := false;
+                    } else {
+                        condSummaries.add(conditionSummaryText(cond));
+                    };
+                };
+
+                if (allConditionsMet and rule.conditions.size() > 0) {
+                    let actionDescs = Buffer.Buffer<Text>(rule.actions.size());
+                    for (action in rule.actions.vals()) {
+                        let desc = executeCBAction(action, choreId);
+                        actionDescs.add(desc);
+                    };
+
+                    let eventId = circuitBreakerLogNextId;
+                    circuitBreakerLogNextId += 1;
+
+                    let event: T.CircuitBreakerEvent = {
+                        id = eventId;
+                        timestamp = Time.now();
+                        ruleId = rule.id;
+                        ruleName = rule.name;
+                        choreId = ?choreId;
+                        conditionSummary = Text.join("; ", condSummaries.vals());
+                        actionsTaken = Buffer.toArray(actionDescs);
+                    };
+                    appendCBEvent(event);
+                    logEngine.logWarning("circuit-breaker", "Rule '" # rule.name # "' triggered: " # Text.join(", ", actionDescs.vals()), null, []);
+                };
+            };
+        };
+    };
+
+    /// Collect all tokens referenced in enabled circuit breaker rules.
+    /// Used to augment the metadata/price fetch phase so CB conditions can be evaluated.
+    func _collectCircuitBreakerTokens(): [Principal] {
+        if (not circuitBreakerEnabled) return [];
+        let buf = Buffer.Buffer<Principal>(16);
+        let addUnique = func(tok: Principal) {
+            for (t in buf.vals()) { if (t == tok) return };
+            buf.add(tok);
+        };
+        for (rule in circuitBreakerRules.vals()) {
+            if (rule.enabled) {
+                for (cond in rule.conditions.vals()) {
+                    switch (cond.conditionType) {
+                        case (0) { // Price
+                            switch (cond.priceToken1) { case (?t) addUnique(t); case null {} };
+                            switch (cond.priceToken2) { case (?t) addUnique(t); case null {} };
+                        };
+                        case (2) { // Balance
+                            switch (cond.balanceToken) { case (?t) addUnique(t); case null {} };
+                        };
+                        case (1) { // Value
+                            for (src in cond.valueSources.vals()) {
+                                switch (src.sourceType) {
+                                    case (0) { // SpecificToken
+                                        switch (src.token) { case (?t) addUnique(t); case null {} };
+                                    };
+                                    case (1) { // RebalChoreTokens
+                                        switch (src.choreInstanceId) {
+                                            case (?cid) {
+                                                for (tgt in getRebalTargets(cid).vals()) {
+                                                    addUnique(tgt.token);
+                                                };
+                                            };
+                                            case null {};
+                                        };
+                                    };
+                                    case (2) { // AllTokensInAccount — all registry tokens
+                                        for (e in tokenRegistry.vals()) { addUnique(e.ledgerCanisterId) };
+                                    };
+                                    case _ {};
+                                };
+                            };
+                            switch (cond.denominationToken) { case (?d) addUnique(d); case null {} };
+                        };
+                        case _ {};
+                    };
+                };
+            };
+        };
+        Buffer.toArray(buf)
+    };
+
+    /// Collect all token pairs needed for circuit breaker price evaluation.
+    func _collectCircuitBreakerPairs(): [(Principal, Principal)] {
+        if (not circuitBreakerEnabled) return [];
+        let buf = Buffer.Buffer<(Principal, Principal)>(8);
+        let icpToken = Principal.fromText(T.ICP_LEDGER);
+        let ckusdcToken = Principal.fromText(T.CKUSDC_LEDGER);
+
+        let addPair = func(inp: Principal, out: Principal) {
+            if (inp == out) return;
+            let key = pairKey(inp, out);
+            var found = false;
+            for ((i, o) in buf.vals()) { if (pairKey(i, o) == key) { found := true } };
+            if (not found) { buf.add((inp, out)) };
+        };
+
+        for (rule in circuitBreakerRules.vals()) {
+            if (rule.enabled) {
+                for (cond in rule.conditions.vals()) {
+                    switch (cond.conditionType) {
+                        case (0) { // Price conditions — add the exact pair
+                            switch (cond.priceToken1, cond.priceToken2) {
+                                case (?t1, ?t2) { addPair(t1, t2) };
+                                case _ {};
+                            };
+                        };
+                        case (1) { // Value conditions — need token-to-denom conversions
+                            let denomToken = switch (cond.denominationToken) { case (?d) d; case null icpToken };
+                            let tokens = _collectValueConditionTokens(cond);
+                            for (tok in tokens.vals()) {
+                                addPair(tok, denomToken);
+                                addPair(tok, icpToken);
+                            };
+                        };
+                        case (2) { // Balance conditions — need price for value comparison if threshold-based
+                            switch (cond.balanceToken) {
+                                case (?tok) {
+                                    addPair(tok, icpToken);
+                                };
+                                case null {};
+                            };
+                        };
+                        case _ {};
+                    };
+                };
+            };
+        };
+        // Always ensure ICP/ckUSDC pair is available for USD conversions
+        addPair(icpToken, ckusdcToken);
+        Buffer.toArray(buf)
+    };
+
+    /// Helper: extract all token principals from a value condition's sources.
+    func _collectValueConditionTokens(cond: T.CircuitBreakerCondition): [Principal] {
+        let buf = Buffer.Buffer<Principal>(4);
+        let addUnique = func(tok: Principal) {
+            for (t in buf.vals()) { if (t == tok) return };
+            buf.add(tok);
+        };
+        for (src in cond.valueSources.vals()) {
+            switch (src.sourceType) {
+                case (0) { switch (src.token) { case (?t) addUnique(t); case null {} } };
+                case (1) {
+                    switch (src.choreInstanceId) {
+                        case (?cid) { for (tgt in getRebalTargets(cid).vals()) { addUnique(tgt.token) } };
+                        case null {};
+                    };
+                };
+                case (2) { for (e in tokenRegistry.vals()) { addUnique(e.ledgerCanisterId) } };
+                case _ {};
+            };
+        };
+        Buffer.toArray(buf)
     };
 
     // ============================================
@@ -3855,8 +4504,19 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                         // Reset price cache: seed from fresh persistent prices
                         resetPriceCache();
 
-                        // Start Phase 0: metadata refresh
-                        let tokens = _collectTokens(enabledActions);
+                        // Clear any previous CB abort signal for this chore
+                        _cbAbortChore := Array.filter<(Text, Bool)>(_cbAbortChore, func((k, _)) { k != instanceId });
+
+                        // Start Phase 0: metadata refresh (include CB tokens)
+                        let baseTokens = _collectTokens(enabledActions);
+                        let cbTokens = _collectCircuitBreakerTokens();
+                        let tokenBuf = Buffer.fromArray<Principal>(baseTokens);
+                        for (cbt in cbTokens.vals()) {
+                            var found = false;
+                            for (t in tokenBuf.vals()) { if (t == cbt) found := true };
+                            if (not found) tokenBuf.add(cbt);
+                        };
+                        let tokens = Buffer.toArray(tokenBuf);
                         if (tokens.size() > 0) {
                             let taskKey = "trade-meta-" # instanceId;
                             let taskFn = _makeRefreshMetadataTask(taskKey, tokens);
@@ -3865,8 +4525,17 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             return #ContinueIn(5);
                         };
 
-                        // No tokens to refresh → skip to Phase 1: price fetch
-                        let pairs = _collectPairs(enabledActions);
+                        // No tokens to refresh → skip to Phase 1: price fetch (include CB pairs)
+                        let basePairs0 = _collectPairs(enabledActions);
+                        let cbPairs0 = _collectCircuitBreakerPairs();
+                        let pairBuf0 = Buffer.fromArray<(Principal, Principal)>(basePairs0);
+                        for (cp in cbPairs0.vals()) {
+                            let key = pairKey(cp.0, cp.1);
+                            var found = false;
+                            for ((i, o) in pairBuf0.vals()) { if (pairKey(i, o) == key) found := true };
+                            if (not found) pairBuf0.add(cp);
+                        };
+                        let pairs = Buffer.toArray(pairBuf0);
                         if (pairs.size() > 0) {
                             let taskKey = "trade-prices-" # instanceId;
                             let taskFn = _makeFetchPricesTask(taskKey, pairs);
@@ -3875,17 +4544,36 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             return #ContinueIn(5);
                         };
 
-                        // No pairs either → start first trade action directly
+                        // No pairs either → run CB check before starting trade actions
+                        if (circuitBreakerEnabled and circuitBreakerRules.size() > 0) {
+                            let cbTaskKey = "trade-cb-check-" # instanceId;
+                            let cbTaskFn = func(): async BotChoreTypes.TaskAction {
+                                evaluateCircuitBreakerRules(instanceId);
+                                #Done
+                            };
+                            choreEngine.setPendingTask(instanceId, cbTaskKey, cbTaskFn);
+                            logEngine.logInfo(src, "Running circuit breaker check", null, []);
+                            return #ContinueIn(5);
+                        };
                         _trade_startCurrentTask(instanceId);
                         return #ContinueIn(10);
                     };
 
                     case (?prevTask) {
-                        // Metadata refresh completed → start price fetch
+                        // Metadata refresh completed → start price fetch (include CB pairs)
                         if (Text.startsWith(prevTask.taskId, #text("trade-meta-"))) {
                             logEngine.logInfo(src, "Phase 0 complete: metadata refreshed", null, []);
                             let st = _trade_getState(instanceId);
-                            let pairs = _collectPairs(st.actions);
+                            let basePairs1 = _collectPairs(st.actions);
+                            let cbPairs1 = _collectCircuitBreakerPairs();
+                            let pairBuf1 = Buffer.fromArray<(Principal, Principal)>(basePairs1);
+                            for (cp in cbPairs1.vals()) {
+                                let key = pairKey(cp.0, cp.1);
+                                var found = false;
+                                for ((i, o) in pairBuf1.vals()) { if (pairKey(i, o) == key) found := true };
+                                if (not found) pairBuf1.add(cp);
+                            };
+                            let pairs = Buffer.toArray(pairBuf1);
                             if (pairs.size() > 0) {
                                 let taskKey = "trade-prices-" # instanceId;
                                 let taskFn = _makeFetchPricesTask(taskKey, pairs);
@@ -3893,14 +4581,47 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                                 logEngine.logInfo(src, "Phase 1: fetching prices for " # Nat.toText(pairs.size()) # " pairs", null, []);
                                 return #ContinueIn(5);
                             };
-                            // No pairs → start first trade task
+                            // No pairs → run CB check before starting trade tasks
+                            if (circuitBreakerEnabled and circuitBreakerRules.size() > 0) {
+                                let cbTaskKey = "trade-cb-check-" # instanceId;
+                                let cbTaskFn = func(): async BotChoreTypes.TaskAction {
+                                    evaluateCircuitBreakerRules(instanceId);
+                                    #Done
+                                };
+                                choreEngine.setPendingTask(instanceId, cbTaskKey, cbTaskFn);
+                                logEngine.logInfo(src, "Running circuit breaker check", null, []);
+                                return #ContinueIn(5);
+                            };
                             _trade_startCurrentTask(instanceId);
                             return #ContinueIn(10);
                         };
 
-                        // Price fetch completed → start executing trade actions
+                        // Price fetch completed → run circuit breaker check before trade actions
                         if (Text.startsWith(prevTask.taskId, #text("trade-prices-"))) {
                             logEngine.logInfo(src, "Phase 1 complete: prices fetched", null, []);
+                            if (circuitBreakerEnabled and circuitBreakerRules.size() > 0) {
+                                let cbTaskKey = "trade-cb-check-" # instanceId;
+                                let cbTaskFn = func(): async BotChoreTypes.TaskAction {
+                                    evaluateCircuitBreakerRules(instanceId);
+                                    #Done
+                                };
+                                choreEngine.setPendingTask(instanceId, cbTaskKey, cbTaskFn);
+                                logEngine.logInfo(src, "Running circuit breaker check", null, []);
+                                return #ContinueIn(5);
+                            };
+                            _trade_startCurrentTask(instanceId);
+                            return #ContinueIn(10);
+                        };
+
+                        // Circuit breaker check completed → check abort flag
+                        if (Text.startsWith(prevTask.taskId, #text("trade-cb-check-"))) {
+                            let aborted = getFromMap(_cbAbortChore, instanceId, false);
+                            if (aborted) {
+                                logEngine.logWarning(src, "Circuit breaker triggered — aborting trade chore run", null, []);
+                                _cbAbortChore := Array.filter<(Text, Bool)>(_cbAbortChore, func((k, _)) { k != instanceId });
+                                return #Done;
+                            };
+                            logEngine.logInfo(src, "Circuit breaker check passed", null, []);
                             _trade_startCurrentTask(instanceId);
                             return #ContinueIn(10);
                         };
@@ -4010,10 +4731,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     addUnique(denomToken);
                     addUnique(icpToken);
                     addUnique(ckusdcToken);
+                    // Include CB tokens so metadata is available for CB evaluation
+                    for (cbt in _collectCircuitBreakerTokens().vals()) { addUnique(cbt) };
                     Buffer.toArray(buf)
                 };
 
-                // Helper: collect all price pairs needed for rebalancing + snapshots
+                // Helper: collect all price pairs needed for rebalancing + snapshots + CB
                 let collectAllPairs = func(): [(Principal, Principal)] {
                     let buf = Buffer.Buffer<(Principal, Principal)>(targets.size() * 2 + 2);
                     let addPair = func(inp: Principal, out: Principal) {
@@ -4023,13 +4746,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                         if (not found) { buf.add((inp, out)) };
                     };
                     for (t in targets.vals()) {
-                        // token → denomToken (for rebalancer portfolio valuation)
                         if (t.token != denomToken) { addPair(t.token, denomToken) };
-                        // token → ICP (for snapshot ICP valuation)
                         if (t.token != icpToken) { addPair(t.token, icpToken) };
                     };
-                    // ICP → ckUSDC (for snapshot USD valuation)
                     addPair(icpToken, ckusdcToken);
+                    // Include CB pairs
+                    for (cp in _collectCircuitBreakerPairs().vals()) { addPair(cp.0, cp.1) };
                     Buffer.toArray(buf)
                 };
 
@@ -4040,6 +4762,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             logEngine.logInfo(src, "Rebalance skipped: no targets configured", null, []);
                             return #Done;
                         };
+
+                        // Clear any previous CB abort signal for this chore
+                        _cbAbortChore := Array.filter<(Text, Bool)>(_cbAbortChore, func((k, _)) { k != instanceId });
 
                         resetPriceCache();
 
@@ -4098,9 +4823,37 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             return #ContinueIn(5);
                         };
 
-                        // Phase 2 complete → Phase 3: execute rebalance trade
+                        // Phase 2 complete → CB check before Phase 3
                         if (Text.startsWith(prevTask.taskId, #text("rebal-snap-before-"))) {
                             logEngine.logInfo(src, "Phase 2 complete: pre-trade snapshot taken", null, []);
+                            if (circuitBreakerEnabled and circuitBreakerRules.size() > 0) {
+                                let cbTaskKey = "rebal-cb-check-" # instanceId;
+                                let cbTaskFn = func(): async BotChoreTypes.TaskAction {
+                                    evaluateCircuitBreakerRules(instanceId);
+                                    #Done
+                                };
+                                choreEngine.setPendingTask(instanceId, cbTaskKey, cbTaskFn);
+                                logEngine.logInfo(src, "Running circuit breaker check", null, []);
+                                return #ContinueIn(5);
+                            };
+                            // No CB rules → proceed to rebalance directly
+                            let taskFn = func(): async BotChoreTypes.TaskAction {
+                                try { ignore await executeRebalance(instanceId); #Done }
+                                catch (e) { #Error("Rebalance failed: " # Error.message(e)) }
+                            };
+                            choreEngine.setPendingTask(instanceId, "rebalance-exec-" # Nat.toText(Int.abs(Time.now())), taskFn);
+                            return #ContinueIn(15);
+                        };
+
+                        // CB check complete → check abort flag, then Phase 3
+                        if (Text.startsWith(prevTask.taskId, #text("rebal-cb-check-"))) {
+                            let aborted = getFromMap(_cbAbortChore, instanceId, false);
+                            if (aborted) {
+                                logEngine.logWarning(src, "Circuit breaker triggered — aborting rebalance chore run", null, []);
+                                _cbAbortChore := Array.filter<(Text, Bool)>(_cbAbortChore, func((k, _)) { k != instanceId });
+                                return #Done;
+                            };
+                            logEngine.logInfo(src, "Circuit breaker check passed", null, []);
                             let taskFn = func(): async BotChoreTypes.TaskAction {
                                 try { ignore await executeRebalance(instanceId); #Done }
                                 catch (e) { #Error("Rebalance failed: " # Error.message(e)) }
@@ -5721,6 +6474,120 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             Array.tabulate<T.DailyPriceCandle>(end - off, func(i) { filtered[off + i] })
         };
         { entries = page; totalCount = total }
+    };
+
+    // ============================================
+    // PUBLIC API — CIRCUIT BREAKER
+    // ============================================
+
+    public shared query (msg) func getCircuitBreakerRules(): async [T.CircuitBreakerRule] {
+        assertPermission(msg.caller, T.TradingPermission.ViewChores);
+        circuitBreakerRules
+    };
+
+    public shared (msg) func addCircuitBreakerRule(input: T.CircuitBreakerRuleInput): async Nat {
+        assertPermission(msg.caller, T.TradingPermission.ManageCircuitBreaker);
+        let id = circuitBreakerNextRuleId;
+        circuitBreakerNextRuleId += 1;
+        let rule: T.CircuitBreakerRule = {
+            id = id;
+            name = input.name;
+            enabled = input.enabled;
+            conditions = input.conditions;
+            actions = input.actions;
+        };
+        circuitBreakerRules := Array.append(circuitBreakerRules, [rule]);
+        logEngine.logInfo("api", "Added circuit breaker rule #" # Nat.toText(id) # ": " # input.name, ?msg.caller, []);
+        id
+    };
+
+    public shared (msg) func updateCircuitBreakerRule(id: Nat, input: T.CircuitBreakerRuleInput): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageCircuitBreaker);
+        var found = false;
+        circuitBreakerRules := Array.map<T.CircuitBreakerRule, T.CircuitBreakerRule>(circuitBreakerRules, func(r) {
+            if (r.id == id) {
+                found := true;
+                { id = id; name = input.name; enabled = input.enabled; conditions = input.conditions; actions = input.actions }
+            } else { r }
+        });
+        if (not found) { Debug.trap("Circuit breaker rule not found: " # Nat.toText(id)) };
+        logEngine.logInfo("api", "Updated circuit breaker rule #" # Nat.toText(id), ?msg.caller, []);
+    };
+
+    public shared (msg) func removeCircuitBreakerRule(id: Nat): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageCircuitBreaker);
+        let before = circuitBreakerRules.size();
+        circuitBreakerRules := Array.filter<T.CircuitBreakerRule>(circuitBreakerRules, func(r) { r.id != id });
+        if (circuitBreakerRules.size() == before) { Debug.trap("Circuit breaker rule not found: " # Nat.toText(id)) };
+        logEngine.logInfo("api", "Removed circuit breaker rule #" # Nat.toText(id), ?msg.caller, []);
+    };
+
+    public shared (msg) func enableCircuitBreakerRule(id: Nat, enabled: Bool): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageCircuitBreaker);
+        var found = false;
+        circuitBreakerRules := Array.map<T.CircuitBreakerRule, T.CircuitBreakerRule>(circuitBreakerRules, func(r) {
+            if (r.id == id) { found := true; { r with enabled = enabled } } else { r }
+        });
+        if (not found) { Debug.trap("Circuit breaker rule not found: " # Nat.toText(id)) };
+        logEngine.logInfo("api", (if (enabled) "Enabled" else "Disabled") # " circuit breaker rule #" # Nat.toText(id), ?msg.caller, []);
+    };
+
+    public shared query (msg) func getCircuitBreakerEnabled(): async Bool {
+        assertPermission(msg.caller, T.TradingPermission.ViewChores);
+        circuitBreakerEnabled
+    };
+
+    public shared (msg) func setCircuitBreakerEnabled(enabled: Bool): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageCircuitBreaker);
+        circuitBreakerEnabled := enabled;
+        logEngine.logInfo("api", "Circuit breaker " # (if (enabled) "enabled" else "disabled"), ?msg.caller, []);
+    };
+
+    public shared query (msg) func getCircuitBreakerLog(q: T.CBLogQuery): async T.CBLogResult {
+        assertPermission(msg.caller, T.TradingPermission.ViewLogs);
+
+        var filtered = circuitBreakerLog;
+
+        switch (q.ruleId) {
+            case (?rid) { filtered := Array.filter<T.CircuitBreakerEvent>(filtered, func(e) { e.ruleId == rid }) };
+            case null {};
+        };
+        switch (q.fromTime) {
+            case (?ft) { filtered := Array.filter<T.CircuitBreakerEvent>(filtered, func(e) { e.timestamp >= ft }) };
+            case null {};
+        };
+        switch (q.toTime) {
+            case (?tt) { filtered := Array.filter<T.CircuitBreakerEvent>(filtered, func(e) { e.timestamp <= tt }) };
+            case null {};
+        };
+
+        let total = filtered.size();
+        let startIdx = switch (q.startId) {
+            case (?sid) {
+                var idx: Nat = 0;
+                var found = false;
+                var scanIdx: Nat = 0;
+                while (scanIdx < total and not found) {
+                    if (filtered[scanIdx].id >= sid) { idx := scanIdx; found := true };
+                    scanIdx += 1;
+                };
+                idx
+            };
+            case null { 0 };
+        };
+        let lim = switch (q.limit) { case (?l) l; case null 50 };
+        let endIdx = Nat.min(startIdx + lim, total);
+        let page = if (startIdx >= total) { [] } else {
+            Array.tabulate<T.CircuitBreakerEvent>(endIdx - startIdx, func(i) { filtered[startIdx + i] })
+        };
+        { entries = page; totalCount = total; hasMore = endIdx < total }
+    };
+
+    public shared (msg) func clearCircuitBreakerLog(): async () {
+        assertPermission(msg.caller, T.TradingPermission.ManageLogs);
+        circuitBreakerLog := [];
+        circuitBreakerLogNextId := 0;
+        logEngine.logInfo("api", "Cleared circuit breaker log", ?msg.caller, []);
     };
 
 };

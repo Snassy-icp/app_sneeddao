@@ -468,6 +468,7 @@ module {
         #ConfigureDistribution;     // 210: Add/update/remove distribution lists
         #ManageDistributeFunds;     // 211: Start/stop/pause/resume/trigger distribute-funds chore
         #ManageSnapshotChore;       // 212: Start/stop/pause/resume/trigger snapshot chore
+        #ManageCircuitBreaker;      // 213: Configure circuit breaker rules
     };
 
     /// Numeric IDs for permission types (for stable storage).
@@ -494,6 +495,7 @@ module {
         public let ConfigureDistribution: Nat = 210;
         public let ManageDistributeFunds: Nat = 211;
         public let ManageSnapshotChore: Nat = 212;
+        public let ManageCircuitBreaker: Nat = 213;
     };
 
     /// Info about a botkey principal and their permissions (for API responses).
@@ -795,6 +797,151 @@ module {
 
     public type ManagementCanister = actor {
         canister_status: shared (CanisterStatusArgs) -> async CanisterStatusResult;
+    };
+
+    // ============================================
+    // CIRCUIT BREAKER TYPES
+    // ============================================
+
+    // Condition type IDs (stored as Nat, not enum)
+    public module CBConditionType {
+        public let Price: Nat = 0;
+        public let Value: Nat = 1;
+        public let Balance: Nat = 2;
+    };
+
+    // Operator IDs
+    public module CBOperator {
+        public let GreaterThan: Nat = 0;
+        public let LessThan: Nat = 1;
+        public let InsideRange: Nat = 2;
+        public let OutsideRange: Nat = 3;
+        public let PercentChange: Nat = 4;
+    };
+
+    // Change direction IDs (for PercentChange operator)
+    public module CBChangeDirection {
+        public let Up: Nat = 0;
+        public let Down: Nat = 1;
+        public let Either: Nat = 2;
+    };
+
+    // Value source type IDs
+    public module CBValueSourceType {
+        public let SpecificToken: Nat = 0;
+        public let RebalChoreTokens: Nat = 1;
+        public let AllTokensInAccount: Nat = 2;
+    };
+
+    // Action type IDs
+    public module CBActionType {
+        public let PauseTokenInRebalChore: Nat = 0;
+        public let PauseTokenGlobally: Nat = 1;
+        public let FreezeTokenGlobally: Nat = 2;
+        public let StopChore: Nat = 3;
+        public let PauseChore: Nat = 4;
+        public let StopAllChoresByType: Nat = 5;
+        public let PauseAllChoresByType: Nat = 6;
+        public let StopAllChores: Nat = 7;
+        public let PauseAllChores: Nat = 8;
+    };
+
+    /// Source of value for a value condition (type 1).
+    public type CBValueSource = {
+        sourceType: Nat;        // 0=specificToken, 1=rebalChoreTokens, 2=allTokensInAccount
+        token: ?Principal;      // for type 0
+        subaccount: ?Nat;       // for types 0, 2 (null = main)
+        choreInstanceId: ?Text; // for type 1
+    };
+
+    /// Unified flat condition record — works for price, value, and balance conditions.
+    public type CircuitBreakerCondition = {
+        conditionType: Nat;       // 0=price, 1=value, 2=balance
+
+        // Price (type 0): token pair
+        priceToken1: ?Principal;
+        priceToken2: ?Principal;
+
+        // Balance (type 2): single token in specific account
+        balanceToken: ?Principal;
+        balanceSubaccount: ?Nat;  // null = main account
+
+        // Value (type 1): sum of multiple sources
+        valueSources: [CBValueSource];
+
+        // Comparison
+        operator: Nat;            // 0=greaterThan, 1=lessThan, 2=insideRange, 3=outsideRange, 4=percentChange
+        threshold: ?Nat;          // for operators 0,1 (denomination units)
+        rangeMin: ?Nat;           // for operators 2,3
+        rangeMax: ?Nat;           // for operators 2,3
+        changePercentBps: ?Nat;   // for operator 4 (100 = 1%)
+        changeDirection: ?Nat;    // for operator 4: 0=up, 1=down, 2=either
+        changePeriodSeconds: ?Nat; // for operator 4: lookback window
+
+        // Denomination (for value conditions)
+        denominationToken: ?Principal; // null = ICP
+    };
+
+    /// Action to take when a circuit breaker rule triggers.
+    public type CircuitBreakerActionConfig = {
+        actionType: Nat;
+        // 0: pauseTokenInRebalChore   (needs token + choreInstanceId)
+        // 1: pauseTokenGlobally       (needs token)
+        // 2: freezeTokenGlobally      (needs token)
+        // 3: stopChore                (needs choreInstanceId)
+        // 4: pauseChore               (needs choreInstanceId)
+        // 5: stopAllChoresByType      (needs choreTypeId)
+        // 6: pauseAllChoresByType     (needs choreTypeId)
+        // 7: stopAllChores
+        // 8: pauseAllChores
+
+        token: ?Principal;
+        choreInstanceId: ?Text;
+        choreTypeId: ?Text;
+    };
+
+    /// A circuit breaker rule with conditions (AND-ed) and actions.
+    public type CircuitBreakerRule = {
+        id: Nat;
+        name: Text;
+        enabled: Bool;
+        conditions: [CircuitBreakerCondition];
+        actions: [CircuitBreakerActionConfig];
+    };
+
+    /// Input type for creating/updating rules (no id field).
+    public type CircuitBreakerRuleInput = {
+        name: Text;
+        enabled: Bool;
+        conditions: [CircuitBreakerCondition];
+        actions: [CircuitBreakerActionConfig];
+    };
+
+    /// A log entry for a circuit breaker trigger event.
+    public type CircuitBreakerEvent = {
+        id: Nat;
+        timestamp: Int;
+        ruleId: Nat;
+        ruleName: Text;
+        choreId: ?Text;
+        conditionSummary: Text;
+        actionsTaken: [Text];
+    };
+
+    /// Query filter for the circuit breaker event log.
+    public type CBLogQuery = {
+        startId: ?Nat;
+        limit: ?Nat;
+        ruleId: ?Nat;
+        fromTime: ?Int;
+        toTime: ?Int;
+    };
+
+    /// Result of a circuit breaker log query.
+    public type CBLogResult = {
+        entries: [CircuitBreakerEvent];
+        totalCount: Nat;
+        hasMore: Bool;
     };
 
 };

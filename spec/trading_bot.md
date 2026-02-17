@@ -91,6 +91,88 @@ freezeToken(token: Principal) : async ()    // Requires ManageTokenRegistry
 unfreezeToken(token: Principal) : async ()  // Requires ManageTokenRegistry
 ```
 
+### Circuit Breaker
+
+The circuit breaker is an automated safety system that can pause or stop bot activities when configurable conditions are met.
+
+#### Concepts
+
+- **Rules**: Independent circuit breaker rules, each with conditions (AND-gated) and actions.
+- **Conditions**: Three types — Price (token pair), Value (sum of multiple sources), Balance (specific token in account).
+- **Operators**: Greater than, Less than, Inside range, Outside range, Percentage change.
+- **Percentage Change**: Compares current value against historical data from a specified lookback period. Supports up/down/either direction.
+- **Value Sources**: Specific token in account, all tokens in a rebalancing chore, all tokens in an account. Multiple sources are de-duplicated by (token, subaccount) and summed.
+- **Actions**: Pause token in rebal chore, pause/freeze token globally, stop/pause chore, stop/pause all chores by type, stop/pause all chores.
+- **Manual Reset**: When a circuit breaker triggers, affected chores/tokens remain paused/stopped until manually resumed by the user.
+- **Event Log**: All trigger events are recorded with timestamps, rule info, condition summaries, and actions taken.
+
+#### Pipeline Integration
+
+The circuit breaker check runs **once per chore run**:
+- **Trade chore**: After price fetch (Phase 1), before the first trade action.
+- **Rebalance chore**: After the before-snapshot (Phase 2), before the rebalance execution.
+
+Both conductors augment their metadata/price fetch phases with tokens and pairs required by enabled CB rules, ensuring fresh data is available for condition evaluation.
+
+If any rule triggers, the current chore run is aborted (returns `#Done`), and the specified actions execute.
+
+#### Data Model
+
+```motoko
+// Condition types: 0=price, 1=value, 2=balance
+// Operators: 0=greaterThan, 1=lessThan, 2=insideRange, 3=outsideRange, 4=percentChange
+// Change directions: 0=up, 1=down, 2=either
+// Value source types: 0=specificToken, 1=rebalChoreTokens, 2=allTokensInAccount
+// Action types: 0=pauseTokenInRebalChore, 1=pauseTokenGlobally, 2=freezeTokenGlobally,
+//   3=stopChore, 4=pauseChore, 5=stopAllChoresByType, 6=pauseAllChoresByType,
+//   7=stopAllChores, 8=pauseAllChores
+```
+
+See `Types.mo` for full type definitions: `CircuitBreakerCondition`, `CircuitBreakerActionConfig`, `CircuitBreakerRule`, `CircuitBreakerEvent`, `CBValueSource`, `CBLogQuery`, `CBLogResult`.
+
+#### Stable Variables
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `circuitBreakerEnabled` | `Bool` | Global enable/disable for all CB evaluation |
+| `circuitBreakerRules` | `[CircuitBreakerRule]` | All configured rules |
+| `circuitBreakerNextRuleId` | `Nat` | Auto-increment counter for rule IDs |
+| `circuitBreakerLog` | `[CircuitBreakerEvent]` | Event log (circular buffer) |
+| `circuitBreakerLogNextId` | `Nat` | Auto-increment counter for event IDs |
+| `circuitBreakerMaxLogEntries` | `Nat` | Max log size (default: 1000) |
+
+#### API
+
+```motoko
+// Rules CRUD
+getCircuitBreakerRules() : async [CircuitBreakerRule]              // query, ViewChores
+addCircuitBreakerRule(input: CircuitBreakerRuleInput) : async Nat  // ManageCircuitBreaker
+updateCircuitBreakerRule(id: Nat, input: CircuitBreakerRuleInput) : async ()  // ManageCircuitBreaker
+removeCircuitBreakerRule(id: Nat) : async ()                       // ManageCircuitBreaker
+enableCircuitBreakerRule(id: Nat, enabled: Bool) : async ()        // ManageCircuitBreaker
+
+// Global toggle
+getCircuitBreakerEnabled() : async Bool                            // query, ViewChores
+setCircuitBreakerEnabled(enabled: Bool) : async ()                 // ManageCircuitBreaker
+
+// Event log
+getCircuitBreakerLog(q: CBLogQuery) : async CBLogResult            // query, ViewLogs
+clearCircuitBreakerLog() : async ()                                // ManageLogs
+```
+
+#### Permission
+
+Permission ID `213` — `ManageCircuitBreaker`: Required for creating, updating, deleting, and enabling/disabling rules and the global CB toggle.
+
+#### Frontend
+
+The Circuit Breaker tab in the TradingBotLogs section provides:
+- Global enable/disable toggle
+- Rule list with summary cards (conditions, actions, enable/disable, edit, delete)
+- Rule builder form with type-specific condition/action fields
+- Event log table with time, rule, conditions, and actions taken
+- Chore status lamps show an orange "CB" indicator when a chore is paused/stopped by a circuit breaker rule
+
 ### Well-Known Token Constants
 
 ```
@@ -684,6 +766,14 @@ var botLogEntries: [BotLogTypes.LogEntry]
 var botLogNextId: Nat
 var botLogLevel: Nat
 var botLogMaxEntries: Nat
+
+// Circuit Breaker
+var circuitBreakerEnabled: Bool
+var circuitBreakerRules: [CircuitBreakerRule]
+var circuitBreakerNextRuleId: Nat
+var circuitBreakerLog: [CircuitBreakerEvent]
+var circuitBreakerLogNextId: Nat
+var circuitBreakerMaxLogEntries: Nat
 ```
 
 ---

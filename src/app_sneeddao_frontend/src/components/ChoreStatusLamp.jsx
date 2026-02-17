@@ -6,6 +6,7 @@ export const LAMP_OK = 'ok';
 export const LAMP_ACTIVE = 'active';
 export const LAMP_WARN = 'warn';
 export const LAMP_ERROR = 'error';
+export const LAMP_CB = 'cb'; // Circuit breaker triggered
 
 export const LAMP_COLORS = {
     off:    '#6b7280',
@@ -13,6 +14,7 @@ export const LAMP_COLORS = {
     active: '#22c55e',
     warn:   '#f59e0b',
     error:  '#ef4444',
+    cb:     '#e67e22', // Orange for circuit breaker
 };
 
 export const LAMP_LABELS = {
@@ -21,6 +23,7 @@ export const LAMP_LABELS = {
     active: 'Running',
     warn:   'Attention needed',
     error:  'Error',
+    cb:     'Circuit breaker triggered',
 };
 
 // --- Chore-specific hard deadlines ---
@@ -33,9 +36,33 @@ export const CHORE_DEADLINES = {
 
 // --- Derive lamp state for each timer level ---
 
-export function getSchedulerLampState(chore) {
-    if (!chore.enabled) return { state: LAMP_OFF, label: 'Stopped' };
-    if (chore.paused) return { state: LAMP_OFF, label: 'Paused' };
+export function getSchedulerLampState(chore, cbEvents) {
+    if (!chore.enabled) {
+        // Check if stopped by a circuit breaker
+        if (cbEvents?.length > 0) {
+            const choreId = chore.choreId || chore.instanceId;
+            const cbMatch = cbEvents.find(e =>
+                e.actionsTaken?.some(a =>
+                    a.includes(choreId) && (a.includes('Stopped') || a.includes('stopped'))
+                )
+            );
+            if (cbMatch) return { state: LAMP_CB, label: `Stopped by CB rule: ${cbMatch.ruleName}` };
+        }
+        return { state: LAMP_OFF, label: 'Stopped' };
+    }
+    if (chore.paused) {
+        // Check if paused by a circuit breaker
+        if (cbEvents?.length > 0) {
+            const choreId = chore.choreId || chore.instanceId;
+            const cbMatch = cbEvents.find(e =>
+                e.actionsTaken?.some(a =>
+                    a.includes(choreId) && (a.includes('Paused') || a.includes('paused'))
+                )
+            );
+            if (cbMatch) return { state: LAMP_CB, label: `Paused by CB rule: ${cbMatch.ruleName}` };
+        }
+        return { state: LAMP_OFF, label: 'Paused' };
+    }
     if (chore.stopRequested) return { state: LAMP_ERROR, label: 'Stop requested' };
 
     const isScheduled = 'Scheduled' in chore.schedulerStatus;
@@ -128,35 +155,38 @@ export function getTaskLampState(chore) {
 
 // --- Summary rollup ---
 export function summarizeLampStates(...states) {
-    let has = { error: false, warn: false, active: false, ok: false };
+    let has = { error: false, warn: false, active: false, ok: false, cb: false };
     for (const s of states) {
         if (s === LAMP_ERROR) has.error = true;
+        else if (s === LAMP_CB) has.cb = true;
         else if (s === LAMP_WARN) has.warn = true;
         else if (s === LAMP_ACTIVE) has.active = true;
         else if (s === LAMP_OK) has.ok = true;
     }
     if (has.error) return LAMP_ERROR;
+    if (has.cb) return LAMP_CB;
     if (has.warn) return LAMP_WARN;
     if (has.active) return LAMP_ACTIVE;
     if (has.ok) return LAMP_OK;
     return LAMP_OFF;
 }
 
-export function getChoreSummaryLamp(chore) {
-    const s = getSchedulerLampState(chore).state;
+export function getChoreSummaryLamp(chore, cbEvents) {
+    const s = getSchedulerLampState(chore, cbEvents).state;
     const c = getConductorLampState(chore).state;
     const t = getTaskLampState(chore).state;
     return summarizeLampStates(s, c, t);
 }
 
-export function getAllChoresSummaryLamp(choreStatuses) {
+export function getAllChoresSummaryLamp(choreStatuses, cbEvents) {
     if (!choreStatuses || choreStatuses.length === 0) return LAMP_OFF;
-    return summarizeLampStates(...choreStatuses.map(getChoreSummaryLamp));
+    return summarizeLampStates(...choreStatuses.map(c => getChoreSummaryLamp(c, cbEvents)));
 }
 
 export function getSummaryLabel(state, context) {
     switch (state) {
         case LAMP_ERROR: return `${context}: Error`;
+        case LAMP_CB: return `${context}: Circuit breaker triggered`;
         case LAMP_WARN: return `${context}: Attention needed`;
         case LAMP_ACTIVE: return `${context}: Active`;
         case LAMP_OK: return `${context}: Healthy`;
@@ -168,6 +198,7 @@ export function getSummaryLabel(state, context) {
 const StatusLamp = ({ state, size = 10, label, style: extraStyle, showLabel = false }) => {
     const color = LAMP_COLORS[state] || LAMP_COLORS.off;
     const isActive = state === LAMP_ACTIVE;
+    const isCB = state === LAMP_CB;
 
     return (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', ...extraStyle }} title={label}>
@@ -181,7 +212,7 @@ const StatusLamp = ({ state, size = 10, label, style: extraStyle, showLabel = fa
                     boxShadow: state !== LAMP_OFF
                         ? `0 0 ${Math.round(size * 0.5)}px ${color}80`
                         : `inset 0 1px 2px rgba(0,0,0,0.2)`,
-                    animation: isActive ? 'lampPulse 2s ease-in-out infinite' : 'none',
+                    animation: isActive ? 'lampPulse 2s ease-in-out infinite' : isCB ? 'lampPulse 1.5s ease-in-out infinite' : 'none',
                     '--lamp-color': color,
                     flexShrink: 0,
                     border: state === LAMP_OFF ? '1px solid #9ca3af40' : 'none',

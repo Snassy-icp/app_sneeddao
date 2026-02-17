@@ -37,6 +37,8 @@ export const idlFactory = ({ IDL }) => {
         WithdrawFunds: IDL.Null,
         ConfigureDistribution: IDL.Null,
         ManageDistributeFunds: IDL.Null,
+        ManageSnapshotChore: IDL.Null,
+        ManageCircuitBreaker: IDL.Null,
     });
 
     const HotkeyPermissionInfo = IDL.Record({
@@ -544,6 +546,79 @@ export const idlFactory = ({ IDL }) => {
     });
 
     // ==========================================
+    // Circuit Breaker types
+    // ==========================================
+    const CBValueSource = IDL.Record({
+        sourceType: IDL.Nat,
+        token: IDL.Opt(IDL.Principal),
+        subaccount: IDL.Opt(IDL.Nat),
+        choreInstanceId: IDL.Opt(IDL.Text),
+    });
+
+    const CircuitBreakerCondition = IDL.Record({
+        conditionType: IDL.Nat,
+        priceToken1: IDL.Opt(IDL.Principal),
+        priceToken2: IDL.Opt(IDL.Principal),
+        balanceToken: IDL.Opt(IDL.Principal),
+        balanceSubaccount: IDL.Opt(IDL.Nat),
+        valueSources: IDL.Vec(CBValueSource),
+        operator: IDL.Nat,
+        threshold: IDL.Opt(IDL.Nat),
+        rangeMin: IDL.Opt(IDL.Nat),
+        rangeMax: IDL.Opt(IDL.Nat),
+        changePercentBps: IDL.Opt(IDL.Nat),
+        changeDirection: IDL.Opt(IDL.Nat),
+        changePeriodSeconds: IDL.Opt(IDL.Nat),
+        denominationToken: IDL.Opt(IDL.Principal),
+    });
+
+    const CircuitBreakerActionConfig = IDL.Record({
+        actionType: IDL.Nat,
+        token: IDL.Opt(IDL.Principal),
+        choreInstanceId: IDL.Opt(IDL.Text),
+        choreTypeId: IDL.Opt(IDL.Text),
+    });
+
+    const CircuitBreakerRule = IDL.Record({
+        id: IDL.Nat,
+        name: IDL.Text,
+        enabled: IDL.Bool,
+        conditions: IDL.Vec(CircuitBreakerCondition),
+        actions: IDL.Vec(CircuitBreakerActionConfig),
+    });
+
+    const CircuitBreakerRuleInput = IDL.Record({
+        name: IDL.Text,
+        enabled: IDL.Bool,
+        conditions: IDL.Vec(CircuitBreakerCondition),
+        actions: IDL.Vec(CircuitBreakerActionConfig),
+    });
+
+    const CircuitBreakerEvent = IDL.Record({
+        id: IDL.Nat,
+        timestamp: IDL.Int,
+        ruleId: IDL.Nat,
+        ruleName: IDL.Text,
+        choreId: IDL.Opt(IDL.Text),
+        conditionSummary: IDL.Text,
+        actionsTaken: IDL.Vec(IDL.Text),
+    });
+
+    const CBLogQuery = IDL.Record({
+        startId: IDL.Opt(IDL.Nat),
+        limit: IDL.Opt(IDL.Nat),
+        ruleId: IDL.Opt(IDL.Nat),
+        fromTime: IDL.Opt(IDL.Int),
+        toTime: IDL.Opt(IDL.Int),
+    });
+
+    const CBLogResult = IDL.Record({
+        entries: IDL.Vec(CircuitBreakerEvent),
+        totalCount: IDL.Nat,
+        hasMore: IDL.Bool,
+    });
+
+    // ==========================================
     // Service definition
     // ==========================================
     return IDL.Service({
@@ -702,6 +777,17 @@ export const idlFactory = ({ IDL }) => {
         // Daily OHLC Summaries
         getDailyPortfolioSummaries: IDL.Func([DailyPortfolioSummaryQuery], [IDL.Record({ entries: IDL.Vec(DailyPortfolioSummary), totalCount: IDL.Nat })], ['query']),
         getDailyPriceCandles: IDL.Func([DailyPriceCandleQuery], [IDL.Record({ entries: IDL.Vec(DailyPriceCandle), totalCount: IDL.Nat })], ['query']),
+
+        // Circuit Breaker
+        getCircuitBreakerRules: IDL.Func([], [IDL.Vec(CircuitBreakerRule)], ['query']),
+        addCircuitBreakerRule: IDL.Func([CircuitBreakerRuleInput], [IDL.Nat], []),
+        updateCircuitBreakerRule: IDL.Func([IDL.Nat, CircuitBreakerRuleInput], [], []),
+        removeCircuitBreakerRule: IDL.Func([IDL.Nat], [], []),
+        enableCircuitBreakerRule: IDL.Func([IDL.Nat, IDL.Bool], [], []),
+        getCircuitBreakerEnabled: IDL.Func([], [IDL.Bool], ['query']),
+        setCircuitBreakerEnabled: IDL.Func([IDL.Bool], [], []),
+        getCircuitBreakerLog: IDL.Func([CBLogQuery], [CBLogResult], ['query']),
+        clearCircuitBreakerLog: IDL.Func([], [], []),
     });
 };
 

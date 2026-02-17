@@ -39,7 +39,7 @@ import { FaRobot, FaChevronUp, FaChevronDown, FaShieldAlt, FaGasPump, FaTrash } 
 import TokenIcon from './TokenIcon';
 import { getTokenMetadataSync, fetchAndCacheTokenMetadata } from '../hooks/useTokenCache';
 import StatusLamp, {
-    LAMP_OFF, LAMP_OK, LAMP_ACTIVE, LAMP_WARN, LAMP_ERROR,
+    LAMP_OFF, LAMP_OK, LAMP_ACTIVE, LAMP_WARN, LAMP_ERROR, LAMP_CB,
     LAMP_COLORS, LAMP_LABELS, CHORE_DEADLINES,
     getSchedulerLampState, getConductorLampState, getTaskLampState,
     summarizeLampStates, getChoreSummaryLamp, getAllChoresSummaryLamp, getSummaryLabel
@@ -211,6 +211,7 @@ export default function BotManagementPanel({
     identity,
     isAuthenticated,
     extraInfoContent,
+    cbEvents,
 }) {
     const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
@@ -1222,8 +1223,8 @@ export default function BotManagementPanel({
                             fontSize: '0.7rem', color: theme.colors.secondaryText,
                         }}>
                             {choreStatuses.map(chore => (
-                                <StatusLamp key={chore.choreId} state={getChoreSummaryLamp(chore)} size={8}
-                                    label={getSummaryLabel(getChoreSummaryLamp(chore), chore.choreName)} />
+                                <StatusLamp key={chore.choreId} state={getChoreSummaryLamp(chore, cbEvents)} size={8}
+                                    label={getSummaryLabel(getChoreSummaryLamp(chore, cbEvents), chore.choreName)} />
                             ))}
                             <span style={{ marginLeft: '2px' }}>Chores</span>
                         </span>
@@ -1250,8 +1251,8 @@ export default function BotManagementPanel({
                         {(hasPermission('ViewChores') || canManageAnyChore()) && (
                             <button style={{ ...tabStyle(activeTab === 'chores'), display: 'inline-flex', alignItems: 'center', gap: '6px' }} onClick={() => setActiveTab('chores')}>
                                 {choreStatuses.length > 0 && (
-                                    <StatusLamp state={getAllChoresSummaryLamp(choreStatuses)} size={8}
-                                        label={getSummaryLabel(getAllChoresSummaryLamp(choreStatuses), 'Chores')} />
+                                    <StatusLamp state={getAllChoresSummaryLamp(choreStatuses, cbEvents)} size={8}
+                                        label={getSummaryLabel(getAllChoresSummaryLamp(choreStatuses, cbEvents), 'Chores')} />
                                 )}
                                 Chores
                             </button>
@@ -1819,7 +1820,7 @@ export default function BotManagementPanel({
                                                     {choreTypeOrder.map(tid => {
                                                         const type = choreTypeMap[tid];
                                                         const worst = type.instances.reduce((w, i) => {
-                                                            const l = getChoreSummaryLamp(i);
+                                                            const l = getChoreSummaryLamp(i, cbEvents);
                                                             const p = { error: 4, warn: 3, active: 2, ok: 1, off: 0 };
                                                             return (p[l] || 0) > (p[w] || 0) ? l : w;
                                                         }, 'off');
@@ -1866,7 +1867,7 @@ export default function BotManagementPanel({
                                                                 <button key={inst.choreId} style={{ ...tabStyle(isActive), fontSize: '0.75rem', padding: '0.35rem 0.7rem', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
                                                                     onClick={() => setChoreActiveInstance(inst.choreId)}
                                                                     onDoubleClick={() => { setRenamingInstance(inst.choreId); setRenameLabel(inst.instanceLabel || inst.choreName || ''); }}>
-                                                                    <StatusLamp state={getChoreSummaryLamp(inst)} size={7} />
+                                                                    <StatusLamp state={getChoreSummaryLamp(inst, cbEvents)} size={7} />
                                                                     {inst.instanceLabel || inst.choreName}
                                                                 </button>
                                                             );
@@ -1941,7 +1942,7 @@ export default function BotManagementPanel({
                                                     const intervalSeconds = config ? Number(config.intervalSeconds) : 0;
                                                     const maxIntervalSeconds = config?.maxIntervalSeconds?.[0] != null ? Number(config.maxIntervalSeconds[0]) : null;
                                                     const fmtInt = (s) => { if (s <= 0) return '0'; if (s < 3600) return `${Math.round(s / 60)} min`; if (s < 86400) { const h = s / 3600; return Number.isInteger(h) ? `${h} hr` : `${h.toFixed(1)} hr`; } const d = s / 86400; return Number.isInteger(d) ? `${d} days` : `${d.toFixed(1)} days`; };
-                                                    const schedulerLamp = getSchedulerLampState(chore);
+                                                    const schedulerLamp = getSchedulerLampState(chore, cbEvents);
                                                     const conductorLamp = getConductorLampState(chore);
                                                     const taskLamp = getTaskLampState(chore);
                                                     const isEnabled = chore.enabled;

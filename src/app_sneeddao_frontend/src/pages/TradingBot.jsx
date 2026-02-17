@@ -18,7 +18,7 @@ import { useAuth } from '../AuthContext';
 import { createActor as createBotActor } from 'external/sneed_trading_bot';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { decodeIcrcAccount, encodeIcrcAccount } from '@dfinity/ledger-icrc';
-import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt, FaSearch, FaGripVertical, FaLock, FaLockOpen, FaPause, FaPlay, FaArrowUp, FaArrowDown, FaPaperPlane, FaExchangeAlt, FaWallet } from 'react-icons/fa';
+import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt, FaSearch, FaGripVertical, FaLock, FaLockOpen, FaPause, FaPlay, FaArrowUp, FaArrowDown, FaPaperPlane, FaExchangeAlt, FaWallet, FaShieldAlt, FaToggleOn, FaToggleOff } from 'react-icons/fa';
 import TokenIcon from '../components/TokenIcon';
 import PrincipalInput from '../components/PrincipalInput';
 import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
@@ -5108,6 +5108,688 @@ function PriceHistorySection({ lastKnownPrices, priceHistory, dailyPriceCandleDa
 }
 
 // ============================================
+// Circuit Breaker Panel
+// ============================================
+
+const CONDITION_TYPES = [
+    { value: 0, label: 'Price' },
+    { value: 1, label: 'Value' },
+    { value: 2, label: 'Balance' },
+];
+const OPERATORS = [
+    { value: 0, label: 'Greater than' },
+    { value: 1, label: 'Less than' },
+    { value: 2, label: 'Inside range' },
+    { value: 3, label: 'Outside range' },
+    { value: 4, label: '% Change' },
+];
+const CHANGE_DIRECTIONS = [
+    { value: 0, label: 'Up' },
+    { value: 1, label: 'Down' },
+    { value: 2, label: 'Either' },
+];
+const VALUE_SOURCE_TYPES = [
+    { value: 0, label: 'Specific token' },
+    { value: 1, label: 'All tokens in rebal chore' },
+    { value: 2, label: 'All tokens in account' },
+];
+const ACTION_TYPES = [
+    { value: 0, label: 'Pause token in rebal chore' },
+    { value: 1, label: 'Pause token globally' },
+    { value: 2, label: 'Freeze token globally' },
+    { value: 3, label: 'Stop chore' },
+    { value: 4, label: 'Pause chore' },
+    { value: 5, label: 'Stop all chores by type' },
+    { value: 6, label: 'Pause all chores by type' },
+    { value: 7, label: 'Stop ALL chores' },
+    { value: 8, label: 'Pause ALL chores' },
+];
+const CHORE_TYPE_OPTIONS = [
+    { value: 'trade', label: 'Trade' },
+    { value: 'rebalance', label: 'Rebalance' },
+    { value: 'move-funds', label: 'Move Funds' },
+    { value: 'distribute-funds', label: 'Distribute Funds' },
+    { value: 'snapshot', label: 'Snapshot' },
+];
+
+const PERIOD_PRESETS = [
+    { label: '15 min', seconds: 900 },
+    { label: '1 hour', seconds: 3600 },
+    { label: '4 hours', seconds: 14400 },
+    { label: '12 hours', seconds: 43200 },
+    { label: '1 day', seconds: 86400 },
+    { label: '7 days', seconds: 604800 },
+];
+
+function emptyCondition() {
+    return {
+        conditionType: 0, priceToken1: [], priceToken2: [],
+        balanceToken: [], balanceSubaccount: [],
+        valueSources: [], operator: 0,
+        threshold: [], rangeMin: [], rangeMax: [],
+        changePercentBps: [], changeDirection: [], changePeriodSeconds: [],
+        denominationToken: [],
+    };
+}
+
+function emptyAction() {
+    return { actionType: 0, token: [], choreInstanceId: [], choreTypeId: [] };
+}
+
+function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatuses }) {
+    const [globalEnabled, setGlobalEnabled] = useState(true);
+    const [rules, setRules] = useState([]);
+    const [events, setEvents] = useState([]);
+    const [eventCount, setEventCount] = useState(0);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState(null);
+    const [editingRule, setEditingRule] = useState(null); // null = not editing, object = editing
+    const [showLog, setShowLog] = useState(false);
+    const [tokenRegistry, setTokenRegistry] = useState([]);
+    const [choreInstances, setChoreInstances] = useState([]);
+
+    const loadData = useCallback(async () => {
+        try {
+            setLoading(true);
+            const bot = await getReadyBotActor();
+            const [rls, enabled, log, tokens, instances] = await Promise.all([
+                bot.getCircuitBreakerRules(),
+                bot.getCircuitBreakerEnabled(),
+                bot.getCircuitBreakerLog({ startId: [], limit: [50], ruleId: [], fromTime: [], toTime: [] }),
+                bot.getTokenRegistry(),
+                bot.listChoreInstances([]),
+            ]);
+            setRules(rls);
+            setGlobalEnabled(enabled);
+            setEvents(log.entries);
+            setEventCount(Number(log.totalCount));
+            setTokenRegistry(tokens);
+            setChoreInstances(instances);
+            setError(null);
+        } catch (e) {
+            setError('Failed to load circuit breaker data: ' + e.message);
+        } finally {
+            setLoading(false);
+        }
+    }, [getReadyBotActor]);
+
+    useEffect(() => { loadData(); }, [loadData]);
+
+    const handleToggleGlobal = async () => {
+        try {
+            const bot = await getReadyBotActor();
+            await bot.setCircuitBreakerEnabled(!globalEnabled);
+            setGlobalEnabled(!globalEnabled);
+        } catch (e) { setError('Failed to toggle: ' + e.message); }
+    };
+
+    const handleToggleRule = async (id, currentEnabled) => {
+        try {
+            const bot = await getReadyBotActor();
+            await bot.enableCircuitBreakerRule(id, !currentEnabled);
+            setRules(prev => prev.map(r => r.id === id ? { ...r, enabled: !currentEnabled } : r));
+        } catch (e) { setError('Failed to toggle rule: ' + e.message); }
+    };
+
+    const handleDeleteRule = async (id) => {
+        if (!window.confirm('Delete this circuit breaker rule?')) return;
+        try {
+            const bot = await getReadyBotActor();
+            await bot.removeCircuitBreakerRule(id);
+            setRules(prev => prev.filter(r => r.id !== id));
+        } catch (e) { setError('Failed to delete rule: ' + e.message); }
+    };
+
+    const handleSaveRule = async () => {
+        if (!editingRule) return;
+        setSaving(true);
+        try {
+            const bot = await getReadyBotActor();
+            const input = {
+                name: editingRule.name,
+                enabled: editingRule.enabled,
+                conditions: editingRule.conditions.map(serializeCondition),
+                actions: editingRule.actions.map(serializeAction),
+            };
+            if (editingRule.id != null) {
+                await bot.updateCircuitBreakerRule(editingRule.id, input);
+            } else {
+                await bot.addCircuitBreakerRule(input);
+            }
+            setEditingRule(null);
+            await loadData();
+        } catch (e) {
+            setError('Failed to save rule: ' + e.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleClearLog = async () => {
+        if (!window.confirm('Clear the entire circuit breaker event log?')) return;
+        try {
+            const bot = await getReadyBotActor();
+            await bot.clearCircuitBreakerLog();
+            setEvents([]);
+            setEventCount(0);
+        } catch (e) { setError('Failed to clear log: ' + e.message); }
+    };
+
+    // Serialization helpers — convert UI state to Candid-compatible values
+    function serializeCondition(c) {
+        return {
+            conditionType: BigInt(c.conditionType),
+            priceToken1: c.priceToken1?.length ? [Principal.fromText(c.priceToken1)] : [],
+            priceToken2: c.priceToken2?.length ? [Principal.fromText(c.priceToken2)] : [],
+            balanceToken: c.balanceToken?.length ? [Principal.fromText(c.balanceToken)] : [],
+            balanceSubaccount: c.balanceSubaccount !== '' && c.balanceSubaccount != null ? [BigInt(c.balanceSubaccount)] : [],
+            valueSources: (c.valueSources || []).map(vs => ({
+                sourceType: BigInt(vs.sourceType),
+                token: vs.token?.length ? [Principal.fromText(vs.token)] : [],
+                subaccount: vs.subaccount !== '' && vs.subaccount != null ? [BigInt(vs.subaccount)] : [],
+                choreInstanceId: vs.choreInstanceId?.length ? [vs.choreInstanceId] : [],
+            })),
+            operator: BigInt(c.operator),
+            threshold: c.threshold !== '' && c.threshold != null ? [BigInt(c.threshold)] : [],
+            rangeMin: c.rangeMin !== '' && c.rangeMin != null ? [BigInt(c.rangeMin)] : [],
+            rangeMax: c.rangeMax !== '' && c.rangeMax != null ? [BigInt(c.rangeMax)] : [],
+            changePercentBps: c.changePercentBps !== '' && c.changePercentBps != null ? [BigInt(c.changePercentBps)] : [],
+            changeDirection: c.changeDirection !== '' && c.changeDirection != null ? [BigInt(c.changeDirection)] : [],
+            changePeriodSeconds: c.changePeriodSeconds !== '' && c.changePeriodSeconds != null ? [BigInt(c.changePeriodSeconds)] : [],
+            denominationToken: c.denominationToken?.length ? [Principal.fromText(c.denominationToken)] : [],
+        };
+    }
+
+    function serializeAction(a) {
+        return {
+            actionType: BigInt(a.actionType),
+            token: a.token?.length ? [Principal.fromText(a.token)] : [],
+            choreInstanceId: a.choreInstanceId?.length ? [a.choreInstanceId] : [],
+            choreTypeId: a.choreTypeId?.length ? [a.choreTypeId] : [],
+        };
+    }
+
+    // Deserialization helpers — convert Candid response to UI state
+    function deserializeCondition(c) {
+        return {
+            conditionType: Number(c.conditionType),
+            priceToken1: c.priceToken1?.[0]?.toText?.() || c.priceToken1?.[0]?.toString?.() || '',
+            priceToken2: c.priceToken2?.[0]?.toText?.() || c.priceToken2?.[0]?.toString?.() || '',
+            balanceToken: c.balanceToken?.[0]?.toText?.() || c.balanceToken?.[0]?.toString?.() || '',
+            balanceSubaccount: c.balanceSubaccount?.[0] != null ? Number(c.balanceSubaccount[0]).toString() : '',
+            valueSources: (c.valueSources || []).map(vs => ({
+                sourceType: Number(vs.sourceType),
+                token: vs.token?.[0]?.toText?.() || vs.token?.[0]?.toString?.() || '',
+                subaccount: vs.subaccount?.[0] != null ? Number(vs.subaccount[0]).toString() : '',
+                choreInstanceId: vs.choreInstanceId?.[0] || '',
+            })),
+            operator: Number(c.operator),
+            threshold: c.threshold?.[0] != null ? Number(c.threshold[0]).toString() : '',
+            rangeMin: c.rangeMin?.[0] != null ? Number(c.rangeMin[0]).toString() : '',
+            rangeMax: c.rangeMax?.[0] != null ? Number(c.rangeMax[0]).toString() : '',
+            changePercentBps: c.changePercentBps?.[0] != null ? Number(c.changePercentBps[0]).toString() : '',
+            changeDirection: c.changeDirection?.[0] != null ? Number(c.changeDirection[0]).toString() : '',
+            changePeriodSeconds: c.changePeriodSeconds?.[0] != null ? Number(c.changePeriodSeconds[0]).toString() : '',
+            denominationToken: c.denominationToken?.[0]?.toText?.() || c.denominationToken?.[0]?.toString?.() || '',
+        };
+    }
+
+    function deserializeAction(a) {
+        return {
+            actionType: Number(a.actionType),
+            token: a.token?.[0]?.toText?.() || a.token?.[0]?.toString?.() || '',
+            choreInstanceId: a.choreInstanceId?.[0] || '',
+            choreTypeId: a.choreTypeId?.[0] || '',
+        };
+    }
+
+    const startNewRule = () => {
+        setEditingRule({
+            id: null,
+            name: '',
+            enabled: true,
+            conditions: [emptyCondition()],
+            actions: [emptyAction()],
+        });
+    };
+
+    const startEditRule = (rule) => {
+        setEditingRule({
+            id: Number(rule.id),
+            name: rule.name,
+            enabled: rule.enabled,
+            conditions: rule.conditions.map(deserializeCondition),
+            actions: rule.actions.map(deserializeAction),
+        });
+    };
+
+    const tokenLabel = (principal) => {
+        if (!principal) return '?';
+        const p = typeof principal === 'string' ? principal : principal.toText?.() || principal.toString?.();
+        const entry = tokenRegistry.find(t => t.ledgerCanisterId?.toText?.() === p || t.ledgerCanisterId?.toString?.() === p);
+        return entry ? entry.symbol : (p?.substring?.(0, 8) + '...');
+    };
+
+    const choreLabel = (instanceId) => {
+        if (!instanceId) return '?';
+        const inst = choreInstances.find(([id]) => id === instanceId);
+        return inst ? `${inst[1].label || inst[0]}` : instanceId;
+    };
+
+    const conditionSummary = (c) => {
+        const typeLabel = CONDITION_TYPES.find(t => t.value === Number(c.conditionType))?.label || '?';
+        const opLabel = OPERATORS.find(o => o.value === Number(c.operator))?.label || '?';
+        if (Number(c.conditionType) === 0) {
+            const t1 = tokenLabel(c.priceToken1?.[0] || c.priceToken1);
+            const t2 = tokenLabel(c.priceToken2?.[0] || c.priceToken2);
+            return `${typeLabel}: ${t1}/${t2} ${opLabel}`;
+        }
+        if (Number(c.conditionType) === 2) {
+            const tok = tokenLabel(c.balanceToken?.[0] || c.balanceToken);
+            return `${typeLabel}: ${tok} ${opLabel}`;
+        }
+        const srcCount = c.valueSources?.length || 0;
+        return `${typeLabel}: ${srcCount} source(s) ${opLabel}`;
+    };
+
+    const actionSummary = (a) => {
+        const typeLabel = ACTION_TYPES.find(t => t.value === Number(a.actionType))?.label || '?';
+        const tok = a.token?.[0] || a.token;
+        const cid = a.choreInstanceId?.[0] || a.choreInstanceId;
+        const ctid = a.choreTypeId?.[0] || a.choreTypeId;
+        if (tok) return `${typeLabel}: ${tokenLabel(tok)}${cid ? ' in ' + choreLabel(cid) : ''}`;
+        if (cid) return `${typeLabel}: ${choreLabel(cid)}`;
+        if (ctid) return `${typeLabel}: ${ctid}`;
+        return typeLabel;
+    };
+
+    const cardStyle = {
+        background: theme.colors.cardBg, border: `1px solid ${theme.colors.border}`,
+        borderRadius: '8px', padding: '12px', marginBottom: '8px',
+    };
+
+    const btnSmall = {
+        padding: '4px 10px', fontSize: '0.78rem', border: `1px solid ${theme.colors.border}`,
+        borderRadius: '4px', cursor: 'pointer', background: theme.colors.cardBg, color: theme.colors.primaryText,
+    };
+
+    if (loading) return <div style={{ padding: '20px', color: theme.colors.secondaryText }}>Loading circuit breaker...</div>;
+
+    // RULE EDITOR
+    if (editingRule) {
+        return (
+            <div style={{ padding: '8px 0' }}>
+                <h4 style={{ color: theme.colors.primaryText, marginBottom: '12px' }}>
+                    <FaShieldAlt style={{ marginRight: '6px', color: accentColor }} />
+                    {editingRule.id != null ? 'Edit' : 'New'} Circuit Breaker Rule
+                </h4>
+                {error && <div style={{ color: '#e74c3c', marginBottom: '8px', fontSize: '0.82rem' }}>{error}</div>}
+
+                {/* Rule name */}
+                <div style={{ marginBottom: '12px' }}>
+                    <label style={{ fontSize: '0.82rem', color: theme.colors.secondaryText }}>Rule Name</label>
+                    <input type="text" value={editingRule.name} onChange={e => setEditingRule(r => ({ ...r, name: e.target.value }))}
+                        style={{ display: 'block', width: '100%', maxWidth: '400px', padding: '6px 10px', marginTop: '4px', borderRadius: '4px', border: `1px solid ${theme.colors.border}`, background: theme.colors.inputBg, color: theme.colors.primaryText, fontSize: '0.85rem' }} />
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                    <label style={{ fontSize: '0.82rem', color: theme.colors.secondaryText }}>Enabled</label>
+                    <input type="checkbox" checked={editingRule.enabled} onChange={e => setEditingRule(r => ({ ...r, enabled: e.target.checked }))} />
+                </div>
+
+                {/* CONDITIONS */}
+                <div style={{ marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                        <h5 style={{ color: theme.colors.primaryText, margin: 0 }}>Conditions (all must be true)</h5>
+                        <button style={{ ...btnSmall, color: accentColor, borderColor: accentColor }} onClick={() => setEditingRule(r => ({ ...r, conditions: [...r.conditions, emptyCondition()] }))}>
+                            <FaPlus /> Add
+                        </button>
+                    </div>
+                    {editingRule.conditions.map((cond, ci) => (
+                        <div key={ci} style={{ ...cardStyle, position: 'relative' }}>
+                            <button style={{ position: 'absolute', top: '8px', right: '8px', background: 'none', border: 'none', cursor: 'pointer', color: '#e74c3c', fontSize: '0.9rem' }}
+                                onClick={() => setEditingRule(r => ({ ...r, conditions: r.conditions.filter((_, i) => i !== ci) }))}>
+                                <FaTrash />
+                            </button>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
+                                <select value={cond.conditionType} onChange={e => {
+                                    const v = Number(e.target.value);
+                                    setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...emptyCondition(), conditionType: v, operator: c.operator } : c) }));
+                                }} style={{ ...btnSmall, minWidth: '100px' }}>
+                                    {CONDITION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                                </select>
+                                <select value={cond.operator} onChange={e => {
+                                    const v = Number(e.target.value);
+                                    setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...c, operator: v } : c) }));
+                                }} style={{ ...btnSmall, minWidth: '120px' }}>
+                                    {OPERATORS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                </select>
+                            </div>
+
+                            {/* Type-specific fields */}
+                            {cond.conditionType === 0 && (
+                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '8px' }}>
+                                    <label style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>Token 1:</label>
+                                    <select value={cond.priceToken1} onChange={e => setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...c, priceToken1: e.target.value } : c) }))}
+                                        style={{ ...btnSmall, minWidth: '140px' }}>
+                                        <option value="">Select...</option>
+                                        {tokenRegistry.map(t => <option key={t.ledgerCanisterId.toText()} value={t.ledgerCanisterId.toText()}>{t.symbol}</option>)}
+                                    </select>
+                                    <label style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>Token 2:</label>
+                                    <select value={cond.priceToken2} onChange={e => setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...c, priceToken2: e.target.value } : c) }))}
+                                        style={{ ...btnSmall, minWidth: '140px' }}>
+                                        <option value="">Select...</option>
+                                        {tokenRegistry.map(t => <option key={t.ledgerCanisterId.toText()} value={t.ledgerCanisterId.toText()}>{t.symbol}</option>)}
+                                    </select>
+                                </div>
+                            )}
+
+                            {cond.conditionType === 2 && (
+                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '8px' }}>
+                                    <label style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>Token:</label>
+                                    <select value={cond.balanceToken} onChange={e => setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...c, balanceToken: e.target.value } : c) }))}
+                                        style={{ ...btnSmall, minWidth: '140px' }}>
+                                        <option value="">Select...</option>
+                                        {tokenRegistry.map(t => <option key={t.ledgerCanisterId.toText()} value={t.ledgerCanisterId.toText()}>{t.symbol}</option>)}
+                                    </select>
+                                    <label style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>Account:</label>
+                                    <input type="text" value={cond.balanceSubaccount} placeholder="main (empty) or subaccount #"
+                                        onChange={e => setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...c, balanceSubaccount: e.target.value } : c) }))}
+                                        style={{ ...btnSmall, width: '160px' }} />
+                                </div>
+                            )}
+
+                            {cond.conditionType === 1 && (
+                                <div style={{ marginBottom: '8px' }}>
+                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '6px' }}>
+                                        <label style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>Value Sources</label>
+                                        <button style={{ ...btnSmall, fontSize: '0.72rem', color: accentColor }}
+                                            onClick={() => setEditingRule(r => ({
+                                                ...r, conditions: r.conditions.map((c, i) => i === ci
+                                                    ? { ...c, valueSources: [...(c.valueSources || []), { sourceType: 0, token: '', subaccount: '', choreInstanceId: '' }] } : c)
+                                            }))}>
+                                            <FaPlus /> Add Source
+                                        </button>
+                                    </div>
+                                    {(cond.valueSources || []).map((vs, vi) => (
+                                        <div key={vi} style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '4px', paddingLeft: '12px' }}>
+                                            <select value={vs.sourceType} onChange={e => {
+                                                const v = Number(e.target.value);
+                                                setEditingRule(r => ({
+                                                    ...r, conditions: r.conditions.map((c, i) => i === ci
+                                                        ? { ...c, valueSources: c.valueSources.map((s, j) => j === vi ? { ...s, sourceType: v } : s) } : c)
+                                                }));
+                                            }} style={{ ...btnSmall, minWidth: '160px', fontSize: '0.75rem' }}>
+                                                {VALUE_SOURCE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                                            </select>
+                                            {vs.sourceType === 0 && (
+                                                <>
+                                                    <select value={vs.token} onChange={e => setEditingRule(r => ({
+                                                        ...r, conditions: r.conditions.map((c, i) => i === ci
+                                                            ? { ...c, valueSources: c.valueSources.map((s, j) => j === vi ? { ...s, token: e.target.value } : s) } : c)
+                                                    }))} style={{ ...btnSmall, minWidth: '120px', fontSize: '0.75rem' }}>
+                                                        <option value="">Token...</option>
+                                                        {tokenRegistry.map(t => <option key={t.ledgerCanisterId.toText()} value={t.ledgerCanisterId.toText()}>{t.symbol}</option>)}
+                                                    </select>
+                                                    <input type="text" value={vs.subaccount} placeholder="Subaccount #"
+                                                        onChange={e => setEditingRule(r => ({
+                                                            ...r, conditions: r.conditions.map((c, i) => i === ci
+                                                                ? { ...c, valueSources: c.valueSources.map((s, j) => j === vi ? { ...s, subaccount: e.target.value } : s) } : c)
+                                                        }))} style={{ ...btnSmall, width: '100px', fontSize: '0.75rem' }} />
+                                                </>
+                                            )}
+                                            {vs.sourceType === 1 && (
+                                                <select value={vs.choreInstanceId} onChange={e => setEditingRule(r => ({
+                                                    ...r, conditions: r.conditions.map((c, i) => i === ci
+                                                        ? { ...c, valueSources: c.valueSources.map((s, j) => j === vi ? { ...s, choreInstanceId: e.target.value } : s) } : c)
+                                                }))} style={{ ...btnSmall, minWidth: '160px', fontSize: '0.75rem' }}>
+                                                    <option value="">Rebal chore...</option>
+                                                    {choreInstances.filter(([, info]) => info.typeId === 'rebalance').map(([id, info]) => (
+                                                        <option key={id} value={id}>{info.label || id}</option>
+                                                    ))}
+                                                </select>
+                                            )}
+                                            {vs.sourceType === 2 && (
+                                                <input type="text" value={vs.subaccount} placeholder="Subaccount # (empty=main)"
+                                                    onChange={e => setEditingRule(r => ({
+                                                        ...r, conditions: r.conditions.map((c, i) => i === ci
+                                                            ? { ...c, valueSources: c.valueSources.map((s, j) => j === vi ? { ...s, subaccount: e.target.value } : s) } : c)
+                                                    }))} style={{ ...btnSmall, width: '160px', fontSize: '0.75rem' }} />
+                                            )}
+                                            <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e74c3c', fontSize: '0.8rem' }}
+                                                onClick={() => setEditingRule(r => ({
+                                                    ...r, conditions: r.conditions.map((c, i) => i === ci
+                                                        ? { ...c, valueSources: c.valueSources.filter((_, j) => j !== vi) } : c)
+                                                }))}>
+                                                <FaTrash />
+                                            </button>
+                                        </div>
+                                    ))}
+                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '6px' }}>
+                                        <label style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>Denomination:</label>
+                                        <select value={cond.denominationToken} onChange={e => setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...c, denominationToken: e.target.value } : c) }))}
+                                            style={{ ...btnSmall, minWidth: '140px' }}>
+                                            <option value="">ICP (default)</option>
+                                            {tokenRegistry.map(t => <option key={t.ledgerCanisterId.toText()} value={t.ledgerCanisterId.toText()}>{t.symbol}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Operator-specific fields */}
+                            {(cond.operator === 0 || cond.operator === 1) && (
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px' }}>
+                                    <label style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>Threshold (e8s):</label>
+                                    <input type="text" value={cond.threshold}
+                                        onChange={e => setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...c, threshold: e.target.value } : c) }))}
+                                        style={{ ...btnSmall, width: '160px' }} />
+                                </div>
+                            )}
+                            {(cond.operator === 2 || cond.operator === 3) && (
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px', flexWrap: 'wrap' }}>
+                                    <label style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>Min (e8s):</label>
+                                    <input type="text" value={cond.rangeMin}
+                                        onChange={e => setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...c, rangeMin: e.target.value } : c) }))}
+                                        style={{ ...btnSmall, width: '140px' }} />
+                                    <label style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>Max (e8s):</label>
+                                    <input type="text" value={cond.rangeMax}
+                                        onChange={e => setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...c, rangeMax: e.target.value } : c) }))}
+                                        style={{ ...btnSmall, width: '140px' }} />
+                                </div>
+                            )}
+                            {cond.operator === 4 && (
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px', flexWrap: 'wrap' }}>
+                                    <label style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>Change %:</label>
+                                    <input type="text" value={cond.changePercentBps} placeholder="bps (100=1%)"
+                                        onChange={e => setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...c, changePercentBps: e.target.value } : c) }))}
+                                        style={{ ...btnSmall, width: '120px' }} />
+                                    <select value={cond.changeDirection ?? ''} onChange={e => setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...c, changeDirection: e.target.value } : c) }))}
+                                        style={{ ...btnSmall, minWidth: '80px' }}>
+                                        <option value="">Direction...</option>
+                                        {CHANGE_DIRECTIONS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+                                    </select>
+                                    <label style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>Period:</label>
+                                    <select value={cond.changePeriodSeconds ?? ''} onChange={e => setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...c, changePeriodSeconds: e.target.value } : c) }))}
+                                        style={{ ...btnSmall, minWidth: '100px' }}>
+                                        <option value="">Custom...</option>
+                                        {PERIOD_PRESETS.map(p => <option key={p.seconds} value={p.seconds}>{p.label}</option>)}
+                                    </select>
+                                    {!PERIOD_PRESETS.find(p => String(p.seconds) === String(cond.changePeriodSeconds)) && (
+                                        <input type="text" value={cond.changePeriodSeconds} placeholder="seconds"
+                                            onChange={e => setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...c, changePeriodSeconds: e.target.value } : c) }))}
+                                            style={{ ...btnSmall, width: '100px' }} />
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+
+                {/* ACTIONS */}
+                <div style={{ marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                        <h5 style={{ color: theme.colors.primaryText, margin: 0 }}>Actions (all execute when triggered)</h5>
+                        <button style={{ ...btnSmall, color: accentColor, borderColor: accentColor }} onClick={() => setEditingRule(r => ({ ...r, actions: [...r.actions, emptyAction()] }))}>
+                            <FaPlus /> Add
+                        </button>
+                    </div>
+                    {editingRule.actions.map((act, ai) => (
+                        <div key={ai} style={{ ...cardStyle, position: 'relative' }}>
+                            <button style={{ position: 'absolute', top: '8px', right: '8px', background: 'none', border: 'none', cursor: 'pointer', color: '#e74c3c', fontSize: '0.9rem' }}
+                                onClick={() => setEditingRule(r => ({ ...r, actions: r.actions.filter((_, i) => i !== ai) }))}>
+                                <FaTrash />
+                            </button>
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                <select value={act.actionType} onChange={e => {
+                                    const v = Number(e.target.value);
+                                    setEditingRule(r => ({ ...r, actions: r.actions.map((a, i) => i === ai ? { ...emptyAction(), actionType: v } : a) }));
+                                }} style={{ ...btnSmall, minWidth: '200px' }}>
+                                    {ACTION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                                </select>
+
+                                {/* Token selector for actions that need it */}
+                                {[0, 1, 2].includes(act.actionType) && (
+                                    <select value={act.token} onChange={e => setEditingRule(r => ({ ...r, actions: r.actions.map((a, i) => i === ai ? { ...a, token: e.target.value } : a) }))}
+                                        style={{ ...btnSmall, minWidth: '140px' }}>
+                                        <option value="">Token...</option>
+                                        {tokenRegistry.map(t => <option key={t.ledgerCanisterId.toText()} value={t.ledgerCanisterId.toText()}>{t.symbol}</option>)}
+                                    </select>
+                                )}
+
+                                {/* Chore instance selector */}
+                                {[0, 3, 4].includes(act.actionType) && (
+                                    <select value={act.choreInstanceId} onChange={e => setEditingRule(r => ({ ...r, actions: r.actions.map((a, i) => i === ai ? { ...a, choreInstanceId: e.target.value } : a) }))}
+                                        style={{ ...btnSmall, minWidth: '160px' }}>
+                                        <option value="">Chore...</option>
+                                        {choreInstances
+                                            .filter(([, info]) => act.actionType === 0 ? info.typeId === 'rebalance' : true)
+                                            .map(([id, info]) => <option key={id} value={id}>{info.label || id} ({info.typeId})</option>)}
+                                    </select>
+                                )}
+
+                                {/* Chore type selector */}
+                                {[5, 6].includes(act.actionType) && (
+                                    <select value={act.choreTypeId} onChange={e => setEditingRule(r => ({ ...r, actions: r.actions.map((a, i) => i === ai ? { ...a, choreTypeId: e.target.value } : a) }))}
+                                        style={{ ...btnSmall, minWidth: '140px' }}>
+                                        <option value="">Type...</option>
+                                        {CHORE_TYPE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                                    </select>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px' }}>
+                    <button onClick={handleSaveRule} disabled={saving || !editingRule.name}
+                        style={{ ...btnSmall, background: accentColor, color: '#fff', borderColor: accentColor, opacity: saving || !editingRule.name ? 0.5 : 1 }}>
+                        <FaSave style={{ marginRight: '4px' }} /> {saving ? 'Saving...' : 'Save Rule'}
+                    </button>
+                    <button onClick={() => { setEditingRule(null); setError(null); }} style={btnSmall}>
+                        <FaTimes style={{ marginRight: '4px' }} /> Cancel
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    // MAIN VIEW
+    return (
+        <div style={{ padding: '8px 0' }}>
+            {error && <div style={{ color: '#e74c3c', marginBottom: '8px', fontSize: '0.82rem' }}>{error}</div>}
+
+            {/* Header: global toggle + add button */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                <h4 style={{ color: theme.colors.primaryText, margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <FaShieldAlt style={{ color: accentColor }} /> Circuit Breaker
+                </h4>
+                <button onClick={handleToggleGlobal} style={{ ...btnSmall, display: 'flex', alignItems: 'center', gap: '4px', color: globalEnabled ? '#27ae60' : '#e74c3c' }}>
+                    {globalEnabled ? <FaToggleOn size={16} /> : <FaToggleOff size={16} />}
+                    {globalEnabled ? 'Enabled' : 'Disabled'}
+                </button>
+                <button onClick={startNewRule} style={{ ...btnSmall, color: accentColor, borderColor: accentColor }}>
+                    <FaPlus style={{ marginRight: '4px' }} /> New Rule
+                </button>
+                <button onClick={() => setShowLog(v => !v)} style={{ ...btnSmall }}>
+                    {showLog ? 'Hide' : 'Show'} Event Log ({eventCount})
+                </button>
+                <button onClick={loadData} style={btnSmall}><FaSyncAlt /></button>
+            </div>
+
+            {/* Rules list */}
+            {rules.length === 0 && (
+                <div style={{ color: theme.colors.secondaryText, fontSize: '0.85rem', padding: '16px', textAlign: 'center', ...cardStyle }}>
+                    No circuit breaker rules configured. Click "New Rule" to add one.
+                </div>
+            )}
+            {rules.map(rule => (
+                <div key={Number(rule.id)} style={{ ...cardStyle, opacity: rule.enabled ? 1 : 0.6, borderLeft: `3px solid ${rule.enabled ? '#27ae60' : theme.colors.border}` }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
+                        <strong style={{ color: theme.colors.primaryText, fontSize: '0.9rem' }}>{rule.name}</strong>
+                        <span style={{ fontSize: '0.72rem', padding: '1px 6px', borderRadius: '3px', background: rule.enabled ? 'rgba(39,174,96,0.15)' : 'rgba(231,76,60,0.15)', color: rule.enabled ? '#27ae60' : '#e74c3c' }}>
+                            {rule.enabled ? 'Active' : 'Disabled'}
+                        </span>
+                        <span style={{ fontSize: '0.72rem', color: theme.colors.secondaryText }}>
+                            {rule.conditions.length} condition{rule.conditions.length !== 1 ? 's' : ''}, {rule.actions.length} action{rule.actions.length !== 1 ? 's' : ''}
+                        </span>
+                        <div style={{ marginLeft: 'auto', display: 'flex', gap: '4px' }}>
+                            <button onClick={() => handleToggleRule(Number(rule.id), rule.enabled)} style={btnSmall}>
+                                {rule.enabled ? <FaPause /> : <FaPlay />}
+                            </button>
+                            <button onClick={() => startEditRule(rule)} style={btnSmall}><FaEdit /></button>
+                            <button onClick={() => handleDeleteRule(Number(rule.id))} style={{ ...btnSmall, color: '#e74c3c' }}><FaTrash /></button>
+                        </div>
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: theme.colors.secondaryText }}>
+                        <div><strong>IF</strong> {rule.conditions.map((c, i) => <span key={i}>{i > 0 ? ' AND ' : ''}{conditionSummary(c)}</span>)}</div>
+                        <div><strong>THEN</strong> {rule.actions.map((a, i) => <span key={i}>{i > 0 ? ', ' : ''}{actionSummary(a)}</span>)}</div>
+                    </div>
+                </div>
+            ))}
+
+            {/* Event Log */}
+            {showLog && (
+                <div style={{ marginTop: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                        <h5 style={{ color: theme.colors.primaryText, margin: 0 }}>Event Log</h5>
+                        <button onClick={handleClearLog} style={{ ...btnSmall, color: '#e74c3c', fontSize: '0.72rem' }}>Clear Log</button>
+                    </div>
+                    {events.length === 0 ? (
+                        <div style={{ color: theme.colors.secondaryText, fontSize: '0.82rem', ...cardStyle, textAlign: 'center' }}>No circuit breaker events recorded.</div>
+                    ) : (
+                        <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                            <table style={{ width: '100%', fontSize: '0.78rem', borderCollapse: 'collapse' }}>
+                                <thead>
+                                    <tr style={{ borderBottom: `1px solid ${theme.colors.border}` }}>
+                                        <th style={{ textAlign: 'left', padding: '4px 8px', color: theme.colors.secondaryText }}>Time</th>
+                                        <th style={{ textAlign: 'left', padding: '4px 8px', color: theme.colors.secondaryText }}>Rule</th>
+                                        <th style={{ textAlign: 'left', padding: '4px 8px', color: theme.colors.secondaryText }}>Conditions</th>
+                                        <th style={{ textAlign: 'left', padding: '4px 8px', color: theme.colors.secondaryText }}>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {[...events].reverse().map(evt => (
+                                        <tr key={Number(evt.id)} style={{ borderBottom: `1px solid ${theme.colors.border}22` }}>
+                                            <td style={{ padding: '4px 8px', color: theme.colors.primaryText, whiteSpace: 'nowrap' }}>
+                                                {new Date(Number(evt.timestamp) / 1_000_000).toLocaleString()}
+                                            </td>
+                                            <td style={{ padding: '4px 8px', color: theme.colors.primaryText }}>{evt.ruleName}</td>
+                                            <td style={{ padding: '4px 8px', color: theme.colors.secondaryText }}>{evt.conditionSummary}</td>
+                                            <td style={{ padding: '4px 8px', color: theme.colors.secondaryText }}>{evt.actionsTaken.join('; ')}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ============================================
 // Trading Bot Logs Section (combines trade log, portfolio snapshots, logging settings)
 // ============================================
 function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, identity }) {
@@ -5157,6 +5839,9 @@ function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, iden
                 <button onClick={() => setActiveTab('performance')} style={tabStyle(activeTab === 'performance')}>Performance</button>
                 <button onClick={() => setActiveTab('trade')} style={tabStyle(activeTab === 'trade')}>Trade Log</button>
                 <button onClick={() => setActiveTab('snapshots')} style={tabStyle(activeTab === 'snapshots')}>Portfolio Snapshots</button>
+                <button onClick={() => setActiveTab('circuit-breaker')} style={tabStyle(activeTab === 'circuit-breaker')}>
+                    <FaShieldAlt style={{ marginRight: '4px', fontSize: '0.75rem' }} />Circuit Breaker
+                </button>
                 <button onClick={() => setActiveTab('settings')} style={tabStyle(activeTab === 'settings')}>Logging Settings</button>
             </div>
 
@@ -5164,6 +5849,7 @@ function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, iden
             {activeTab === 'performance' && <PerformancePanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
             {activeTab === 'trade' && <TradeLogViewer getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
             {activeTab === 'snapshots' && <PortfolioSnapshotViewer getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} />}
+            {activeTab === 'circuit-breaker' && <CircuitBreakerPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} choreStatuses={choreStatuses} />}
             {activeTab === 'settings' && <LoggingSettingsPanel getReadyBotActor={getReadyBotActor} theme={theme} accentColor={accentColor} choreStatuses={choreStatuses} />}
         </div>
     );
@@ -5306,6 +5992,26 @@ export default function TradingBot() {
     const { canisterId } = useParams();
     const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
+    const [cbEvents, setCbEvents] = useState(null);
+
+    // Load recent CB events for chore status indicators
+    useEffect(() => {
+        if (!isAuthenticated || !canisterId) return;
+        (async () => {
+            try {
+                const { HttpAgent } = await import('@dfinity/agent');
+                const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                const host = isLocal ? 'http://localhost:4943' : 'https://ic0.app';
+                const agent = HttpAgent.createSync({ identity, host });
+                if (isLocal) await agent.fetchRootKey();
+                const bot = createBotActor(canisterId, { agent });
+                if (bot?.getCircuitBreakerLog) {
+                    const log = await bot.getCircuitBreakerLog({ startId: [], limit: [50], ruleId: [], fromTime: [], toTime: [] });
+                    setCbEvents(log.entries || []);
+                }
+            } catch (_) { /* CB may not be available on older versions */ }
+        })();
+    }, [isAuthenticated, canisterId, identity]);
 
     if (!canisterId) {
         return (
@@ -5379,6 +6085,7 @@ export default function TradingBot() {
                             identity={identity}
                             isAuthenticated={isAuthenticated}
                             extraInfoContent={<DexSettingsPanel canisterId={canisterId} createBotActor={createBotActor} identity={identity} />}
+                            cbEvents={cbEvents}
                         />
                         <TradingBotLogs
                             canisterId={canisterId}
