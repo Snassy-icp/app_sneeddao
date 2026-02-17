@@ -810,15 +810,14 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                             {subaccounts.length === 0 && <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, marginTop: '2px' }}>No subaccounts yet. Create one in the Accounts tab.</div>}
                         </div>
                     )}
-                    {/* Withdraw: source subaccount selector */}
-                    {fActionType === ACTION_TYPE_WITHDRAW && (
+                    {/* Withdraw / Send: source subaccount selector */}
+                    {(fActionType === ACTION_TYPE_WITHDRAW || fActionType === ACTION_TYPE_SEND) && (
                         <div>
                             <label style={labelStyle}>Source Subaccount</label>
                             <select value={fSourceSubaccount} onChange={(e) => setFSourceSubaccount(e.target.value)} style={{ ...inputStyle, width: '100%', appearance: 'auto' }}>
-                                <option value="">— Select subaccount —</option>
+                                <option value="">Main Account</option>
                                 {subaccounts.map(s => <option key={Number(s.number)} value={String(Number(s.number))}>{s.name} (#{Number(s.number)})</option>)}
                             </select>
-                            {subaccounts.length === 0 && <div style={{ fontSize: '0.65rem', color: theme.colors.mutedText, marginTop: '2px' }}>No subaccounts yet. Create one in the Accounts tab.</div>}
                         </div>
                     )}
                     {/* Send: destination ICRC1 account (principal + optional subaccount) */}
@@ -1954,12 +1953,14 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
     const [saving, setSaving] = useState(false);
     const [adding, setAdding] = useState(false);
     const [expandedList, setExpandedList] = useState(null);
+    const [subaccounts, setSubaccounts] = useState([]);
 
     // New list form
     const [newName, setNewName] = useState('');
     const [newLedger, setNewLedger] = useState('');
     const [newThreshold, setNewThreshold] = useState('0');
     const [newMaxDist, setNewMaxDist] = useState('0');
+    const [newSourceSub, setNewSourceSub] = useState('');
 
     const loadLists = useCallback(async () => {
         try {
@@ -1973,22 +1974,57 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
 
     useEffect(() => { loadLists(); }, [loadLists]);
 
+    const loadSubaccounts = useCallback(async () => {
+        try {
+            const bot = await getReadyBotActor();
+            if (bot?.getSubaccounts) {
+                const subs = await bot.getSubaccounts();
+                setSubaccounts(subs);
+            }
+        } catch (_) {}
+    }, [getReadyBotActor]);
+    useEffect(() => { loadSubaccounts(); }, [loadSubaccounts]);
+
+    const subaccountBlobFromNumber = (num) => {
+        const bytes = new Uint8Array(32);
+        let n = BigInt(num);
+        for (let i = 31; i >= 0; i--) {
+            bytes[i] = Number(n & 0xFFn);
+            n >>= 8n;
+        }
+        return [...bytes];
+    };
+
+    const resolveSubaccountName = (sourceSubBlob) => {
+        if (!sourceSubBlob || sourceSubBlob.length === 0) return 'Main Account';
+        const blob = sourceSubBlob[0];
+        if (!blob || blob.length === 0) return 'Main Account';
+        const bytes = Array.from(blob);
+        if (bytes.every(b => b === 0)) return 'Main Account';
+        const match = subaccounts.find(s => {
+            const sBytes = Array.from(s.subaccount || []);
+            return sBytes.length === bytes.length && sBytes.every((b, i) => b === bytes[i]);
+        });
+        return match ? `${match.name} (#${Number(match.number)})` : 'Custom Subaccount';
+    };
+
     const handleAdd = async () => {
         if (!newName.trim()) { setError('Name is required.'); return; }
         if (!newLedger.trim()) { setError('Token ledger canister ID is required.'); return; }
         setSaving(true); setError(''); setSuccess('');
         try {
             const bot = await getReadyBotActor();
+            const sourceSubBlob = newSourceSub ? [subaccountBlobFromNumber(newSourceSub)] : [];
             await bot.addDistributionList(instanceId, {
                 name: newName.trim(),
-                sourceSubaccount: [],
+                sourceSubaccount: sourceSubBlob,
                 tokenLedgerCanisterId: Principal.fromText(newLedger.trim()),
                 thresholdAmount: BigInt(newThreshold || 0),
                 maxDistributionAmount: BigInt(newMaxDist || 0),
                 targets: [],
             });
             setSuccess('Distribution list added.');
-            setAdding(false); setNewName(''); setNewLedger(''); setNewThreshold('0'); setNewMaxDist('0');
+            setAdding(false); setNewName(''); setNewLedger(''); setNewThreshold('0'); setNewMaxDist('0'); setNewSourceSub('');
             await loadLists();
         } catch (err) { setError('Failed to add: ' + err.message); }
         finally { setSaving(false); }
@@ -2062,6 +2098,7 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
                             </div>
                             <div style={{ marginTop: '6px', fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
                                 <span>Token: {getDistTokenSymbol(list.tokenLedgerCanisterId)}</span>
+                                <span>From: {resolveSubaccountName(list.sourceSubaccount)}</span>
                                 <span>Threshold: {Number(list.thresholdAmount).toLocaleString()}</span>
                                 <span>Max: {Number(list.maxDistributionAmount).toLocaleString()}</span>
                                 <span>Targets: {list.targets.length}</span>
@@ -2100,6 +2137,13 @@ function DistributionConfigPanel({ instanceId, getReadyBotActor, theme, accentCo
                                         allowCustom={true}
                                         placeholder="Select token..."
                                     />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Source Subaccount</label>
+                                    <select value={newSourceSub} onChange={(e) => setNewSourceSub(e.target.value)} style={{ ...inputStyle, width: '100%', appearance: 'auto' }}>
+                                        <option value="">Main Account</option>
+                                        {subaccounts.map(s => <option key={Number(s.number)} value={String(Number(s.number))}>{s.name} (#{Number(s.number)})</option>)}
+                                    </select>
                                 </div>
                                 <div>
                                     <label style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, display: 'block', marginBottom: '4px' }}>Threshold Amount</label>
