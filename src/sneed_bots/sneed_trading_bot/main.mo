@@ -1468,8 +1468,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
         for (token in tokens.vals()) {
             let balance = await getBalance(token, null); // Main account
-            // Update lastKnown with queried balance (corrects any compute-based approximation)
-            setLastKnownBalance(token, null, balance);
+            // Reconcile balance: detects any untracked inflows/outflows since last known
+            reconcileBalance(token, null, balance, "snapshot");
             let meta = getCachedMeta(token);
             let symbol = switch (meta) { case (?m) m.symbol; case null { switch (getTokenInfo(token)) { case (?i) i.symbol; case null "?" } } };
             let decimals: Nat8 = switch (meta) { case (?m) m.decimals; case null { switch (getTokenInfo(token)) { case (?i) i.decimals; case null 8 } } };
@@ -1591,7 +1591,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
                 for ((token, subaccount) in pairs.vals()) {
                     let balance = await getBalance(token, subaccount);
-                    setLastKnownBalance(token, subaccount, balance);
+                    reconcileBalance(token, subaccount, balance, "snapshot");
                     let meta = getCachedMeta(token);
                     let symbol = switch (meta) { case (?m) m.symbol; case null { switch (getTokenInfo(token)) { case (?i) i.symbol; case null "?" } } };
                     let decimals: Nat8 = switch (meta) { case (?m) m.decimals; case null { switch (getTokenInfo(token)) { case (?i) i.decimals; case null 8 } } };
@@ -2707,8 +2707,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 ("minTradeDenom", Nat.toText(minTrade)),
                 ("minTradeUnits", Nat.toText(minTradeUnits)),
             ]);
-            // Log as skipped in trade log
-            ignore appendTradeLog({
+            // Log as skipped in trade log and store the ID for after-snapshot linking
+            let logId = appendTradeLog({
                 choreId = ?instanceId;
                 choreTypeId = getInstanceTypeId(instanceId);
                 actionId = null;
@@ -2726,6 +2726,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 txId = null;
                 destinationOwner = null;
             });
+            _rebal_lastLogId := setInMap(_rebal_lastLogId, instanceId, logId);
             return false;
         };
 
@@ -2892,7 +2893,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     ("reason", reason),
                     ("fallbackTokensTried", Nat.toText(fallbackTokens.size())),
                 ]);
-                ignore appendTradeLog({
+                let logId = appendTradeLog({
                     choreId = ?instanceId;
                     choreTypeId = getInstanceTypeId(instanceId);
                     actionId = null;
@@ -2910,6 +2911,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     txId = null;
                     destinationOwner = null;
                 });
+                _rebal_lastLogId := setInMap(_rebal_lastLogId, instanceId, logId);
                 return false;
             };
             case (?p) p;
@@ -3609,7 +3611,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     let subSnapBuf = Buffer.Buffer<T.TokenSnapshot>(allTokens.size());
                     for (token in allTokens.vals()) {
                         let balance = await getBalance(token, ?subBlob);
-                        setLastKnownBalance(token, ?subBlob, balance);
+                        reconcileBalance(token, ?subBlob, balance, "snapshot");
                         let meta = getCachedMeta(token);
                         let symbol = switch (meta) { case (?m) m.symbol; case null { switch (getTokenInfo(token)) { case (?i) i.symbol; case null "?" } } };
                         let decimals: Nat8 = switch (meta) { case (?m) m.decimals; case null { switch (getTokenInfo(token)) { case (?i) i.decimals; case null 8 } } };

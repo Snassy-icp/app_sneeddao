@@ -4234,7 +4234,7 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
                     time: ts,
                     label: new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
                     icp: icpVal != null ? Number(icpVal) / 1e8 : null,
-                    usd: usdVal != null ? Number(usdVal) / 1e6 : null,
+                    usd: usdVal != null ? Number(usdVal) / 1e8 : null,
                 };
             })
             .filter(d => (denomination === 'icp' ? d.icp != null : d.usd != null));
@@ -4252,7 +4252,7 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
             .sort((a, b) => Number(a.date) - Number(b.date))
             .map(s => {
                 const ts = Number(s.date) / 1_000_000; // ns -> ms
-                const scale = denomination === 'icp' ? 1e8 : 1e6;
+                const scale = 1e8;
                 const o = denomination === 'icp' ? Number(s.openValueIcpE8s) / scale : Number(s.openValueUsdE8s) / scale;
                 const h = denomination === 'icp' ? Number(s.highValueIcpE8s) / scale : Number(s.highValueUsdE8s) / scale;
                 const l = denomination === 'icp' ? Number(s.lowValueIcpE8s) / scale : Number(s.lowValueUsdE8s) / scale;
@@ -4296,7 +4296,7 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
 
     // Capital deployed
     const capitalIcp = capitalFlows ? Number(capitalFlows.capitalDeployedIcpE8s) / 1e8 : null;
-    const capitalUsd = capitalFlows ? Number(capitalFlows.capitalDeployedUsdE8s) / 1e6 : null;
+    const capitalUsd = capitalFlows ? Number(capitalFlows.capitalDeployedUsdE8s) / 1e8 : null;
 
     // Trading P&L
     const pnlIcp = (latestValueIcp != null && capitalIcp != null) ? latestValueIcp - capitalIcp : null;
