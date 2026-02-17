@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars, FaComments, FaUnlock, FaCrown, FaGift, FaBrain, FaKey, FaHandPaper, FaBell, FaEnvelope, FaCoins, FaSync, FaVoteYea, FaCloudDownloadAlt, FaBolt, FaRobot, FaCubes, FaChartLine } from 'react-icons/fa';
+import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars, FaComments, FaUnlock, FaCrown, FaGift, FaBrain, FaKey, FaHandPaper, FaBell, FaEnvelope, FaCoins, FaSync, FaVoteYea, FaCloudDownloadAlt, FaBolt, FaRobot, FaCubes, FaChartLine, FaExclamationTriangle } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { headerStyles } from '../styles/HeaderStyles';
@@ -26,8 +26,10 @@ import { useFrontendUpdate } from '../contexts/FrontendUpdateContext';
 import { useOutdatedBotsNotification } from '../hooks/useOutdatedBotsNotification';
 import { useLowCyclesNotification } from '../hooks/useLowCyclesNotification';
 import { useBotChoreNotification } from '../hooks/useBotChoreNotification';
+import { useBotLogNotification } from '../hooks/useBotLogNotification';
 import UpgradeBotsDialog from './UpgradeBotsDialog';
 import BotChoreHealthDialog from './BotChoreHealthDialog';
+import BotLogAlertDialog from './BotLogAlertDialog';
 import TopUpCyclesDialog from './TopUpCyclesDialog';
 
 function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
@@ -125,6 +127,14 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         openDialog: openChoreDialog,
         closeDialog: closeChoreDialog,
     } = useBotChoreNotification();
+    const {
+        totalCount: logAlertCount,
+        botsWithAlerts: logAlertBots,
+        color: logAlertColor,
+        isDialogOpen: isLogAlertDialogOpen,
+        openDialog: openLogAlertDialog,
+        closeDialog: closeLogAlertDialog,
+    } = useBotLogNotification();
     const frontendUpdate = useFrontendUpdate();
     const hasUpdateAvailable = frontendUpdate?.hasUpdateAvailable ?? false;
     const countdownSeconds = frontendUpdate?.countdownSeconds ?? 0;
@@ -163,6 +173,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const [notifyOutdatedBotsSetting, setNotifyOutdatedBotsSetting] = useState(() => readNotifySetting('notifyOutdatedBots'));
     const [notifyLowCyclesSetting, setNotifyLowCyclesSetting] = useState(() => readNotifySetting('notifyLowCycles'));
     const [notifyBotChoresSetting, setNotifyBotChoresSetting] = useState(() => readNotifySetting('notifyBotChores'));
+    const [notifyBotLogErrorsSetting, setNotifyBotLogErrorsSetting] = useState(() => readNotifySetting('notifyBotLogErrors'));
     const [notifyUpdatesSetting, setNotifyUpdatesSetting] = useState(() => readNotifySetting('notifyUpdates'));
     const [expandQuickLinksOnDesktop, setExpandQuickLinksOnDesktop] = useState(() => {
         try {
@@ -259,6 +270,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 notifyOutdatedBots: setNotifyOutdatedBotsSetting,
                 notifyLowCycles: setNotifyLowCyclesSetting,
                 notifyBotChores: setNotifyBotChoresSetting,
+                notifyBotLogErrors: setNotifyBotLogErrorsSetting,
                 notifyUpdates: setNotifyUpdatesSetting,
             };
             const setter = notifyStorageMap[e.key];
@@ -289,6 +301,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             notifyOutdatedBots: setNotifyOutdatedBotsSetting,
             notifyLowCycles: setNotifyLowCyclesSetting,
             notifyBotChores: setNotifyBotChoresSetting,
+            notifyBotLogErrors: setNotifyBotLogErrorsSetting,
             notifyUpdates: setNotifyUpdatesSetting,
         };
 
@@ -1689,7 +1702,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             )}
 
             {/* Notifications Row: Shows when there are notifications or update available */}
-            {!isHeaderCollapsed && ((hasUpdateAvailable && notifyUpdatesSetting) || (showHeaderNotificationsSetting && isAuthenticated && ((notifyRepliesSetting && newReplyCount > 0) || (notifyTipsSetting && newTipCount > 0) || (notifyMessagesSetting && newMessageCount > 0) || (notifyCollectiblesSetting && collectiblesCount > 0) || (notifyVotableProposalsSetting && votableCount > 0) || (notifyOutdatedBotsSetting && outdatedCount > 0) || (notifyLowCyclesSetting && lowCyclesCount > 0) || (notifyBotChoresSetting && choreUnhealthyCount > 0)))) && (
+            {!isHeaderCollapsed && ((hasUpdateAvailable && notifyUpdatesSetting) || (showHeaderNotificationsSetting && isAuthenticated && ((notifyRepliesSetting && newReplyCount > 0) || (notifyTipsSetting && newTipCount > 0) || (notifyMessagesSetting && newMessageCount > 0) || (notifyCollectiblesSetting && collectiblesCount > 0) || (notifyVotableProposalsSetting && votableCount > 0) || (notifyOutdatedBotsSetting && outdatedCount > 0) || (notifyLowCyclesSetting && lowCyclesCount > 0) || (notifyBotChoresSetting && choreUnhealthyCount > 0) || (notifyBotLogErrorsSetting && logAlertCount > 0)))) && (
                 <div style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
@@ -2005,6 +2018,38 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                 <span>{choreUnhealthyCount}</span>
                             </div>
                         )}
+
+                        {/* Bot Log Alerts */}
+                        {notifyBotLogErrorsSetting && logAlertCount > 0 && (
+                            <div 
+                                onClick={openLogAlertDialog}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    padding: '3px 8px',
+                                    background: `linear-gradient(135deg, ${logAlertColor}33, ${logAlertColor}1a)`,
+                                    border: `1px solid ${logAlertColor}4d`,
+                                    borderRadius: '12px',
+                                    cursor: 'pointer',
+                                    fontSize: '11px',
+                                    fontWeight: '600',
+                                    color: logAlertColor,
+                                    transition: 'all 0.2s ease',
+                                    whiteSpace: 'nowrap',
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(-1px)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                }}
+                                title={`${logAlertCount} unseen bot log alert${logAlertCount !== 1 ? 's' : ''}`}
+                            >
+                                <FaExclamationTriangle size={10} />
+                                <span>{logAlertCount}</span>
+                            </div>
+                        )}
                 </div>
             )}
             
@@ -2025,6 +2070,13 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 isOpen={isChoreDialogOpen}
                 onClose={closeChoreDialog}
                 unhealthyManagers={choreUnhealthyManagers}
+            />
+
+            {/* Bot Log Alert Dialog (from header notification) */}
+            <BotLogAlertDialog
+                isOpen={isLogAlertDialogOpen}
+                onClose={closeLogAlertDialog}
+                botsWithAlerts={logAlertBots}
             />
 
             {/* Top Up Cycles Dialog (from header notification) */}

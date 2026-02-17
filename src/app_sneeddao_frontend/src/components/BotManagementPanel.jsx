@@ -297,6 +297,10 @@ export default function BotManagementPanel({
     const [logTokenMeta, setLogTokenMeta] = useState({}); // principal → { symbol, decimals, ... }
     const logTokenFetchedRef = useRef(new Set()); // Track already-fetched principals
 
+    // Unseen log alerts
+    const [logAlertSummary, setLogAlertSummary] = useState(null); // { unseenErrorCount, unseenWarningCount, highestErrorId, highestWarningId, nextId }
+    const [markingLogsSeen, setMarkingLogsSeen] = useState(false);
+
     // Cycles top-up
     const [topUpAmount, setTopUpAmount] = useState('');
     const [conversionRate, setConversionRate] = useState(null);
@@ -611,6 +615,54 @@ export default function BotManagementPanel({
             if (!silent) setLoadingLogs(false);
         }
     }, [canisterId, identity, getReadyBotActor, logFilter]);
+
+    // Fetch unseen log alert summary
+    const refreshLogAlertSummary = useCallback(async () => {
+        if (!canisterId || !identity) return;
+        try {
+            const bot = await getReadyBotActor();
+            if (!bot?.getLogAlertSummary) return;
+            // Merge localStorage and canister-stored lastSeen (use the higher)
+            const lsKey = `lastSeenLogId:${canisterId}`;
+            const localSeen = parseInt(localStorage.getItem(lsKey) || '0', 10);
+            let canisterSeen = 0;
+            try { canisterSeen = Number(await bot.getLastSeenLogId()); } catch (_) {}
+            const lastSeen = Math.max(localSeen, canisterSeen);
+            if (canisterSeen > localSeen) localStorage.setItem(lsKey, String(canisterSeen));
+            const summary = await bot.getLogAlertSummary(BigInt(lastSeen));
+            setLogAlertSummary({
+                unseenErrorCount: Number(summary.unseenErrorCount),
+                unseenWarningCount: Number(summary.unseenWarningCount),
+                highestErrorId: Number(summary.highestErrorId),
+                highestWarningId: Number(summary.highestWarningId),
+                nextId: Number(summary.nextId),
+            });
+        } catch (_) { /* Bot may not support this yet */ }
+    }, [canisterId, identity, getReadyBotActor]);
+
+    // Mark logs as seen for this bot
+    const handleMarkLogsSeen = useCallback(async () => {
+        if (!logAlertSummary || !canisterId) return;
+        setMarkingLogsSeen(true);
+        const highestId = Math.max(logAlertSummary.highestErrorId, logAlertSummary.highestWarningId, logAlertSummary.nextId - 1);
+        const lsKey = `lastSeenLogId:${canisterId}`;
+        localStorage.setItem(lsKey, String(highestId));
+        try {
+            const bot = await getReadyBotActor();
+            if (bot?.markLogsSeen) await bot.markLogsSeen(BigInt(highestId));
+        } catch (_) {}
+        setLogAlertSummary(null);
+        setMarkingLogsSeen(false);
+        // Trigger WalletContext refresh if available
+        try {
+            const { refreshBotLogAlerts } = await import('../contexts/WalletContext');
+        } catch (_) {}
+    }, [logAlertSummary, canisterId, getReadyBotActor]);
+
+    // Refresh alert summary when log tab is active
+    useEffect(() => {
+        if (activeTab === 'log') refreshLogAlertSummary();
+    }, [activeTab, refreshLogAlertSummary]);
 
     // Fetch ICP to cycles conversion rate from CMC
     const fetchConversionRate = useCallback(async () => {
@@ -2399,6 +2451,54 @@ export default function BotManagementPanel({
                                                 {logConfig && <> Currently storing <strong>{Number(logConfig.entryCount).toLocaleString()}</strong> of {Number(logConfig.maxEntries).toLocaleString()} max entries at <strong>{Object.keys(logConfig.logLevel)[0]}</strong> write level.</>}
                                             </p>
                                         </div>
+
+                                        {/* Unseen log alerts banner */}
+                                        {logAlertSummary && (logAlertSummary.unseenErrorCount > 0 || logAlertSummary.unseenWarningCount > 0) && (
+                                            <div style={{
+                                                ...cardStyle,
+                                                background: logAlertSummary.unseenErrorCount > 0
+                                                    ? 'linear-gradient(135deg, #ef444418, #ef444408)'
+                                                    : 'linear-gradient(135deg, #f59e0b18, #f59e0b08)',
+                                                border: `1px solid ${logAlertSummary.unseenErrorCount > 0 ? '#ef4444' : '#f59e0b'}30`,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                gap: '12px',
+                                            }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem' }}>
+                                                    <span style={{ color: logAlertSummary.unseenErrorCount > 0 ? '#ef4444' : '#f59e0b', fontSize: '1rem' }}>
+                                                        {logAlertSummary.unseenErrorCount > 0 ? '!' : '!'}
+                                                    </span>
+                                                    <span style={{ color: theme.colors.primaryText }}>
+                                                        {logAlertSummary.unseenErrorCount > 0 && (
+                                                            <strong style={{ color: '#ef4444' }}>{logAlertSummary.unseenErrorCount} unseen error{logAlertSummary.unseenErrorCount !== 1 ? 's' : ''}</strong>
+                                                        )}
+                                                        {logAlertSummary.unseenErrorCount > 0 && logAlertSummary.unseenWarningCount > 0 && ', '}
+                                                        {logAlertSummary.unseenWarningCount > 0 && (
+                                                            <strong style={{ color: '#f59e0b' }}>{logAlertSummary.unseenWarningCount} unseen warning{logAlertSummary.unseenWarningCount !== 1 ? 's' : ''}</strong>
+                                                        )}
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    onClick={handleMarkLogsSeen}
+                                                    disabled={markingLogsSeen}
+                                                    style={{
+                                                        padding: '4px 12px',
+                                                        borderRadius: '6px',
+                                                        border: `1px solid ${theme.colors.border}`,
+                                                        background: 'transparent',
+                                                        color: theme.colors.primaryText,
+                                                        fontSize: '0.75rem',
+                                                        cursor: 'pointer',
+                                                        fontWeight: '500',
+                                                        whiteSpace: 'nowrap',
+                                                        opacity: markingLogsSeen ? 0.5 : 1,
+                                                    }}
+                                                >
+                                                    {markingLogsSeen ? 'Marking...' : 'Mark as seen'}
+                                                </button>
+                                            </div>
+                                        )}
 
                                         {logError && <div style={{ ...cardStyle, background: `${theme.colors.error}15`, border: `1px solid ${theme.colors.error}30`, color: theme.colors.error, fontSize: '0.85rem' }}>{logError}</div>}
                                         {logSuccess && <div style={{ ...cardStyle, background: `${theme.colors.success || '#22c55e'}15`, border: `1px solid ${theme.colors.success || '#22c55e'}30`, color: theme.colors.success || '#22c55e', fontSize: '0.85rem' }}>{logSuccess}</div>}

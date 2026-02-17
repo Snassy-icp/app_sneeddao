@@ -81,6 +81,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     var botLogNextId: Nat = 0;
     var botLogLevel: Nat = 3; // Info
     var botLogMaxEntries: Nat = 10_000;
+    var userLastSeenLogId: [(Principal, Nat)] = [];
 
     // Trade Log
     var tradeLogEntries: [T.TradeLogEntry] = [];
@@ -5051,6 +5052,33 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     public shared (msg) func clearLogs(): async () {
         assertPermission(msg.caller, T.TradingPermission.ManageLogs);
         logEngine.clear();
+    };
+
+    public shared query (msg) func getLogAlertSummary(sinceId: Nat): async BotLogTypes.LogAlertSummary {
+        assertPermission(msg.caller, T.TradingPermission.ViewLogs);
+        logEngine.getAlertSummary(sinceId)
+    };
+
+    public shared query (msg) func getLastSeenLogId(): async Nat {
+        assertPermission(msg.caller, T.TradingPermission.ViewLogs);
+        for ((p, id) in userLastSeenLogId.vals()) {
+            if (Principal.equal(p, msg.caller)) return id;
+        };
+        0
+    };
+
+    public shared (msg) func markLogsSeen(logId: Nat): async () {
+        assertPermission(msg.caller, T.TradingPermission.ViewLogs);
+        var found = false;
+        userLastSeenLogId := Array.map<(Principal, Nat), (Principal, Nat)>(userLastSeenLogId,
+            func((p, id)) {
+                if (Principal.equal(p, msg.caller)) { found := true; (p, Nat.max(id, logId)) }
+                else { (p, id) }
+            }
+        );
+        if (not found) {
+            userLastSeenLogId := Array.append(userLastSeenLogId, [(msg.caller, logId)]);
+        };
     };
 
     // ============================================

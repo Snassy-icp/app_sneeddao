@@ -259,6 +259,14 @@ export const idlFactory = ({ IDL }) => {
         nextId: IDL.Nat,
     });
 
+    const LogAlertSummary = IDL.Record({
+        unseenErrorCount: IDL.Nat,
+        unseenWarningCount: IDL.Nat,
+        highestErrorId: IDL.Nat,
+        highestWarningId: IDL.Nat,
+        nextId: IDL.Nat,
+    });
+
     // ==========================================
     // Bot Chore types
     // ==========================================
@@ -629,6 +637,9 @@ export const idlFactory = ({ IDL }) => {
         // Bot Log (general)
         getLogs: IDL.Func([LogFilter], [LogResult], ['query']),
         getLogConfig: IDL.Func([], [LogConfig], ['query']),
+        getLogAlertSummary: IDL.Func([IDL.Nat], [LogAlertSummary], ['query']),
+        getLastSeenLogId: IDL.Func([], [IDL.Nat], ['query']),
+        markLogsSeen: IDL.Func([IDL.Nat], [], []),
         setLogLevel: IDL.Func([LogLevel], [], []),
         clearLogs: IDL.Func([], [], []),
 

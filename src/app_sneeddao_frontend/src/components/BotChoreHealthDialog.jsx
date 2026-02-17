@@ -7,13 +7,13 @@ import { PrincipalDisplay } from '../utils/PrincipalUtils';
 import { LAMP_WARN, LAMP_ERROR, LAMP_COLORS, LAMP_LABELS } from './ChoreStatusLamp';
 
 /**
- * Dialog listing ICP Staking Bots with unhealthy chore lamps (warn or error).
+ * Dialog listing bots (staking + trading) with unhealthy chore lamps (warn or error).
  * Clicking a bot navigates to its chores tab.
  *
  * Props:
  *   isOpen: boolean
  *   onClose: () => void
- *   unhealthyManagers: Array<{ canisterId: string, lamp: string }>
+ *   unhealthyManagers: Array<{ canisterId: string, lamp: string, appId?: string }>
  */
 export default function BotChoreHealthDialog({ isOpen, onClose, unhealthyManagers = [] }) {
     const { theme } = useTheme();
@@ -25,9 +25,13 @@ export default function BotChoreHealthDialog({ isOpen, onClose, unhealthyManager
     const errorCount = unhealthyManagers.filter(m => m.lamp === LAMP_ERROR).length;
     const warnCount = unhealthyManagers.filter(m => m.lamp === LAMP_WARN).length;
 
-    const handleBotClick = (canisterId) => {
+    const handleBotClick = (canisterId, appId) => {
         onClose();
-        navigate(`/icp_neuron_manager/${canisterId}?tab=chores`);
+        if (appId === 'sneed-trading-bot') {
+            navigate(`/trading_bot/${canisterId}?tab=chores`);
+        } else {
+            navigate(`/icp_neuron_manager/${canisterId}?tab=chores`);
+        }
     };
 
     return (
@@ -135,11 +139,12 @@ export default function BotChoreHealthDialog({ isOpen, onClose, unhealthyManager
                                 )}
                             </div>
 
-                            {unhealthyManagers.map(({ canisterId, lamp }) => {
+                            {unhealthyManagers.map(({ canisterId, lamp, appId }) => {
                                 const isError = lamp === LAMP_ERROR;
                                 const lampColor = LAMP_COLORS[lamp] || LAMP_COLORS.warn;
                                 const lampLabel = LAMP_LABELS[lamp] || 'Unknown';
                                 const displayInfo = getPrincipalDisplayName ? getPrincipalDisplayName(canisterId) : null;
+                                const botTypeLabel = appId === 'sneed-trading-bot' ? 'Trading Bot' : 'ICP Staking Bot';
 
                                 return (
                                     <div
@@ -158,7 +163,7 @@ export default function BotChoreHealthDialog({ isOpen, onClose, unhealthyManager
                                             cursor: 'pointer',
                                             transition: 'all 0.15s ease',
                                         }}
-                                        onClick={() => handleBotClick(canisterId)}
+                                        onClick={() => handleBotClick(canisterId, appId)}
                                         onMouseEnter={(e) => {
                                             e.currentTarget.style.transform = 'translateY(-1px)';
                                             e.currentTarget.style.boxShadow = `0 4px 12px ${lampColor}20`;
@@ -202,11 +207,14 @@ export default function BotChoreHealthDialog({ isOpen, onClose, unhealthyManager
                                             </div>
                                             <div style={{
                                                 fontSize: '11px',
-                                                color: lampColor,
+                                                color: theme.colors.mutedText,
                                                 fontWeight: '500',
                                                 marginTop: '2px',
+                                                display: 'flex',
+                                                gap: '8px',
                                             }}>
-                                                {lampLabel}
+                                                <span>{botTypeLabel}</span>
+                                                <span style={{ color: lampColor }}>{lampLabel}</span>
                                             </div>
                                         </div>
 

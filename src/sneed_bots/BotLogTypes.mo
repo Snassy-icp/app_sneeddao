@@ -115,6 +115,25 @@ module {
     };
 
     // ============================================
+    // ALERT SUMMARY
+    // ============================================
+
+    /// Lightweight summary of unseen errors and warnings since a given log ID.
+    /// Used by the frontend to show notification badges without fetching full entries.
+    public type LogAlertSummary = {
+        /// Number of Error-level entries with id > sinceId.
+        unseenErrorCount: Nat;
+        /// Number of Warning-level entries with id > sinceId.
+        unseenWarningCount: Nat;
+        /// Highest Error-level entry ID seen (0 if none).
+        highestErrorId: Nat;
+        /// Highest Warning-level entry ID seen (0 if none).
+        highestWarningId: Nat;
+        /// Next entry ID that will be assigned (same as LogConfig.nextId).
+        nextId: Nat;
+    };
+
+    // ============================================
     // CONFIGURATION
     // ============================================
 

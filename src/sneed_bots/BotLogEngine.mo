@@ -233,6 +233,39 @@ module {
         };
 
         // ============================================
+        // ALERT SUMMARY
+        // ============================================
+
+        /// Lightweight scan: count Error and Warning entries with id > sinceId.
+        public func getAlertSummary(sinceId: Nat): BotLogTypes.LogAlertSummary {
+            var errorCount: Nat = 0;
+            var warningCount: Nat = 0;
+            var highestErrorId: Nat = 0;
+            var highestWarningId: Nat = 0;
+
+            for (entry in buf.vals()) {
+                if (entry.id > sinceId) {
+                    let lvl = BotLogTypes.logLevelToNat(entry.level);
+                    if (lvl == 1) { // Error
+                        errorCount += 1;
+                        if (entry.id > highestErrorId) { highestErrorId := entry.id };
+                    } else if (lvl == 2) { // Warning
+                        warningCount += 1;
+                        if (entry.id > highestWarningId) { highestWarningId := entry.id };
+                    };
+                };
+            };
+
+            {
+                unseenErrorCount = errorCount;
+                unseenWarningCount = warningCount;
+                highestErrorId = highestErrorId;
+                highestWarningId = highestWarningId;
+                nextId = nextId;
+            }
+        };
+
+        // ============================================
         // CONFIGURATION
         // ============================================
 

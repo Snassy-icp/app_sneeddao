@@ -230,6 +230,8 @@ export default function Me() {
         notify_outdated_bots: true,
         notify_low_cycles: true,
         notify_bot_chores: true,
+        notify_bot_log_errors: true,
+        notify_bot_log_warnings: false,
         notify_updates: true,
     };
 
@@ -290,6 +292,8 @@ export default function Me() {
             notify_outdated_bots: readBool('notifyOutdatedBots', defaultUserSettings.notify_outdated_bots),
             notify_low_cycles: readBool('notifyLowCycles', defaultUserSettings.notify_low_cycles),
             notify_bot_chores: readBool('notifyBotChores', defaultUserSettings.notify_bot_chores),
+            notify_bot_log_errors: readBool('notifyBotLogErrors', defaultUserSettings.notify_bot_log_errors),
+            notify_bot_log_warnings: readBool('notifyBotLogWarnings', defaultUserSettings.notify_bot_log_warnings),
             notify_updates: readBool('notifyUpdates', defaultUserSettings.notify_updates),
         };
     };
@@ -478,6 +482,16 @@ export default function Me() {
         localStorage.setItem('notifyBotChores', JSON.stringify(notifyBotChoresValue));
         window.dispatchEvent(new CustomEvent('notifySettingChanged', { detail: { key: 'notifyBotChores', value: notifyBotChoresValue } }));
 
+        const notifyBotLogErrorsValue = settings.notify_bot_log_errors ?? true;
+        setNotifyBotLogErrors(notifyBotLogErrorsValue);
+        localStorage.setItem('notifyBotLogErrors', JSON.stringify(notifyBotLogErrorsValue));
+        window.dispatchEvent(new CustomEvent('notifySettingChanged', { detail: { key: 'notifyBotLogErrors', value: notifyBotLogErrorsValue } }));
+
+        const notifyBotLogWarningsValue = settings.notify_bot_log_warnings ?? false;
+        setNotifyBotLogWarnings(notifyBotLogWarningsValue);
+        localStorage.setItem('notifyBotLogWarnings', JSON.stringify(notifyBotLogWarningsValue));
+        window.dispatchEvent(new CustomEvent('notifySettingChanged', { detail: { key: 'notifyBotLogWarnings', value: notifyBotLogWarningsValue } }));
+
         const notifyUpdatesValue = settings.notify_updates ?? true;
         setNotifyUpdates(notifyUpdatesValue);
         localStorage.setItem('notifyUpdates', JSON.stringify(notifyUpdatesValue));
@@ -549,6 +563,12 @@ export default function Me() {
     });
     const [notifyBotChores, setNotifyBotChores] = useState(() => {
         try { const s = localStorage.getItem('notifyBotChores'); return s !== null ? JSON.parse(s) : true; } catch { return true; }
+    });
+    const [notifyBotLogErrors, setNotifyBotLogErrors] = useState(() => {
+        try { const s = localStorage.getItem('notifyBotLogErrors'); return s !== null ? JSON.parse(s) : true; } catch { return true; }
+    });
+    const [notifyBotLogWarnings, setNotifyBotLogWarnings] = useState(() => {
+        try { const s = localStorage.getItem('notifyBotLogWarnings'); return s !== null ? JSON.parse(s) : false; } catch { return false; }
     });
     const [notifyUpdates, setNotifyUpdates] = useState(() => {
         try { const s = localStorage.getItem('notifyUpdates'); return s !== null ? JSON.parse(s) : true; } catch { return true; }
@@ -2666,6 +2686,40 @@ export default function Me() {
                                                 localStorage.setItem('notifyBotChores', JSON.stringify(newValue));
                                                 window.dispatchEvent(new CustomEvent('notifySettingChanged', { detail: { key: 'notifyBotChores', value: newValue } }));
                                                 updateBackendSettings({ notify_bot_chores: newValue });
+                                            }}
+                                        />
+                                    </SettingItem>
+
+                                    <SettingItem
+                                        title="Bot Log Errors"
+                                        description="Show notifications when bots have unseen errors in their log"
+                                        theme={theme}
+                                    >
+                                        <ToggleSwitch
+                                            checked={notifyBotLogErrors}
+                                            onChange={(e) => {
+                                                const newValue = e.target.checked;
+                                                setNotifyBotLogErrors(newValue);
+                                                localStorage.setItem('notifyBotLogErrors', JSON.stringify(newValue));
+                                                window.dispatchEvent(new CustomEvent('notifySettingChanged', { detail: { key: 'notifyBotLogErrors', value: newValue } }));
+                                                updateBackendSettings({ notify_bot_log_errors: newValue });
+                                            }}
+                                        />
+                                    </SettingItem>
+
+                                    <SettingItem
+                                        title="Bot Log Warnings"
+                                        description="Include warnings (not just errors) in bot log notifications"
+                                        theme={theme}
+                                    >
+                                        <ToggleSwitch
+                                            checked={notifyBotLogWarnings}
+                                            onChange={(e) => {
+                                                const newValue = e.target.checked;
+                                                setNotifyBotLogWarnings(newValue);
+                                                localStorage.setItem('notifyBotLogWarnings', JSON.stringify(newValue));
+                                                window.dispatchEvent(new CustomEvent('notifySettingChanged', { detail: { key: 'notifyBotLogWarnings', value: newValue } }));
+                                                updateBackendSettings({ notify_bot_log_warnings: newValue });
                                             }}
                                         />
                                     </SettingItem>

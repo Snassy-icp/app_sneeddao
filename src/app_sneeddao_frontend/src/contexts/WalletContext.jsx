@@ -18,6 +18,8 @@ import { fetchAndCacheSnsData, getAllSnses, getSnsById, buildSnsCanisterToRootMa
 import { getNeuronsFromCacheByIds, saveNeuronsToCache, getAllNeuronsForSns, normalizeId } from '../hooks/useNeuronsCache';
 import { initializeLogoCache, getLogo, setLogo, getLogoSync } from '../hooks/useLogoCache';
 import { initializeTokenCache, setLedgerList, getTokenMetadataSync } from '../hooks/useTokenCache';
+import { botLogIdlFactory } from '../utils/botLogIdl';
+import { createActor as createTradingBotActor } from 'external/sneed_trading_bot';
 import { getNeuronManagerSettings, getCanisterManagerSettings } from '../utils/NeuronManagerSettings';
 import { getCachedRewards, setCachedRewards } from '../hooks/useRewardsCache';
 import priceService from '../services/PriceService';
@@ -397,6 +399,13 @@ export const WalletProvider = ({ children }) => {
     
     // Chore statuses for neuron managers - shared between quick wallet and /wallet page
     const [managerChoreStatuses, setManagerChoreStatuses] = useState({}); // canisterId -> choreStatuses[]
+    
+    // All bot entries from sneedapp wallet (with appId) - shared for cross-bot-type notifications
+    const [allBotEntries, setAllBotEntries] = useState([]); // [{ canisterId, appId }]
+    
+    // Bot log alert summaries - { canisterId -> LogAlertSummary }
+    const [botLogAlerts, setBotLogAlerts] = useState({});
+    const botLogAlertsTimerRef = useRef(null);
     
     // Official bot versions - shared for outdated detection across all UI surfaces
     const [officialVersions, setOfficialVersions] = useState([]);
@@ -1828,6 +1837,12 @@ export const WalletProvider = ({ children }) => {
             // Step 1: Quick query to get manager IDs
             const canisterIds = await factory.getMyManagers();
             
+            // Also fetch full wallet entries (with appId) for cross-bot-type notifications
+            try {
+                const walletEntries = await factory.getMyWallet();
+                setAllBotEntries(walletEntries || []);
+            } catch (_) { /* getMyWallet may not be available on older factory versions */ }
+            
             if (managersFetchSessionRef.current !== sessionId) return;
             
             if (canisterIds.length > 0) {
@@ -1941,19 +1956,36 @@ export const WalletProvider = ({ children }) => {
     }, [refreshNeuronManagers]);
     
     // --- Lightweight chore-status-only refresh (no neuron data) ---
+    // Polls chore statuses for ALL bot types: staking bots (neuronManagers) + trading bots (allBotEntries)
     const refreshChoreStatuses = useCallback(async () => {
-        if (!identity || !isAuthenticated || neuronManagers.length === 0) return;
+        // Build a combined list: staking bots + trading bots
+        const botList = [];
+        for (const m of neuronManagers) {
+            const cid = typeof m.canisterId === 'string' ? m.canisterId : m.canisterId.toString();
+            botList.push({ canisterId: cid, type: 'staking' });
+        }
+        for (const entry of allBotEntries) {
+            if (entry.appId === 'sneed-trading-bot') {
+                const cid = entry.canisterId.toString();
+                // Avoid duplicates
+                if (!botList.some(b => b.canisterId === cid)) {
+                    botList.push({ canisterId: cid, type: 'trading' });
+                }
+            }
+        }
+        if (!identity || !isAuthenticated || botList.length === 0) return;
         
         const agent = new HttpAgent({ identity, host: (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') ? 'http://localhost:4943' : 'https://ic0.app' });
         if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
             await agent.fetchRootKey().catch(() => {});
         }
         
-        await Promise.all(neuronManagers.map(async ({ canisterId }) => {
-            const canisterIdStr = typeof canisterId === 'string' ? canisterId : canisterId.toString();
+        await Promise.all(botList.map(async ({ canisterId: canisterIdStr, type }) => {
             try {
-                const manager = createManagerActor(canisterIdStr, { agent });
-                const choreStatuses = await manager.getChoreStatuses();
+                const actor = type === 'trading'
+                    ? createTradingBotActor(canisterIdStr, { agent })
+                    : createManagerActor(canisterIdStr, { agent });
+                const choreStatuses = await actor.getChoreStatuses();
                 if (choreStatuses && choreStatuses.length > 0) {
                     setManagerChoreStatuses(prev => {
                         // Skip update if nothing changed (compare key scalar fields)
@@ -1961,19 +1993,15 @@ export const WalletProvider = ({ children }) => {
                         if (prevStatuses && prevStatuses.length === choreStatuses.length) {
                             const changed = choreStatuses.some((cs, i) => {
                                 const ps = prevStatuses[i];
-                                // Compare conductor status variant key (e.g. "Idle", "Running", etc.)
                                 const csCondKey = Object.keys(cs.conductorStatus || {})[0];
                                 const psCondKey = Object.keys(ps.conductorStatus || {})[0];
                                 if (csCondKey !== psCondKey) return true;
-                                // Compare scheduler status variant key
                                 const csSchedKey = Object.keys(cs.schedulerStatus || {})[0];
                                 const psSchedKey = Object.keys(ps.schedulerStatus || {})[0];
                                 if (csSchedKey !== psSchedKey) return true;
-                                // Compare next scheduled run timestamp
                                 const csNext = cs.nextScheduledRunAt?.[0]?.toString() ?? '';
                                 const psNext = ps.nextScheduledRunAt?.[0]?.toString() ?? '';
                                 if (csNext !== psNext) return true;
-                                // Compare last run timestamp
                                 const csLast = cs.lastRunAt?.[0]?.toString() ?? '';
                                 const psLast = ps.lastRunAt?.[0]?.toString() ?? '';
                                 if (csLast !== psLast) return true;
@@ -1988,7 +2016,7 @@ export const WalletProvider = ({ children }) => {
                 // Chore API not available or canister unreachable — ignore
             }
         }));
-    }, [identity, isAuthenticated, neuronManagers]);
+    }, [identity, isAuthenticated, neuronManagers, allBotEntries]);
     
     // --- Smart auto-refresh timer for chore statuses ---
     // Keeps status lamps up-to-date across the app (Wallet, quick wallet, etc.)
@@ -2054,6 +2082,61 @@ export const WalletProvider = ({ children }) => {
         return clearTimer;
     }, [isAuthenticated, managerChoreStatuses, refreshChoreStatuses]);
     
+    // --- Bot Log Alerts (unseen errors/warnings across all bots) ---
+    const refreshBotLogAlerts = useCallback(async () => {
+        if (!identity || !isAuthenticated || allBotEntries.length === 0) return;
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging'
+                ? 'https://ic0.app'
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const results = {};
+            await Promise.allSettled(allBotEntries.map(async (entry) => {
+                const cid = entry.canisterId.toString();
+                try {
+                    const lastSeen = parseInt(localStorage.getItem(`lastSeenLogId:${cid}`) || '0', 10);
+                    const actor = Actor.createActor(botLogIdlFactory, { agent, canisterId: entry.canisterId });
+                    const summary = await actor.getLogAlertSummary(BigInt(lastSeen));
+                    results[cid] = {
+                        unseenErrorCount: Number(summary.unseenErrorCount),
+                        unseenWarningCount: Number(summary.unseenWarningCount),
+                        highestErrorId: Number(summary.highestErrorId),
+                        highestWarningId: Number(summary.highestWarningId),
+                        nextId: Number(summary.nextId),
+                        appId: entry.appId || '',
+                    };
+                } catch (_) {
+                    // Bot may not support getLogAlertSummary yet — skip
+                }
+            }));
+            setBotLogAlerts(prev => {
+                // Only update if something changed
+                const prevKeys = Object.keys(prev);
+                const newKeys = Object.keys(results);
+                if (prevKeys.length === newKeys.length && newKeys.every(k =>
+                    prev[k]?.unseenErrorCount === results[k]?.unseenErrorCount &&
+                    prev[k]?.unseenWarningCount === results[k]?.unseenWarningCount
+                )) return prev;
+                return results;
+            });
+        } catch (e) {
+            console.error('Error refreshing bot log alerts:', e);
+        }
+    }, [identity, isAuthenticated, allBotEntries]);
+
+    // Auto-refresh bot log alerts every 60 seconds
+    useEffect(() => {
+        if (!isAuthenticated || allBotEntries.length === 0) return;
+        // Initial fetch
+        refreshBotLogAlerts();
+        const timer = setInterval(refreshBotLogAlerts, 60_000);
+        botLogAlertsTimerRef.current = timer;
+        return () => clearInterval(timer);
+    }, [isAuthenticated, allBotEntries, refreshBotLogAlerts]);
+
     // --- Official versions (for outdated bot detection) ---
     const compareVersions = useCallback((a, b) => {
         const aMajor = Number(a.major), aMinor = Number(a.minor), aPatch = Number(a.patch);
@@ -2869,6 +2952,9 @@ export const WalletProvider = ({ children }) => {
             managerNeuronsTotal,
             managerChoreStatuses,
             refreshChoreStatuses,
+            allBotEntries,
+            botLogAlerts,
+            refreshBotLogAlerts,
             officialVersions,
             latestOfficialVersion,
             outdatedManagers,
