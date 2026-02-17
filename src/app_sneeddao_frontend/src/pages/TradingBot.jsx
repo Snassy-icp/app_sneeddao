@@ -5374,66 +5374,165 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
     // Condition update helper
     const updateCond = (ci, patch) => setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...c, ...patch } : c) }));
 
-    // Rich rule summary for the card view
+    // ── DSL helpers for rich IF…THEN rule summaries ──
+
+    const LOGO_PROXY = 'https://static.icpswap.com/logo';
+    const logoUrl = (pid) => pid ? `${LOGO_PROXY}/${typeof pid === 'string' ? pid : pid.toText?.() || pid}` : null;
+    const _pid = (v) => typeof v === 'string' ? v : v?.toText?.() || v?.toString?.() || '';
+
+    // Inline token badge: logo + symbol
+    const tkn = (principal) => {
+        const p = _pid(principal);
+        const sym = tokenSymbol(p);
+        const url = logoUrl(p);
+        return (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', verticalAlign: 'middle' }}>
+                {url && <img src={url} alt="" style={{ width: '14px', height: '14px', borderRadius: '50%', verticalAlign: 'middle' }}
+                    onError={e => { e.target.style.display = 'none'; }} />}
+                <span style={{ fontWeight: 600 }}>{sym}</span>
+            </span>
+        );
+    };
+
+    // Keyword span (for DSL keywords like PRICE, BALANCE, etc.)
+    const kw = (text, color) => <span style={{ fontWeight: 700, color: color || accentColor, letterSpacing: '0.02em' }}>{text}</span>;
+    // Value span (monospace for numeric values)
+    const val = (text) => <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '0.85em' }}>{text}</span>;
+
+    // Format an e8s amount in human-readable token units
+    const fmtAmt = (raw, tokenPrincipal) => {
+        const p = _pid(tokenPrincipal);
+        const dec = getTokenDecimals(p);
+        const n = Number(raw);
+        if (isNaN(n)) return val('?');
+        const human = (n / Math.pow(10, dec));
+        const formatted = human % 1 === 0 ? human.toFixed(0) : human.toPrecision(6).replace(/\.?0+$/, '');
+        return <>{val(formatted)} {tkn(p)}</>;
+    };
+
+    // Describe a subaccount
+    const acctLabel = (sub) => {
+        if (sub == null || sub === '' || sub === '0') return 'main account';
+        return <>{kw('Sub', theme.colors.secondaryText)} {val('#' + sub)}</>;
+    };
+
+    // Describe a list of value sources compactly
+    const describeValueSources = (sources) => {
+        if (!sources || sources.length === 0) return <em>no sources</em>;
+        return sources.map((vs, i) => {
+            const st = Number(vs.sourceType);
+            const sep = i > 0 ? <>{', '}</> : null;
+            if (st === 0) {
+                const tok = _pid(vs.token?.[0] || vs.token);
+                const sub = vs.subaccount?.[0] != null ? Number(vs.subaccount[0]) : (vs.subaccount !== '' && vs.subaccount != null ? vs.subaccount : null);
+                return <span key={i}>{sep}{tkn(tok)}{' in '}{acctLabel(sub)}</span>;
+            }
+            if (st === 1) {
+                const cid = vs.choreInstanceId?.[0] || vs.choreInstanceId;
+                return <span key={i}>{sep}{kw('portfolio', theme.colors.secondaryText)} {val(`"${choreInstanceLabel(cid)}"`)}</span>;
+            }
+            if (st === 2) {
+                const sub = vs.subaccount?.[0] != null ? Number(vs.subaccount[0]) : (vs.subaccount !== '' && vs.subaccount != null ? vs.subaccount : null);
+                return <span key={i}>{sep}{kw('all tokens in', theme.colors.secondaryText)} {acctLabel(sub)}</span>;
+            }
+            return <span key={i}>{sep}{'?'}</span>;
+        });
+    };
+
+    // Denomination token for value conditions (default ICP)
+    const denomPrincipal = (c) => {
+        const d = _pid(c.denominationToken?.[0] || c.denominationToken);
+        return d || ICP_LEDGER;
+    };
+
+    // Rich condition text (returns JSX)
     const conditionText = (c) => {
         const ct = Number(c.conditionType);
         const op = Number(c.operator);
-        if (ct === 0) { // Price
-            const t1 = tokenSymbol(c.priceToken1?.[0] || c.priceToken1);
-            const t2 = tokenSymbol(c.priceToken2?.[0] || c.priceToken2);
-            const pair = `${t1}/${t2} price`;
+
+        // ── PRICE ──
+        if (ct === 0) {
+            const t1 = _pid(c.priceToken1?.[0] || c.priceToken1);
+            const t2 = _pid(c.priceToken2?.[0] || c.priceToken2);
             if (op === 4) {
                 const bps = c.changePercentBps?.[0] != null ? Number(c.changePercentBps[0]) : 0;
                 const pct = (bps / 100).toFixed(1);
                 const dir = Number(c.changeDirection?.[0] ?? 2);
-                const dirLabel = dir === 0 ? 'rises' : dir === 1 ? 'drops' : 'moves';
+                const dirWord = dir === 0 ? 'rises' : dir === 1 ? 'drops' : 'moves';
                 const period = c.changePeriodSeconds?.[0] != null ? formatPeriod(Number(c.changePeriodSeconds[0])) : '?';
-                return `${pair} ${dirLabel} ${pct}% or more over ${period}`;
+                return <>{kw('PRICE')} {tkn(t1)}/{tkn(t2)} {dirWord} {val(`≥${pct}%`)} over {val(period)}</>;
             }
-            const opLabel = ['>', '<', 'is between', 'is outside'][op] || '?';
-            return `${pair} ${opLabel} threshold`;
+            const threshold = c.threshold?.[0] != null ? Number(c.threshold[0]) : null;
+            const rMin = c.rangeMin?.[0] != null ? Number(c.rangeMin[0]) : null;
+            const rMax = c.rangeMax?.[0] != null ? Number(c.rangeMax[0]) : null;
+            if (op === 0) return <>{kw('PRICE')} {tkn(t1)}/{tkn(t2)} {'>'} {fmtAmt(threshold, t2)}</>;
+            if (op === 1) return <>{kw('PRICE')} {tkn(t1)}/{tkn(t2)} {'<'} {fmtAmt(threshold, t2)}</>;
+            if (op === 2) return <>{kw('PRICE')} {tkn(t1)}/{tkn(t2)} in [{fmtAmt(rMin, t2)} .. {fmtAmt(rMax, t2)}]</>;
+            if (op === 3) return <>{kw('PRICE')} {tkn(t1)}/{tkn(t2)} outside [{fmtAmt(rMin, t2)} .. {fmtAmt(rMax, t2)}]</>;
         }
-        if (ct === 2) { // Balance
-            const tok = tokenSymbol(c.balanceToken?.[0] || c.balanceToken);
-            const acct = c.balanceSubaccount?.[0] != null ? `subaccount #${Number(c.balanceSubaccount[0])}` : 'main account';
+
+        // ── BALANCE ──
+        if (ct === 2) {
+            const tok = _pid(c.balanceToken?.[0] || c.balanceToken);
+            const sub = c.balanceSubaccount?.[0] != null ? Number(c.balanceSubaccount[0]).toString() : '';
             if (op === 4) {
                 const bps = c.changePercentBps?.[0] != null ? Number(c.changePercentBps[0]) : 0;
                 const pct = (bps / 100).toFixed(1);
                 const dir = Number(c.changeDirection?.[0] ?? 2);
-                const dirLabel = dir === 0 ? 'increases' : dir === 1 ? 'decreases' : 'changes';
+                const dirWord = dir === 0 ? 'increases' : dir === 1 ? 'decreases' : 'changes';
                 const period = c.changePeriodSeconds?.[0] != null ? formatPeriod(Number(c.changePeriodSeconds[0])) : '?';
-                return `${tok} balance in ${acct} ${dirLabel} ${pct}%+ over ${period}`;
+                return <>{kw('BALANCE')} {tkn(tok)} in {acctLabel(sub)} {dirWord} {val(`≥${pct}%`)} over {val(period)}</>;
             }
-            return `${tok} balance in ${acct} ${['>', '<', 'in range', 'out of range'][op]} threshold`;
+            const threshold = c.threshold?.[0] != null ? Number(c.threshold[0]) : null;
+            const rMin = c.rangeMin?.[0] != null ? Number(c.rangeMin[0]) : null;
+            const rMax = c.rangeMax?.[0] != null ? Number(c.rangeMax[0]) : null;
+            if (op === 0) return <>{kw('BALANCE')} {tkn(tok)} in {acctLabel(sub)} {'>'} {fmtAmt(threshold, tok)}</>;
+            if (op === 1) return <>{kw('BALANCE')} {tkn(tok)} in {acctLabel(sub)} {'<'} {fmtAmt(threshold, tok)}</>;
+            if (op === 2) return <>{kw('BALANCE')} {tkn(tok)} in {acctLabel(sub)} in [{fmtAmt(rMin, tok)} .. {fmtAmt(rMax, tok)}]</>;
+            if (op === 3) return <>{kw('BALANCE')} {tkn(tok)} in {acctLabel(sub)} outside [{fmtAmt(rMin, tok)} .. {fmtAmt(rMax, tok)}]</>;
         }
-        // Value (ct === 1)
-        const srcCount = c.valueSources?.length || 0;
-        const srcLabel = srcCount === 1 ? '1 source' : `${srcCount} sources`;
-        if (op === 4) {
-            const bps = c.changePercentBps?.[0] != null ? Number(c.changePercentBps[0]) : 0;
-            const pct = (bps / 100).toFixed(1);
-            const dir = Number(c.changeDirection?.[0] ?? 2);
-            const dirLabel = dir === 0 ? 'increases' : dir === 1 ? 'decreases' : 'changes';
-            const period = c.changePeriodSeconds?.[0] != null ? formatPeriod(Number(c.changePeriodSeconds[0])) : '?';
-            return `portfolio value (${srcLabel}) ${dirLabel} ${pct}%+ over ${period}`;
+
+        // ── VALUE ──
+        {
+            const denom = denomPrincipal(c);
+            if (op === 4) {
+                const bps = c.changePercentBps?.[0] != null ? Number(c.changePercentBps[0]) : 0;
+                const pct = (bps / 100).toFixed(1);
+                const dir = Number(c.changeDirection?.[0] ?? 2);
+                const dirWord = dir === 0 ? 'increases' : dir === 1 ? 'decreases' : 'changes';
+                const period = c.changePeriodSeconds?.[0] != null ? formatPeriod(Number(c.changePeriodSeconds[0])) : '?';
+                return <>{kw('VALUE')} of [{describeValueSources(c.valueSources)}] in {tkn(denom)} {dirWord} {val(`≥${pct}%`)} over {val(period)}</>;
+            }
+            const threshold = c.threshold?.[0] != null ? Number(c.threshold[0]) : null;
+            const rMin = c.rangeMin?.[0] != null ? Number(c.rangeMin[0]) : null;
+            const rMax = c.rangeMax?.[0] != null ? Number(c.rangeMax[0]) : null;
+            if (op === 0) return <>{kw('VALUE')} of [{describeValueSources(c.valueSources)}] {'>'} {fmtAmt(threshold, denom)}</>;
+            if (op === 1) return <>{kw('VALUE')} of [{describeValueSources(c.valueSources)}] {'<'} {fmtAmt(threshold, denom)}</>;
+            if (op === 2) return <>{kw('VALUE')} of [{describeValueSources(c.valueSources)}] in [{fmtAmt(rMin, denom)} .. {fmtAmt(rMax, denom)}]</>;
+            if (op === 3) return <>{kw('VALUE')} of [{describeValueSources(c.valueSources)}] outside [{fmtAmt(rMin, denom)} .. {fmtAmt(rMax, denom)}]</>;
         }
-        return `portfolio value (${srcLabel}) ${['>', '<', 'in range', 'out of range'][op]} threshold`;
+
+        return '?';
     };
+
+    // Rich action text (returns JSX)
     const actionText = (a) => {
         const at = Number(a.actionType);
-        const tok = a.token?.[0] || a.token;
+        const tok = _pid(a.token?.[0] || a.token);
         const cid = a.choreInstanceId?.[0] || a.choreInstanceId;
         const ctid = a.choreTypeId?.[0] || a.choreTypeId;
+        const choreLabel = choreInstanceLabel(cid);
+        const choreTypeName = CB_CHORE_TYPES.find(t => t.value === ctid)?.label || ctid || '?';
         switch (at) {
-            case 0: return `Pause ${tokenSymbol(tok)} in portfolio "${choreInstanceLabel(cid)}"`;
-            case 1: return `Pause ${tokenSymbol(tok)} globally`;
-            case 2: return `Freeze ${tokenSymbol(tok)} globally`;
-            case 3: return `Stop chore "${choreInstanceLabel(cid)}"`;
-            case 4: return `Pause chore "${choreInstanceLabel(cid)}"`;
-            case 5: return `Stop all ${ctid || '?'} chores`;
-            case 6: return `Pause all ${ctid || '?'} chores`;
-            case 7: return 'Stop ALL chores';
-            case 8: return 'Pause ALL chores';
+            case 0: return <>{kw('PAUSE', '#e67e22')} {tkn(tok)} in portfolio {val(`"${choreLabel}"`)}</>;
+            case 1: return <>{kw('PAUSE', '#e67e22')} {tkn(tok)} globally</>;
+            case 2: return <>{kw('FREEZE', '#3498db')} {tkn(tok)} globally</>;
+            case 3: return <>{kw('STOP', '#e74c3c')} chore {val(`"${choreLabel}"`)}</>;
+            case 4: return <>{kw('PAUSE', '#e67e22')} chore {val(`"${choreLabel}"`)}</>;
+            case 5: return <>{kw('STOP', '#e74c3c')} all {val(choreTypeName)} chores</>;
+            case 6: return <>{kw('PAUSE', '#e67e22')} all {val(choreTypeName)} chores</>;
+            case 7: return <>{kw('STOP ALL', '#e74c3c')} chores</>;
+            case 8: return <>{kw('PAUSE ALL', '#e67e22')} chores</>;
             default: return '?';
         }
     };
@@ -5793,21 +5892,21 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
                             <button onClick={() => handleDeleteRule(Number(rule.id))} style={btnSm({ color: '#e74c3c' })} title="Delete"><FaTrash /></button>
                         </div>
                     </div>
-                    <div style={{ fontSize: '0.8rem', lineHeight: '1.5' }}>
-                        <div style={{ color: theme.colors.secondaryText }}>
-                            <span style={{ color: accentColor, fontWeight: 600 }}>IF </span>
+                    <div style={{ fontSize: '0.8rem', lineHeight: '1.8' }}>
+                        <div style={{ color: theme.colors.secondaryText, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '2px' }}>
+                            <span style={{ color: accentColor, fontWeight: 700, fontSize: '0.85rem', marginRight: '4px' }}>IF</span>
                             {rule.conditions.map((c, i) => (
-                                <span key={i}>
-                                    {i > 0 && <span style={{ color: accentColor, fontWeight: 600 }}> AND </span>}
+                                <span key={i} style={{ display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: '2px' }}>
+                                    {i > 0 && <span style={{ color: accentColor, fontWeight: 700, margin: '0 4px' }}>AND</span>}
                                     <span style={{ color: theme.colors.primaryText }}>{conditionText(c)}</span>
                                 </span>
                             ))}
                         </div>
-                        <div style={{ color: theme.colors.secondaryText, marginTop: '2px' }}>
-                            <span style={{ color: '#e67e22', fontWeight: 600 }}>THEN </span>
+                        <div style={{ color: theme.colors.secondaryText, marginTop: '4px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '2px' }}>
+                            <span style={{ color: '#e67e22', fontWeight: 700, fontSize: '0.85rem', marginRight: '4px' }}>THEN</span>
                             {rule.actions.map((a, i) => (
-                                <span key={i}>
-                                    {i > 0 && <span style={{ color: theme.colors.secondaryText }}>, </span>}
+                                <span key={i} style={{ display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: '2px' }}>
+                                    {i > 0 && <span style={{ color: theme.colors.secondaryText, margin: '0 2px' }}>{' · '}</span>}
                                     <span style={{ color: theme.colors.primaryText }}>{actionText(a)}</span>
                                 </span>
                             ))}
