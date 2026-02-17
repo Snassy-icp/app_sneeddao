@@ -933,6 +933,9 @@ export default function BotManagementPanel({
             const bot = await getReadyBotActor();
             await actionFn(bot);
             await loadChoreData(true);
+            // IC query replicas may serve stale data right after an update call;
+            // schedule a safety re-fetch to pick up the committed state.
+            setTimeout(() => loadChoreData(true), 1200);
         } catch (err) { setChoreError(err.message); }
         finally { setSavingChore(false); }
     };

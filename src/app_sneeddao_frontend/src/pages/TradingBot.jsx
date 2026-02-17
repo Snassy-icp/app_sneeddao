@@ -3882,7 +3882,7 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                         label: getSymbol(r.tid), value: r.denomValue, color: CHART_COLORS[i % CHART_COLORS.length],
                     })) : [];
 
-                    const colCount = denomToken ? 4 : 2;
+                    const colCount = denomToken ? (hasAnyDenomValue ? 5 : 4) : 2;
 
                     return (
                         <>
@@ -3899,6 +3899,7 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                                         <th style={{ padding: '4px 8px', textAlign: 'right' }}>Balance</th>
                                         {denomToken && <th style={{ padding: '4px 8px', textAlign: 'right' }}>Price ({denomSign || denomSym})</th>}
                                         {denomToken && <th style={{ padding: '4px 8px', textAlign: 'right' }}>{denomSign ? `Value (${denomSign})` : `Value (${denomSym})`}</th>}
+                                        {denomToken && hasAnyDenomValue && <th style={{ padding: '4px 8px', textAlign: 'right' }}>%</th>}
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -3927,6 +3928,13 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                                                         : (loadingPrices ? '...' : '—')}
                                                 </td>
                                             )}
+                                            {denomToken && hasAnyDenomValue && (
+                                                <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.75rem', color: denomValue != null && totalDenomValue > 0 ? accentColor : theme.colors.mutedText }}>
+                                                    {denomValue != null && totalDenomValue > 0
+                                                        ? ((denomValue / totalDenomValue) * 100).toFixed(1) + '%'
+                                                        : '—'}
+                                                </td>
+                                            )}
                                         </tr>
                                     ))}
                                     {/* Total row */}
@@ -3940,6 +3948,7 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                                             <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', color: accentColor, fontSize: '0.85rem' }}>
                                                 {formatDenomAmount(totalDenomValue, denomToken, denomSym)}
                                             </td>
+                                            <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '600', color: accentColor, fontSize: '0.75rem' }}>100%</td>
                                         </tr>
                                     )}
                                     {balancesLoading && !hasAnyDenomValue && (
