@@ -101,6 +101,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     // Per-chore logging overrides: choreId -> overrides
     var choreLoggingOverrides: [(Text, T.ChoreLoggingOverrides)] = [];
 
+    // Balance reconciliation: last known balance per (token, subaccount)
+    var lastKnownBalances: [(Text, Nat)] = [];
+
     // Metadata staleness threshold (seconds). Metadata older than this is re-fetched.
     var metadataStalenessSeconds: Nat = 3600; // 1 hour
 
@@ -370,6 +373,130 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case (?0) { null };
             case (?n) { ?subaccountNumberToBlob(n) };
         }
+    };
+
+    // ============================================
+    // BALANCE RECONCILIATION HELPERS
+    // ============================================
+
+    /// Build a unique key for the (token, subaccount) pair.
+    func balanceKey(token: Principal, subaccount: ?Blob): Text {
+        let tokenPart = Principal.toText(token);
+        let subPart = switch (subaccount) {
+            case null { "main" };
+            case (?blob) {
+                let bytes = Blob.toArray(blob);
+                var allZero = true;
+                for (b in bytes.vals()) { if (b != 0) allZero := false };
+                if (allZero) { "main" }
+                else {
+                    // Encode blob bytes as hex string
+                    let hexChars = Array.tabulate<Text>(bytes.size(), func(i: Nat): Text {
+                        let b = bytes[i];
+                        let hi = Nat8.toNat(b / 16);
+                        let lo = Nat8.toNat(b % 16);
+                        let hexDigit = func(n: Nat): Text {
+                            switch (n) {
+                                case 0 "0"; case 1 "1"; case 2 "2"; case 3 "3";
+                                case 4 "4"; case 5 "5"; case 6 "6"; case 7 "7";
+                                case 8 "8"; case 9 "9"; case 10 "a"; case 11 "b";
+                                case 12 "c"; case 13 "d"; case 14 "e"; case 15 "f";
+                                case _ "?";
+                            }
+                        };
+                        hexDigit(hi) # hexDigit(lo)
+                    });
+                    var hex = "";
+                    for (h in hexChars.vals()) { hex := hex # h };
+                    hex
+                }
+            };
+        };
+        tokenPart # ":" # subPart
+    };
+
+    /// Get the last known balance for a (token, subaccount) pair, if any.
+    func getLastKnownBalance(token: Principal, subaccount: ?Blob): ?Nat {
+        let key = balanceKey(token, subaccount);
+        for ((k, v) in lastKnownBalances.vals()) {
+            if (k == key) return ?v;
+        };
+        null
+    };
+
+    /// Set the last known balance for a (token, subaccount) pair.
+    func setLastKnownBalance(token: Principal, subaccount: ?Blob, balance: Nat) {
+        lastKnownBalances := setInMap(lastKnownBalances, balanceKey(token, subaccount), balance)
+    };
+
+    /// Adjust the last known balance for a (token, subaccount) pair by adding `delta`.
+    /// Only adjusts if a last-known value already exists; otherwise does nothing.
+    func adjustLastKnownBalance(token: Principal, subaccount: ?Blob, delta: Nat) {
+        switch (getLastKnownBalance(token, subaccount)) {
+            case (?prev) { setLastKnownBalance(token, subaccount, prev + delta) };
+            case null {};
+        };
+    };
+
+    /// Compare the current balance to the last known balance.
+    /// If a discrepancy is found, log it as a trade log entry (actionType 4=inflow, 5=outflow).
+    /// Then update lastKnown to the current balance.
+    func reconcileBalance(token: Principal, subaccount: ?Blob, currentBalance: Nat, source: Text) {
+        switch (getLastKnownBalance(token, subaccount)) {
+            case null {
+                // First observation — establish baseline, no discrepancy to report
+            };
+            case (?lastKnown) {
+                if (currentBalance > lastKnown) {
+                    let inflow = currentBalance - lastKnown;
+                    let subLabel = switch (subaccount) { case null "main"; case _ balanceKey(token, subaccount) };
+                    logEngine.logInfo(source, "Reconciliation: detected untracked inflow of " # Nat.toText(inflow) # " for " # tokenLabel(token) # " (" # subLabel # ")", null, []);
+                    ignore appendTradeLog({
+                        choreId = null;
+                        choreTypeId = ?"reconciliation";
+                        actionId = null;
+                        actionType = T.ActionType.DetectedInflow;
+                        inputToken = token;
+                        outputToken = null;
+                        inputAmount = inflow;
+                        outputAmount = null;
+                        priceE8s = null;
+                        priceImpactBps = null;
+                        slippageBps = null;
+                        dexId = null;
+                        status = #Success;
+                        errorMessage = null;
+                        txId = null;
+                        destinationOwner = null;
+                    });
+                } else if (currentBalance < lastKnown) {
+                    let outflow = lastKnown - currentBalance;
+                    let subLabel = switch (subaccount) { case null "main"; case _ balanceKey(token, subaccount) };
+                    logEngine.logWarning(source, "Reconciliation: detected untracked outflow of " # Nat.toText(outflow) # " for " # tokenLabel(token) # " (" # subLabel # ")", null, []);
+                    ignore appendTradeLog({
+                        choreId = null;
+                        choreTypeId = ?"reconciliation";
+                        actionId = null;
+                        actionType = T.ActionType.DetectedOutflow;
+                        inputToken = token;
+                        outputToken = null;
+                        inputAmount = outflow;
+                        outputAmount = null;
+                        priceE8s = null;
+                        priceImpactBps = null;
+                        slippageBps = null;
+                        dexId = null;
+                        status = #Success;
+                        errorMessage = null;
+                        txId = null;
+                        destinationOwner = null;
+                    });
+                };
+                // If equal, no action needed
+            };
+        };
+        // Always update lastKnown to current balance
+        setLastKnownBalance(token, subaccount, currentBalance);
     };
 
     // ============================================
@@ -1130,6 +1257,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
         for (token in tokens.vals()) {
             let balance = await getBalance(token, null); // Main account
+            // Update lastKnown with queried balance (corrects any compute-based approximation)
+            setLastKnownBalance(token, null, balance);
             let meta = getCachedMeta(token);
             let symbol = switch (meta) { case (?m) m.symbol; case null { switch (getTokenInfo(token)) { case (?i) i.symbol; case null "?" } } };
             let decimals: Nat8 = switch (meta) { case (?m) m.decimals; case null { switch (getTokenInfo(token)) { case (?i) i.decimals; case null 8 } } };
@@ -1308,6 +1437,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
         // Check input balance (optionally denominated in another token)
         let balance = await getBalance(action.inputToken, null); // Main account only for trades
+        reconcileBalance(action.inputToken, null, balance, src);
         let balanceForComparison: Nat = switch (action.balanceDenominationToken) {
             case (?denomToken) {
                 switch (convertAmountViaCache(balance, action.inputToken, denomToken)) {
@@ -1520,6 +1650,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 });
                 // Store trade log ID so the after-snapshot task can link to it
                 _trade_lastLogId := setInMap(_trade_lastLogId, instanceId, logId);
+                // Update lastKnown: input decreased by trade amount, output increased by received amount
+                setLastKnownBalance(action.inputToken, null, if (balance > actualTradeSize) { balance - actualTradeSize } else { 0 });
+                adjustLastKnownBalance(outputToken, null, r.amountOut);
                 true
             };
             case (#Err(e)) {
@@ -1547,6 +1680,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 });
                 // Store trade log ID so the after-snapshot task can link to it
                 _trade_lastLogId := setInMap(_trade_lastLogId, instanceId, logId);
+                // On failure, balance should be unchanged (lastKnown was already set by reconcileBalance above)
                 false
             };
         };
@@ -1564,6 +1698,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         };
 
         let balance = await getBalance(action.inputToken, null); // Main account
+        reconcileBalance(action.inputToken, null, balance, src);
         switch (action.minBalance) {
             case (?min) { if (balance < min) { return false } };
             case null {};
@@ -1603,6 +1738,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     txId = ?blockIdx;
                     destinationOwner = null;
                 });
+                // Update lastKnown: main decreased by amount + fee, target subaccount increased by amount
+                setLastKnownBalance(action.inputToken, null, if (balance > amount + fee) { balance - amount - fee } else { 0 });
+                adjustLastKnownBalance(action.inputToken, ?targetBlob, amount);
                 true
             };
             case (#Err(e)) {
@@ -1643,6 +1781,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
         let sourceBlob = subaccountNumberToBlob(sourceSub);
         let balance = await getBalance(action.inputToken, ?sourceBlob);
+        reconcileBalance(action.inputToken, ?sourceBlob, balance, src);
         switch (action.minBalance) {
             case (?min) { if (balance < min) { return false } };
             case null {};
@@ -1681,6 +1820,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     txId = ?blockIdx;
                     destinationOwner = null;
                 });
+                // Update lastKnown: subaccount decreased by amount + fee, main increased by amount
+                setLastKnownBalance(action.inputToken, ?sourceBlob, if (balance > amount + fee) { balance - amount - fee } else { 0 });
+                adjustLastKnownBalance(action.inputToken, null, amount);
                 true
             };
             case (#Err(e)) {
@@ -1721,6 +1863,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
         let sourceBlob = getSubaccountBlob(action.sourceSubaccount);
         let balance = await getBalance(action.inputToken, sourceBlob);
+        reconcileBalance(action.inputToken, sourceBlob, balance, src);
         switch (action.minBalance) {
             case (?min) { if (balance < min) { return false } };
             case null {};
@@ -1759,6 +1902,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     txId = ?blockIdx;
                     destinationOwner = ?destOwner;
                 });
+                // Update lastKnown: source decreased by amount + fee
+                setLastKnownBalance(action.inputToken, sourceBlob, if (balance > amount + fee) { balance - amount - fee } else { 0 });
                 true
             };
             case (#Err(e)) {
@@ -1863,6 +2008,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     destinationOwner = null;
                 });
                 _rebal_lastLogId := setInMap(_rebal_lastLogId, instanceId, logId);
+                // Update lastKnown: sell token decreased, buy token increased
+                setLastKnownBalance(sellToken.token, null, if (sellToken.balance > tradeSize) { sellToken.balance - tradeSize } else { 0 });
+                adjustLastKnownBalance(buyToken.token, null, r.amountOut);
                 true
             };
             case (#Err(e)) {
@@ -1894,6 +2042,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     destinationOwner = null;
                 });
                 _rebal_lastLogId := setInMap(_rebal_lastLogId, instanceId, logId);
+                // On failure, balance should be unchanged (lastKnown was already set by reconcileBalance)
                 false
             };
         };
@@ -1954,6 +2103,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
         for (target in targets.vals()) {
             let balance = await getBalance(target.token, null); // Main account
+            reconcileBalance(target.token, null, balance, src);
 
             // Get value in denomination token — use cached price if available
             let value = if (target.token == denomToken) {
@@ -2544,6 +2694,9 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             txId = null;
             destinationOwner = null;
         });
+        // Update lastKnown after leg 1: sellToken decreased, intermediary increased
+        setLastKnownBalance(sellToken.token, null, if (sellToken.balance > tradeSize) { sellToken.balance - tradeSize } else { 0 });
+        adjustLastKnownBalance(intermediary, null, intermediaryReceived);
 
         // Phase 4: Execute leg 2 (intermediary → buy) with fresh quote
         logEngine.logDebug(src, "Fetching fresh leg2 quote with actual " # intLabel # " received: " # Nat.toText(intermediaryReceived) # " " # intLabel # " → " # tokenLabel(buyToken.token), null, [
@@ -2619,6 +2772,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     destinationOwner = null;
                 });
                 _rebal_lastLogId := setInMap(_rebal_lastLogId, instanceId, logId);
+                // Update lastKnown after leg 2: intermediary decreased, buyToken increased
+                switch (getLastKnownBalance(intermediary, null)) {
+                    case (?prev) { setLastKnownBalance(intermediary, null, if (prev > intermediaryReceived) { prev - intermediaryReceived } else { 0 }) };
+                    case null {};
+                };
+                adjustLastKnownBalance(buyToken.token, null, r.amountOut);
                 true
             };
             case (#Err(e)) {
@@ -2711,6 +2870,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     owner = Principal.fromActor(this);
                     subaccount = list.sourceSubaccount;
                 });
+                reconcileBalance(list.tokenLedgerCanisterId, list.sourceSubaccount, balance, "distribution");
 
                 if (balance < list.thresholdAmount) {
                     return #Done; // Below threshold, skip
@@ -2733,6 +2893,8 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                     };
                 };
 
+                var totalDistributed: Nat = 0;
+                var transferCount: Nat = 0;
                 for (target in list.targets.vals()) {
                     let share = switch (target.basisPoints) {
                         case (?bp) { (net * bp) / 10000 };
@@ -2753,8 +2915,14 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                             created_at_time = null;
                             amount = share;
                         });
+                        totalDistributed += share;
+                        transferCount += 1;
                     };
                 };
+
+                // Update lastKnown: source decreased by distributed amounts + fees
+                let totalSpent = totalDistributed + (fee * transferCount);
+                setLastKnownBalance(list.tokenLedgerCanisterId, list.sourceSubaccount, if (balance > totalSpent) { balance - totalSpent } else { 0 });
 
                 #Done
             } catch (e) {

@@ -316,6 +316,8 @@ module {
         public let Deposit: Nat = 1;
         public let Withdraw: Nat = 2;
         public let Send: Nat = 3;
+        public let DetectedInflow: Nat = 4;
+        public let DetectedOutflow: Nat = 5;
     };
 
     /// Unified action configuration — all action types share one record.
@@ -558,7 +560,7 @@ module {
         actionId: ?Nat;            // Action ID within the chore (null for rebalancer trades)
 
         // Action details
-        actionType: Nat;           // 0=Trade, 1=Deposit, 2=Withdraw, 3=Send
+        actionType: Nat;           // 0=Trade, 1=Deposit, 2=Withdraw, 3=Send, 4=DetectedInflow, 5=DetectedOutflow
         inputToken: Principal;
         outputToken: ?Principal;
         inputAmount: Nat;

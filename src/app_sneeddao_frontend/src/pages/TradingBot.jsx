@@ -84,12 +84,16 @@ const ACTION_TYPE_TRADE = 0;
 const ACTION_TYPE_DEPOSIT = 1;
 const ACTION_TYPE_WITHDRAW = 2;
 const ACTION_TYPE_SEND = 3;
+const ACTION_TYPE_DETECTED_INFLOW = 4;
+const ACTION_TYPE_DETECTED_OUTFLOW = 5;
 
 const ACTION_TYPE_LABELS = {
     [ACTION_TYPE_TRADE]: 'Trade (Swap)',
     [ACTION_TYPE_DEPOSIT]: 'Deposit',
     [ACTION_TYPE_WITHDRAW]: 'Withdraw',
     [ACTION_TYPE_SEND]: 'Send',
+    [ACTION_TYPE_DETECTED_INFLOW]: 'Detected Inflow',
+    [ACTION_TYPE_DETECTED_OUTFLOW]: 'Detected Outflow',
 };
 
 // ============================================
@@ -2473,6 +2477,9 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
                         const inputDec = getDec(e.inputToken);
                         const outputDec = e.outputToken?.length > 0 ? getDec(e.outputToken[0]) : 8;
                         const isSwap = Number(e.actionType) === 0;
+                        const isInflow = Number(e.actionType) === ACTION_TYPE_DETECTED_INFLOW;
+                        const isOutflow = Number(e.actionType) === ACTION_TYPE_DETECTED_OUTFLOW;
+                        const isReconciliation = isInflow || isOutflow;
                         // Format price as human-readable input/output (e.g., ICP per SNEED)
                         const priceE8s = optVal(e.priceE8s);
                         const nativePrice = priceE8s != null && outputDec != null ? (Number(priceE8s) / (10 ** outputDec)) : null;
@@ -2481,27 +2488,42 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
                         const inSym = getSym(e.inputToken);
                         return (
                             <div key={Number(e.id)} style={{
-                                padding: '10px 12px', background: theme.colors.primaryBg, borderRadius: '8px',
-                                border: `1px solid ${theme.colors.border}`, fontSize: '0.78rem',
+                                padding: '10px 12px', background: isInflow ? '#22c55e08' : isOutflow ? '#f9731608' : theme.colors.primaryBg, borderRadius: '8px',
+                                border: `1px solid ${isInflow ? '#22c55e30' : isOutflow ? '#f9731630' : theme.colors.border}`, fontSize: '0.78rem',
                             }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap', gap: '4px' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                         <span style={{ fontWeight: '600', color: theme.colors.primaryText }}>#{Number(e.id)}</span>
-                                        <span style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: '600',
-                                            background: (TRADE_STATUS_COLORS[statusKey] || '#6b7280') + '20',
-                                            color: TRADE_STATUS_COLORS[statusKey] || '#6b7280',
-                                        }}>{TRADE_STATUS_LABELS[statusKey] || statusKey}</span>
+                                        {isReconciliation ? (
+                                            <span style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: '600',
+                                                background: isInflow ? '#22c55e20' : '#f9731620',
+                                                color: isInflow ? '#22c55e' : '#f97316',
+                                            }}>{isInflow ? 'Inflow Detected' : 'Outflow Detected'}</span>
+                                        ) : (
+                                            <span style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: '600',
+                                                background: (TRADE_STATUS_COLORS[statusKey] || '#6b7280') + '20',
+                                                color: TRADE_STATUS_COLORS[statusKey] || '#6b7280',
+                                            }}>{TRADE_STATUS_LABELS[statusKey] || statusKey}</span>
+                                        )}
                                         <span style={{ color: theme.colors.mutedText }}>{ACTION_TYPE_LABELS[Number(e.actionType)] || `Type ${Number(e.actionType)}`}</span>
                                     </div>
                                     <span style={{ color: theme.colors.mutedText, fontSize: '0.7rem' }}>{new Date(Number(e.timestamp) / 1_000_000).toLocaleString()}</span>
                                 </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '4px', color: theme.colors.secondaryText }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                        <strong>In:</strong> <TokenIcon canisterId={toStr(e.inputToken)} size={16} /> {formatTokenAmount(e.inputAmount, inputDec)} {inSym}
-                                    </div>
-                                    {e.outputToken?.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                        <strong>Out:</strong> <TokenIcon canisterId={toStr(e.outputToken[0])} size={16} /> {optVal(e.outputAmount) != null ? formatTokenAmount(optVal(e.outputAmount), outputDec) : '—'} {outSym}
-                                    </div>}
+                                    {isReconciliation ? (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: isInflow ? '#22c55e' : '#f97316', fontWeight: '500' }}>
+                                            <strong>{isInflow ? '+' : '-'}</strong> <TokenIcon canisterId={toStr(e.inputToken)} size={16} /> {formatTokenAmount(e.inputAmount, inputDec)} {inSym}
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                <strong>In:</strong> <TokenIcon canisterId={toStr(e.inputToken)} size={16} /> {formatTokenAmount(e.inputAmount, inputDec)} {inSym}
+                                            </div>
+                                            {e.outputToken?.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                <strong>Out:</strong> <TokenIcon canisterId={toStr(e.outputToken[0])} size={16} /> {optVal(e.outputAmount) != null ? formatTokenAmount(optVal(e.outputAmount), outputDec) : '—'} {outSym}
+                                            </div>}
+                                        </>
+                                    )}
                                     {humanPrice != null && <div><strong>Price:</strong> {humanPrice.toLocaleString(undefined, { maximumSignificantDigits: 6 })} {inSym}/{outSym}</div>}
                                     {optVal(e.dexId) != null && <div><strong>DEX:</strong> {DEX_LABELS[Number(optVal(e.dexId))] || `DEX ${Number(optVal(e.dexId))}`}</div>}
                                     {optVal(e.priceImpactBps) != null && <div><strong>Impact:</strong> {(Number(optVal(e.priceImpactBps)) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%</div>}
