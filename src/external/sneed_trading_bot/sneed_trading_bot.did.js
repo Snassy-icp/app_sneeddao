@@ -458,24 +458,8 @@ export const idlFactory = ({ IDL }) => {
     });
 
     // ==========================================
-    // Price types
+    // Price types (SwapQuote already defined above in DEX types)
     // ==========================================
-    const SwapQuote = IDL.Record({
-        dexId: IDL.Nat,
-        inputToken: IDL.Principal,
-        outputToken: IDL.Principal,
-        inputAmount: IDL.Nat,
-        effectiveInputAmount: IDL.Nat,
-        expectedOutput: IDL.Nat,
-        spotPriceE8s: IDL.Nat,
-        priceImpactBps: IDL.Nat,
-        dexFeeBps: IDL.Nat,
-        inputFeesTotal: IDL.Nat,
-        outputFeesTotal: IDL.Nat,
-        poolCanisterId: IDL.Opt(IDL.Principal),
-        timestamp: IDL.Int,
-    });
-
     const CachedPrice = IDL.Record({
         inputToken: IDL.Principal,
         outputToken: IDL.Principal,

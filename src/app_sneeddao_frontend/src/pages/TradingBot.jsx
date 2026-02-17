@@ -4085,6 +4085,9 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
     const [error, setError] = useState('');
     const [denomination, setDenomination] = useState('icp'); // 'icp' or 'usd'
     const [tokenRegistry, setTokenRegistry] = useState([]);
+    const [lastKnownPrices, setLastKnownPrices] = useState([]);
+    const [priceHistory, setPriceHistory] = useState([]);
+    const [selectedPricepair, setSelectedPricePair] = useState(null);
 
     const loadData = useCallback(async () => {
         setLoading(true);
@@ -4092,14 +4095,18 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
         try {
             const bot = await getReadyBotActor();
             if (!bot) return;
-            const [snapResult, flows, registry] = await Promise.all([
+            const [snapResult, flows, registry, prices, history] = await Promise.all([
                 bot.getPortfolioSnapshots({ startId: [], limit: [500], tradeLogId: [], phase: [{ After: null }], fromTime: [], toTime: [] }),
                 bot.getCapitalFlows(),
                 bot.getTokenRegistry ? bot.getTokenRegistry() : Promise.resolve([]),
+                bot.getLastKnownPrices ? bot.getLastKnownPrices() : Promise.resolve([]),
+                bot.getPriceHistory ? bot.getPriceHistory({ pairKey: [], limit: [5000], offset: [] }) : Promise.resolve({ entries: [], totalCount: 0n }),
             ]);
             setSnapshots(snapResult.entries);
             setCapitalFlows(flows);
             setTokenRegistry(registry);
+            setLastKnownPrices(prices);
+            setPriceHistory(history.entries);
         } catch (err) {
             setError('Failed to load performance data: ' + err.message);
         } finally {
@@ -4288,6 +4295,196 @@ function PerformancePanel({ getReadyBotActor, theme, accentColor }) {
                             })}
                         </tbody>
                     </table>
+                </div>
+            )}
+
+            {/* Price History Section */}
+            <PriceHistorySection
+                lastKnownPrices={lastKnownPrices}
+                priceHistory={priceHistory}
+                tokenRegistry={tokenRegistry}
+                selectedPricepair={selectedPricepair}
+                setSelectedPricePair={setSelectedPricePair}
+                theme={theme}
+                accentColor={accentColor}
+                cardStyle={cardStyle}
+            />
+        </div>
+    );
+}
+
+function PriceHistorySection({ lastKnownPrices, priceHistory, tokenRegistry, selectedPricepair, setSelectedPricePair, theme, accentColor, cardStyle }) {
+    // Resolve token symbol from principal text
+    const sym = (principalText) => {
+        const entry = tokenRegistry.find(t => (t.ledgerCanisterId?.toText?.() || t.ledgerCanisterId?.toString?.() || '') === principalText);
+        return entry?.symbol || principalText.slice(0, 8) + '..';
+    };
+
+    // Build pair options from lastKnownPrices
+    const pairOptions = React.useMemo(() => {
+        return lastKnownPrices.map(([key, cached]) => {
+            const inpText = cached.inputToken?.toText?.() || cached.inputToken?.toString?.() || '';
+            const outText = cached.outputToken?.toText?.() || cached.outputToken?.toString?.() || '';
+            return { key, inputSymbol: sym(inpText), outputSymbol: sym(outText), inputPrincipal: inpText, outputPrincipal: outText, cached };
+        }).sort((a, b) => (a.inputSymbol + a.outputSymbol).localeCompare(b.inputSymbol + b.outputSymbol));
+    }, [lastKnownPrices, tokenRegistry]);
+
+    // Group price history by pair key
+    const historyByPair = React.useMemo(() => {
+        const map = new Map();
+        for (const entry of priceHistory) {
+            const inpText = entry.inputToken?.toText?.() || entry.inputToken?.toString?.() || '';
+            const outText = entry.outputToken?.toText?.() || entry.outputToken?.toString?.() || '';
+            // Normalize key: sorted lexicographically
+            const key = inpText < outText ? inpText + ':' + outText : outText + ':' + inpText;
+            if (!map.has(key)) map.set(key, []);
+            map.get(key).push(entry);
+        }
+        // Sort each pair's entries by time
+        for (const [, entries] of map) entries.sort((a, b) => Number(a.fetchedAt) - Number(b.fetchedAt));
+        return map;
+    }, [priceHistory]);
+
+    // Default to first pair if none selected
+    const activePair = selectedPricepair || (pairOptions.length > 0 ? pairOptions[0].key : null);
+
+    // Build chart data for the selected pair
+    const chartData = React.useMemo(() => {
+        if (!activePair) return [];
+        const entries = historyByPair.get(activePair) || [];
+        // Also append the current lastKnown price for this pair
+        const currentEntry = lastKnownPrices.find(([k]) => k === activePair);
+        const allEntries = currentEntry ? [...entries, currentEntry[1]] : entries;
+
+        return allEntries.map(entry => {
+            const ts = Number(entry.fetchedAt) / 1_000_000; // ns -> ms
+            const q = entry.quote;
+            const inputAmt = Number(q.inputAmount);
+            const outputAmt = Number(q.expectedOutput);
+            // Price: how much output per 1 unit of input
+            const price = inputAmt > 0 ? outputAmt / inputAmt : 0;
+            // Spot price from the quote
+            const spotPrice = Number(q.spotPriceE8s) / 1e8;
+            return {
+                time: ts,
+                label: new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+                price: price,
+                spotPrice: spotPrice > 0 ? spotPrice : null,
+            };
+        });
+    }, [activePair, historyByPair, lastKnownPrices]);
+
+    // Get the pair info for display
+    const activePairInfo = pairOptions.find(p => p.key === activePair);
+
+    // Overall price stats
+    const priceStats = React.useMemo(() => {
+        if (chartData.length === 0) return null;
+        const prices = chartData.map(d => d.price).filter(p => p > 0);
+        if (prices.length === 0) return null;
+        const current = prices[prices.length - 1];
+        const first = prices[0];
+        const high = Math.max(...prices);
+        const low = Math.min(...prices);
+        const change = first > 0 ? ((current - first) / first) * 100 : 0;
+        return { current, first, high, low, change, count: prices.length };
+    }, [chartData]);
+
+    if (lastKnownPrices.length === 0 && priceHistory.length === 0) {
+        return (
+            <div style={{ ...cardStyle, textAlign: 'center', padding: '20px', color: theme.colors.secondaryText, fontSize: '0.85rem' }}>
+                No price data yet. Price history will populate after the bot fetches quotes during chore runs.
+            </div>
+        );
+    }
+
+    return (
+        <div>
+            {/* Current Prices Overview */}
+            <div style={cardStyle}>
+                <div style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.text, marginBottom: '10px' }}>Last Known Prices</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: activePair ? '0' : undefined }}>
+                    {pairOptions.map(p => {
+                        const q = p.cached.quote;
+                        const inputAmt = Number(q.inputAmount);
+                        const outputAmt = Number(q.expectedOutput);
+                        const rate = inputAmt > 0 ? (outputAmt / inputAmt) : 0;
+                        const age = (Date.now() - Number(p.cached.fetchedAt) / 1_000_000) / 1000;
+                        const ageLabel = age < 60 ? `${Math.round(age)}s` : age < 3600 ? `${Math.round(age / 60)}m` : `${(age / 3600).toFixed(1)}h`;
+                        const isActive = activePair === p.key;
+                        return (
+                            <button key={p.key} onClick={() => setSelectedPricePair(p.key)} style={{
+                                padding: '6px 10px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.78rem',
+                                border: `1px solid ${isActive ? accentColor : theme.colors.border}`,
+                                background: isActive ? accentColor + '12' : theme.colors.primaryBg,
+                                color: theme.colors.text, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px',
+                                minWidth: '120px',
+                            }}>
+                                <span style={{ fontWeight: '600', fontSize: '0.75rem' }}>{p.inputSymbol}/{p.outputSymbol}</span>
+                                <span style={{ fontSize: '0.82rem', fontWeight: '700', color: accentColor }}>
+                                    {rate > 0.001 ? rate.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 }) : rate.toExponential(3)}
+                                </span>
+                                <span style={{ fontSize: '0.68rem', color: theme.colors.mutedText }}>{ageLabel} ago</span>
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+
+            {/* Price Chart for Selected Pair */}
+            {activePair && (
+                <div style={{ ...cardStyle, padding: '16px 12px 8px 0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', paddingLeft: '16px' }}>
+                        <div>
+                            <span style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.text }}>
+                                {activePairInfo ? `${activePairInfo.inputSymbol} / ${activePairInfo.outputSymbol}` : 'Price History'}
+                            </span>
+                            {priceStats && (
+                                <span style={{ fontSize: '0.78rem', marginLeft: '12px', color: priceStats.change >= 0 ? '#10b981' : '#ef4444', fontWeight: '500' }}>
+                                    {priceStats.change >= 0 ? '+' : ''}{priceStats.change.toFixed(2)}%
+                                </span>
+                            )}
+                        </div>
+                        {priceStats && (
+                            <div style={{ display: 'flex', gap: '12px', fontSize: '0.72rem', color: theme.colors.secondaryText }}>
+                                <span>H: <span style={{ color: '#10b981', fontWeight: '500' }}>{priceStats.high.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span></span>
+                                <span>L: <span style={{ color: '#ef4444', fontWeight: '500' }}>{priceStats.low.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span></span>
+                                <span>{priceStats.count} pts</span>
+                            </div>
+                        )}
+                    </div>
+                    {chartData.length > 1 ? (
+                        <ResponsiveContainer width="100%" height={250}>
+                            <AreaChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                                <defs>
+                                    <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.25} />
+                                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.02} />
+                                    </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="3 3" stroke={theme.colors.border} opacity={0.5} />
+                                <XAxis dataKey="label" tick={{ fontSize: 10, fill: theme.colors.secondaryText }} tickLine={false} axisLine={{ stroke: theme.colors.border }} />
+                                <YAxis tick={{ fontSize: 10, fill: theme.colors.secondaryText }} tickLine={false} axisLine={false}
+                                    domain={['auto', 'auto']}
+                                    tickFormatter={v => v > 0.001 ? v.toLocaleString(undefined, { maximumFractionDigits: 4 }) : v.toExponential(2)} />
+                                <Tooltip
+                                    contentStyle={{ background: theme.colors.surface, border: `1px solid ${theme.colors.border}`, borderRadius: '8px', fontSize: '0.8rem' }}
+                                    labelStyle={{ color: theme.colors.text }}
+                                    formatter={(v, name) => [
+                                        Number(v) > 0.001
+                                            ? Number(v).toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 8 })
+                                            : Number(v).toExponential(4),
+                                        name === 'price' ? 'Quote Price' : 'Spot Price'
+                                    ]}
+                                />
+                                <Area type="monotone" dataKey="price" stroke="#3b82f6" fill="url(#priceGrad)" strokeWidth={2} dot={false} name="price" />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    ) : (
+                        <div style={{ textAlign: 'center', padding: '30px 20px', color: theme.colors.secondaryText, fontSize: '0.85rem', paddingLeft: '16px' }}>
+                            {chartData.length === 0 ? 'No history for this pair yet.' : 'At least 2 data points are needed to draw a chart.'}
+                        </div>
+                    )}
                 </div>
             )}
         </div>
