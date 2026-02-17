@@ -53,6 +53,7 @@ const PERMISSION_LABELS = {
     'WithdrawFunds': 'Withdraw Funds',
     'ConfigureDistribution': 'Configure Distribution',
     'ManageDistributeFunds': 'Manage Distribute Funds',
+    'ManageSnapshotChore': 'Manage Snapshot Chore',
 };
 
 const PERMISSION_DESCRIPTIONS = {
@@ -73,6 +74,7 @@ const PERMISSION_DESCRIPTIONS = {
     'WithdrawFunds': 'Send tokens from the bot to external accounts',
     'ConfigureDistribution': 'Add, edit, and remove distribution lists',
     'ManageDistributeFunds': 'Start/stop/pause/resume/trigger distribute-funds chore',
+    'ManageSnapshotChore': 'Start/stop/pause/resume/trigger snapshot chore',
 };
 
 // Chore types that support multiple instances

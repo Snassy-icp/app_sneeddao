@@ -338,6 +338,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case ("rebalance") { T.TradingPermission.ManageRebalanceChore };
             case ("move-funds") { T.TradingPermission.ManageMoveFundsChore };
             case ("distribute-funds") { T.TradingPermission.ManageDistributeFunds };
+            case ("snapshot") { T.TradingPermission.ManageSnapshotChore };
             case (_) { Debug.trap("Unknown chore type: " # typeId) };
         }
     };

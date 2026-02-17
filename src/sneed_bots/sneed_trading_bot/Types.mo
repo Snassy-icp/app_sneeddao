@@ -467,6 +467,7 @@ module {
         #WithdrawFunds;             // 209: Send tokens from bot to external accounts
         #ConfigureDistribution;     // 210: Add/update/remove distribution lists
         #ManageDistributeFunds;     // 211: Start/stop/pause/resume/trigger distribute-funds chore
+        #ManageSnapshotChore;       // 212: Start/stop/pause/resume/trigger snapshot chore
     };
 
     /// Numeric IDs for permission types (for stable storage).
@@ -492,6 +493,7 @@ module {
         public let WithdrawFunds: Nat = 209;
         public let ConfigureDistribution: Nat = 210;
         public let ManageDistributeFunds: Nat = 211;
+        public let ManageSnapshotChore: Nat = 212;
     };
 
     /// Info about a botkey principal and their permissions (for API responses).
