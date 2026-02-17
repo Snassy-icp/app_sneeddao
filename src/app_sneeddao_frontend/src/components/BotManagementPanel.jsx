@@ -147,11 +147,54 @@ const formatLogAmount = (raw, decimals = 8) => {
 };
 
 /** Known tag keys whose values are token principal IDs. */
-const TOKEN_TAG_KEYS = new Set(['inputToken', 'outputToken', 'token', 'ledger', 'ledgerId', 'tokenId']);
+const TOKEN_TAG_KEYS = new Set(['inputToken', 'outputToken', 'token', 'ledger', 'ledgerId', 'tokenId', 'sellTokenId', 'buyTokenId', 'denomToken']);
 /** Known tag keys whose values are raw token amounts. */
-const AMOUNT_TAG_KEYS = new Set(['inputAmount', 'outputAmount', 'amount', 'fee', 'balance']);
+const AMOUNT_TAG_KEYS = new Set([
+    'inputAmount', 'outputAmount', 'amount', 'fee', 'balance',
+    // Rebalancer sell-side amounts (in sell token native units)
+    'tradeSize', 'tradeSizeUnits', 'sellBalance', 'overshootCap', 'targetReachUnits',
+    'effectiveTargetReach', 'maxAffordable', 'balanceDiv4', 'maxTradeUnits', 'minTradeUnits', 'resultTradeSize',
+    // Rebalancer buy-side amounts
+    'buyBalance', 'expectedOutput',
+    // Denomination-valued amounts (default 8 decimals / ICP)
+    'sellValue', 'buyValue', 'excessSellValue', 'deficitBuyValue', 'capDenomValue', 'totalValue',
+    'tradeSizeDenom', 'maxTradeDenom', 'minTradeDenom',
+    // Quote fields
+    'cachedInputAmount', 'cachedExpectedOutput',
+    // Price: spotPriceE8s uses input token decimals
+    'spotPriceE8s',
+]);
 /** Map amount tag to its paired token tag to determine decimals. */
-const AMOUNT_TO_TOKEN = { inputAmount: 'inputToken', outputAmount: 'outputToken', amount: 'token', fee: 'inputToken', balance: 'token' };
+const AMOUNT_TO_TOKEN = {
+    inputAmount: 'inputToken', outputAmount: 'outputToken', amount: 'token', fee: 'inputToken', balance: 'token',
+    // Rebalancer sell-side → sellTokenId
+    tradeSize: 'sellTokenId', tradeSizeUnits: 'sellTokenId', sellBalance: 'sellTokenId',
+    overshootCap: 'sellTokenId', targetReachUnits: 'sellTokenId', effectiveTargetReach: 'sellTokenId',
+    maxAffordable: 'sellTokenId', balanceDiv4: 'sellTokenId', maxTradeUnits: 'sellTokenId',
+    minTradeUnits: 'sellTokenId', resultTradeSize: 'sellTokenId',
+    // Rebalancer buy-side → buyTokenId
+    buyBalance: 'buyTokenId', expectedOutput: 'buyTokenId',
+    // Denomination-valued amounts → denomToken (fallback to 8 decimals)
+    sellValue: 'denomToken', buyValue: 'denomToken',
+    excessSellValue: 'denomToken', deficitBuyValue: 'denomToken', capDenomValue: 'denomToken', totalValue: 'denomToken',
+    tradeSizeDenom: 'denomToken', maxTradeDenom: 'denomToken', minTradeDenom: 'denomToken',
+    // Quote fields
+    cachedInputAmount: 'inputToken', cachedExpectedOutput: 'outputToken',
+    // spotPriceE8s uses input token decimals (price = humanPricePerToken * 10^tokenDecimals)
+    spotPriceE8s: 'inputToken',
+};
+/** Tag keys whose values are in basis points — display as %. */
+const BPS_TAG_KEYS = new Set([
+    'priceImpactBps', 'maxImpactBps', 'maxSlippageBps', 'slippageBps',
+    'sellDeviationBps', 'buyDeviationBps', 'combinedDeviationBps',
+    'currentBps', 'targetBps', 'thresholdBps', 'deviationBps',
+]);
+/** Format bps value as percentage string. */
+const formatBps = (v) => {
+    const n = Number(v);
+    if (isNaN(n)) return String(v);
+    return (n / 100).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + '%';
+};
 
 export default function BotManagementPanel({
     canisterId,
@@ -2452,22 +2495,26 @@ export default function BotManagementPanel({
                                                     const tagMap = {};
                                                     for (const [k, v] of entry.tags) tagMap[k] = v;
 
-                                                    // --- Enhanced message: replace raw amounts, DEX ids, principals ---
+                                                    // --- Enhanced message: replace raw amounts, DEX ids, bps, principals ---
                                                     let enhancedMsg = entry.message;
-                                                    // Replace "DEX N" with DEX name
-                                                    enhancedMsg = enhancedMsg.replace(/\bDEX (\d+)\b/g, (_, id) => DEX_NAMES[id] || `DEX ${id}`);
+                                                    // Replace "dex N" / "DEX N" with DEX name (case insensitive)
+                                                    enhancedMsg = enhancedMsg.replace(/\bdex (\d+)\b/gi, (_, id) => DEX_NAMES[id] || `DEX ${id}`);
+                                                    // Replace " N bps" with "N%" in the message
+                                                    enhancedMsg = enhancedMsg.replace(/\b(\d+) bps\b/g, (_, n) => formatBps(n));
                                                     // Replace raw amounts in the message with formatted versions
-                                                    if (tagMap.inputAmount && tagMap.inputToken) {
-                                                        const dec = logTokenMeta[tagMap.inputToken]?.decimals ?? 8;
-                                                        const sym = logTokenMeta[tagMap.inputToken]?.symbol;
-                                                        const formatted = formatLogAmount(tagMap.inputAmount, dec);
-                                                        enhancedMsg = enhancedMsg.replace(tagMap.inputAmount, formatted + (sym ? ` ${sym}` : ''));
-                                                    }
-                                                    if (tagMap.outputAmount && tagMap.outputToken) {
-                                                        const dec = logTokenMeta[tagMap.outputToken]?.decimals ?? 8;
-                                                        const sym = logTokenMeta[tagMap.outputToken]?.symbol;
-                                                        const formatted = formatLogAmount(tagMap.outputAmount, dec);
-                                                        enhancedMsg = enhancedMsg.replace(tagMap.outputAmount, formatted + (sym ? ` ${sym}` : ''));
+                                                    // Process all amount tags that have a paired token for formatting
+                                                    for (const [amtKey, tokKey] of Object.entries(AMOUNT_TO_TOKEN)) {
+                                                        const rawVal = tagMap[amtKey];
+                                                        if (!rawVal || rawVal === '0') continue;
+                                                        const tokId = tokKey ? tagMap[tokKey] : null;
+                                                        const dec = tokId && logTokenMeta[tokId] ? logTokenMeta[tokId].decimals : 8;
+                                                        const sym = tokId && logTokenMeta[tokId] ? logTokenMeta[tokId].symbol : '';
+                                                        const formatted = formatLogAmount(rawVal, dec);
+                                                        // Only replace if the raw value appears as a standalone number in the message
+                                                        const re = new RegExp('\\b' + rawVal + '\\b');
+                                                        if (re.test(enhancedMsg)) {
+                                                            enhancedMsg = enhancedMsg.replace(re, formatted + (sym ? ` ${sym}` : ''));
+                                                        }
                                                     }
 
                                                     // --- Smart tag rendering ---
@@ -2540,6 +2587,13 @@ export default function BotManagementPanel({
                                                                     <span>{meta?.symbol || shortPrincipal(v)}</span>
                                                                 </span>
                                                             );
+                                                        } else if (BPS_TAG_KEYS.has(k)) {
+                                                            // Render bps as percentage
+                                                            renderedTags.push(
+                                                                <span key={`t-${i}`} style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', background: `${theme.colors.border}60`, color: theme.colors.secondaryText, fontFamily: 'monospace' }}>
+                                                                    <span style={{ opacity: 0.7 }}>{k.replace(/Bps$/, '')}:</span> {formatBps(v)}
+                                                                </span>
+                                                            );
                                                         } else if (AMOUNT_TAG_KEYS.has(k)) {
                                                             // Format amount using paired token decimals
                                                             const pairedKey = AMOUNT_TO_TOKEN[k];
@@ -2549,6 +2603,13 @@ export default function BotManagementPanel({
                                                             renderedTags.push(
                                                                 <span key={`t-${i}`} style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', background: `${theme.colors.border}60`, color: theme.colors.secondaryText, fontFamily: 'monospace' }}>
                                                                     <span style={{ opacity: 0.7 }}>{k}:</span> {formatLogAmount(v, dec)}{sym ? ` ${sym}` : ''}
+                                                                </span>
+                                                            );
+                                                        } else if (k === 'dexId' || k === 'dex') {
+                                                            // Already handled above in the dexId block, but catch stray variants
+                                                            renderedTags.push(
+                                                                <span key={`t-${i}`} style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '0.7rem', background: `${theme.colors.border}60`, color: theme.colors.secondaryText }}>
+                                                                    <span style={{ opacity: 0.7 }}>dex:</span> {DEX_NAMES[v] || `DEX ${v}`}
                                                                 </span>
                                                             );
                                                         } else {
