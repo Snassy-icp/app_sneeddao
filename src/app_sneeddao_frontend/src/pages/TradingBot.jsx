@@ -1631,7 +1631,10 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                             return (
                                                 <div key={ftKey} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 8px', background: `${accentColor}08`, borderRadius: '6px', border: `1px solid ${theme.colors.border}` }}>
                                                     <span style={{ fontSize: '0.7rem', color: theme.colors.mutedText, fontWeight: '500', width: '16px', textAlign: 'center' }}>{i + 1}.</span>
-                                                    <span style={{ flex: 1, fontSize: '0.78rem', color: theme.colors.primaryText, fontWeight: '500' }}>{getTokenLabel(ft)}</span>
+                                                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                        <TokenIcon canisterId={ftKey} size={16} />
+                                                        <span style={{ fontSize: '0.78rem', color: theme.colors.primaryText, fontWeight: '500' }}>{getSymbol(ft)}</span>
+                                                    </div>
                                                     {i > 0 && (
                                                         <button onClick={async () => {
                                                             const arr = [...(settings.fallbackRouteTokens || [])];
