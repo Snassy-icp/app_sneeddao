@@ -3,8 +3,21 @@ import { useNavigate } from 'react-router-dom';
 import { FaTimes, FaRobot, FaExclamationTriangle, FaExclamationCircle } from 'react-icons/fa';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
+import { useWalletOptional } from '../contexts/WalletContext';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
 import { LAMP_WARN, LAMP_ERROR, LAMP_COLORS, LAMP_LABELS } from './ChoreStatusLamp';
+
+// Hardcoded fallback URL patterns for known app types
+const HARDCODED_URLS = {
+    'sneed-trading-bot': '/trading_bot/CANISTER_ID?tab=chores',
+    'icp-staking-bot': '/icp_neuron_manager/CANISTER_ID?tab=chores',
+};
+
+// Hardcoded fallback labels
+const HARDCODED_LABELS = {
+    'sneed-trading-bot': 'Trading Bot',
+    'icp-staking-bot': 'ICP Staking Bot',
+};
 
 /**
  * Dialog listing bots (staking + trading) with unhealthy chore lamps (warn or error).
@@ -19,6 +32,8 @@ export default function BotChoreHealthDialog({ isOpen, onClose, unhealthyManager
     const { theme } = useTheme();
     const navigate = useNavigate();
     const { getPrincipalDisplayName } = useNaming();
+    const walletContext = useWalletOptional();
+    const appInfoMap = walletContext?.appInfoMap || {};
 
     if (!isOpen) return null;
 
@@ -27,11 +42,21 @@ export default function BotChoreHealthDialog({ isOpen, onClose, unhealthyManager
 
     const handleBotClick = (canisterId, appId) => {
         onClose();
-        if (appId === 'sneed-trading-bot') {
-            navigate(`/trading_bot/${canisterId}?tab=chores`);
-        } else {
-            navigate(`/icp_neuron_manager/${canisterId}?tab=chores`);
+        const cid = typeof canisterId === 'string' ? canisterId : canisterId.toString();
+        // Try sneedapp manageUrl first
+        const appInfo = appInfoMap[appId];
+        if (appInfo?.manageUrl?.[0]) {
+            navigate(appInfo.manageUrl[0].replace(/CANISTER_ID/g, cid) + '?tab=chores');
+            return;
         }
+        // Hardcoded URL for known types
+        const hardcoded = HARDCODED_URLS[appId];
+        if (hardcoded) {
+            navigate(hardcoded.replace(/CANISTER_ID/g, cid));
+            return;
+        }
+        // Generic fallback
+        navigate(`/canister?id=${cid}`);
     };
 
     return (
@@ -144,7 +169,7 @@ export default function BotChoreHealthDialog({ isOpen, onClose, unhealthyManager
                                 const lampColor = LAMP_COLORS[lamp] || LAMP_COLORS.warn;
                                 const lampLabel = LAMP_LABELS[lamp] || 'Unknown';
                                 const displayInfo = getPrincipalDisplayName ? getPrincipalDisplayName(canisterId) : null;
-                                const botTypeLabel = appId === 'sneed-trading-bot' ? 'Trading Bot' : 'ICP Staking Bot';
+                                const botTypeLabel = appInfoMap[appId]?.name || HARDCODED_LABELS[appId] || 'Bot';
 
                                 return (
                                     <div

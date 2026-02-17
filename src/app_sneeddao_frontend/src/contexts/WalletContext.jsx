@@ -403,6 +403,9 @@ export const WalletProvider = ({ children }) => {
     // All bot entries from sneedapp wallet (with appId) - shared for cross-bot-type notifications
     const [allBotEntries, setAllBotEntries] = useState([]); // [{ canisterId, appId }]
     
+    // App info from sneedapp factory - { appId -> AppInfo } with viewUrl, manageUrl, etc.
+    const [appInfoMap, setAppInfoMap] = useState({}); // appId -> { name, viewUrl, manageUrl, ... }
+    
     // Bot log alert summaries - { canisterId -> LogAlertSummary }
     const [botLogAlerts, setBotLogAlerts] = useState({});
     const botLogAlertsTimerRef = useRef(null);
@@ -1838,9 +1841,59 @@ export const WalletProvider = ({ children }) => {
             const canisterIds = await factory.getMyManagers();
             
             // Also fetch full wallet entries (with appId) for cross-bot-type notifications
+            // and app info (viewUrl, manageUrl, etc.) for navigation
             try {
-                const walletEntries = await factory.getMyWallet();
-                setAllBotEntries(walletEntries || []);
+                const [walletEntries, apps] = await Promise.all([
+                    factory.getMyWallet().catch(() => []),
+                    factory.getApps().catch(() => []),
+                ]);
+                // Build appInfoMap: appId → AppInfo
+                const infoMap = {};
+                for (const app of (apps || [])) {
+                    infoMap[app.appId] = app;
+                }
+                setAppInfoMap(infoMap);
+
+                // Build wasm hash → appId map from all app versions (for detection)
+                const hashToAppId = {};
+                await Promise.allSettled((apps || []).map(async (app) => {
+                    try {
+                        const versions = await factory.getAppVersions(app.appId);
+                        for (const v of (versions || [])) {
+                            if (v.wasmHash) hashToAppId[v.wasmHash.toLowerCase()] = app.appId;
+                        }
+                    } catch (_) {}
+                }));
+
+                // Copy entries so we can enrich them (Candid objects may be frozen)
+                let entries = (walletEntries || []).map(e => ({
+                    canisterId: e.canisterId,
+                    appId: e.appId || '',
+                }));
+
+                // Enrich entries with empty appId using module hash detection
+                const needsDetection = entries.filter(e => !e.appId);
+                if (needsDetection.length > 0 && Object.keys(hashToAppId).length > 0) {
+                    const mgmtActor = Actor.createActor(managementCanisterIdlFactory, {
+                        agent,
+                        canisterId: Principal.fromText(MANAGEMENT_CANISTER_ID),
+                    });
+                    await Promise.allSettled(needsDetection.map(async (entry) => {
+                        try {
+                            const status = await mgmtActor.canister_status({ canister_id: entry.canisterId });
+                            const hash = status.module_hash[0] ? uint8ArrayToHex(status.module_hash[0]) : null;
+                            if (hash) {
+                                const resolvedAppId = hashToAppId[hash.toLowerCase()];
+                                if (resolvedAppId) {
+                                    entry.appId = resolvedAppId;
+                                    // Auto-fix registration in sneedapp (fire-and-forget)
+                                    factory.registerCanister(entry.canisterId, resolvedAppId).catch(() => {});
+                                }
+                            }
+                        } catch (_) { /* Not controller — can't detect */ }
+                    }));
+                }
+                setAllBotEntries(entries);
             } catch (_) { /* getMyWallet may not be available on older factory versions */ }
             
             if (managersFetchSessionRef.current !== sessionId) return;
@@ -1956,22 +2009,24 @@ export const WalletProvider = ({ children }) => {
     }, [refreshNeuronManagers]);
     
     // --- Lightweight chore-status-only refresh (no neuron data) ---
-    // Polls chore statuses for ALL bot types: staking bots (neuronManagers) + trading bots (allBotEntries)
+    // Polls chore statuses for ALL bot types using allBotEntries as the source of truth.
+    // Falls back to neuronManagers for legacy entries not yet in allBotEntries.
     const refreshChoreStatuses = useCallback(async () => {
-        // Build a combined list: staking bots + trading bots
+        // Build a deduplicated list from allBotEntries + neuronManagers
         const botList = [];
+        const seen = new Set();
+        for (const entry of allBotEntries) {
+            const cid = entry.canisterId.toString();
+            if (seen.has(cid)) continue;
+            seen.add(cid);
+            botList.push({ canisterId: cid, appId: entry.appId || '' });
+        }
+        // Add any neuronManagers not already in allBotEntries (legacy fallback)
         for (const m of neuronManagers) {
             const cid = typeof m.canisterId === 'string' ? m.canisterId : m.canisterId.toString();
-            botList.push({ canisterId: cid, type: 'staking' });
-        }
-        for (const entry of allBotEntries) {
-            if (entry.appId === 'sneed-trading-bot') {
-                const cid = entry.canisterId.toString();
-                // Avoid duplicates
-                if (!botList.some(b => b.canisterId === cid)) {
-                    botList.push({ canisterId: cid, type: 'trading' });
-                }
-            }
+            if (seen.has(cid)) continue;
+            seen.add(cid);
+            botList.push({ canisterId: cid, appId: 'icp-staking-bot' });
         }
         if (!identity || !isAuthenticated || botList.length === 0) return;
         
@@ -1980,11 +2035,13 @@ export const WalletProvider = ({ children }) => {
             await agent.fetchRootKey().catch(() => {});
         }
         
-        await Promise.all(botList.map(async ({ canisterId: canisterIdStr, type }) => {
+        await Promise.all(botList.map(async ({ canisterId: canisterIdStr, appId }) => {
             try {
-                const actor = type === 'trading'
-                    ? createTradingBotActor(canisterIdStr, { agent })
-                    : createManagerActor(canisterIdStr, { agent });
+                // Use the correct actor based on appId; for unknown bots, try trading bot actor
+                // (its IDL includes getChoreStatuses which is shared across all bot types)
+                const actor = appId === 'icp-staking-bot'
+                    ? createManagerActor(canisterIdStr, { agent })
+                    : createTradingBotActor(canisterIdStr, { agent });
                 const choreStatuses = await actor.getChoreStatuses();
                 if (choreStatuses && choreStatuses.length > 0) {
                     setManagerChoreStatuses(prev => {
@@ -2974,6 +3031,7 @@ export const WalletProvider = ({ children }) => {
             managerChoreStatuses,
             refreshChoreStatuses,
             allBotEntries,
+            appInfoMap,
             botLogAlerts,
             refreshBotLogAlerts,
             officialVersions,

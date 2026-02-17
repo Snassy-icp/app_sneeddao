@@ -6,13 +6,18 @@ import { useNaming } from '../NamingContext';
 import { useWalletOptional } from '../contexts/WalletContext';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
 import { HttpAgent, Actor } from '@dfinity/agent';
+import { Principal } from '@dfinity/principal';
 import { useAuth } from '../AuthContext';
 import { botLogIdlFactory } from '../utils/botLogIdl';
 
-const APP_LABELS = {
+const HARDCODED_LABELS = {
     'sneed-trading-bot': 'Trading Bot',
     'icp-staking-bot': 'ICP Staking Bot',
-    '': 'Bot',
+};
+
+const HARDCODED_URLS = {
+    'sneed-trading-bot': '/trading_bot/CANISTER_ID?tab=log',
+    'icp-staking-bot': '/icp_neuron_manager/CANISTER_ID?tab=log',
 };
 
 /**
@@ -33,16 +38,13 @@ export default function BotLogAlertDialog({ isOpen, onClose, botsWithAlerts = []
         const current = parseInt(localStorage.getItem(key) || '0', 10);
         const newId = Math.max(current, highestId);
         localStorage.setItem(key, String(newId));
-        // Fire-and-forget update to canister
+        // Fire-and-forget update to backend canister
         try {
             const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging'
                 ? 'https://ic0.app' : 'http://localhost:4943';
-            const agent = new HttpAgent({ identity, host });
-            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                await agent.fetchRootKey();
-            }
-            const actor = Actor.createActor(botLogIdlFactory, { agent, canisterId });
-            await actor.markLogsSeen(BigInt(newId));
+            const { createActor: createBackendActor, canisterId: backendCanisterId } = await import('declarations/app_sneeddao_backend');
+            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity, host } });
+            await backendActor.mark_logs_seen(Principal.fromText(canisterId), BigInt(newId));
         } catch (_) { /* best effort */ }
         // Refresh alerts
         if (refreshBotLogAlerts) refreshBotLogAlerts();
@@ -57,11 +59,13 @@ export default function BotLogAlertDialog({ isOpen, onClose, botsWithAlerts = []
 
     const handleBotClick = (canisterId, appId) => {
         onClose();
-        if (appId === 'sneed-trading-bot') {
-            navigate(`/trading_bot/${canisterId}?tab=log`);
-        } else {
-            navigate(`/icp_neuron_manager/${canisterId}?tab=log`);
+        const cid = typeof canisterId === 'string' ? canisterId : canisterId.toString();
+        const hardcoded = HARDCODED_URLS[appId];
+        if (hardcoded) {
+            navigate(hardcoded.replace(/CANISTER_ID/g, cid));
+            return;
         }
+        navigate(`/canister?id=${cid}`);
     };
 
     if (!isOpen) return null;
@@ -142,7 +146,7 @@ export default function BotLogAlertDialog({ isOpen, onClose, botsWithAlerts = []
                                 const hasErrors = (bot.unseenErrorCount || 0) > 0;
                                 const color = hasErrors ? '#ef4444' : '#f59e0b';
                                 const displayInfo = getPrincipalDisplayName ? getPrincipalDisplayName(bot.canisterId) : null;
-                                const appLabel = APP_LABELS[bot.appId] || APP_LABELS[''];
+                                const appLabel = HARDCODED_LABELS[bot.appId] || 'Bot';
                                 const highestId = Math.max(bot.highestErrorId || 0, bot.highestWarningId || 0, (bot.nextId || 1) - 1);
 
                                 return (

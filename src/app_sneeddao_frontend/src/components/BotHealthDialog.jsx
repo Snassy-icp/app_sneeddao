@@ -7,16 +7,68 @@ import { useWalletOptional } from '../contexts/WalletContext';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
 import { LAMP_WARN, LAMP_ERROR, LAMP_COLORS, LAMP_LABELS } from './ChoreStatusLamp';
 import { HttpAgent, Actor } from '@dfinity/agent';
+import { Principal } from '@dfinity/principal';
 import { useAuth } from '../AuthContext';
 import { botLogIdlFactory } from '../utils/botLogIdl';
 
-const APP_LABELS = {
+// Hardcoded fallback labels for known app types
+const HARDCODED_LABELS = {
     'sneed-trading-bot': 'Trading Bot',
     'icp-staking-bot': 'ICP Staking Bot',
-    '': 'Bot',
+};
+
+// Hardcoded fallback URL patterns for known app types (with tab parameter support)
+const HARDCODED_URLS = {
+    'sneed-trading-bot': { manage: '/trading_bot/CANISTER_ID', view: '/trading_bot/CANISTER_ID' },
+    'icp-staking-bot': { manage: '/icp_neuron_manager/CANISTER_ID', view: '/icp_neuron_manager/CANISTER_ID' },
+};
+
+// Map of known bot types to useful tab query parameters
+const HARDCODED_TAB_PARAMS = {
+    'sneed-trading-bot': { chores: '?tab=chores', log: '?tab=log', default: '' },
+    'icp-staking-bot': { chores: '?tab=chores', log: '?tab=log', default: '' },
 };
 
 const LOG_LEVEL_COLORS = { Error: '#ef4444', Warning: '#f59e0b', Info: '#3b82f6', Debug: '#8b5cf6', Trace: '#6b7280' };
+
+/**
+ * Build the URL for navigating to a bot's page.
+ * Priority: sneedapp AppInfo.manageUrl > hardcoded URL > /canister?id= fallback
+ */
+function buildBotUrl(canisterId, appId, tab, appInfoMap) {
+    const cid = typeof canisterId === 'string' ? canisterId : canisterId.toString();
+    
+    // 1. Try sneedapp AppInfo manageUrl (has CANISTER_ID placeholder)
+    const appInfo = appInfoMap?.[appId];
+    if (appInfo?.manageUrl?.[0]) {
+        let url = appInfo.manageUrl[0].replace(/CANISTER_ID/g, cid);
+        // Add tab param if we have hardcoded knowledge for this app type
+        const tabParams = HARDCODED_TAB_PARAMS[appId];
+        if (tabParams && tab && tabParams[tab]) url += tabParams[tab];
+        return url;
+    }
+
+    // 2. Hardcoded URL for known bot types
+    const hardcoded = HARDCODED_URLS[appId];
+    if (hardcoded) {
+        let url = hardcoded.manage.replace(/CANISTER_ID/g, cid);
+        const tabParams = HARDCODED_TAB_PARAMS[appId];
+        if (tabParams && tab && tabParams[tab]) url += tabParams[tab];
+        return url;
+    }
+
+    // 3. Generic fallback
+    return `/canister?id=${cid}`;
+}
+
+/**
+ * Get display label for a bot app type.
+ */
+function getBotLabel(appId, appInfoMap) {
+    const appInfo = appInfoMap?.[appId];
+    if (appInfo?.name) return appInfo.name;
+    return HARDCODED_LABELS[appId] || 'Bot';
+}
 
 /**
  * Unified dialog for bot health: chore issues + unseen log alerts with full log entries.
@@ -28,6 +80,7 @@ export default function BotHealthDialog({ isOpen, onClose, unhealthyManagers = [
     const { identity } = useAuth();
     const walletContext = useWalletOptional();
     const refreshBotLogAlerts = walletContext?.refreshBotLogAlerts;
+    const appInfoMap = walletContext?.appInfoMap || {};
 
     // Fetched log entries per bot: { canisterId -> LogEntry[] }
     const [botLogEntries, setBotLogEntries] = useState({});
@@ -106,11 +159,7 @@ export default function BotHealthDialog({ isOpen, onClose, unhealthyManagers = [
 
     const navigateToBot = (canisterId, appId, tab) => {
         onClose();
-        if (appId === 'sneed-trading-bot') {
-            navigate(`/trading_bot/${canisterId}?tab=${tab}`);
-        } else {
-            navigate(`/icp_neuron_manager/${canisterId}?tab=${tab}`);
-        }
+        navigate(buildBotUrl(canisterId, appId, tab, appInfoMap));
     };
 
     if (!isOpen) return null;
@@ -222,7 +271,7 @@ export default function BotHealthDialog({ isOpen, onClose, unhealthyManagers = [
                                 const rowHasError = hasChoreError || hasLogErrors;
                                 const rowColor = rowHasError ? '#ef4444' : '#f59e0b';
                                 const displayInfo = getPrincipalDisplayName ? getPrincipalDisplayName(canisterId) : null;
-                                const botTypeLabel = APP_LABELS[appId] || APP_LABELS[''];
+                                const botTypeLabel = getBotLabel(appId, appInfoMap);
                                 const choreLabel = choreIssue ? (LAMP_LABELS[choreIssue.lamp] || 'Issue') : null;
                                 const choreLampColor = choreIssue ? (LAMP_COLORS[choreIssue.lamp] || LAMP_COLORS.warn) : null;
                                 const logHighestId = logAlert

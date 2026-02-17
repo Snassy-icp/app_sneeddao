@@ -29,6 +29,8 @@ type UserSettingsUpdate =
    neuron_manager_cycle_threshold_orange: opt nat;
    neuron_manager_cycle_threshold_red: opt nat;
    notify_bot_chores: opt bool;
+   notify_bot_log_errors: opt bool;
+   notify_bot_log_warnings: opt bool;
    notify_collectibles: opt bool;
    notify_low_cycles: opt bool;
    notify_messages: opt bool;
@@ -58,6 +60,8 @@ type UserSettings =
    neuron_manager_cycle_threshold_orange: nat;
    neuron_manager_cycle_threshold_red: nat;
    notify_bot_chores: bool;
+   notify_bot_log_errors: bool;
+   notify_bot_log_warnings: bool;
    notify_collectibles: bool;
    notify_low_cycles: bool;
    notify_messages: bool;
@@ -319,6 +323,10 @@ type AppSneedDaoBackend =
    delete_jailbreak_config: (id: nat) -> (Result_2);
    get_admins: () -> (vec principal) query;
    get_all_jailbreak_configs_count: () -> (Result) query;
+   get_all_last_seen_log_ids: () -> (vec record {
+                                           principal;
+                                           nat;
+                                         }) query;
    get_all_neuron_names: () ->
     (vec record {
            NeuronNameKey;
@@ -371,6 +379,7 @@ type AppSneedDaoBackend =
    get_jailbreak_payment_logs: (offset: nat, limit: nat) -> (Result_8) query;
    get_jailbreak_payment_stats: () -> (Result_7) query;
    get_jailbreak_payment_subaccount: () -> (blob) query;
+   get_last_seen_log_id: (canister_id: principal) -> (nat) query;
    get_ledger_canister_ids: () -> (vec principal) query;
    get_my_canister_groups_usage: () ->
     (record {
@@ -429,6 +438,7 @@ type AppSneedDaoBackend =
    get_whitelisted_tokens: () -> (vec WhitelistedToken) query;
    import_whitelist_from_swaprunner: () -> ();
    is_token_whitelisted: (ledger_id: principal) -> (bool) query;
+   mark_logs_seen: (canister_id: principal, log_id: nat) -> ();
    refresh_token_metadata: (ledger_id: principal) -> (Result_4);
    register_ledger_canister_id: (icrc1_ledger_canister_id: principal) -> ();
    register_swap_canister_id: (icrc1_swap_canister_id: principal) -> ();

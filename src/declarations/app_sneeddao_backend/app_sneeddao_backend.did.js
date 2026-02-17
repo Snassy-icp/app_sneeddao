@@ -109,6 +109,7 @@ export const idlFactory = ({ IDL }) => {
     'principal_color_coding' : IDL.Bool,
     'frontend_auto_update_enabled' : IDL.Bool,
     'notify_outdated_bots' : IDL.Bool,
+    'notify_bot_log_warnings' : IDL.Bool,
     'notify_votable_proposals' : IDL.Bool,
     'show_vp_bar' : IDL.Bool,
     'always_show_remove_token' : IDL.Bool,
@@ -129,6 +130,7 @@ export const idlFactory = ({ IDL }) => {
     'notify_bot_chores' : IDL.Bool,
     'show_header_notifications' : IDL.Bool,
     'collectibles_threshold' : IDL.Float64,
+    'notify_bot_log_errors' : IDL.Bool,
     'neuron_manager_cycle_threshold_orange' : IDL.Nat,
   });
   const Partner = IDL.Record({
@@ -197,6 +199,7 @@ export const idlFactory = ({ IDL }) => {
     'principal_color_coding' : IDL.Opt(IDL.Bool),
     'frontend_auto_update_enabled' : IDL.Opt(IDL.Bool),
     'notify_outdated_bots' : IDL.Opt(IDL.Bool),
+    'notify_bot_log_warnings' : IDL.Opt(IDL.Bool),
     'notify_votable_proposals' : IDL.Opt(IDL.Bool),
     'show_vp_bar' : IDL.Opt(IDL.Bool),
     'always_show_remove_token' : IDL.Opt(IDL.Bool),
@@ -217,6 +220,7 @@ export const idlFactory = ({ IDL }) => {
     'notify_bot_chores' : IDL.Opt(IDL.Bool),
     'show_header_notifications' : IDL.Opt(IDL.Bool),
     'collectibles_threshold' : IDL.Opt(IDL.Float64),
+    'notify_bot_log_errors' : IDL.Opt(IDL.Bool),
     'neuron_manager_cycle_threshold_orange' : IDL.Opt(IDL.Nat),
   });
   const Result_3 = IDL.Variant({ 'ok' : UserSettings, 'err' : IDL.Text });
@@ -259,6 +263,11 @@ export const idlFactory = ({ IDL }) => {
     'delete_jailbreak_config' : IDL.Func([IDL.Nat], [Result_2], []),
     'get_admins' : IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
     'get_all_jailbreak_configs_count' : IDL.Func([], [Result], ['query']),
+    'get_all_last_seen_log_ids' : IDL.Func(
+        [],
+        [IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Nat))],
+        ['query'],
+      ),
     'get_all_neuron_names' : IDL.Func(
         [],
         [IDL.Vec(IDL.Tuple(NeuronNameKey, IDL.Tuple(IDL.Text, IDL.Bool)))],
@@ -336,6 +345,7 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(IDL.Nat8)],
         ['query'],
       ),
+    'get_last_seen_log_id' : IDL.Func([IDL.Principal], [IDL.Nat], ['query']),
     'get_ledger_canister_ids' : IDL.Func(
         [],
         [IDL.Vec(IDL.Principal)],
@@ -428,6 +438,7 @@ export const idlFactory = ({ IDL }) => {
       ),
     'import_whitelist_from_swaprunner' : IDL.Func([], [], []),
     'is_token_whitelisted' : IDL.Func([IDL.Principal], [IDL.Bool], ['query']),
+    'mark_logs_seen' : IDL.Func([IDL.Principal, IDL.Nat], [], []),
     'refresh_token_metadata' : IDL.Func([IDL.Principal], [Result_4], []),
     'register_ledger_canister_id' : IDL.Func([IDL.Principal], [], []),
     'register_swap_canister_id' : IDL.Func([IDL.Principal], [], []),

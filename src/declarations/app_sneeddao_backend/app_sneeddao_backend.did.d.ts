@@ -29,6 +29,7 @@ export interface AppSneedDaoBackend {
   'delete_jailbreak_config' : ActorMethod<[bigint], Result_2>,
   'get_admins' : ActorMethod<[], Array<Principal>>,
   'get_all_jailbreak_configs_count' : ActorMethod<[], Result>,
+  'get_all_last_seen_log_ids' : ActorMethod<[], Array<[Principal, bigint]>>,
   'get_all_neuron_names' : ActorMethod<
     [],
     Array<[NeuronNameKey, [string, boolean]]>
@@ -70,6 +71,7 @@ export interface AppSneedDaoBackend {
   'get_jailbreak_payment_logs' : ActorMethod<[bigint, bigint], Result_8>,
   'get_jailbreak_payment_stats' : ActorMethod<[], Result_7>,
   'get_jailbreak_payment_subaccount' : ActorMethod<[], Uint8Array | number[]>,
+  'get_last_seen_log_id' : ActorMethod<[Principal], bigint>,
   'get_ledger_canister_ids' : ActorMethod<[], Array<Principal>>,
   'get_my_canister_groups_usage' : ActorMethod<
     [],
@@ -128,6 +130,7 @@ export interface AppSneedDaoBackend {
   'get_whitelisted_tokens' : ActorMethod<[], Array<WhitelistedToken>>,
   'import_whitelist_from_swaprunner' : ActorMethod<[], undefined>,
   'is_token_whitelisted' : ActorMethod<[Principal], boolean>,
+  'mark_logs_seen' : ActorMethod<[Principal, bigint], undefined>,
   'refresh_token_metadata' : ActorMethod<[Principal], Result_4>,
   'register_ledger_canister_id' : ActorMethod<[Principal], undefined>,
   'register_swap_canister_id' : ActorMethod<[Principal], undefined>,
@@ -376,6 +379,7 @@ export interface UserSettings {
   'principal_color_coding' : boolean,
   'frontend_auto_update_enabled' : boolean,
   'notify_outdated_bots' : boolean,
+  'notify_bot_log_warnings' : boolean,
   'notify_votable_proposals' : boolean,
   'show_vp_bar' : boolean,
   'always_show_remove_token' : boolean,
@@ -396,6 +400,7 @@ export interface UserSettings {
   'notify_bot_chores' : boolean,
   'show_header_notifications' : boolean,
   'collectibles_threshold' : number,
+  'notify_bot_log_errors' : boolean,
   'neuron_manager_cycle_threshold_orange' : bigint,
 }
 export interface UserSettingsUpdate {
@@ -404,6 +409,7 @@ export interface UserSettingsUpdate {
   'principal_color_coding' : [] | [boolean],
   'frontend_auto_update_enabled' : [] | [boolean],
   'notify_outdated_bots' : [] | [boolean],
+  'notify_bot_log_warnings' : [] | [boolean],
   'notify_votable_proposals' : [] | [boolean],
   'show_vp_bar' : [] | [boolean],
   'always_show_remove_token' : [] | [boolean],
@@ -424,6 +430,7 @@ export interface UserSettingsUpdate {
   'notify_bot_chores' : [] | [boolean],
   'show_header_notifications' : [] | [boolean],
   'collectibles_threshold' : [] | [number],
+  'notify_bot_log_errors' : [] | [boolean],
   'neuron_manager_cycle_threshold_orange' : [] | [bigint],
 }
 export interface WalletLayout {
