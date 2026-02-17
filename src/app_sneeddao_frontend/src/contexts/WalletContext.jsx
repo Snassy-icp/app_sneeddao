@@ -1842,6 +1842,7 @@ export const WalletProvider = ({ children }) => {
             
             // Also fetch full wallet entries (with appId) for cross-bot-type notifications
             // and app info (viewUrl, manageUrl, etc.) for navigation
+            let allBotEntriesLocal = [];
             try {
                 const [walletEntries, apps] = await Promise.all([
                     factory.getMyWallet().catch(() => []),
@@ -1893,14 +1894,27 @@ export const WalletProvider = ({ children }) => {
                         } catch (_) { /* Not controller — can't detect */ }
                     }));
                 }
+                allBotEntriesLocal = entries;
                 setAllBotEntries(entries);
             } catch (_) { /* getMyWallet may not be available on older factory versions */ }
             
             if (managersFetchSessionRef.current !== sessionId) return;
+
+            // Filter canisterIds to only include ICP staking bots (or unknown/legacy bots).
+            // getMyManagers() returns ALL registered canisters (legacy API from the factory era),
+            // so we must exclude canisters with a known non-staking-bot appId (e.g. 'sneed-trading-bot').
+            const nonStakingBotIds = new Set();
+            for (const e of (allBotEntriesLocal || [])) {
+                const cid = e.canisterId?.toString?.() || '';
+                if (e.appId && e.appId !== '' && e.appId !== 'icp-staking-bot') {
+                    nonStakingBotIds.add(cid);
+                }
+            }
+            const stakingBotIds = canisterIds.filter(p => !nonStakingBotIds.has(p.toString()));
             
-            if (canisterIds.length > 0) {
+            if (stakingBotIds.length > 0) {
                 // Step 2: Immediately show the list with loading placeholders
-                const initialManagers = canisterIds.map(canisterIdPrincipal => ({
+                const initialManagers = stakingBotIds.map(canisterIdPrincipal => ({
                     canisterId: canisterIdPrincipal,
                     version: null, // Will be loaded progressively
                     neuronCount: null, // Will be loaded progressively
@@ -1912,7 +1926,7 @@ export const WalletProvider = ({ children }) => {
                 setNeuronManagersLoading(false); // List is ready, details loading
                 
                 // Step 3: Progressively fetch version and neuronCount for each manager
-                canisterIds.forEach(async (canisterIdPrincipal) => {
+                stakingBotIds.forEach(async (canisterIdPrincipal) => {
                     const canisterId = canisterIdPrincipal.toString();
                     let isValidManager = false;
                     

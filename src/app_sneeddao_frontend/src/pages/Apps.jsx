@@ -498,11 +498,25 @@ export default function AppsPage() {
             
             const factory = createFactoryActor(factoryCanisterId, { agent });
             
-            // Fetch managers and official versions in parallel
-            const [canisterIds, fetchedOfficialVersions] = await Promise.all([
+            // Fetch managers, wallet entries (with appId), and official versions in parallel
+            const [allCanisterIds, walletEntries, fetchedOfficialVersions] = await Promise.all([
                 factory.getMyManagers(),
+                factory.getMyWallet().catch(() => []),
                 factory.getOfficialVersions(),
             ]);
+
+            // Build canisterId → appId map from wallet entries
+            const appIdMap = {};
+            for (const e of (walletEntries || [])) {
+                const cid = e.canisterId?.toString?.() || '';
+                if (cid && e.appId) appIdMap[cid] = e.appId;
+            }
+
+            // Filter to only ICP staking bots (exclude known non-staking bots like trading bots)
+            const canisterIds = allCanisterIds.filter(p => {
+                const appId = appIdMap[p.toString()] || '';
+                return !appId || appId === '' || appId === 'icp-staking-bot';
+            });
             
             // Store official versions for use in detecting neuron managers
             console.log('[NM Detection] Loaded', fetchedOfficialVersions?.length || 0, 'official versions');
