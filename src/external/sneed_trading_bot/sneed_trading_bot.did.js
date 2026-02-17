@@ -560,6 +560,14 @@ export const idlFactory = ({ IDL }) => {
         reorderTokenRegistry: IDL.Func([IDL.Vec(IDL.Principal)], [], []),
         refreshTokenMetadata: IDL.Func([IDL.Principal], [], []),
 
+        // Token Pause / Freeze
+        getPausedTokens: IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
+        getFrozenTokens: IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
+        pauseToken: IDL.Func([IDL.Principal], [], []),
+        unpauseToken: IDL.Func([IDL.Principal], [], []),
+        freezeToken: IDL.Func([IDL.Principal], [], []),
+        unfreezeToken: IDL.Func([IDL.Principal], [], []),
+
         // Subaccounts
         getSubaccounts: IDL.Func([], [IDL.Vec(SubaccountInfo)], ['query']),
         createSubaccount: IDL.Func([IDL.Text], [SubaccountInfo], []),
