@@ -1708,12 +1708,10 @@ export default function BotManagementPanel({
                                         const instances = activeType?.instances || [];
                                         const activeInstanceId = choreActiveInstance && instances.find(i => i.choreId === choreActiveInstance) ? choreActiveInstance : instances[0]?.choreId;
                                         const activeChore = instances.find(i => i.choreId === activeInstanceId);
-                                        const hasMultiple = instances.length > 1;
-
                                         return (
                                             <>
                                                 {/* Type tabs */}
-                                                <div style={{ display: 'flex', flexWrap: 'wrap', marginBottom: hasMultiple ? '0' : '12px', gap: '0' }}>
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', marginBottom: instances.length > 0 ? '0' : '12px', gap: '0' }}>
                                                     {choreTypeOrder.map(tid => {
                                                         const type = choreTypeMap[tid];
                                                         const worst = type.instances.reduce((w, i) => {
@@ -1731,33 +1729,53 @@ export default function BotManagementPanel({
                                                     })}
                                                 </div>
 
-                                                {/* Instance sub-tabs */}
-                                                {hasMultiple && (
-                                                    <div style={{ display: 'flex', flexWrap: 'wrap', marginBottom: '12px', gap: '0', paddingLeft: '8px', borderLeft: `2px solid ${accent}30` }}>
-                                                        {instances.map(inst => (
-                                                            <button key={inst.choreId} style={{ ...tabStyle(activeInstanceId === inst.choreId), fontSize: '0.75rem', padding: '0.35rem 0.7rem', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
-                                                                onClick={() => setChoreActiveInstance(inst.choreId)}>
-                                                                <StatusLamp state={getChoreSummaryLamp(inst)} size={7} />
-                                                                {inst.instanceLabel || inst.choreName}
-                                                            </button>
-                                                        ))}
-                                                        <button style={{ ...tabStyle(false), fontSize: '0.75rem', padding: '0.35rem 0.7rem', color: accent, fontWeight: '700' }}
-                                                            onClick={() => { setCreatingInstance(true); setNewInstanceLabel(''); }} title="Add another instance">+</button>
+                                                {/* Instance sub-tabs (always shown when instances exist) */}
+                                                {instances.length > 0 && (
+                                                    <div style={{ display: 'flex', flexWrap: 'wrap', marginBottom: '12px', gap: '0', paddingLeft: '8px', borderLeft: `2px solid ${accent}30`, alignItems: 'center' }}>
+                                                        {instances.map(inst => {
+                                                            const isActive = activeInstanceId === inst.choreId;
+                                                            const isRenaming = renamingInstance === inst.choreId;
+                                                            return isRenaming ? (
+                                                                <div key={inst.choreId} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '0.2rem 0.5rem', background: `${accent}10`, borderRadius: '6px', border: `1px solid ${accent}30` }}>
+                                                                    <input type="text" value={renameLabel} onChange={e => setRenameLabel(e.target.value)}
+                                                                        style={{ ...inputStyle, fontSize: '0.72rem', padding: '2px 6px', width: '120px', minWidth: '80px' }}
+                                                                        autoFocus onKeyDown={e => {
+                                                                            if (e.key === 'Enter' && renameLabel.trim()) {
+                                                                                choreAction(async (bot) => {
+                                                                                    const ok = await bot.renameChoreInstance(inst.choreId, renameLabel.trim());
+                                                                                    if (ok) { setChoreSuccess(`Renamed to "${renameLabel.trim()}"`); setRenamingInstance(null); }
+                                                                                    else { setChoreError('Failed to rename.'); }
+                                                                                });
+                                                                            } else if (e.key === 'Escape') { setRenamingInstance(null); }
+                                                                        }} />
+                                                                    <button style={{ ...buttonStyle, fontSize: '0.6rem', padding: '1px 5px', background: accent, color: '#fff', border: 'none' }}
+                                                                        disabled={!renameLabel.trim() || savingChore}
+                                                                        onClick={() => choreAction(async (bot) => {
+                                                                            const ok = await bot.renameChoreInstance(inst.choreId, renameLabel.trim());
+                                                                            if (ok) { setChoreSuccess(`Renamed to "${renameLabel.trim()}"`); setRenamingInstance(null); }
+                                                                            else { setChoreError('Failed to rename.'); }
+                                                                        })}>OK</button>
+                                                                    <button style={{ ...secondaryButtonStyle, fontSize: '0.6rem', padding: '1px 5px' }}
+                                                                        onClick={() => setRenamingInstance(null)}>Cancel</button>
+                                                                </div>
+                                                            ) : (
+                                                                <button key={inst.choreId} style={{ ...tabStyle(isActive), fontSize: '0.75rem', padding: '0.35rem 0.7rem', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+                                                                    onClick={() => setChoreActiveInstance(inst.choreId)}
+                                                                    onDoubleClick={() => { setRenamingInstance(inst.choreId); setRenameLabel(inst.instanceLabel || inst.choreName || ''); }}>
+                                                                    <StatusLamp state={getChoreSummaryLamp(inst)} size={7} />
+                                                                    {inst.instanceLabel || inst.choreName}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                        {multiInstanceChoreTypes.includes(activeTypeId) && (
+                                                            <button style={{ ...tabStyle(false), fontSize: '0.75rem', padding: '0.35rem 0.7rem', color: accent, fontWeight: '700' }}
+                                                                onClick={() => { setCreatingInstance(true); setNewInstanceLabel(''); }} title="Add another instance">+</button>
+                                                        )}
                                                     </div>
                                                 )}
 
-                                                {/* Add instance for single-instance multi-capable types */}
-                                                {!hasMultiple && multiInstanceChoreTypes.includes(activeTypeId) && (
-                                                    <div style={{ marginBottom: '8px' }}>
-                                                        <button style={{ ...buttonStyle, fontSize: '0.75rem', background: `${accent}10`, color: accent, border: `1px solid ${accent}25`, padding: '4px 10px' }}
-                                                            onClick={() => { setCreatingInstance(true); setNewInstanceLabel(''); }}>
-                                                            + Add another {activeType?.typeName}
-                                                        </button>
-                                                    </div>
-                                                )}
-
-                                                {/* Create instance dialog */}
-                                                {creatingInstance && (
+                                                {/* Create instance dialog (only when instances already exist — empty state card handles zero-instance case) */}
+                                                {creatingInstance && instances.length > 0 && (
                                                     <div style={{ ...cardStyle, background: `${accent}08`, border: `1px solid ${accent}25`, marginBottom: '12px' }}>
                                                         <div style={{ fontSize: '0.85rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '8px' }}>New {activeType?.typeName} Instance</div>
                                                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>

@@ -3916,7 +3916,7 @@ function DexSettingsPanel({ canisterId, createBotActor, identity }) {
 // Trading Bot Logs Section (combines trade log, portfolio snapshots, logging settings)
 // ============================================
 function TradingBotLogs({ canisterId, createBotActorFn, theme, accentColor, identity }) {
-    const [activeTab, setActiveTab] = useState('trade');
+    const [activeTab, setActiveTab] = useState('accounts');
     const [choreStatuses, setChoreStatuses] = useState([]);
     const agentRef = useRef(null);
     const actorRef = useRef(null);
