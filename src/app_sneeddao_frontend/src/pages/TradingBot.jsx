@@ -751,15 +751,6 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                             ))}
                         </div>
                     </div>
-                    {fAmountMode === 1 && (
-                        <div>
-                            <label style={labelStyle}>Balance %</label>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <input value={fBalancePercent} onChange={(e) => setFBalancePercent(e.target.value)} style={{ ...inputStyle, width: '80px' }} type="text" inputMode="decimal" placeholder="100" />
-                                <span style={{ fontSize: '0.8rem', opacity: 0.7 }}>%</span>
-                            </div>
-                        </div>
-                    )}
                     <div>
                         <label style={labelStyle}>{fAmountMode === 1 ? 'Min Amount (cap)' : 'Min Amount'}{amountSymLabel}</label>
                         <input value={fMinAmount} onChange={(e) => setFMinAmount(e.target.value)} style={{ ...inputStyle, width: '100%' }} type="text" inputMode="decimal" placeholder="0.0" />
@@ -784,6 +775,28 @@ function ActionListPanel({ instanceId, getReadyBotActor, theme, accentColor, car
                                     Clear (use native)
                                 </button>
                             )}
+                        </div>
+                    )}
+                    {fAmountMode === 1 && (
+                        <div style={{ gridColumn: '1 / -1' }}>
+                            <label style={labelStyle}>Balance %</label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <input
+                                    type="range" min="0" max="100" step="0.1"
+                                    value={parseFloat(fBalancePercent) || 0}
+                                    onChange={(e) => setFBalancePercent(e.target.value)}
+                                    style={{ flex: 1, accentColor: accentColor, cursor: 'pointer', height: '6px' }}
+                                />
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
+                                    <input
+                                        value={fBalancePercent}
+                                        onChange={(e) => setFBalancePercent(e.target.value)}
+                                        style={{ ...inputStyle, width: '60px', fontSize: '0.75rem', textAlign: 'right' }}
+                                        type="text" inputMode="decimal" placeholder="100"
+                                    />
+                                    <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>%</span>
+                                </div>
+                            </div>
                         </div>
                     )}
                     {/* Deposit: target subaccount selector */}
