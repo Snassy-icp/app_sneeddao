@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars, FaComments, FaUnlock, FaCrown, FaGift, FaBrain, FaKey, FaHandPaper, FaBell, FaEnvelope, FaCoins, FaSync, FaVoteYea, FaCloudDownloadAlt, FaBolt, FaRobot, FaCubes, FaChartLine, FaExclamationTriangle } from 'react-icons/fa';
+import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars, FaComments, FaUnlock, FaCrown, FaGift, FaBrain, FaKey, FaHandPaper, FaBell, FaEnvelope, FaCoins, FaSync, FaVoteYea, FaCloudDownloadAlt, FaBolt, FaRobot, FaCubes, FaChartLine } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { headerStyles } from '../styles/HeaderStyles';
@@ -28,8 +28,7 @@ import { useLowCyclesNotification } from '../hooks/useLowCyclesNotification';
 import { useBotChoreNotification } from '../hooks/useBotChoreNotification';
 import { useBotLogNotification } from '../hooks/useBotLogNotification';
 import UpgradeBotsDialog from './UpgradeBotsDialog';
-import BotChoreHealthDialog from './BotChoreHealthDialog';
-import BotLogAlertDialog from './BotLogAlertDialog';
+import BotHealthDialog from './BotHealthDialog';
 import TopUpCyclesDialog from './TopUpCyclesDialog';
 
 function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
@@ -119,22 +118,29 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         closeDialog: closeTopUpDialog,
     } = useLowCyclesNotification();
     const {
-        unhealthyCount: choreUnhealthyCount,
-        worstState: choreWorstState,
         unhealthyManagers: choreUnhealthyManagers,
-        color: choreColor,
-        isDialogOpen: isChoreDialogOpen,
-        openDialog: openChoreDialog,
-        closeDialog: closeChoreDialog,
     } = useBotChoreNotification();
     const {
-        totalCount: logAlertCount,
         botsWithAlerts: logAlertBots,
-        color: logAlertColor,
-        isDialogOpen: isLogAlertDialogOpen,
-        openDialog: openLogAlertDialog,
-        closeDialog: closeLogAlertDialog,
     } = useBotLogNotification();
+
+    // Unified bot health dialog state (chore issues + log alerts combined)
+    const [isBotHealthDialogOpen, setIsBotHealthDialogOpen] = React.useState(false);
+    const openBotHealthDialog = React.useCallback(() => setIsBotHealthDialogOpen(true), []);
+    const closeBotHealthDialog = React.useCallback(() => setIsBotHealthDialogOpen(false), []);
+
+    // Combined badge count: chore-unhealthy bots + bots-with-log-alerts (deduplicated)
+    const botHealthCount = React.useMemo(() => {
+        const seen = new Set();
+        for (const m of choreUnhealthyManagers) seen.add(m.canisterId);
+        for (const b of logAlertBots) seen.add(b.canisterId);
+        return seen.size;
+    }, [choreUnhealthyManagers, logAlertBots]);
+    const botHealthColor = React.useMemo(() => {
+        const hasChoreError = choreUnhealthyManagers.some(m => m.lamp === 'error');
+        const hasLogError = logAlertBots.some(b => (b.unseenErrorCount || 0) > 0);
+        return (hasChoreError || hasLogError) ? '#ef4444' : '#f59e0b';
+    }, [choreUnhealthyManagers, logAlertBots]);
     const frontendUpdate = useFrontendUpdate();
     const hasUpdateAvailable = frontendUpdate?.hasUpdateAvailable ?? false;
     const countdownSeconds = frontendUpdate?.countdownSeconds ?? 0;
@@ -1702,7 +1708,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             )}
 
             {/* Notifications Row: Shows when there are notifications or update available */}
-            {!isHeaderCollapsed && ((hasUpdateAvailable && notifyUpdatesSetting) || (showHeaderNotificationsSetting && isAuthenticated && ((notifyRepliesSetting && newReplyCount > 0) || (notifyTipsSetting && newTipCount > 0) || (notifyMessagesSetting && newMessageCount > 0) || (notifyCollectiblesSetting && collectiblesCount > 0) || (notifyVotableProposalsSetting && votableCount > 0) || (notifyOutdatedBotsSetting && outdatedCount > 0) || (notifyLowCyclesSetting && lowCyclesCount > 0) || (notifyBotChoresSetting && choreUnhealthyCount > 0) || (notifyBotLogErrorsSetting && logAlertCount > 0)))) && (
+            {!isHeaderCollapsed && ((hasUpdateAvailable && notifyUpdatesSetting) || (showHeaderNotificationsSetting && isAuthenticated && ((notifyRepliesSetting && newReplyCount > 0) || (notifyTipsSetting && newTipCount > 0) || (notifyMessagesSetting && newMessageCount > 0) || (notifyCollectiblesSetting && collectiblesCount > 0) || (notifyVotableProposalsSetting && votableCount > 0) || (notifyOutdatedBotsSetting && outdatedCount > 0) || (notifyLowCyclesSetting && lowCyclesCount > 0) || ((notifyBotChoresSetting || notifyBotLogErrorsSetting) && botHealthCount > 0)))) && (
                 <div style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
@@ -1987,22 +1993,22 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                             </div>
                         )}
 
-                        {/* Bot Chore Health */}
-                        {notifyBotChoresSetting && choreUnhealthyCount > 0 && (
+                        {/* Bot Health (chore issues + log alerts combined) */}
+                        {(notifyBotChoresSetting || notifyBotLogErrorsSetting) && botHealthCount > 0 && (
                             <div 
-                                onClick={openChoreDialog}
+                                onClick={openBotHealthDialog}
                                 style={{
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: '4px',
                                     padding: '3px 8px',
-                                    background: `linear-gradient(135deg, ${choreColor}33, ${choreColor}1a)`,
-                                    border: `1px solid ${choreColor}4d`,
+                                    background: `linear-gradient(135deg, ${botHealthColor}33, ${botHealthColor}1a)`,
+                                    border: `1px solid ${botHealthColor}4d`,
                                     borderRadius: '12px',
                                     cursor: 'pointer',
                                     fontSize: '11px',
                                     fontWeight: '600',
-                                    color: choreColor,
+                                    color: botHealthColor,
                                     transition: 'all 0.2s ease',
                                     whiteSpace: 'nowrap',
                                 }}
@@ -2012,42 +2018,10 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                 onMouseLeave={(e) => {
                                     e.currentTarget.style.transform = 'translateY(0)';
                                 }}
-                                title={`${choreUnhealthyCount} bot${choreUnhealthyCount !== 1 ? 's' : ''} ${choreWorstState === 'error' ? 'with chore errors' : 'needing chore attention'}`}
+                                title={`${botHealthCount} bot${botHealthCount !== 1 ? 's' : ''} need attention`}
                             >
                                 <FaRobot size={10} />
-                                <span>{choreUnhealthyCount}</span>
-                            </div>
-                        )}
-
-                        {/* Bot Log Alerts */}
-                        {notifyBotLogErrorsSetting && logAlertCount > 0 && (
-                            <div 
-                                onClick={openLogAlertDialog}
-                                style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '4px',
-                                    padding: '3px 8px',
-                                    background: `linear-gradient(135deg, ${logAlertColor}33, ${logAlertColor}1a)`,
-                                    border: `1px solid ${logAlertColor}4d`,
-                                    borderRadius: '12px',
-                                    cursor: 'pointer',
-                                    fontSize: '11px',
-                                    fontWeight: '600',
-                                    color: logAlertColor,
-                                    transition: 'all 0.2s ease',
-                                    whiteSpace: 'nowrap',
-                                }}
-                                onMouseEnter={(e) => {
-                                    e.currentTarget.style.transform = 'translateY(-1px)';
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.currentTarget.style.transform = 'translateY(0)';
-                                }}
-                                title={`${logAlertCount} unseen bot log alert${logAlertCount !== 1 ? 's' : ''}`}
-                            >
-                                <FaExclamationTriangle size={10} />
-                                <span>{logAlertCount}</span>
+                                <span>{botHealthCount}</span>
                             </div>
                         )}
                 </div>
@@ -2065,17 +2039,11 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 }}
             />
 
-            {/* Bot Chore Health Dialog (from header notification) */}
-            <BotChoreHealthDialog
-                isOpen={isChoreDialogOpen}
-                onClose={closeChoreDialog}
+            {/* Unified Bot Health Dialog (chore issues + log alerts) */}
+            <BotHealthDialog
+                isOpen={isBotHealthDialogOpen}
+                onClose={closeBotHealthDialog}
                 unhealthyManagers={choreUnhealthyManagers}
-            />
-
-            {/* Bot Log Alert Dialog (from header notification) */}
-            <BotLogAlertDialog
-                isOpen={isLogAlertDialogOpen}
-                onClose={closeLogAlertDialog}
                 botsWithAlerts={logAlertBots}
             />
 
