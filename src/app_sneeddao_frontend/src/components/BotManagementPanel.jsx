@@ -536,7 +536,15 @@ export default function BotManagementPanel({
             // Set initial active tab — prefer types list, fallback to statuses
             if (!choreActiveTab) {
                 if (types.length > 0) {
-                    setChoreActiveTab(types[0].id);
+                    let sortedIds = types.map(t => t.id);
+                    if (preferredChoreTypeOrder) {
+                        sortedIds.sort((a, b) => {
+                            const ai = preferredChoreTypeOrder.indexOf(a);
+                            const bi = preferredChoreTypeOrder.indexOf(b);
+                            return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+                        });
+                    }
+                    setChoreActiveTab(sortedIds[0]);
                 } else if (statuses.length > 0) {
                     setChoreActiveTab(statuses[0].choreTypeId || statuses[0].choreId);
                 }
@@ -546,7 +554,7 @@ export default function BotManagementPanel({
         } finally {
             if (!silent) setLoadingChores(false);
         }
-    }, [canisterId, identity, getReadyBotActor, choreActiveTab]);
+    }, [canisterId, identity, getReadyBotActor, choreActiveTab, preferredChoreTypeOrder]);
 
     /**
      * Start polling chore statuses after an action that triggers a run

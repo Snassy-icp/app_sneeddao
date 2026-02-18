@@ -3098,8 +3098,28 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
     func executeRebalance(instanceId: Text): async Bool {
         let src = "chore:" # instanceId;
         let allTargets = getRebalTargets(instanceId);
+        let denomToken = getRebalDenomToken(instanceId);
+
         if (allTargets.size() == 0) {
             logEngine.logInfo(src, "Rebalance skipped: no targets configured", null, []);
+            ignore appendTradeLog({
+                choreId = ?instanceId;
+                choreTypeId = getInstanceTypeId(instanceId);
+                actionId = null;
+                actionType = 0;
+                inputToken = denomToken;
+                outputToken = null;
+                inputAmount = 0;
+                outputAmount = null;
+                priceE8s = null;
+                priceImpactBps = null;
+                slippageBps = null;
+                dexId = null;
+                status = #Skipped;
+                errorMessage = ?"No targets configured";
+                txId = null;
+                destinationOwner = null;
+            });
             return false;
         };
 
@@ -3107,6 +3127,24 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         let activeTargets = Array.filter<T.RebalanceTarget>(allTargets, func(t) { not t.paused and not isTokenPausedOrFrozen(t.token) });
         if (activeTargets.size() == 0) {
             logEngine.logInfo(src, "Rebalance skipped: all targets are paused", null, []);
+            ignore appendTradeLog({
+                choreId = ?instanceId;
+                choreTypeId = getInstanceTypeId(instanceId);
+                actionId = null;
+                actionType = 0;
+                inputToken = denomToken;
+                outputToken = null;
+                inputAmount = 0;
+                outputAmount = null;
+                priceE8s = null;
+                priceImpactBps = null;
+                slippageBps = null;
+                dexId = null;
+                status = #Skipped;
+                errorMessage = ?"All targets are paused";
+                txId = null;
+                destinationOwner = null;
+            });
             return false;
         };
         let activeTotalBps = Array.foldLeft<T.RebalanceTarget, Nat>(activeTargets, 0, func(acc, t) { acc + t.targetBps });
@@ -3117,7 +3155,6 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             })
         } else { activeTargets };
 
-        let denomToken = getRebalDenomToken(instanceId);
         let threshold = getRebalThreshold(instanceId);
         let maxTrade = getRebalMaxTrade(instanceId);
         let minTrade = getRebalMinTrade(instanceId);
@@ -3228,6 +3265,24 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
         if (totalValue == 0) {
             logEngine.logInfo(src, "Rebalance skipped: portfolio value is 0", null, []);
+            ignore appendTradeLog({
+                choreId = ?instanceId;
+                choreTypeId = getInstanceTypeId(instanceId);
+                actionId = null;
+                actionType = 0;
+                inputToken = denomToken;
+                outputToken = null;
+                inputAmount = 0;
+                outputAmount = null;
+                priceE8s = null;
+                priceImpactBps = null;
+                slippageBps = null;
+                dexId = null;
+                status = #Skipped;
+                errorMessage = ?"Portfolio value is 0";
+                txId = null;
+                destinationOwner = null;
+            });
             return false;
         };
 
@@ -3285,11 +3340,31 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         ]);
 
         if (overweight.size() == 0 or underweight.size() == 0) {
-            logEngine.logInfo(src, "Rebalance skipped: portfolio within tolerance (threshold " # Nat.toText(threshold / 100) # "." # Nat.toText(threshold % 100) # "%, " # Nat.toText(overweight.size()) # " overweight, " # Nat.toText(underweight.size()) # " underweight)", null, [
+            let skipMsg = "Portfolio within tolerance (threshold " # Nat.toText(threshold / 100) # "." # Nat.toText(threshold % 100) # "%, " # Nat.toText(overweight.size()) # " overweight, " # Nat.toText(underweight.size()) # " underweight)";
+            logEngine.logInfo(src, "Rebalance skipped: " # skipMsg, null, [
                 ("thresholdBps", Nat.toText(threshold)),
                 ("overweightCount", Nat.toText(overweight.size())),
                 ("underweightCount", Nat.toText(underweight.size())),
             ]);
+            let logId = appendTradeLog({
+                choreId = ?instanceId;
+                choreTypeId = getInstanceTypeId(instanceId);
+                actionId = null;
+                actionType = 0;
+                inputToken = denomToken;
+                outputToken = null;
+                inputAmount = 0;
+                outputAmount = null;
+                priceE8s = null;
+                priceImpactBps = null;
+                slippageBps = null;
+                dexId = null;
+                status = #Skipped;
+                errorMessage = ?skipMsg;
+                txId = null;
+                destinationOwner = null;
+            });
+            _rebal_lastLogId := setInMap(_rebal_lastLogId, instanceId, logId);
             return false;
         };
 
@@ -4813,6 +4888,24 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                         // First invocation
                         if (targets.size() == 0) {
                             logEngine.logInfo(src, "Rebalance skipped: no targets configured", null, []);
+                            ignore appendTradeLog({
+                                choreId = ?instanceId;
+                                choreTypeId = getInstanceTypeId(instanceId);
+                                actionId = null;
+                                actionType = 0;
+                                inputToken = denomToken;
+                                outputToken = null;
+                                inputAmount = 0;
+                                outputAmount = null;
+                                priceE8s = null;
+                                priceImpactBps = null;
+                                slippageBps = null;
+                                dexId = null;
+                                status = #Skipped;
+                                errorMessage = ?"No targets configured";
+                                txId = null;
+                                destinationOwner = null;
+                            });
                             return #Done;
                         };
 
