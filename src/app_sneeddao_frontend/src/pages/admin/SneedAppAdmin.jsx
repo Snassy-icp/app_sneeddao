@@ -6,6 +6,8 @@ import Header from '../../components/Header';
 import { useTheme } from '../../contexts/ThemeContext';
 import { Principal } from '@dfinity/principal';
 import { FaSave, FaPlus, FaTrash, FaUpload, FaSpinner, FaCheckCircle, FaExclamationTriangle, FaEdit, FaTimes, FaSearch, FaCloudDownloadAlt, FaCheck, FaBan, FaWallet, FaChartBar, FaUsers, FaTags } from 'react-icons/fa';
+import PrincipalInput from '../../components/PrincipalInput';
+import { parseAccount, hexToBytes } from '../../utils/AccountParser';
 
 const appPrimary = '#06b6d4';
 const E8S = 100_000_000;
@@ -23,7 +25,8 @@ export default function SneedAppAdmin() {
     const [publishers, setPublishers] = useState([]);
     const [editingPub, setEditingPub] = useState(null);
     const [editingPubData, setEditingPubData] = useState({});
-    const [newPub, setNewPub] = useState({ name: '', description: '', websiteUrl: '', logoUrl: '', defaultPaymentOwner: '', defaultPaymentSubaccount: '' });
+    const [newPub, setNewPub] = useState({ name: '', description: '', websiteUrl: '', logoUrl: '' });
+    const [newPubPaymentAccount, setNewPubPaymentAccount] = useState({ principal: '', subaccount: null });
     const [newOwnerPrincipal, setNewOwnerPrincipal] = useState('');
     const [newFamily, setNewFamily] = useState('');
     const [daoCutInput, setDaoCutInput] = useState('');
@@ -74,6 +77,25 @@ export default function SneedAppAdmin() {
     const showError = (msg) => { setError(msg); setSuccess(''); };
     const pubMap = {};
     publishers.forEach(p => { pubMap[Number(p.publisherId)] = p; });
+
+    const accountToBackend = (principalStr, subaccountBytes) => {
+        return {
+            owner: Principal.fromText(principalStr),
+            subaccount: subaccountBytes ? [Array.from(subaccountBytes)] : []
+        };
+    };
+
+    const accountToDisplay = (account) => {
+        if (!account) return '';
+        const ownerStr = account.owner?.toText?.() || '';
+        if (account.subaccount?.length > 0) {
+            const sub = account.subaccount[0];
+            const hexStr = Array.from(sub).map(b => b.toString(16).padStart(2, '0')).join('');
+            const trimmed = hexStr.replace(/^0+/, '');
+            if (trimmed) return `${ownerStr} (sub: ${trimmed.substring(0, 16)}...)`;
+        }
+        return ownerStr;
+    };
 
     // ==================== LOAD DATA ====================
 
@@ -149,20 +171,19 @@ export default function SneedAppAdmin() {
         setLoading(true);
         try {
             const factory = getFactory();
+            const payOwner = newPubPaymentAccount.principal || identity.getPrincipal().toText();
             const result = await factory.createPublisher({
                 name: newPub.name,
                 description: newPub.description,
                 websiteUrl: newPub.websiteUrl ? [newPub.websiteUrl] : [],
                 logoUrl: newPub.logoUrl ? [newPub.logoUrl] : [],
                 links: [],
-                defaultPaymentAccount: {
-                    owner: Principal.fromText(newPub.defaultPaymentOwner || identity.getPrincipal().toText()),
-                    subaccount: []
-                }
+                defaultPaymentAccount: accountToBackend(payOwner, newPubPaymentAccount.subaccount)
             });
             if (result.Ok !== undefined) { showSuccess('Publisher created with ID ' + Number(result.Ok)); }
             else if (result.Err) { showError(result.Err); }
-            setNewPub({ name: '', description: '', websiteUrl: '', logoUrl: '', defaultPaymentOwner: '', defaultPaymentSubaccount: '' });
+            setNewPub({ name: '', description: '', websiteUrl: '', logoUrl: '' });
+            setNewPubPaymentAccount({ principal: '', subaccount: null });
             await loadPublishers();
         } catch (e) { showError('Failed: ' + e.message); }
         setLoading(false);
@@ -586,7 +607,10 @@ export default function SneedAppAdmin() {
                                         </div>
                                     </div>
                                 ) : (
-                                    <div style={{ color: theme.colors.secondaryText, fontSize: 13, marginBottom: 8 }}>{pub.description}</div>
+                                    <div style={{ marginBottom: 8 }}>
+                                        <div style={{ color: theme.colors.secondaryText, fontSize: 13, marginBottom: 4 }}>{pub.description}</div>
+                                        <div style={{ color: theme.colors.secondaryText, fontSize: 11 }}>Payment Account: <code style={{ fontSize: 10 }}>{accountToDisplay(pub.defaultPaymentAccount)}</code></div>
+                                    </div>
                                 )}
 
                                 {/* DAO Cut setter */}
@@ -640,7 +664,17 @@ export default function SneedAppAdmin() {
                                 <div><label style={label}>Name *</label><input value={newPub.name} onChange={e => setNewPub({ ...newPub, name: e.target.value })} style={inputStyle} /></div>
                                 <div><label style={label}>Website URL</label><input value={newPub.websiteUrl} onChange={e => setNewPub({ ...newPub, websiteUrl: e.target.value })} style={inputStyle} /></div>
                                 <div style={{ gridColumn: '1 / -1' }}><label style={label}>Description</label><input value={newPub.description} onChange={e => setNewPub({ ...newPub, description: e.target.value })} style={inputStyle} /></div>
-                                <div style={{ gridColumn: '1 / -1' }}><label style={label}>Default Payment Owner (principal, leave empty for self)</label><input value={newPub.defaultPaymentOwner} onChange={e => setNewPub({ ...newPub, defaultPaymentOwner: e.target.value })} placeholder={identity?.getPrincipal().toText()} style={inputStyle} /></div>
+                                <div style={{ gridColumn: '1 / -1' }}>
+                                    <label style={label}>Default Payment Account (ICRC-1, leave empty for self)</label>
+                                    <PrincipalInput
+                                        value={newPubPaymentAccount.principal}
+                                        onChange={(val) => setNewPubPaymentAccount(prev => ({ ...prev, principal: val }))}
+                                        onAccountChange={({ principal, subaccount }) => setNewPubPaymentAccount({ principal, subaccount })}
+                                        showSubaccountOption={true}
+                                        placeholder={identity?.getPrincipal().toText() || 'Principal or ICRC-1 account'}
+                                        style={{ maxWidth: '100%' }}
+                                    />
+                                </div>
                             </div>
                             <button onClick={handleCreatePublisher} disabled={loading || !newPub.name} style={{ marginTop: 16, padding: '10px 20px', borderRadius: 8, background: `linear-gradient(135deg, ${appPrimary}, #22d3ee)`, color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer', opacity: loading || !newPub.name ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 6 }}>
                                 {loading ? <FaSpinner className="fa-spin" /> : <FaPlus />} Create Publisher

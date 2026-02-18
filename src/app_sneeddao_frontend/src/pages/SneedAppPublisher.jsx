@@ -6,6 +6,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 import { Principal } from '@dfinity/principal';
 import { FaSave, FaPlus, FaTrash, FaSpinner, FaCheckCircle, FaExclamationTriangle, FaEdit, FaTimes, FaUpload, FaCloudDownloadAlt, FaWallet, FaChartBar, FaUsers, FaTags, FaArrowLeft } from 'react-icons/fa';
+import PrincipalInput from '../components/PrincipalInput';
 
 const appPrimary = '#06b6d4';
 const E8S = 100_000_000;
@@ -27,8 +28,26 @@ export default function SneedAppPublisher() {
 
     // Edit states
     const [editInfo, setEditInfo] = useState(null);
+    const [editPaymentAccount, setEditPaymentAccount] = useState({ principal: '', subaccount: null });
     const [newOwner, setNewOwner] = useState('');
     const [newFamily, setNewFamily] = useState('');
+
+    const accountToBackend = (principalStr, subaccountBytes) => ({
+        owner: Principal.fromText(principalStr),
+        subaccount: subaccountBytes ? [Array.from(subaccountBytes)] : []
+    });
+
+    const accountToDisplay = (account) => {
+        if (!account) return '';
+        const ownerStr = account.owner?.toText?.() || '';
+        if (account.subaccount?.length > 0) {
+            const sub = account.subaccount[0];
+            const hexStr = Array.from(sub).map(b => b.toString(16).padStart(2, '0')).join('');
+            const trimmed = hexStr.replace(/^0+/, '');
+            if (trimmed) return `${ownerStr} (sub: ${trimmed.substring(0, 16)}...)`;
+        }
+        return ownerStr;
+    };
 
     // Version management
     const [selectedAppId, setSelectedAppId] = useState('');
@@ -115,13 +134,16 @@ export default function SneedAppPublisher() {
         setActionLoading(true);
         try {
             const factory = getFactory();
+            const payAccount = editPaymentAccount.principal
+                ? accountToBackend(editPaymentAccount.principal, editPaymentAccount.subaccount)
+                : publisher.defaultPaymentAccount;
             const result = await factory.updatePublisher(publisherId, {
                 name: editInfo.name,
                 description: editInfo.description,
                 websiteUrl: editInfo.websiteUrl ? [editInfo.websiteUrl] : [],
                 logoUrl: editInfo.logoUrl ? [editInfo.logoUrl] : [],
                 links: publisher.links || [],
-                defaultPaymentAccount: publisher.defaultPaymentAccount
+                defaultPaymentAccount: payAccount
             });
             if (result.Err) showError(result.Err);
             else { showSuccess('Publisher updated'); setEditInfo(null); }
@@ -349,6 +371,17 @@ export default function SneedAppPublisher() {
                                     <div><label style={label}>Name</label><input value={editInfo.name} onChange={e => setEditInfo({ ...editInfo, name: e.target.value })} style={inputStyle} /></div>
                                     <div><label style={label}>Website</label><input value={editInfo.websiteUrl} onChange={e => setEditInfo({ ...editInfo, websiteUrl: e.target.value })} style={inputStyle} /></div>
                                     <div style={{ gridColumn: '1 / -1' }}><label style={label}>Description</label><textarea value={editInfo.description} onChange={e => setEditInfo({ ...editInfo, description: e.target.value })} rows={3} style={{ ...inputStyle, resize: 'vertical' }} /></div>
+                                    <div style={{ gridColumn: '1 / -1' }}>
+                                        <label style={label}>Default Payment Account (ICRC-1)</label>
+                                        <PrincipalInput
+                                            value={editPaymentAccount.principal || publisher.defaultPaymentAccount?.owner?.toText?.() || ''}
+                                            onChange={(val) => setEditPaymentAccount(prev => ({ ...prev, principal: val }))}
+                                            onAccountChange={({ principal, subaccount }) => setEditPaymentAccount({ principal, subaccount })}
+                                            showSubaccountOption={true}
+                                            placeholder="Principal or ICRC-1 account"
+                                            style={{ maxWidth: '100%' }}
+                                        />
+                                    </div>
                                 </div>
                                 <div style={{ display: 'flex', gap: 6 }}>
                                     <button onClick={handleUpdateInfo} disabled={actionLoading} style={btnSm('#10b981')}>{actionLoading ? <FaSpinner className="fa-spin" /> : <FaSave />} Save</button>
@@ -359,10 +392,11 @@ export default function SneedAppPublisher() {
                             <div style={cardStyle}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
                                     <div style={{ color: theme.colors.secondaryText, fontSize: 14 }}>{publisher.description}</div>
-                                    <button onClick={() => setEditInfo({ name: publisher.name, description: publisher.description, websiteUrl: publisher.websiteUrl?.length > 0 ? publisher.websiteUrl[0] : '', logoUrl: publisher.logoUrl?.length > 0 ? publisher.logoUrl[0] : '' })} style={btnSm(appPrimary)}><FaEdit /> Edit</button>
+                                    <button onClick={() => { setEditInfo({ name: publisher.name, description: publisher.description, websiteUrl: publisher.websiteUrl?.length > 0 ? publisher.websiteUrl[0] : '', logoUrl: publisher.logoUrl?.length > 0 ? publisher.logoUrl[0] : '' }); setEditPaymentAccount({ principal: '', subaccount: null }); }} style={btnSm(appPrimary)}><FaEdit /> Edit</button>
                                 </div>
                                 {publisher.websiteUrl?.length > 0 && <div style={{ color: appPrimary, fontSize: 13 }}>{publisher.websiteUrl[0]}</div>}
-                                <div style={{ color: theme.colors.secondaryText, fontSize: 12, marginTop: 8 }}>DAO Cut: {(Number(publisher.daoCutBasisPoints) / 100).toFixed(1)}%</div>
+                                <div style={{ color: theme.colors.secondaryText, fontSize: 12, marginTop: 8 }}>Payment: <code style={{ fontSize: 10 }}>{accountToDisplay(publisher.defaultPaymentAccount)}</code></div>
+                                <div style={{ color: theme.colors.secondaryText, fontSize: 12, marginTop: 4 }}>DAO Cut: {(Number(publisher.daoCutBasisPoints) / 100).toFixed(1)}%</div>
                             </div>
                         )}
 
