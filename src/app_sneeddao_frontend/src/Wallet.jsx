@@ -436,7 +436,7 @@ const showDebug = false;
 const known_icrc1_ledgers = {};
 var summed_locks = {};
 
-// Drag-and-drop wrapper for wallet cards (tokens, positions, staking bots, apps)
+// Drag-and-drop wrapper for wallet cards (tokens, positions, sneedapp canisters, apps)
 const DRAG_TYPE_TOKEN = 'WALLET_TOKEN';
 const DRAG_TYPE_POSITION = 'WALLET_POSITION';
 const DRAG_TYPE_STAKING_BOT = 'WALLET_STAKING_BOT';
@@ -978,14 +978,14 @@ function Wallet() {
         }
     }, [liquidityPositions, walletLayoutCtx?.ensureManyInSection]);
 
-    // Sync loaded neuron managers (ICP Staking Bots) into the wallet layout
+    // Sync loaded neuron managers (Sneedapp) into the wallet layout
     useEffect(() => {
         if (!walletLayoutCtx?.ensureManyInSection || !neuronManagers || neuronManagers.length === 0) return;
         const managerIds = neuronManagers
             .map(m => normalizeId(m.canisterId))
             .filter(Boolean);
         if (managerIds.length > 0) {
-            walletLayoutCtx.ensureManyInSection('staking_bots', managerIds);
+            walletLayoutCtx.ensureManyInSection('sneedapp', managerIds);
         }
     }, [neuronManagers, walletLayoutCtx?.ensureManyInSection]);
 
@@ -1312,7 +1312,7 @@ function Wallet() {
         // Manager neurons
         if (managerNeuronsTotal > 0 && icpPrice) {
             lines.push('');
-            lines.push('--- ICP STAKING BOTS ---');
+            lines.push('--- SNEEDAPP ---');
             lines.push(`Total ICP: ${managerNeuronsTotal.toFixed(8)}`);
             lines.push(`ICP Price: $${icpPrice}`);
             lines.push(`USD Value: $${(managerNeuronsTotal * icpPrice).toFixed(2)}`);
@@ -2912,7 +2912,7 @@ function Wallet() {
             }
             
             const factory = createFactoryActor(factoryCanisterId, { agent });
-            const result = await factory.registerManager(canisterId);
+            const result = await factory.registerCanister(canisterId, '');
             
             if ('Err' in result) {
                 throw new Error(result.Err);
@@ -2921,7 +2921,7 @@ function Wallet() {
             if (contextRefreshNeuronManagers) contextRefreshNeuronManagers();
             return { success: true };
         } catch (err) {
-            console.error('Error registering manager:', err);
+            console.error('Error registering canister:', err);
             return { success: false, error: err.message || 'Unknown error' };
         }
     }
@@ -2938,7 +2938,7 @@ function Wallet() {
             }
             
             const factory = createFactoryActor(factoryCanisterId, { agent });
-            const result = await factory.deregisterManager(canisterId);
+            const result = await factory.deregisterCanister(canisterId);
             
             if ('Err' in result) {
                 throw new Error(result.Err);
@@ -5564,11 +5564,11 @@ function Wallet() {
     // Drag-and-drop handler for reordering staking bot cards
     const handleStakingBotDrop = useCallback((dragId, hoverId) => {
         if (!walletLayoutCtx?.layout || dragId === hoverId) return;
-        const section = walletLayoutCtx.layout.staking_bots || [];
+        const section = walletLayoutCtx.layout.sneedapp || [];
         const dragIndex = section.indexOf(dragId);
         const hoverIndex = section.indexOf(hoverId);
         if (dragIndex < 0 || hoverIndex < 0) return;
-        walletLayoutCtx.reorderSection('staking_bots', dragIndex, hoverIndex);
+        walletLayoutCtx.reorderSection('sneedapp', dragIndex, hoverIndex);
     }, [walletLayoutCtx]);
 
     // Drag-and-drop handler for reordering app canister cards
@@ -5581,11 +5581,11 @@ function Wallet() {
         walletLayoutCtx.reorderSection('apps', dragIndex, hoverIndex);
     }, [walletLayoutCtx]);
 
-    // Cross-section move: move an app from Other Apps to ICP Staking Bots
+    // Cross-section move: move an app from Other Apps to Sneedapp section
     const handleMoveToStakingBots = useCallback(async (item) => {
         const canisterId = item.itemId;
         if (!canisterId || !identity) return;
-        setDropInProgress({ itemId: canisterId, direction: 'to_staking_bots' });
+        setDropInProgress({ itemId: canisterId, direction: 'to_sneedapp' });
         try {
             // Register as neuron manager FIRST (add to target)
             const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging'
@@ -5595,29 +5595,29 @@ function Wallet() {
                 await agent.fetchRootKey();
             }
             const factory = createFactoryActor(factoryCanisterId, { agent });
-            const result = await factory.registerManager(Principal.fromText(canisterId));
+            const result = await factory.registerCanister(Principal.fromText(canisterId), '');
             if (result && 'Err' in result) {
                 throw new Error(typeof result.Err === 'string' ? result.Err : JSON.stringify(result.Err));
             }
             // THEN remove from tracked canisters (remove from source)
             await unregisterTrackedCanister(identity, canisterId);
-            // Update layout: add to staking_bots, remove from apps
+            // Update layout: add to sneedapp, remove from apps
             if (walletLayoutCtx) {
-                walletLayoutCtx.ensureInSection('staking_bots', canisterId);
+                walletLayoutCtx.ensureInSection('sneedapp', canisterId);
                 walletLayoutCtx.removeFromSection('apps', canisterId);
             }
             // Refresh both lists
             if (contextRefreshNeuronManagers) contextRefreshNeuronManagers();
             if (contextRefreshTrackedCanisters) contextRefreshTrackedCanisters();
         } catch (err) {
-            console.error('[WalletMove] Error moving to staking bots:', err);
+            console.error('[WalletMove] Error moving to sneedapp:', err);
             alert('Failed to move app: ' + (err.message || 'Unknown error'));
         } finally {
             setDropInProgress(null);
         }
     }, [identity, walletLayoutCtx, contextRefreshNeuronManagers, contextRefreshTrackedCanisters]);
 
-    // Cross-section move: move an app from ICP Staking Bots to Other Apps
+    // Cross-section move: move an app from Sneedapp to Other Apps
     const handleMoveToOtherApps = useCallback(async (item) => {
         const canisterId = item.itemId;
         if (!canisterId || !identity) return;
@@ -5633,14 +5633,14 @@ function Wallet() {
                 await agent.fetchRootKey();
             }
             const factory = createFactoryActor(factoryCanisterId, { agent });
-            const result = await factory.deregisterManager(Principal.fromText(canisterId));
+            const result = await factory.deregisterCanister(Principal.fromText(canisterId));
             if (result && 'Err' in result) {
                 throw new Error(typeof result.Err === 'string' ? result.Err : JSON.stringify(result.Err));
             }
-            // Update layout: add to apps, remove from staking_bots
+            // Update layout: add to apps, remove from sneedapp
             if (walletLayoutCtx) {
                 walletLayoutCtx.ensureInSection('apps', canisterId);
-                walletLayoutCtx.removeFromSection('staking_bots', canisterId);
+                walletLayoutCtx.removeFromSection('sneedapp', canisterId);
             }
             // Refresh both lists
             if (contextRefreshTrackedCanisters) contextRefreshTrackedCanisters();
@@ -6766,7 +6766,7 @@ function Wallet() {
                             </div>
                         )}
 
-                        {/* ICP Staking Bots Section - accepts drops from Other Apps */}
+                        {/* Sneedapp Section - accepts drops from Other Apps */}
                         <DroppableWalletSection
                             acceptTypes={[DRAG_TYPE_APP]}
                             onDrop={handleMoveToStakingBots}
@@ -6799,7 +6799,7 @@ function Wallet() {
                                 }}>
                                     {neuronManagersExpanded ? <FaChevronDown size={12} /> : <FaChevronRight size={12} />}
                                     <FaBrain size={16} color="#8b5cf6" />
-                                    ICP Staking Bots
+                                    Sneedapp
                                     {neuronManagers.length > 0 && (
                                         <span style={{ color: '#8b5cf6', fontWeight: '500' }}>
                                             ({neuronManagers.length})
@@ -6977,7 +6977,7 @@ function Wallet() {
                                 textAlign: 'center'
                             }}>
                                 <p style={{ color: theme.colors.mutedText, marginBottom: '16px' }}>
-                                    No ICP Staking Bots found.
+                                    No Sneedapp canisters found.
                                 </p>
                                 <Link 
                                     to="/create_icp_neuron"
@@ -6998,7 +6998,7 @@ function Wallet() {
                             <>
                             <div className="card-grid">
                                 {(walletLayoutCtx?.sortByLayout
-                                    ? walletLayoutCtx.sortByLayout('staking_bots', neuronManagers, m => normalizeId(m.canisterId))
+                                    ? walletLayoutCtx.sortByLayout('sneedapp', neuronManagers, m => normalizeId(m.canisterId))
                                     : neuronManagers
                                 ).map((manager) => {
                                     const canisterId = normalizeId(manager.canisterId);
@@ -8189,7 +8189,7 @@ function Wallet() {
                             )}
                         </DroppableWalletSection>
 
-                        {/* Other Apps Section - accepts drops from ICP Staking Bots */}
+                        {/* Other Apps Section - accepts drops from Sneedapp */}
                         <DroppableWalletSection
                             acceptTypes={[DRAG_TYPE_STAKING_BOT]}
                             onDrop={handleMoveToOtherApps}
@@ -9788,8 +9788,8 @@ function Wallet() {
                                 color: theme.colors.mutedText, 
                                 fontSize: '0.8rem' 
                             }}>
-                                {dropInProgress.direction === 'to_staking_bots' 
-                                    ? 'Moving to ICP Staking Bots' 
+                                {dropInProgress.direction === 'to_sneedapp' 
+                                    ? 'Moving to Sneedapp' 
                                     : 'Moving to Other Apps'}
                             </div>
                         </div>

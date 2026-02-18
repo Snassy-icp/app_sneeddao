@@ -14,18 +14,21 @@ import { botLogIdlFactory } from '../utils/botLogIdl';
 // Hardcoded fallback labels for known app types
 const HARDCODED_LABELS = {
     'sneed-trading-bot': 'Trading Bot',
+    'sneed-icp-staking-bot': 'ICP Staking Bot',
     'icp-staking-bot': 'ICP Staking Bot',
 };
 
 // Hardcoded fallback URL patterns for known app types (with tab parameter support)
 const HARDCODED_URLS = {
     'sneed-trading-bot': { manage: '/trading_bot/CANISTER_ID', view: '/trading_bot/CANISTER_ID' },
+    'sneed-icp-staking-bot': { manage: '/icp_neuron_manager/CANISTER_ID', view: '/icp_neuron_manager/CANISTER_ID' },
     'icp-staking-bot': { manage: '/icp_neuron_manager/CANISTER_ID', view: '/icp_neuron_manager/CANISTER_ID' },
 };
 
 // Map of known bot types to useful tab query parameters
 const HARDCODED_TAB_PARAMS = {
     'sneed-trading-bot': { chores: '?tab=chores', log: '?tab=log', default: '' },
+    'sneed-icp-staking-bot': { chores: '?tab=chores', log: '?tab=log', default: '' },
     'icp-staking-bot': { chores: '?tab=chores', log: '?tab=log', default: '' },
 };
 

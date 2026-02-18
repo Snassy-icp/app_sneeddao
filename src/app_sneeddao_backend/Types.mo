@@ -34,7 +34,7 @@ module {
         tokens: [Principal];        // Ordered ledger canister IDs
         positions: [Principal];     // Ordered swap canister IDs
         apps: [Principal];          // Ordered tracked canister IDs
-        staking_bots: [Principal];  // Ordered neuron manager canister IDs
+        sneedapp: [Principal];      // Ordered sneedapp canister IDs
     };
 
     public type PrincipalWalletLayoutMap = HashMap.HashMap<Principal, WalletLayout>;

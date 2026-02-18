@@ -350,11 +350,14 @@ function CreateIcpNeuron() {
             }
             const factory = createFactoryActor(factoryCanisterId, { agent });
             
-            // Fetch managers and official versions in parallel
-            const [canisterIds, officialVersions] = await Promise.all([
-                factory.getMyManagers(),
+            // Fetch wallet entries and official versions in parallel
+            const [walletEntries, officialVersions] = await Promise.all([
+                factory.getMyWallet().catch(() => []),
                 factory.getOfficialVersions(),
             ]);
+            const canisterIds = (walletEntries || [])
+                .filter(e => !e.appId || e.appId === '' || e.appId === 'sneed-icp-staking-bot')
+                .map(e => e.canisterId);
             
             // Find latest official version
             if (officialVersions && officialVersions.length > 0) {

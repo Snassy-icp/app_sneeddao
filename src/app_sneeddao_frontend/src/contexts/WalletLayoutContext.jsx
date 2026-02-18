@@ -8,7 +8,7 @@ const EMPTY_LAYOUT = {
     tokens: [],
     positions: [],
     apps: [],
-    staking_bots: [],
+    sneedapp: [],
 };
 
 export function WalletLayoutProvider({ children }) {

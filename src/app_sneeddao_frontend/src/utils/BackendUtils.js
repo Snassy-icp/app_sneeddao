@@ -935,7 +935,7 @@ export const getWalletLayout = async (identity) => {
             tokens: layout.tokens.map(p => p.toString()),
             positions: layout.positions.map(p => p.toString()),
             apps: layout.apps.map(p => p.toString()),
-            staking_bots: layout.staking_bots.map(p => p.toString()),
+            sneedapp: layout.sneedapp.map(p => p.toString()),
         };
     } catch (error) {
         console.error('Error getting wallet layout:', error);
@@ -952,7 +952,7 @@ export const setWalletLayout = async (identity, layout) => {
             tokens: layout.tokens.map(id => typeof id === 'string' ? Principal.fromText(id) : id),
             positions: layout.positions.map(id => typeof id === 'string' ? Principal.fromText(id) : id),
             apps: layout.apps.map(id => typeof id === 'string' ? Principal.fromText(id) : id),
-            staking_bots: layout.staking_bots.map(id => typeof id === 'string' ? Principal.fromText(id) : id),
+            sneedapp: layout.sneedapp.map(id => typeof id === 'string' ? Principal.fromText(id) : id),
         });
     } catch (error) {
         console.error('Error saving wallet layout:', error);

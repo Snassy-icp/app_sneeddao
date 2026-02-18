@@ -394,7 +394,10 @@ function SneedexCreate() {
                 }
                 
                 const factory = createFactoryActor(factoryCanisterId, { agent });
-                const managerIds = await factory.getMyManagers();
+                const walletEntries = await factory.getMyWallet().catch(() => []);
+                const managerIds = (walletEntries || [])
+                    .filter(e => !e.appId || e.appId === '' || e.appId === 'sneed-icp-staking-bot')
+                    .map(e => e.canisterId);
                 setNeuronManagers(managerIds.map(p => p.toString()));
                 
             } catch (e) {

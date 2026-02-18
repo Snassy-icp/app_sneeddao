@@ -12,11 +12,13 @@ import { botLogIdlFactory } from '../utils/botLogIdl';
 
 const HARDCODED_LABELS = {
     'sneed-trading-bot': 'Trading Bot',
+    'sneed-icp-staking-bot': 'ICP Staking Bot',
     'icp-staking-bot': 'ICP Staking Bot',
 };
 
 const HARDCODED_URLS = {
     'sneed-trading-bot': '/trading_bot/CANISTER_ID?tab=log',
+    'sneed-icp-staking-bot': '/icp_neuron_manager/CANISTER_ID?tab=log',
     'icp-staking-bot': '/icp_neuron_manager/CANISTER_ID?tab=log',
 };
 

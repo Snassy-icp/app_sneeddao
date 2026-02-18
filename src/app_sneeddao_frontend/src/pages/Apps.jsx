@@ -498,25 +498,14 @@ export default function AppsPage() {
             
             const factory = createFactoryActor(factoryCanisterId, { agent });
             
-            // Fetch managers, wallet entries (with appId), and official versions in parallel
-            const [allCanisterIds, walletEntries, fetchedOfficialVersions] = await Promise.all([
-                factory.getMyManagers(),
+            // Fetch wallet entries (with appId) and official versions in parallel
+            const [walletEntries, fetchedOfficialVersions] = await Promise.all([
                 factory.getMyWallet().catch(() => []),
                 factory.getOfficialVersions(),
             ]);
 
-            // Build canisterId → appId map from wallet entries
-            const appIdMap = {};
-            for (const e of (walletEntries || [])) {
-                const cid = e.canisterId?.toString?.() || '';
-                if (cid && e.appId) appIdMap[cid] = e.appId;
-            }
-
-            // Filter to only ICP staking bots (exclude known non-staking bots like trading bots)
-            const canisterIds = allCanisterIds.filter(p => {
-                const appId = appIdMap[p.toString()] || '';
-                return !appId || appId === '' || appId === 'icp-staking-bot';
-            });
+            // All sneedapp wallet entries
+            const canisterIds = (walletEntries || []).map(e => e.canisterId);
             
             // Store official versions for use in detecting neuron managers
             console.log('[NM Detection] Loaded', fetchedOfficialVersions?.length || 0, 'official versions');
@@ -701,7 +690,7 @@ export default function AppsPage() {
         if (!walletLayoutCtx?.ensureManyInSection || !neuronManagers || neuronManagers.length === 0) return;
         const managerIds = neuronManagers.map(m => m.canisterId.toText()).filter(Boolean);
         if (managerIds.length > 0) {
-            walletLayoutCtx.ensureManyInSection('staking_bots', managerIds);
+            walletLayoutCtx.ensureManyInSection('sneedapp', managerIds);
         }
     }, [neuronManagers, walletLayoutCtx?.ensureManyInSection]);
 
@@ -1478,7 +1467,7 @@ export default function AppsPage() {
             }
             
             const factory = createFactoryActor(factoryCanisterId, { agent });
-            const result = await factory.registerManager(canisterId);
+            const result = await factory.registerCanister(canisterId, '');
             
             if ('Err' in result) {
                 throw new Error(result.Err);
@@ -1509,7 +1498,7 @@ export default function AppsPage() {
             }
             
             const factory = createFactoryActor(factoryCanisterId, { agent });
-            const result = await factory.deregisterManager(canisterId);
+            const result = await factory.deregisterCanister(canisterId);
             
             if ('Err' in result) {
                 throw new Error(result.Err);
@@ -1540,7 +1529,7 @@ export default function AppsPage() {
                     await agent.fetchRootKey();
                 }
                 const factory = createFactoryActor(factoryCanisterId, { agent });
-                const result = await factory.registerManager(Principal.fromText(canisterId));
+                const result = await factory.registerCanister(Principal.fromText(canisterId), '');
                 if ('Err' in result) {
                     throw new Error(result.Err);
                 }
@@ -1567,11 +1556,11 @@ export default function AppsPage() {
             // Update wallet layout
             if (walletLayoutCtx) {
                 if (destination === 'neuron_managers') {
-                    walletLayoutCtx.ensureInSection('staking_bots', canisterId);
+                    walletLayoutCtx.ensureInSection('sneedapp', canisterId);
                 }
                 walletLayoutCtx.removeFromSection('apps', canisterId);
             }
-            setSuccessMessage(destination === 'neuron_managers' ? 'App moved to Staking Bots' : 'App moved to groups');
+            setSuccessMessage(destination === 'neuron_managers' ? 'App moved to Sneedapp' : 'App moved to groups');
         } catch (err) {
             console.error('Error moving canister from wallet:', err);
             setError('Failed to move app: ' + (err.message || 'Unknown error'));
@@ -1596,7 +1585,7 @@ export default function AppsPage() {
                     await agent.fetchRootKey();
                 }
                 const factory = createFactoryActor(factoryCanisterId, { agent });
-                const result = await factory.registerManager(Principal.fromText(canisterId));
+                const result = await factory.registerCanister(Principal.fromText(canisterId), '');
                 if ('Err' in result) {
                     throw new Error(result.Err);
                 }
@@ -1620,10 +1609,10 @@ export default function AppsPage() {
                 if (destination === 'wallet') {
                     walletLayoutCtx.ensureInSection('apps', canisterId);
                 } else if (destination === 'neuron_managers') {
-                    walletLayoutCtx.ensureInSection('staking_bots', canisterId);
+                    walletLayoutCtx.ensureInSection('sneedapp', canisterId);
                 }
             }
-            setSuccessMessage(destination === 'wallet' ? 'App moved to Wallet' : 'App moved to Staking Bots');
+            setSuccessMessage(destination === 'wallet' ? 'App moved to Wallet' : 'App moved to Sneedapp');
         } catch (err) {
             console.error('Error moving canister from groups:', err);
             setError('Failed to move app: ' + (err.message || 'Unknown error'));
@@ -1664,7 +1653,7 @@ export default function AppsPage() {
                 await agent.fetchRootKey();
             }
             const factory = createFactoryActor(factoryCanisterId, { agent });
-            const result = await factory.deregisterManager(canisterId);
+            const result = await factory.deregisterCanister(canisterId);
             if ('Err' in result) {
                 throw new Error(result.Err);
             }
@@ -1675,7 +1664,7 @@ export default function AppsPage() {
                 if (destination === 'wallet') {
                     walletLayoutCtx.ensureInSection('apps', canisterIdStr);
                 }
-                walletLayoutCtx.removeFromSection('staking_bots', canisterIdStr);
+                walletLayoutCtx.removeFromSection('sneedapp', canisterIdStr);
             }
             setSuccessMessage(destination === 'wallet' ? 'App moved to Wallet' : 'App moved to groups');
         } catch (err) {
@@ -1745,11 +1734,11 @@ export default function AppsPage() {
     // Reorder handlers for wallet section items (using wallet layout)
     const handleReorderStakingBot = useCallback((dragId, hoverId) => {
         if (!walletLayoutCtx) return;
-        const section = walletLayoutCtx.layout?.staking_bots || [];
+        const section = walletLayoutCtx.layout?.sneedapp || [];
         const dragIndex = section.indexOf(dragId);
         const hoverIndex = section.indexOf(hoverId);
         if (dragIndex >= 0 && hoverIndex >= 0) {
-            walletLayoutCtx.reorderSection('staking_bots', dragIndex, hoverIndex);
+            walletLayoutCtx.reorderSection('sneedapp', dragIndex, hoverIndex);
         }
     }, [walletLayoutCtx]);
 
@@ -5221,7 +5210,7 @@ export default function AppsPage() {
                         
                         {walletExpanded && (
                             <>
-                                {/* ICP Staking Bots Subsection - Drop Zone */}
+                                {/* Sneedapp Subsection - Drop Zone */}
                                 <DroppableSection
                                     targetType="neuron_managers"
                                     onDrop={handleDndDrop}
@@ -5250,7 +5239,7 @@ export default function AppsPage() {
                                 >
                                     <div style={{ ...styles.sectionTitle, fontSize: '14px' }}>
                                         {neuronManagersExpanded ? <FaChevronDown size={12} /> : <FaChevronRight size={12} />}
-                                        {/* Staking Bots health lamp */}
+                                        {/* Sneedapp health lamp */}
                                         {(() => {
                                             const stats = getManagersHealthStats(neuronManagers, neuronManagerCycleSettings);
                                             if (stats.total === 0) return null;
@@ -5265,12 +5254,12 @@ export default function AppsPage() {
                                                         boxShadow: stats.overallStatus !== 'unknown' ? `0 0 6px ${lampColor}` : 'none',
                                                         flexShrink: 0,
                                                     }}
-                                                    title={`Staking Bots health: ${stats.overallStatus}`}
+                                                    title={`Sneedapp health: ${stats.overallStatus}`}
                                                 />
                                             );
                                         })()}
                                         <FaBrain style={{ color: '#8b5cf6' }} />
-                                        ICP Staking Bots
+                                        Sneedapp
                                         {neuronManagers.length > 0 && (
                                             <span style={{ ...styles.sectionCount, fontSize: '11px' }}>{neuronManagers.length}</span>
                                         )}
@@ -5407,7 +5396,7 @@ export default function AppsPage() {
                                 ) : neuronManagers.length === 0 ? (
                                     <div style={styles.emptyState}>
                                         <div style={styles.emptyIcon}>🧠</div>
-                                        <div style={styles.emptyText}>No ICP Staking Bots</div>
+                                        <div style={styles.emptyText}>No Sneedapp canisters</div>
                                         <div style={styles.emptySubtext}>
                                             <Link to="/create_icp_neuron" style={{ color: theme.colors.accent }}>
                                                 Create your first ICP staking bot →
@@ -5419,7 +5408,7 @@ export default function AppsPage() {
                                         
                                     <div style={styles.canisterList}>
                                         {(walletLayoutCtx?.sortByLayout
-                                            ? walletLayoutCtx.sortByLayout('staking_bots', neuronManagers, m => m.canisterId.toText())
+                                            ? walletLayoutCtx.sortByLayout('sneedapp', neuronManagers, m => m.canisterId.toText())
                                             : neuronManagers
                                         ).map((manager) => {
                                             const canisterId = manager.canisterId.toText();

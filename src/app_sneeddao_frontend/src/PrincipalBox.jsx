@@ -2676,7 +2676,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                               )}
                               {/* Neuron Managers first (sorted by layout) */}
                               {(walletLayoutCtx?.sortByLayout
-                                  ? walletLayoutCtx.sortByLayout('staking_bots', neuronManagers, m => {
+                                  ? walletLayoutCtx.sortByLayout('sneedapp', neuronManagers, m => {
                                       if (!m.canisterId) return '';
                                       return typeof m.canisterId === 'string' ? m.canisterId : (typeof m.canisterId.toText === 'function' ? m.canisterId.toText() : String(m.canisterId));
                                   })

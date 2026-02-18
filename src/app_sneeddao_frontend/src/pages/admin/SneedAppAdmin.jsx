@@ -963,7 +963,7 @@ export default function SneedAppAdmin() {
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
                                 <div><label style={label}>User Principal *</label><input value={migrationInput.user} onChange={e => setMigrationInput({ ...migrationInput, user: e.target.value })} style={inputStyle} /></div>
                                 <div><label style={label}>Canister ID *</label><input value={migrationInput.canisterId} onChange={e => setMigrationInput({ ...migrationInput, canisterId: e.target.value })} style={inputStyle} /></div>
-                                <div><label style={label}>App ID *</label><input value={migrationInput.appId} onChange={e => setMigrationInput({ ...migrationInput, appId: e.target.value })} placeholder="icp-staking-bot" style={inputStyle} /></div>
+                                <div><label style={label}>App ID *</label><input value={migrationInput.appId} onChange={e => setMigrationInput({ ...migrationInput, appId: e.target.value })} placeholder="sneed-icp-staking-bot" style={inputStyle} /></div>
                             </div>
                             <button onClick={handleSingleRegister} disabled={loading || !migrationInput.user || !migrationInput.canisterId} style={{ marginTop: 12, padding: '10px 20px', borderRadius: 8, background: `linear-gradient(135deg, ${appPrimary}, #22d3ee)`, color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
                                 {loading ? <FaSpinner className="fa-spin" /> : <FaPlus />} Register
@@ -972,7 +972,7 @@ export default function SneedAppAdmin() {
                         <h3 style={{ color: theme.colors.primaryText, marginTop: 24, marginBottom: 12 }}>Bulk Register (JSON)</h3>
                         <div style={cardStyle}>
                             <label style={label}>Paste JSON array of [user, canisterId, appId] tuples</label>
-                            <textarea value={bulkInput} onChange={e => setBulkInput(e.target.value)} rows={6} placeholder='[["user-principal", "canister-id", "icp-staking-bot"], ...]' style={{ ...inputStyle, resize: 'vertical', fontFamily: 'monospace', fontSize: 11 }} />
+                            <textarea value={bulkInput} onChange={e => setBulkInput(e.target.value)} rows={6} placeholder='[["user-principal", "canister-id", "sneed-icp-staking-bot"], ...]' style={{ ...inputStyle, resize: 'vertical', fontFamily: 'monospace', fontSize: 11 }} />
                             <button onClick={handleBulkRegister} disabled={loading || !bulkInput} style={{ marginTop: 12, padding: '10px 20px', borderRadius: 8, background: `linear-gradient(135deg, ${appPrimary}, #22d3ee)`, color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
                                 {loading ? <FaSpinner className="fa-spin" /> : <FaUpload />} Bulk Register
                             </button>
