@@ -2278,7 +2278,7 @@ export default function BotManagementPanel({
                                                                                         {run.completedTasks.length} completed task{run.completedTasks.length !== 1 ? 's' : ''}
                                                                                     </summary>
                                                                                     <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                                                                                        {run.completedTasks.map((t, i) => (
+                                                                                        {[...run.completedTasks].reverse().map((t, i) => (
                                                                                             <div key={i} style={{
                                                                                                 ...rowBase,
                                                                                                 background: theme.colors.primaryBg,
