@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useWalletOptional } from '../contexts/WalletContext';
 
 /**
- * Hook for outdated bot notification count.
- * Returns the number of ICP Staking Bots that have a newer official version available.
+ * Hook for outdated app canister notification count.
+ * Returns canisters that have a newer version available for their WASM-resolved app.
  * Used in the Header notifications bar.
  */
 export function useOutdatedBotsNotification() {

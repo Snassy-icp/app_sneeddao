@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars, FaComments, FaUnlock, FaCrown, FaGift, FaBrain, FaKey, FaHandPaper, FaBell, FaEnvelope, FaCoins, FaSync, FaVoteYea, FaCloudDownloadAlt, FaBolt, FaRobot, FaCubes, FaChartLine } from 'react-icons/fa';
+import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle, FaExchangeAlt, FaTint, FaBars, FaComments, FaUnlock, FaCrown, FaGift, FaBrain, FaKey, FaHandPaper, FaBell, FaEnvelope, FaCoins, FaSync, FaVoteYea, FaCloudDownloadAlt, FaBolt, FaRobot, FaCubes, FaChartLine, FaArrowUp } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { headerStyles } from '../styles/HeaderStyles';
@@ -1995,9 +1995,9 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                 onMouseLeave={(e) => {
                                     e.currentTarget.style.transform = 'translateY(0)';
                                 }}
-                                title={`${outdatedCount} bot${outdatedCount !== 1 ? 's' : ''} can be upgraded`}
+                                title={`${outdatedCount} app${outdatedCount !== 1 ? 's' : ''} can be upgraded`}
                             >
-                                <FaBrain size={10} />
+                                <FaArrowUp size={10} />
                                 <span>{outdatedCount}</span>
                             </div>
                         )}

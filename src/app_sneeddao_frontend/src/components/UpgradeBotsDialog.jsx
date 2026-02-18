@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Principal } from '@dfinity/principal';
 import { HttpAgent, Actor } from '@dfinity/agent';
-import { FaTimes, FaRobot, FaArrowUp, FaCheckCircle, FaExclamationTriangle, FaSpinner } from 'react-icons/fa';
+import { FaTimes, FaArrowUp, FaCheckCircle, FaExclamationTriangle, FaSpinner, FaBrain, FaChartLine, FaBox } from 'react-icons/fa';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 import { useNaming } from '../NamingContext';
@@ -36,26 +36,40 @@ function versionStr(v) {
 }
 
 /**
- * Reusable dialog for upgrading outdated ICP Staking Bots.
- * 
- * Props:
- *   isOpen: boolean
- *   onClose: () => void
- *   outdatedManagers: Array<{ canisterId, version }> — bots to show (pre-filtered to outdated)
- *   latestVersion: OfficialVersion — target version to upgrade to
- *   onUpgradeComplete: () => void — called after upgrades finish (to refresh data)
+ * Dialog for upgrading outdated app canisters from sneedapp.
+ * Supports per-app version tracking — each canister upgrades to its own app's latest version.
  */
 export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = [], latestVersion, onUpgradeComplete }) {
     const { theme } = useTheme();
     const { identity } = useAuth();
     const { getPrincipalDisplayName } = useNaming();
     const walletContext = useWalletOptional();
+    const appInfoMap = walletContext?.appInfoMap || {};
+    const latestVersionByApp = walletContext?.latestVersionByApp || {};
+
+    const getAppLabel = (resolvedAppId) => {
+        if (!resolvedAppId) return 'Unknown App';
+        const info = appInfoMap[resolvedAppId];
+        if (info?.name) return info.name;
+        return resolvedAppId;
+    };
+
+    const getAppIcon = (resolvedAppId) => {
+        if (resolvedAppId === 'sneed-icp-staking-bot') return <FaBrain size={12} style={{ color: '#f59e0b', flexShrink: 0 }} />;
+        if (resolvedAppId === 'sneed-trading-bot') return <FaChartLine size={12} style={{ color: '#10b981', flexShrink: 0 }} />;
+        return <FaBox size={12} style={{ color: '#8b5cf6', flexShrink: 0 }} />;
+    };
+
+    const getTargetVersion = (manager) => {
+        const resolvedApp = manager.resolvedAppId || '';
+        return latestVersionByApp[resolvedApp] || latestVersion;
+    };
 
     const [selected, setSelected] = useState({}); // canisterId -> boolean
     const [upgradeStatus, setUpgradeStatus] = useState({}); // canisterId -> 'pending' | 'upgrading' | 'success' | 'error'
     const [upgradeErrors, setUpgradeErrors] = useState({}); // canisterId -> error message
     const [isUpgrading, setIsUpgrading] = useState(false);
-    const [wasmCache, setWasmCache] = useState(null); // Cache fetched WASM to avoid re-downloading
+    const [wasmCache, setWasmCache] = useState({}); // wasmUrl -> Uint8Array, cached per URL
     const abortRef = useRef(false);
 
     // Count bots with unknown WASM hash (might not be staking bots)
@@ -75,7 +89,7 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
             setUpgradeStatus({});
             setUpgradeErrors({});
             setIsUpgrading(false);
-            setWasmCache(null);
+            setWasmCache({});
             abortRef.current = false;
         }
     }, [isOpen, outdatedManagers]);
@@ -104,17 +118,17 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
     const allSelected = outdatedManagers.length > 0 && selectedIds.length === outdatedManagers.length;
 
     const handleUpgradeAll = useCallback(async () => {
-        if (!identity || !latestVersion || !latestVersion.wasmUrl || selectedIds.length === 0) return;
+        if (!identity || selectedIds.length === 0) return;
 
-        // Safety check: warn if any selected bots have unknown WASM
+        // Safety check: warn if any selected canisters have unknown WASM
         const unknownSelected = outdatedManagers.filter(m => {
             const id = typeof m.canisterId === 'string' ? m.canisterId : m.canisterId?.toText?.() || m.canisterId?.toString?.() || '';
             return selectedIds.includes(id) && m.hasKnownHash === false;
         });
         if (unknownSelected.length > 0) {
             const confirmed = window.confirm(
-                `⚠️ WARNING: ${unknownSelected.length} selected canister${unknownSelected.length !== 1 ? 's have' : ' has'} an unknown WASM and may not be ${unknownSelected.length !== 1 ? '' : 'an '}ICP Staking Bot${unknownSelected.length !== 1 ? 's' : ''}.\n\n` +
-                `Upgrading ${unknownSelected.length !== 1 ? 'them' : 'it'} with ICP Staking Bot firmware could break ${unknownSelected.length !== 1 ? 'those canisters' : 'that canister'}.\n\n` +
+                `⚠️ WARNING: ${unknownSelected.length} selected canister${unknownSelected.length !== 1 ? 's have' : ' has'} an unknown WASM.\n\n` +
+                `Upgrading ${unknownSelected.length !== 1 ? 'them' : 'it'} with a mismatched app version could break ${unknownSelected.length !== 1 ? 'those canisters' : 'that canister'}.\n\n` +
                 `Are you sure you want to proceed?`
             );
             if (!confirmed) return;
@@ -123,27 +137,12 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
         setIsUpgrading(true);
         abortRef.current = false;
 
-        // Initialize statuses
         const statusInit = {};
         selectedIds.forEach(id => { statusInit[id] = 'pending'; });
         setUpgradeStatus(statusInit);
         setUpgradeErrors({});
 
         try {
-            // Step 1: Fetch WASM once (reuse for all upgrades)
-            let wasm = wasmCache;
-            if (!wasm) {
-                const response = await fetch(latestVersion.wasmUrl);
-                if (!response.ok) throw new Error(`Failed to fetch WASM: ${response.status}`);
-                const arrayBuffer = await response.arrayBuffer();
-                wasm = new Uint8Array(arrayBuffer);
-                if (wasm.length === 0) throw new Error('Downloaded WASM file is empty');
-                const isWasm = wasm[0] === 0x00 && wasm[1] === 0x61 && wasm[2] === 0x73 && wasm[3] === 0x6D;
-                const isGzip = wasm[0] === 0x1F && wasm[1] === 0x8B;
-                if (!isWasm && !isGzip) throw new Error('Downloaded file is not a valid WASM module');
-                setWasmCache(wasm);
-            }
-
             const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging'
                 ? 'https://icp0.io'
                 : 'http://localhost:4943';
@@ -153,13 +152,36 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
             }
             const emptyArgs = new Uint8Array([0x44, 0x49, 0x44, 0x4C, 0x00, 0x00]);
 
-            // Step 2: Upgrade one by one
+            // Per-app WASM cache: wasmUrl -> Uint8Array
+            const wasmByUrl = { ...wasmCache };
+
             for (const canisterId of selectedIds) {
                 if (abortRef.current) break;
-
                 setUpgradeStatus(prev => ({ ...prev, [canisterId]: 'upgrading' }));
 
                 try {
+                    const manager = outdatedManagers.find(m => {
+                        const id = typeof m.canisterId === 'string' ? m.canisterId : m.canisterId?.toText?.() || '';
+                        return id === canisterId;
+                    });
+                    const targetVer = manager ? getTargetVersion(manager) : latestVersion;
+                    const rawUrl = targetVer?.wasmUrl;
+                    const wasmUrl = Array.isArray(rawUrl) ? (rawUrl[0] || '') : (rawUrl || '');
+                    if (!wasmUrl) throw new Error('No WASM URL available for this app version');
+
+                    let wasm = wasmByUrl[wasmUrl];
+                    if (!wasm) {
+                        const response = await fetch(wasmUrl);
+                        if (!response.ok) throw new Error(`Failed to fetch WASM: ${response.status}`);
+                        const arrayBuffer = await response.arrayBuffer();
+                        wasm = new Uint8Array(arrayBuffer);
+                        if (wasm.length === 0) throw new Error('Downloaded WASM file is empty');
+                        const isWasmMagic = wasm[0] === 0x00 && wasm[1] === 0x61 && wasm[2] === 0x73 && wasm[3] === 0x6D;
+                        const isGzip = wasm[0] === 0x1F && wasm[1] === 0x8B;
+                        if (!isWasmMagic && !isGzip) throw new Error('Downloaded file is not a valid WASM module');
+                        wasmByUrl[wasmUrl] = wasm;
+                    }
+
                     const canisterPrincipal = Principal.fromText(canisterId);
                     const managementCanister = Actor.createActor(managementCanisterIdlFactory, {
                         agent,
@@ -183,19 +205,19 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
                     setUpgradeErrors(prev => ({ ...prev, [canisterId]: err.message || 'Unknown error' }));
                 }
             }
+            setWasmCache(wasmByUrl);
         } catch (err) {
-            // WASM fetch failed — mark all as error
             const errStatus = {};
             selectedIds.forEach(id => { errStatus[id] = 'error'; });
             setUpgradeStatus(errStatus);
             const errMsgs = {};
-            selectedIds.forEach(id => { errMsgs[id] = `WASM fetch failed: ${err.message}`; });
+            selectedIds.forEach(id => { errMsgs[id] = `Setup failed: ${err.message}`; });
             setUpgradeErrors(errMsgs);
         } finally {
             setIsUpgrading(false);
             if (onUpgradeComplete) onUpgradeComplete();
         }
-    }, [identity, latestVersion, selectedIds, wasmCache, onUpgradeComplete, outdatedManagers]);
+    }, [identity, latestVersion, selectedIds, wasmCache, onUpgradeComplete, outdatedManagers, getTargetVersion]);
 
     const handleClose = () => {
         if (isUpgrading) {
@@ -252,20 +274,8 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <FaArrowUp size={16} style={{ color: '#8b5cf6' }} />
                         <span style={{ fontSize: '16px', fontWeight: '700', color: theme.colors.primaryText }}>
-                            Upgrade Bots
+                            Upgrade Apps
                         </span>
-                        {latestVersion && (
-                            <span style={{
-                                background: '#8b5cf620',
-                                color: '#8b5cf6',
-                                padding: '2px 8px',
-                                borderRadius: '12px',
-                                fontSize: '11px',
-                                fontWeight: '600',
-                            }}>
-                                → v{versionStr(latestVersion)}
-                            </span>
-                        )}
                     </div>
                     <button
                         onClick={handleClose}
@@ -286,7 +296,7 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
                 <div style={{ padding: '16px 20px', overflowY: 'auto', flex: 1 }}>
                     {outdatedManagers.length === 0 ? (
                         <div style={{ textAlign: 'center', color: theme.colors.mutedText, padding: '20px' }}>
-                            All bots are up to date.
+                            All apps are up to date.
                         </div>
                     ) : (
                         <>
@@ -307,9 +317,8 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
                                 }}>
                                     <FaExclamationTriangle size={14} style={{ flexShrink: 0, marginTop: '1px' }} />
                                     <div>
-                                        <strong>{unknownHashCount} canister{unknownHashCount !== 1 ? 's' : ''}</strong> {unknownHashCount !== 1 ? 'have' : 'has'} an unknown WASM
-                                        and may not {unknownHashCount !== 1 ? 'be' : 'be a'} ICP Staking Bot{unknownHashCount !== 1 ? 's' : ''}.
-                                        Upgrading {unknownHashCount !== 1 ? 'them' : 'it'} with ICP Staking Bot firmware could break {unknownHashCount !== 1 ? 'those canisters' : 'that canister'}.
+                                        <strong>{unknownHashCount} canister{unknownHashCount !== 1 ? 's' : ''}</strong> {unknownHashCount !== 1 ? 'have' : 'has'} an unrecognized WASM.
+                                        Upgrading with a mismatched app version could break {unknownHashCount !== 1 ? 'those canisters' : 'that canister'}.
                                         {unknownHashCount !== 1 ? ' They are' : ' It is'} deselected by default — only select if you are sure.
                                     </div>
                                 </div>
@@ -322,7 +331,7 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
                                 marginBottom: '12px',
                             }}>
                                 <span style={{ fontSize: '12px', color: theme.colors.mutedText }}>
-                                    {outdatedManagers.length} bot{outdatedManagers.length !== 1 ? 's' : ''} outdated
+                                    {outdatedManagers.length} app{outdatedManagers.length !== 1 ? 's' : ''} outdated
                                 </span>
                                 <button
                                     onClick={allSelected ? deselectAll : selectAll}
@@ -395,10 +404,10 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
                                             )}
                                         </div>
 
-                                        {/* Bot info */}
+                                        {/* App info */}
                                         <div style={{ flex: 1, minWidth: 0 }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                <FaRobot size={12} style={{ color: '#8b5cf6', flexShrink: 0 }} />
+                                                {getAppIcon(manager.resolvedAppId)}
                                                 <PrincipalDisplay
                                                     principal={canisterId}
                                                     displayInfo={displayInfo}
@@ -417,6 +426,16 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', flexWrap: 'wrap' }}>
                                                 <span style={{
                                                     fontSize: '11px',
+                                                    color: '#8b5cf6',
+                                                    fontWeight: '500',
+                                                    background: '#8b5cf610',
+                                                    padding: '0 5px',
+                                                    borderRadius: '4px',
+                                                }}>
+                                                    {getAppLabel(manager.resolvedAppId)}
+                                                </span>
+                                                <span style={{
+                                                    fontSize: '11px',
                                                     color: '#f59e0b',
                                                     fontWeight: '500',
                                                 }}>
@@ -428,7 +447,7 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
                                                     color: '#22c55e',
                                                     fontWeight: '500',
                                                 }}>
-                                                    v{versionStr(latestVersion)}
+                                                    v{versionStr(getTargetVersion(manager))}
                                                 </span>
                                                 {manager.hasKnownHash === false && (
                                                     <span style={{
@@ -535,7 +554,7 @@ export default function UpgradeBotsDialog({ isOpen, onClose, outdatedManagers = 
                                 {isUpgrading ? (
                                     <><FaSpinner size={12} style={{ animation: 'spin 1s linear infinite' }} /> Upgrading...</>
                                 ) : (
-                                    <><FaArrowUp size={12} /> Upgrade {selectedIds.length > 1 ? `${selectedIds.length} bots` : 'bot'}</>
+                                    <><FaArrowUp size={12} /> Upgrade {selectedIds.length > 1 ? `${selectedIds.length} apps` : 'app'}</>
                                 )}
                             </button>
                         )}
