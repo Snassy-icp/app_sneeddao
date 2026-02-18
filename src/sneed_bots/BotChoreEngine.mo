@@ -910,9 +910,16 @@ module {
         func conductorTick<system>(choreId: Text, scheduleSeq: Nat): async () {
             // Tiny concurrency guard: stale or superseded ticks self-drop.
             if (scheduleSeq != getConductorScheduleSeq(choreId)) {
+                emitLog(#Info, choreId, "Conductor tick dropped: stale schedule sequence", [
+                    ("scheduleSeq", Nat.toText(scheduleSeq)),
+                    ("currentSeq", Nat.toText(getConductorScheduleSeq(choreId))),
+                ]);
                 return;
             };
             if (isConductorTickInFlight(choreId)) {
+                emitLog(#Info, choreId, "Conductor tick dropped: another tick is in flight", [
+                    ("scheduleSeq", Nat.toText(scheduleSeq))
+                ]);
                 return;
             };
             setConductorTickInFlight(choreId, true);
@@ -1267,6 +1274,9 @@ module {
                 refreshed.conductorTimerId == null and
                 not isConductorTickInFlight(choreId)
             ) {
+                emitLog(#Info, choreId, "Task completion nudge: scheduling immediate conductor tick", [
+                    ("taskId", taskId)
+                ]);
                 scheduleConductorTick<system>(choreId, 0);
             };
         };
