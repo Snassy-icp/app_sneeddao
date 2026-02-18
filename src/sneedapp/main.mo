@@ -3055,121 +3055,24 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     };
 
     // ============================================
-    // DATA IMPORT (from old sneedapp canister)
+    // ADMIN: REGISTER CANISTERS FOR USERS
     // ============================================
 
-    // Import user wallet entries from the old canister.
-    // Merges into existing data — safe to call multiple times.
-    public shared ({ caller }) func importUserWallets(wallets: [(Principal, [{ canisterId: Principal; appId: Text }])]) : async Nat {
+    // Register a canister in a user's wallet (admin only, for migration)
+    public shared ({ caller }) func adminRegisterCanister(user: Principal, canisterId: Principal, appId: Text) : async () {
         assert(isAdmin(caller));
-        var count: Nat = 0;
-        for ((user, entries) in wallets.vals()) {
-            for (entry in entries.vals()) {
-                walletAdd(user, entry.canisterId, entry.appId);
-                count += 1;
-            };
-        };
-        count;
+        walletAdd(user, canisterId, appId);
     };
 
-    // Import old-format mint log entries (pre-publisher).
-    // Assigns publisherId=0 and numericAppId=0 for all legacy entries.
-    public shared ({ caller }) func importMintLog(entries: [{
-        index: Nat;
-        canisterId: Principal;
-        minter: Principal;
-        appId: Text;
-        versionMajor: Nat;
-        versionMinor: Nat;
-        versionPatch: Nat;
-        mintedAt: Int;
-        icpPaidE8s: Nat64;
-        wasPremium: Bool;
-    }]) : async Nat {
+    // Bulk register canisters for users (admin only, for migration)
+    public shared ({ caller }) func adminBulkRegisterCanisters(entries: [(Principal, Principal, Text)]) : async Nat {
         assert(isAdmin(caller));
         var count: Nat = 0;
-        for (e in entries.vals()) {
-            let numId = switch (appByStringId.get(e.appId)) {
-                case (?n) { n };
-                case null { 0 };
-            };
-            let entry: MintLogEntry = {
-                index = mintLogNextIndex;
-                canisterId = e.canisterId;
-                minter = e.minter;
-                appId = e.appId;
-                numericAppId = numId;
-                publisherId = 0;
-                versionMajor = e.versionMajor;
-                versionMinor = e.versionMinor;
-                versionPatch = e.versionPatch;
-                mintedAt = e.mintedAt;
-                icpPaidE8s = e.icpPaidE8s;
-                wasPremium = e.wasPremium;
-                daoCutE8s = e.icpPaidE8s;
-                publisherRevenueE8s = 0;
-            };
-            mintLog := Array.append(mintLog, [entry]);
-            mintLogIndexMap.put(e.canisterId, mintLogNextIndex);
-            mintLogNextIndex += 1;
+        for ((user, canisterId, appId) in entries.vals()) {
+            walletAdd(user, canisterId, appId);
             count += 1;
         };
         count;
-    };
-
-    // Import creation log entries
-    public shared ({ caller }) func importCreationLog(entries: [T.CreationLogEntry]) : async Nat {
-        assert(isAdmin(caller));
-        for (e in entries.vals()) {
-            creationLog := Array.append(creationLog, [{
-                canisterId = e.canisterId;
-                caller = e.caller;
-                createdAt = e.createdAt;
-                index = creationLogNextIndex;
-            }]);
-            creationLogNextIndex += 1;
-        };
-        entries.size();
-    };
-
-    // Import financial log entries
-    public shared ({ caller }) func importFinancialLog(entries: [T.FinancialLogEntry]) : async Nat {
-        assert(isAdmin(caller));
-        for (e in entries.vals()) {
-            financialLog := Array.append(financialLog, [{
-                canisterId = e.canisterId;
-                index = financialLogNextIndex;
-                createdAt = e.createdAt;
-                icpPaidE8s = e.icpPaidE8s;
-                icpForCyclesE8s = e.icpForCyclesE8s;
-                icpProfitE8s = e.icpProfitE8s;
-                icpTransferFeesE8s = e.icpTransferFeesE8s;
-                cyclesReceivedFromCmc = e.cyclesReceivedFromCmc;
-                cyclesSpentOnCreation = e.cyclesSpentOnCreation;
-                cyclesBalanceBefore = e.cyclesBalanceBefore;
-                cyclesBalanceAfter = e.cyclesBalanceAfter;
-            }]);
-            financialLogNextIndex += 1;
-        };
-        entries.size();
-    };
-
-    // Import aggregate stats (adds to current values)
-    public shared ({ caller }) func importAggregateStats(stats: {
-        totalIcpPaidE8s: Nat;
-        totalIcpForCyclesE8s: Nat;
-        totalIcpProfitE8s: Nat;
-        totalIcpTransferFeesE8s: Nat;
-        totalCyclesReceivedFromCmc: Nat;
-        totalCyclesSpentOnCreation: Nat;
-    }) : async () {
-        assert(isAdmin(caller));
-        totalIcpPaidE8s += stats.totalIcpPaidE8s;
-        totalIcpForCyclesE8s += stats.totalIcpForCyclesE8s;
-        totalIcpProfitE8s += stats.totalIcpProfitE8s;
-        totalIcpTransferFeesE8s += stats.totalIcpTransferFeesE8s;
-        totalCyclesReceivedFromCmc += stats.totalCyclesReceivedFromCmc;
-        totalCyclesSpentOnCreation += stats.totalCyclesSpentOnCreation;
     };
 
     // ============================================
