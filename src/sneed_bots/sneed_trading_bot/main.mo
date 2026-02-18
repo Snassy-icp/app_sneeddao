@@ -3149,56 +3149,72 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             let balance = await getBalance(target.token, null); // Main account
             reconcileBalance(target.token, null, balance, src);
 
-            // Get value in denomination token — use cached price if available
+            // Get value in denomination token.
+            // For valuation accuracy, we prefer a fresh quote with the actual balance
+            // to avoid price-impact distortion from the cache (which uses 1-unit reference amounts).
+            // Fall back to cached quote only if the fresh one fails.
             let value = if (target.token == denomToken) {
-                logEngine.logTrace(src, "Token " # tokenLabel(target.token) # " is denom token, value = balance", null, [
+                logEngine.logInfo(src, "Valuation: " # tokenLabel(target.token) # " is denom token, value = balance = " # Nat.toText(balance), null, [
                     ("token", tokenLabel(target.token)),
                     ("tokenId", Principal.toText(target.token)),
                     ("balance", Nat.toText(balance)),
                 ]);
                 balance
+            } else if (balance == 0) {
+                0
             } else {
-                // Try cached quote first (populated by price-fetch phase)
-                switch (getCachedQuote(target.token, denomToken)) {
-                    case (?cachedQ) {
-                        let v = if (cachedQ.inputAmount > 0) {
-                            (balance * cachedQ.expectedOutput) / cachedQ.inputAmount
-                        } else { 0 };
-                        logEngine.logTrace(src, "Token " # tokenLabel(target.token) # " valued via cached quote", null, [
-                            ("token", tokenLabel(target.token)),
-                            ("tokenId", Principal.toText(target.token)),
-                            ("balance", Nat.toText(balance)),
-                            ("value", Nat.toText(v)),
-                            ("cachedInputAmount", Nat.toText(cachedQ.inputAmount)),
-                            ("cachedExpectedOutput", Nat.toText(cachedQ.expectedOutput)),
-                            ("cachedDexId", Nat.toText(cachedQ.dexId)),
-                        ]);
-                        v
+                // Fetch a quote for the actual balance for accurate valuation
+                var freshValue: Nat = 0;
+                var usedFresh = false;
+                try {
+                    let freshQuoteOpt = await getBestQuote(target.token, denomToken, balance);
+                    switch (freshQuoteOpt) {
+                        case (?q) {
+                            if (q.expectedOutput > 0) {
+                                freshValue := q.expectedOutput;
+                                usedFresh := true;
+                            };
+                            logEngine.logInfo(src, "Valuation: " # tokenLabel(target.token) # " balance=" # Nat.toText(balance) # " value=" # Nat.toText(freshValue) # " (fresh quote, dex " # Nat.toText(q.dexId) # " impact " # Nat.toText(q.priceImpactBps) # "bps)", null, [
+                                ("token", tokenLabel(target.token)),
+                                ("tokenId", Principal.toText(target.token)),
+                                ("balance", Nat.toText(balance)),
+                                ("value", Nat.toText(freshValue)),
+                                ("dexId", Nat.toText(q.dexId)),
+                                ("priceImpactBps", Nat.toText(q.priceImpactBps)),
+                                ("method", "fresh"),
+                            ]);
+                        };
+                        case null {};
                     };
-                    case null {
-                        logEngine.logDebug(src, "No cached quote for " # tokenLabel(target.token) # " → " # tokenLabel(denomToken) # ", fetching fresh", null, [
-                            ("token", tokenLabel(target.token)),
-                            ("tokenId", Principal.toText(target.token)),
-                            ("denomToken", tokenLabel(denomToken)),
-                        ]);
-                        let quoteOpt = await getBestQuote(target.token, denomToken, balance);
-                        switch (quoteOpt) {
-                            case (?q) {
-                                logEngine.logTrace(src, "Fresh quote obtained for " # tokenLabel(target.token), null, [
-                                    ("token", tokenLabel(target.token)),
-                                    ("value", Nat.toText(q.expectedOutput)),
-                                    ("dexId", Nat.toText(q.dexId)),
-                                    ("priceImpactBps", Nat.toText(q.priceImpactBps)),
-                                ]);
-                                q.expectedOutput
-                            };
-                            case null {
-                                logEngine.logDebug(src, "No quote available for " # tokenLabel(target.token) # " → " # tokenLabel(denomToken) # ", value = 0", null, [
-                                    ("token", tokenLabel(target.token)),
-                                    ("tokenId", Principal.toText(target.token)),
-                                ]);
-                                0
-                            };
+                } catch (_) {};
+
+                if (usedFresh) {
+                    freshValue
+                } else {
+                    // Fall back to cached quote (proportional scaling from reference amount)
+                    switch (getCachedQuote(target.token, denomToken)) {
+                        case (?cachedQ) {
+                            let v = if (cachedQ.inputAmount > 0) {
+                                (balance * cachedQ.expectedOutput) / cachedQ.inputAmount
+                            } else { 0 };
+                            logEngine.logInfo(src, "Valuation: " # tokenLabel(target.token) # " balance=" # Nat.toText(balance) # " value=" # Nat.toText(v) # " (cached fallback: " # Nat.toText(cachedQ.inputAmount) # " → " # Nat.toText(cachedQ.expectedOutput) # ", dex " # Nat.toText(cachedQ.dexId) # ")", null, [
+                                ("token", tokenLabel(target.token)),
+                                ("tokenId", Principal.toText(target.token)),
+                                ("balance", Nat.toText(balance)),
+                                ("value", Nat.toText(v)),
+                                ("cachedInputAmount", Nat.toText(cachedQ.inputAmount)),
+                                ("cachedExpectedOutput", Nat.toText(cachedQ.expectedOutput)),
+                                ("cachedDexId", Nat.toText(cachedQ.dexId)),
+                                ("method", "cached"),
+                            ]);
+                            v
+                        };
+                        case null {
+                            logEngine.logWarning(src, "Valuation: no quote for " # tokenLabel(target.token) # " → " # tokenLabel(denomToken) # ", value = 0", null, [
+                                ("token", tokenLabel(target.token)),
+                                ("tokenId", Principal.toText(target.token)),
+                            ]);
+                            0
                         };
                     };
                 };
@@ -3214,7 +3230,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         };
 
         // Log portfolio summary
-        logEngine.logDebug(src, "Portfolio valued: totalValue = " # Nat.toText(totalValue) # " " # tokenLabel(denomToken) # ", " # Nat.toText(tokenValues.size()) # " tokens", null, [
+        logEngine.logInfo(src, "Portfolio valued: totalValue = " # Nat.toText(totalValue) # " " # tokenLabel(denomToken) # ", " # Nat.toText(tokenValues.size()) # " tokens", null, [
             ("totalValue", Nat.toText(totalValue)),
             ("denomToken", tokenLabel(denomToken)),
             ("tokenCount", Nat.toText(tokenValues.size())),
@@ -3232,7 +3248,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
                 "underweight"
             } else { "within-tolerance" };
 
-            logEngine.logTrace(src, tokenLabel(tv.token) # ": current " # Nat.toText(currentBps / 100) # "." # Nat.toText(currentBps % 100) # "% target " # Nat.toText(tv.targetBps / 100) # "." # Nat.toText(tv.targetBps % 100) # "% → " # classification, null, [
+            logEngine.logInfo(src, tokenLabel(tv.token) # ": current " # Nat.toText(currentBps / 100) # "." # Nat.toText(currentBps % 100) # "% target " # Nat.toText(tv.targetBps / 100) # "." # Nat.toText(tv.targetBps % 100) # "% → " # classification, null, [
                 ("token", tokenLabel(tv.token)),
                 ("tokenId", Principal.toText(tv.token)),
                 ("balance", Nat.toText(tv.balance)),
