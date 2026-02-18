@@ -901,6 +901,11 @@ module {
             let state = getStateOrDefault(choreId);
             let previousTid = state.conductorTimerId;
             let nextSeq = getConductorScheduleSeq(choreId) + 1;
+            emitLog(#Info, choreId, "Conductor reschedule attempt", [
+                ("delaySecs", Nat.toText(delaySecs)),
+                ("nextSeq", Nat.toText(nextSeq)),
+                ("previousTimerId", switch (previousTid) { case (?tid) Nat.toText(tid); case null "none" }),
+            ]);
             let tid = Timer.setTimer<system>(#seconds delaySecs, func(): async () {
                 await conductorTick<system>(choreId, nextSeq);
             });
@@ -910,12 +915,21 @@ module {
             updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
                 { s with conductorTimerId = ?tid }
             });
+            emitLog(#Info, choreId, "Conductor reschedule committed", [
+                ("delaySecs", Nat.toText(delaySecs)),
+                ("scheduleSeq", Nat.toText(nextSeq)),
+                ("timerId", Nat.toText(tid)),
+            ]);
 
             // Retire previously tracked timer after successful swap.
             switch (previousTid) {
                 case (?existingTid) {
                     if (existingTid != tid) {
                         Timer.cancelTimer(existingTid);
+                        emitLog(#Info, choreId, "Conductor prior timer cancelled", [
+                            ("cancelledTimerId", Nat.toText(existingTid)),
+                            ("replacementTimerId", Nat.toText(tid)),
+                        ]);
                     };
                 };
                 case null {};
