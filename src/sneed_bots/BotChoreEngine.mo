@@ -54,6 +54,13 @@ module {
         /// Array of (choreId, taskId, taskFn) tuples.
         var pendingTasks: [(Text, Text, () -> async BotChoreTypes.TaskAction)] = [];
 
+        /// Monotonic schedule sequence per chore for conductor ticks.
+        /// Each newly scheduled tick bumps the sequence; stale ticks self-drop.
+        var conductorScheduleSeqs: [(Text, Nat)] = [];
+
+        /// Tiny re-entrancy guard for conductor ticks, keyed by choreId.
+        var conductorTickInFlight: [(Text, Bool)] = [];
+
         // ============================================
         // LOGGING HELPER
         // ============================================
@@ -300,6 +307,56 @@ module {
                 func((cid, _tid, _fn)) { cid != choreId }
             );
             result
+        };
+
+        func getConductorScheduleSeq(choreId: Text): Nat {
+            for ((id, seq) in conductorScheduleSeqs.vals()) {
+                if (id == choreId) return seq;
+            };
+            0
+        };
+
+        func setConductorScheduleSeq(choreId: Text, seq: Nat) {
+            var found = false;
+            conductorScheduleSeqs := Array.map<(Text, Nat), (Text, Nat)>(
+                conductorScheduleSeqs,
+                func((id, existingSeq)) {
+                    if (id == choreId) {
+                        found := true;
+                        (id, seq)
+                    } else {
+                        (id, existingSeq)
+                    }
+                }
+            );
+            if (not found) {
+                conductorScheduleSeqs := Array.append<(Text, Nat)>(conductorScheduleSeqs, [(choreId, seq)]);
+            };
+        };
+
+        func isConductorTickInFlight(choreId: Text): Bool {
+            for ((id, inFlight) in conductorTickInFlight.vals()) {
+                if (id == choreId) return inFlight;
+            };
+            false
+        };
+
+        func setConductorTickInFlight(choreId: Text, inFlight: Bool) {
+            var found = false;
+            conductorTickInFlight := Array.map<(Text, Bool), (Text, Bool)>(
+                conductorTickInFlight,
+                func((id, existingInFlight)) {
+                    if (id == choreId) {
+                        found := true;
+                        (id, inFlight)
+                    } else {
+                        (id, existingInFlight)
+                    }
+                }
+            );
+            if (not found) {
+                conductorTickInFlight := Array.append<(Text, Bool)>(conductorTickInFlight, [(choreId, inFlight)]);
+            };
         };
 
         // ============================================
@@ -581,6 +638,7 @@ module {
                     currentTaskId = null;
                 }
             });
+            setConductorTickInFlight(choreId, false);
 
             // Clear pending tasks
             ignore consumePendingTask(choreId);
@@ -837,31 +895,59 @@ module {
 
         /// Schedule a conductor tick after a delay (in seconds).
         func scheduleConductorTick<system>(choreId: Text, delaySecs: Nat) {
+            let nextSeq = getConductorScheduleSeq(choreId) + 1;
+            setConductorScheduleSeq(choreId, nextSeq);
             let tid = Timer.setTimer<system>(#seconds delaySecs, func(): async () {
-                await conductorTick<system>(choreId);
+                await conductorTick<system>(choreId, nextSeq);
             });
             updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
                 { s with conductorTimerId = ?tid }
             });
         };
 
-        /// One tick of the conductor loop (polling pattern).
-        ///
-        /// Flow:
-        /// 1. Check stop flag
-        /// 2. Check for timed-out task (mark as failed if so)
-        /// 3. Build context with current task state
-        /// 4. Call conductor callback
-        /// 5. Start pending task if conductor set one via setPendingTask
-        /// 6. Schedule next tick based on conductor's return value
-        func conductorTick<system>(choreId: Text): async () {
+        /// One tick of the conductor loop.
+        /// Uses schedule-first semantics plus stale-tick protection.
+        func conductorTick<system>(choreId: Text, scheduleSeq: Nat): async () {
+            // Tiny concurrency guard: stale or superseded ticks self-drop.
+            if (scheduleSeq != getConductorScheduleSeq(choreId)) {
+                return;
+            };
+            if (isConductorTickInFlight(choreId)) {
+                return;
+            };
+            setConductorTickInFlight(choreId, true);
+
+            try {
+                await conductorTickBody<system>(choreId);
+            } catch (e) {
+                markConductorError(choreId, "Conductor tick wrapper threw: " # Error.message(e));
+            };
+
+            setConductorTickInFlight(choreId, false);
+        };
+
+        /// Conductor tick body:
+        /// 0. Check stop/active flags
+        /// 1. Schedule next poll first (liveness heartbeat)
+        /// 2. Check task timeout and build context
+        /// 3. Call conductor callback
+        /// 4. Start pending task (if any)
+        /// 5. Override heartbeat timing / finalize based on conductor action
+        func conductorTickBody<system>(choreId: Text): async () {
             let state = getStateOrDefault(choreId);
 
-            // 1. Check stop flag BEFORE doing work
+            // 0. Check stop/active flags BEFORE doing work.
             if (state.stopRequested) {
                 markConductorStopped(choreId);
                 return;
             };
+            if (not state.conductorActive) {
+                return;
+            };
+
+            // 1. Schedule the next poll early as a heartbeat.
+            // The action-specific branch below may override this cadence.
+            scheduleConductorTick<system>(choreId, 10);
 
             let def = findDefinition(choreId);
             switch (def) {
@@ -937,6 +1023,7 @@ module {
                         // 6. Handle conductor action
                         switch (action) {
                             case (#ContinueIn(seconds)) {
+                                // Override the early heartbeat with the intended cadence.
                                 scheduleConductorTick<system>(choreId, seconds);
                             };
                             case (#Done) {
@@ -1038,6 +1125,7 @@ module {
                     totalSuccessCount = s.totalSuccessCount + 1;
                 }
             });
+            setConductorTickInFlight(choreId, false);
         };
 
         /// Mark conductor as failed.
@@ -1059,6 +1147,7 @@ module {
                     lastErrorAt = ?Time.now();
                 }
             });
+            setConductorTickInFlight(choreId, false);
         };
 
         /// Mark conductor as stopped (by stop flag).
@@ -1074,6 +1163,7 @@ module {
                     stopRequested = false; // Clear flag so chore can be re-triggered
                 }
             });
+            setConductorTickInFlight(choreId, false);
         };
 
         // ============================================
@@ -1171,7 +1261,12 @@ module {
             // The conductor still owns orchestration, but this avoids a stuck
             // run if the previously scheduled polling timer is missing/stale.
             let refreshed = getStateOrDefault(choreId);
-            if (refreshed.conductorActive and not refreshed.stopRequested) {
+            if (
+                refreshed.conductorActive and
+                not refreshed.stopRequested and
+                refreshed.conductorTimerId == null and
+                not isConductorTickInFlight(choreId)
+            ) {
                 scheduleConductorTick<system>(choreId, 0);
             };
         };
@@ -1260,6 +1355,7 @@ module {
                 case null {};
             };
             ignore consumePendingTask(choreId);
+            setConductorTickInFlight(choreId, false);
             updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
                 {
                     s with
