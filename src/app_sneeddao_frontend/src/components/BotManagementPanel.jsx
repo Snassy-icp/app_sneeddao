@@ -275,6 +275,8 @@ export default function BotManagementPanel({
     const [choreActiveInstance, setChoreActiveInstance] = useState(null);
     const [choreTickNow, setChoreTickNow] = useState(Date.now());
     const choreTickRef = useRef(null);
+    const [choreRunTracker, setChoreRunTracker] = useState({});
+    const prevChoreSnapshotRef = useRef({});
     const [creatingInstance, setCreatingInstance] = useState(false);
     const [newInstanceLabel, setNewInstanceLabel] = useState('');
     const [renamingInstance, setRenamingInstance] = useState(null);
@@ -847,6 +849,86 @@ export default function BotManagementPanel({
             if (choreRunningRefreshRef.current) { clearInterval(choreRunningRefreshRef.current); choreRunningRefreshRef.current = null; }
         };
     }, [choreStatuses, getReadyBotActor]);
+
+    // Track conductor run history across polls for the run-status card
+    useEffect(() => {
+        const prev = prevChoreSnapshotRef.current;
+        setChoreRunTracker(tracker => {
+            const next = { ...tracker };
+            for (const chore of choreStatuses) {
+                const id = chore.choreId;
+                const isActive = !('Idle' in chore.conductorStatus);
+                const condStartNs = chore.conductorStartedAt?.[0] ?? null;
+                const condStartMs = condStartNs != null ? Number(condStartNs) / 1_000_000 : null;
+                const taskId = chore.currentTaskId?.[0] || null;
+                const taskStartMs = chore.taskStartedAt?.[0] != null ? Number(chore.taskStartedAt[0]) / 1_000_000 : null;
+                const lastCompId = chore.lastCompletedTaskId?.[0] || null;
+                const lastSucceeded = chore.lastTaskSucceeded?.[0] ?? null;
+                const lastError = chore.lastTaskError?.[0] || null;
+
+                const run = next[id];
+
+                if (isActive) {
+                    const isNewRun = !run || !run.isRunning || String(condStartNs) !== String(run._condStartNs);
+                    if (isNewRun) {
+                        next[id] = {
+                            _condStartNs: condStartNs,
+                            conductorStartedAtMs: condStartMs,
+                            conductorEndedAtMs: null,
+                            isRunning: true,
+                            currentTask: taskId ? { taskId, startedAtMs: taskStartMs } : null,
+                            completedTasks: [],
+                            _seenCompletedIds: [],
+                        };
+                    } else {
+                        const updated = {
+                            ...run,
+                            completedTasks: [...run.completedTasks],
+                            _seenCompletedIds: [...run._seenCompletedIds],
+                        };
+                        if (lastCompId && !updated._seenCompletedIds.includes(lastCompId)) {
+                            const startTime = run.currentTask?.taskId === lastCompId ? run.currentTask.startedAtMs : null;
+                            updated.completedTasks.push({
+                                taskId: lastCompId,
+                                startedAtMs: startTime,
+                                endedAtMs: Date.now(),
+                                succeeded: lastSucceeded,
+                                error: lastError,
+                            });
+                            updated._seenCompletedIds.push(lastCompId);
+                        }
+                        updated.currentTask = taskId ? { taskId, startedAtMs: taskStartMs } : null;
+                        next[id] = updated;
+                    }
+                } else if (run && run.isRunning) {
+                    const updated = {
+                        ...run,
+                        completedTasks: [...run.completedTasks],
+                        _seenCompletedIds: [...run._seenCompletedIds],
+                    };
+                    if (lastCompId && !updated._seenCompletedIds.includes(lastCompId)) {
+                        const startTime = run.currentTask?.taskId === lastCompId ? run.currentTask.startedAtMs : null;
+                        updated.completedTasks.push({
+                            taskId: lastCompId,
+                            startedAtMs: startTime,
+                            endedAtMs: Date.now(),
+                            succeeded: lastSucceeded,
+                            error: lastError,
+                        });
+                        updated._seenCompletedIds.push(lastCompId);
+                    }
+                    updated.currentTask = null;
+                    updated.isRunning = false;
+                    updated.conductorEndedAtMs = Date.now();
+                    next[id] = updated;
+                }
+            }
+            return next;
+        });
+        const snap = {};
+        for (const c of choreStatuses) snap[c.choreId] = c;
+        prevChoreSnapshotRef.current = snap;
+    }, [choreStatuses]);
 
     // Fetch token balance when selected token changes (only when withdraw section expanded)
     useEffect(() => {
@@ -2099,21 +2181,135 @@ export default function BotManagementPanel({
                                                                     </div>
                                                                 )}
 
-                                                                {/* Current task info (when running) */}
-                                                                {chore.currentTaskId && chore.currentTaskId.length > 0 && (
-                                                                    <div style={{
-                                                                        marginTop: '10px', padding: '10px',
-                                                                        background: `${accent}10`,
-                                                                        border: `1px solid ${accent}25`,
-                                                                        borderRadius: '8px', fontSize: '0.8rem',
-                                                                        color: theme.colors.primaryText,
-                                                                    }}>
-                                                                        <strong>Current task:</strong> {chore.currentTaskId[0]}
-                                                                        {chore.taskStartedAt && chore.taskStartedAt.length > 0 && (
-                                                                            <span style={{ opacity: 0.7 }}> (started {fmtTime(chore.taskStartedAt)})</span>
-                                                                        )}
-                                                                    </div>
-                                                                )}
+                                                                {/* Conductor run card — persistent across tasks, survives conductor completion */}
+                                                                {(() => {
+                                                                    const run = choreRunTracker[chore.choreId];
+                                                                    if (!run) return null;
+                                                                    const elapsedStr = (startMs, endMs) => {
+                                                                        if (!startMs) return '--:--';
+                                                                        const end = endMs || choreTickNow;
+                                                                        const sec = Math.max(0, Math.floor((end - startMs) / 1000));
+                                                                        const h = Math.floor(sec / 3600);
+                                                                        const m = Math.floor((sec % 3600) / 60);
+                                                                        const s = sec % 60;
+                                                                        return h > 0
+                                                                            ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+                                                                            : `${m}:${String(s).padStart(2, '0')}`;
+                                                                    };
+                                                                    const timeStr = (ms) => ms ? new Date(ms).toLocaleTimeString() : '--:--';
+                                                                    const dotStyle = (color) => ({
+                                                                        display: 'inline-block', width: 7, height: 7, borderRadius: '50%',
+                                                                        background: color, flexShrink: 0,
+                                                                    });
+                                                                    const rowBase = {
+                                                                        display: 'flex', alignItems: 'center', gap: '8px',
+                                                                        padding: '5px 8px', borderRadius: '5px', fontSize: '0.78rem',
+                                                                    };
+                                                                    return (
+                                                                        <div style={{
+                                                                            marginTop: '10px', padding: '10px',
+                                                                            background: run.isRunning ? `${accent}06` : theme.colors.primaryBg,
+                                                                            border: `1px solid ${run.isRunning ? accent + '30' : theme.colors.border}`,
+                                                                            borderRadius: '8px', fontSize: '0.8rem',
+                                                                            color: theme.colors.primaryText,
+                                                                        }}>
+                                                                            {/* Header */}
+                                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                                                                <strong style={{ fontSize: '0.82rem' }}>
+                                                                                    {run.isRunning ? 'Conductor Running' : 'Last Conductor Run'}
+                                                                                </strong>
+                                                                                <span style={{ fontSize: '0.72rem', color: theme.colors.secondaryText }}>
+                                                                                    {timeStr(run.conductorStartedAtMs)}
+                                                                                    {run.conductorEndedAtMs ? ` \u2192 ${timeStr(run.conductorEndedAtMs)}` : ''}
+                                                                                </span>
+                                                                            </div>
+
+                                                                            {/* Conductor row */}
+                                                                            <div style={{
+                                                                                ...rowBase,
+                                                                                background: run.isRunning ? `${accent}10` : theme.colors.primaryBg,
+                                                                                border: `1px solid ${run.isRunning ? accent + '20' : theme.colors.border}`,
+                                                                                marginBottom: '5px',
+                                                                            }}>
+                                                                                <span style={dotStyle(run.isRunning ? accent : '#22c55e')} />
+                                                                                <span style={{ color: theme.colors.secondaryText, minWidth: 62 }}>Conductor</span>
+                                                                                <span style={{ flex: 1 }} />
+                                                                                <span style={{
+                                                                                    fontFamily: 'monospace', fontWeight: '600', fontSize: '0.8rem',
+                                                                                    color: run.isRunning ? accent : theme.colors.primaryText,
+                                                                                }}>
+                                                                                    {elapsedStr(run.conductorStartedAtMs, run.conductorEndedAtMs)}
+                                                                                </span>
+                                                                            </div>
+
+                                                                            {/* Current task */}
+                                                                            {run.currentTask && (
+                                                                                <div style={{
+                                                                                    ...rowBase,
+                                                                                    background: `${accent}10`,
+                                                                                    border: `1px solid ${accent}20`,
+                                                                                    marginBottom: '5px',
+                                                                                }}>
+                                                                                    <span style={dotStyle(accent)} />
+                                                                                    <span style={{
+                                                                                        flex: 1, overflow: 'hidden', textOverflow: 'ellipsis',
+                                                                                        whiteSpace: 'nowrap', fontSize: '0.76rem',
+                                                                                    }} title={run.currentTask.taskId}>
+                                                                                        {run.currentTask.taskId}
+                                                                                    </span>
+                                                                                    <span style={{
+                                                                                        fontFamily: 'monospace', fontWeight: '500',
+                                                                                        color: accent, fontSize: '0.78rem',
+                                                                                    }}>
+                                                                                        {elapsedStr(run.currentTask.startedAtMs, null)}
+                                                                                    </span>
+                                                                                </div>
+                                                                            )}
+
+                                                                            {/* Completed tasks (expandable) */}
+                                                                            {run.completedTasks.length > 0 && (
+                                                                                <details style={{ marginTop: '4px' }}>
+                                                                                    <summary style={{
+                                                                                        cursor: 'pointer', fontSize: '0.73rem',
+                                                                                        color: theme.colors.secondaryText,
+                                                                                        userSelect: 'none', padding: '3px 0',
+                                                                                    }}>
+                                                                                        {run.completedTasks.length} completed task{run.completedTasks.length !== 1 ? 's' : ''}
+                                                                                    </summary>
+                                                                                    <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                                                                        {run.completedTasks.map((t, i) => (
+                                                                                            <div key={i} style={{
+                                                                                                ...rowBase,
+                                                                                                background: theme.colors.primaryBg,
+                                                                                                border: `1px solid ${theme.colors.border}`,
+                                                                                                fontSize: '0.73rem',
+                                                                                            }}>
+                                                                                                <span style={dotStyle(
+                                                                                                    t.succeeded === true ? '#22c55e'
+                                                                                                        : t.succeeded === false ? (theme.colors.error || '#ef4444')
+                                                                                                        : theme.colors.secondaryText
+                                                                                                )} />
+                                                                                                <span style={{
+                                                                                                    flex: 1, overflow: 'hidden', textOverflow: 'ellipsis',
+                                                                                                    whiteSpace: 'nowrap',
+                                                                                                }} title={t.taskId + (t.error ? ' — ' + t.error : '')}>
+                                                                                                    {t.taskId}
+                                                                                                </span>
+                                                                                                <span style={{
+                                                                                                    fontFamily: 'monospace',
+                                                                                                    color: theme.colors.secondaryText,
+                                                                                                    fontSize: '0.72rem',
+                                                                                                }}>
+                                                                                                    {elapsedStr(t.startedAtMs, t.endedAtMs)}
+                                                                                                </span>
+                                                                                            </div>
+                                                                                        ))}
+                                                                                    </div>
+                                                                                </details>
+                                                                            )}
+                                                                        </div>
+                                                                    );
+                                                                })()}
                                                             </div>
 
                                                             {/* Controls */}

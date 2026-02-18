@@ -2440,46 +2440,40 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             defaultMaxIntervalSeconds = null; // No randomization for confirm following
             defaultTaskTimeoutSeconds = 600; // 10 minutes (confirming many topics can take time)
             conduct = func(ctx: BotChoreTypes.ConductorContext): BotChoreTypes.ConductorAction {
-                // If a task is still running, just poll again
                 if (ctx.isTaskRunning) {
                     return #ContinueIn(10);
                 };
 
                 switch (ctx.lastCompletedTask) {
                     case null {
-                        // First invocation: fetch all neurons
-                        let neurons = await listNeuronsInternal();
-                        let neuronIds = Buffer.Buffer<T.NeuronId>(neurons.size());
-                        for (n in neurons.vals()) {
-                            switch (n.id) {
-                                case (?nid) { neuronIds.add(nid) };
-                                case null {};
+                        let taskFn = func(): async BotChoreTypes.TaskAction {
+                            let neurons = await listNeuronsInternal();
+                            let neuronIds = Buffer.Buffer<T.NeuronId>(neurons.size());
+                            for (n in neurons.vals()) {
+                                switch (n.id) { case (?nid) { neuronIds.add(nid) }; case null {} };
                             };
+                            _cf_neurons := Buffer.toArray(neuronIds);
+                            _cf_index := 0;
+                            #Done
                         };
-                        _cf_neurons := Buffer.toArray(neuronIds);
-                        _cf_index := 0;
-
-                        logEngine.logInfo("chore:confirm-following", "Starting: found " # Nat.toText(_cf_neurons.size()) # " neurons to confirm followees for", null, [("neuronCount", Nat.toText(_cf_neurons.size()))]);
-
-                        if (_cf_neurons.size() == 0) {
-                            return #Done; // No neurons to process
-                        };
-
-                        // Start first task and poll
-                        _cf_startCurrentTask();
-                        return #ContinueIn(10);
+                        choreEngine.setPendingTask("confirm-following", "cf-fetch-neurons", taskFn);
+                        return #ContinueIn(5);
                     };
                     case (?lastResult) {
-                        // Previous task completed — advance to next neuron
-                        // (continue even if the last task failed — best effort for remaining neurons)
+                        if (lastResult.taskId == "cf-fetch-neurons") {
+                            logEngine.logInfo("chore:confirm-following", "Starting: found " # Nat.toText(_cf_neurons.size()) # " neurons to confirm followees for", null, [("neuronCount", Nat.toText(_cf_neurons.size()))]);
+                            if (_cf_neurons.size() == 0) {
+                                return #Done;
+                            };
+                            _cf_startCurrentTask();
+                            return #ContinueIn(10);
+                        };
                         logEngine.logTrace("chore:confirm-following", "Neuron " # Nat.toText(_cf_index) # "/" # Nat.toText(_cf_neurons.size()) # " task done (success=" # (if (lastResult.succeeded) "true" else "false") # ")", null, [("index", Nat.toText(_cf_index)), ("total", Nat.toText(_cf_neurons.size())), ("succeeded", if (lastResult.succeeded) "true" else "false")]);
                         _cf_index += 1;
                         if (_cf_index >= _cf_neurons.size()) {
                             logEngine.logInfo("chore:confirm-following", "Completed: all " # Nat.toText(_cf_neurons.size()) # " neurons processed", null, [("neuronCount", Nat.toText(_cf_neurons.size()))]);
-                            return #Done; // All neurons processed
+                            return #Done;
                         };
-
-                        // Start next task and poll
                         _cf_startCurrentTask();
                         return #ContinueIn(10);
                     };
@@ -2496,45 +2490,40 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             defaultMaxIntervalSeconds = null; // No randomization for refresh stake
             defaultTaskTimeoutSeconds = 300; // 5 minutes per neuron refresh
             conduct = func(ctx: BotChoreTypes.ConductorContext): BotChoreTypes.ConductorAction {
-                // If a task is still running, just poll again
                 if (ctx.isTaskRunning) {
                     return #ContinueIn(10);
                 };
 
                 switch (ctx.lastCompletedTask) {
                     case null {
-                        // First invocation: fetch all neurons
-                        let neurons = await listNeuronsInternal();
-                        let neuronIds = Buffer.Buffer<T.NeuronId>(neurons.size());
-                        for (n in neurons.vals()) {
-                            switch (n.id) {
-                                case (?nid) { neuronIds.add(nid) };
-                                case null {};
+                        let taskFn = func(): async BotChoreTypes.TaskAction {
+                            let neurons = await listNeuronsInternal();
+                            let neuronIds = Buffer.Buffer<T.NeuronId>(neurons.size());
+                            for (n in neurons.vals()) {
+                                switch (n.id) { case (?nid) { neuronIds.add(nid) }; case null {} };
                             };
+                            _rs_neurons := Buffer.toArray(neuronIds);
+                            _rs_index := 0;
+                            #Done
                         };
-                        _rs_neurons := Buffer.toArray(neuronIds);
-                        _rs_index := 0;
-
-                        logEngine.logInfo("chore:refresh-stake", "Starting: found " # Nat.toText(_rs_neurons.size()) # " neurons to refresh stake for", null, [("neuronCount", Nat.toText(_rs_neurons.size()))]);
-
-                        if (_rs_neurons.size() == 0) {
-                            return #Done; // No neurons to process
-                        };
-
-                        // Start first task and poll
-                        _rs_startCurrentTask();
-                        return #ContinueIn(10);
+                        choreEngine.setPendingTask("refresh-stake", "rs-fetch-neurons", taskFn);
+                        return #ContinueIn(5);
                     };
                     case (?lastResult) {
-                        // Previous task completed — advance to next neuron
+                        if (lastResult.taskId == "rs-fetch-neurons") {
+                            logEngine.logInfo("chore:refresh-stake", "Starting: found " # Nat.toText(_rs_neurons.size()) # " neurons to refresh stake for", null, [("neuronCount", Nat.toText(_rs_neurons.size()))]);
+                            if (_rs_neurons.size() == 0) {
+                                return #Done;
+                            };
+                            _rs_startCurrentTask();
+                            return #ContinueIn(10);
+                        };
                         logEngine.logTrace("chore:refresh-stake", "Neuron " # Nat.toText(_rs_index) # "/" # Nat.toText(_rs_neurons.size()) # " task done (success=" # (if (lastResult.succeeded) "true" else "false") # ")", null, [("index", Nat.toText(_rs_index)), ("total", Nat.toText(_rs_neurons.size())), ("succeeded", if (lastResult.succeeded) "true" else "false")]);
                         _rs_index += 1;
                         if (_rs_index >= _rs_neurons.size()) {
                             logEngine.logInfo("chore:refresh-stake", "Completed: all " # Nat.toText(_rs_neurons.size()) # " neurons processed", null, [("neuronCount", Nat.toText(_rs_neurons.size()))]);
-                            return #Done; // All neurons processed
+                            return #Done;
                         };
-
-                        // Start next task and poll
                         _rs_startCurrentTask();
                         return #ContinueIn(10);
                     };
@@ -2553,47 +2542,42 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             conduct = func(ctx: BotChoreTypes.ConductorContext): BotChoreTypes.ConductorAction {
                 let instanceId = ctx.choreId;
                 let src = "chore:" # instanceId;
-                // If a task is still running, just poll again
                 if (ctx.isTaskRunning) {
                     return #ContinueIn(10);
                 };
 
                 switch (ctx.lastCompletedTask) {
                     case null {
-                        // First invocation: fetch all neurons
-                        let neurons = await listNeuronsInternal();
-                        let neuronIds = Buffer.Buffer<T.NeuronId>(neurons.size());
-                        for (n in neurons.vals()) {
-                            switch (n.id) {
-                                case (?nid) { neuronIds.add(nid) };
-                                case null {};
+                        let taskFn = func(): async BotChoreTypes.TaskAction {
+                            let neurons = await listNeuronsInternal();
+                            let neuronIds = Buffer.Buffer<T.NeuronId>(neurons.size());
+                            for (n in neurons.vals()) {
+                                switch (n.id) { case (?nid) { neuronIds.add(nid) }; case null {} };
                             };
+                            _cm_setState(instanceId, { neurons = Buffer.toArray(neuronIds); index = 0 });
+                            #Done
                         };
-                        _cm_setState(instanceId, { neurons = Buffer.toArray(neuronIds); index = 0 });
-
-                        let st = _cm_getState(instanceId);
-                        logEngine.logInfo(src, "Starting: found " # Nat.toText(st.neurons.size()) # " neurons to collect maturity from", null, [("neuronCount", Nat.toText(st.neurons.size()))]);
-
-                        if (st.neurons.size() == 0) {
-                            return #Done; // No neurons to process
-                        };
-
-                        // Start first task and poll
-                        _cm_startCurrentTask(instanceId);
-                        return #ContinueIn(10);
+                        choreEngine.setPendingTask(instanceId, "cm-fetch-neurons", taskFn);
+                        return #ContinueIn(5);
                     };
                     case (?lastResult) {
-                        // Previous task completed — advance to next neuron
+                        if (lastResult.taskId == "cm-fetch-neurons") {
+                            let st = _cm_getState(instanceId);
+                            logEngine.logInfo(src, "Starting: found " # Nat.toText(st.neurons.size()) # " neurons to collect maturity from", null, [("neuronCount", Nat.toText(st.neurons.size()))]);
+                            if (st.neurons.size() == 0) {
+                                return #Done;
+                            };
+                            _cm_startCurrentTask(instanceId);
+                            return #ContinueIn(10);
+                        };
                         let st = _cm_getState(instanceId);
                         logEngine.logTrace(src, "Neuron " # Nat.toText(st.index) # "/" # Nat.toText(st.neurons.size()) # " task done (success=" # (if (lastResult.succeeded) "true" else "false") # ")", null, [("index", Nat.toText(st.index)), ("total", Nat.toText(st.neurons.size())), ("succeeded", if (lastResult.succeeded) "true" else "false")]);
                         let nextIdx = st.index + 1;
                         _cm_setState(instanceId, { st with index = nextIdx });
                         if (nextIdx >= st.neurons.size()) {
                             logEngine.logInfo(src, "Completed: all " # Nat.toText(st.neurons.size()) # " neurons processed", null, [("neuronCount", Nat.toText(st.neurons.size()))]);
-                            return #Done; // All neurons processed
+                            return #Done;
                         };
-
-                        // Start next task and poll
                         _cm_startCurrentTask(instanceId);
                         return #ContinueIn(10);
                     };
