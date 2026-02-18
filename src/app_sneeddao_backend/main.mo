@@ -17,6 +17,33 @@ import Timer "mo:base/Timer";
 import T "Types";
 import PremiumClient "../PremiumClient";
 
+(with migration = func (old : {
+  var stable_principal_wallet_layouts : [(Principal, {
+    tokens: [Principal];
+    positions: [Principal];
+    apps: [Principal];
+    staking_bots: [Principal];
+  })]
+}) : {
+  var stable_principal_wallet_layouts : [(Principal, T.WalletLayout)]
+} {
+  {
+    var stable_principal_wallet_layouts = Array.map<
+      (Principal, { tokens: [Principal]; positions: [Principal]; apps: [Principal]; staking_bots: [Principal] }),
+      (Principal, T.WalletLayout)
+    >(
+      old.stable_principal_wallet_layouts,
+      func ((p, layout) : (Principal, { tokens: [Principal]; positions: [Principal]; apps: [Principal]; staking_bots: [Principal] })) : (Principal, T.WalletLayout) {
+        (p, {
+          tokens = layout.tokens;
+          positions = layout.positions;
+          apps = layout.apps;
+          sneedapp = layout.staking_bots;
+        })
+      }
+    );
+  }
+})
 shared (deployer) actor class AppSneedDaoBackend() = this {
 
   private func this_canister_id() : Principal {
