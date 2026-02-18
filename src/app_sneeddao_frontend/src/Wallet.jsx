@@ -582,8 +582,10 @@ function Wallet() {
         // Official versions and outdated bot detection (shared)
         officialVersions: contextOfficialVersions,
         latestOfficialVersion: contextLatestOfficialVersion,
+        latestVersionByApp: contextLatestVersionByApp,
         outdatedManagers: contextOutdatedManagers,
         isVersionOutdated: contextIsVersionOutdated,
+        compareVersions,
         // Cycles data shared with context for low-cycles notifications
         setNeuronManagerCycles: contextSetNeuronManagerCycles,
         setTrackedCanisterCycles: contextSetTrackedCanisterCycles,
@@ -6727,10 +6729,7 @@ function Wallet() {
                             >
                                 <FaExclamationTriangle size={14} style={{ color: '#f59e0b', flexShrink: 0 }} />
                                 <span style={{ flex: 1, fontSize: '13px', color: theme.colors.primaryText }}>
-                                    <strong>{outdatedManagers.length}</strong> bot{outdatedManagers.length !== 1 ? 's' : ''} can be upgraded to{' '}
-                                    <span style={{ color: '#8b5cf6', fontWeight: '600' }}>
-                                        v{Number(latestOfficialVersion.major)}.{Number(latestOfficialVersion.minor)}.{Number(latestOfficialVersion.patch)}
-                                    </span>
+                                    <strong>{outdatedManagers.length}</strong> bot{outdatedManagers.length !== 1 ? 's' : ''} can be upgraded to newer version{outdatedManagers.length !== 1 ? 's' : ''}
                                 </span>
                                 <span style={{
                                     padding: '4px 12px',
@@ -7029,6 +7028,8 @@ function Wallet() {
                                     const isStakingBot = appId === 'sneed-icp-staking-bot' || appId === 'icp-staking-bot';
                                     const appInfo = contextAppInfoMap?.[appId];
                                     const appLabel = appInfo?.name || (isStakingBot ? 'ICP Staking Bot' : (appId || 'Unknown'));
+                                    const appLatestVersion = appId ? contextLatestVersionByApp?.[appId] : null;
+                                    const isAppVersionOutdated = appLatestVersion && manager.version && compareVersions(manager.version, appLatestVersion) < 0;
                                     const neuronCount = neuronManagerCounts[canisterId];
                                     const isExpanded = expandedManagerCards[canisterId];
                                     const neuronsData = managerNeurons[canisterId];
@@ -7215,19 +7216,19 @@ function Wallet() {
                                                     <div className="header-row-3" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                         <span 
                                                             style={{
-                                                                background: isVersionOutdated(manager.version) ? '#f59e0b20' : (theme.colors.tertiaryBg || theme.colors.primaryBg),
-                                                                color: isVersionOutdated(manager.version) ? '#f59e0b' : theme.colors.mutedText,
+                                                                background: isAppVersionOutdated ? '#f59e0b20' : (theme.colors.tertiaryBg || theme.colors.primaryBg),
+                                                                color: isAppVersionOutdated ? '#f59e0b' : theme.colors.mutedText,
                                                                 padding: '2px 8px',
                                                                 borderRadius: '12px',
                                                                 fontSize: '0.7rem',
                                                                 fontWeight: '500',
                                                             }}
-                                                            title={isVersionOutdated(manager.version) 
-                                                                ? `Newer version available: v${Number(latestOfficialVersion.major)}.${Number(latestOfficialVersion.minor)}.${Number(latestOfficialVersion.patch)}`
+                                                            title={isAppVersionOutdated && appLatestVersion
+                                                                ? `Newer version available: v${Number(appLatestVersion.major)}.${Number(appLatestVersion.minor)}.${Number(appLatestVersion.patch)}`
                                                                 : undefined
                                                             }
                                                         >
-                                                            {isVersionOutdated(manager.version) && <FaExclamationTriangle size={10} style={{ marginRight: '4px', color: '#f59e0b' }} />}
+                                                            {isAppVersionOutdated && <FaExclamationTriangle size={10} style={{ marginRight: '4px', color: '#f59e0b' }} />}
                                                             {manager.version ? `v${Number(manager.version.major)}.${Number(manager.version.minor)}.${Number(manager.version.patch)}` : '...'}
                                                         </span>
                                                         {/* Cycles badge */}
@@ -7372,7 +7373,7 @@ function Wallet() {
                                                             marginBottom: '12px',
                                                             flexWrap: 'wrap',
                                                         }}>
-                                                            {isVersionOutdated && isVersionOutdated(manager.version) && latestOfficialVersion && (
+                                                            {isAppVersionOutdated && appLatestVersion && (
                                                                 <button
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
@@ -7395,7 +7396,7 @@ function Wallet() {
                                                                     }}
                                                                     onMouseEnter={(e) => { e.currentTarget.style.background = '#d97706'; }}
                                                                     onMouseLeave={(e) => { e.currentTarget.style.background = '#f59e0b'; }}
-                                                                    title={`Upgrade to v${Number(latestOfficialVersion.major)}.${Number(latestOfficialVersion.minor)}.${Number(latestOfficialVersion.patch)}`}
+                                                                    title={`Upgrade to v${Number(appLatestVersion.major)}.${Number(appLatestVersion.minor)}.${Number(appLatestVersion.patch)}`}
                                                                 >
                                                                     <FaArrowUp size={12} />
                                                                     Upgrade
@@ -8404,9 +8405,11 @@ function Wallet() {
                                     const isStakingBot = trackedResolvedAppId === 'sneed-icp-staking-bot' || trackedResolvedAppId === 'icp-staking-bot';
                                     const trackedAppInfo = contextAppInfoMap?.[trackedResolvedAppId];
                                     const appLabel = trackedAppInfo?.name || (isStakingBot ? 'ICP Staking Bot' : (trackedResolvedAppId || 'Unknown'));
+                                    const appLatestVersion = trackedResolvedAppId ? contextLatestVersionByApp?.[trackedResolvedAppId] : null;
                                     
                                     if (detectedManager && detectedManager.isValid) {
                                         const managerVersion = detectedManager.version;
+                                        const isAppVersionOutdated = appLatestVersion && managerVersion && compareVersions(managerVersion, appLatestVersion) < 0;
                                         const managerNeuronCount = detectedManager.neuronCount || 0;
                                         const managerCycles = detectedManager.cycles;
                                         const managerIsController = detectedManager.isController;
@@ -8719,11 +8722,11 @@ function Wallet() {
                                                                 <FaBrain size={12} />
                                                                 Manage Neurons
                                                             </Link>
-                                                            {isVersionOutdated && isVersionOutdated(manager.version) && latestOfficialVersion && (
+                                                            {isAppVersionOutdated && appLatestVersion && (
                                                                 <button
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
-                                                                        setUpgradeSingleBot(manager);
+                                                                        setUpgradeSingleBot({ canisterId: Principal.fromText(canisterId), version: managerVersion });
                                                                         setUpgradeDialogOpen(true);
                                                                     }}
                                                                     style={{

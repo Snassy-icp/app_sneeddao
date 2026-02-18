@@ -2071,10 +2071,20 @@ export const WalletProvider = ({ children }) => {
         await Promise.all(botList.map(async ({ canisterId: canisterIdStr, resolvedAppId }) => {
             try {
                 // Use the correct actor based on WASM-resolved app type
-                const actor = (resolvedAppId === 'sneed-icp-staking-bot' || resolvedAppId === 'icp-staking-bot')
-                    ? createManagerActor(canisterIdStr, { agent })
-                    : createTradingBotActor(canisterIdStr, { agent });
-                const choreStatuses = await actor.getChoreStatuses();
+                const isStaking = resolvedAppId === 'sneed-icp-staking-bot' || resolvedAppId === 'icp-staking-bot';
+                let choreStatuses;
+                if (isStaking) {
+                    choreStatuses = await createManagerActor(canisterIdStr, { agent }).getChoreStatuses();
+                } else if (resolvedAppId) {
+                    choreStatuses = await createTradingBotActor(canisterIdStr, { agent }).getChoreStatuses();
+                } else {
+                    // Unknown WASM -- try both actor types
+                    try {
+                        choreStatuses = await createManagerActor(canisterIdStr, { agent }).getChoreStatuses();
+                    } catch (_) {
+                        choreStatuses = await createTradingBotActor(canisterIdStr, { agent }).getChoreStatuses();
+                    }
+                }
                 if (choreStatuses && choreStatuses.length > 0) {
                     setManagerChoreStatuses(prev => {
                         // Skip update if nothing changed (compare key scalar fields)
@@ -2316,13 +2326,32 @@ export const WalletProvider = ({ children }) => {
         }
     }, [hasFetchedManagers, identity, officialVersions.length, fetchOfficialVersions]);
 
+    // Per-app latest version map: appId → latest version object
+    const latestVersionByApp = React.useMemo(() => {
+        const map = {}; // appId -> { version, ... }
+        for (const entry of Object.values(allKnownWasmHashes)) {
+            const { appId, version } = entry;
+            if (!appId || !version) continue;
+            const existing = map[appId];
+            if (!existing || compareVersions(version, existing) > 0) {
+                map[appId] = version;
+            }
+        }
+        return map;
+    }, [allKnownWasmHashes, compareVersions]);
+
     // Computed: list of outdated managers (only ones we are controller of)
-    // Each entry is enriched with hasKnownHash so the upgrade dialog can warn for unknown WASM
+    // Only compares a canister against the latest version of its OWN app (WASM-resolved)
     const outdatedManagers = React.useMemo(() => {
-        if (!latestOfficialVersion || neuronManagers.length === 0) return [];
+        if (neuronManagers.length === 0) return [];
         return neuronManagers
             .filter(m => {
-                if (!m.version || !isVersionOutdated(m.version)) return false;
+                if (!m.version) return false;
+                const resolvedApp = m.resolvedAppId || '';
+                if (!resolvedApp) return false;
+                const latest = latestVersionByApp[resolvedApp];
+                if (!latest) return false;
+                if (compareVersions(m.version, latest) >= 0) return false;
                 const cid = typeof m.canisterId === 'string' ? m.canisterId : m.canisterId?.toText?.() || m.canisterId?.toString?.() || '';
                 return neuronManagerIsController[cid] === true;
             })
@@ -2332,7 +2361,7 @@ export const WalletProvider = ({ children }) => {
                 const knownVersion = moduleHash ? isKnownNeuronManagerHash(moduleHash) : null;
                 return { ...m, hasKnownHash: !!knownVersion, moduleHash: moduleHash || null };
             });
-    }, [neuronManagers, latestOfficialVersion, isVersionOutdated, neuronManagerIsController, neuronManagerModuleHash, isKnownNeuronManagerHash]);
+    }, [neuronManagers, latestVersionByApp, compareVersions, neuronManagerIsController, neuronManagerModuleHash, isKnownNeuronManagerHash]);
 
     // Computed: list of canisters (managers + tracked + app manager) that are below their critical cycle level
     // Includes canisters we're not controller of, since topping up cycles is permissionless (CMC notify_top_up)
@@ -3087,6 +3116,7 @@ export const WalletProvider = ({ children }) => {
             refreshBotLogAlerts,
             officialVersions,
             latestOfficialVersion,
+            latestVersionByApp,
             outdatedManagers,
             isVersionOutdated,
             compareVersions,

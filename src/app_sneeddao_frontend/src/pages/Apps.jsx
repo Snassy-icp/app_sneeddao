@@ -3752,19 +3752,35 @@ export default function AppsPage() {
         );
     };
 
-    // Computed: outdated neuron managers (controllers only, with known wasm) for upgrade banner
-    // Only includes bots whose wasm hash matches a known official version, to prevent
-    // accidentally offering to upgrade non-staking-bot canisters in the list
+    // Per-app latest version map: appId → latest version object
+    const latestVersionByApp = React.useMemo(() => {
+        const map = {};
+        for (const entry of Object.values(allKnownWasmHashes)) {
+            const { appId, version } = entry;
+            if (!appId || !version) continue;
+            const existing = map[appId];
+            if (!existing || compareVersions(version, existing) > 0) {
+                map[appId] = version;
+            }
+        }
+        return map;
+    }, [allKnownWasmHashes, compareVersions]);
+
+    // Computed: outdated managers (controllers only, with known WASM) for upgrade banner
+    // Only compares a canister against the latest version of its OWN app (WASM-resolved)
     const outdatedManagersForBanner = React.useMemo(() => {
-        if (!latestOfficialVersion || neuronManagers.length === 0) return [];
+        if (neuronManagers.length === 0) return [];
         return neuronManagers.filter(m => {
-            if (!m.version || !isVersionOutdated(m.version)) return false;
-            if (m.isController !== true) return false;
-            // Only include bots whose wasm hash matches a known official version
+            if (!m.version || m.isController !== true) return false;
+            const resolvedApp = m.resolvedAppId || '';
+            if (!resolvedApp) return false;
+            const latest = latestVersionByApp[resolvedApp];
+            if (!latest) return false;
+            if (compareVersions(m.version, latest) >= 0) return false;
             if (!m.moduleHash) return false;
             return isKnownNeuronManagerHash(m.moduleHash) !== null;
         });
-    }, [neuronManagers, latestOfficialVersion, isVersionOutdated, isKnownNeuronManagerHash]);
+    }, [neuronManagers, latestVersionByApp, compareVersions, isKnownNeuronManagerHash]);
 
     // Computed: low-cycles canisters for top-up banner
     // Includes non-controller canisters since top-up is permissionless (CMC notify_top_up)

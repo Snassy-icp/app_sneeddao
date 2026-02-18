@@ -783,7 +783,15 @@ function IcpNeuronManager() {
             if (!versions || versions.length === 0) {
                 versions = await factory.getOfficialVersions();
             }
-            setOfficialVersions(versions || []);
+            // Normalize Candid optionals ([] | [string]) to plain strings
+            const normalized = (versions || []).map(v => ({
+                ...v,
+                wasmUrl: Array.isArray(v.wasmUrl) ? (v.wasmUrl[0] || '') : (v.wasmUrl || ''),
+                wasmHash: Array.isArray(v.wasmHash) ? (v.wasmHash[0] || '') : (v.wasmHash || ''),
+                sourceUrl: Array.isArray(v.sourceUrl) ? (v.sourceUrl[0] || '') : (v.sourceUrl || ''),
+                description: Array.isArray(v.description) ? (v.description[0] || '') : (v.description || ''),
+            }));
+            setOfficialVersions(normalized);
         } catch (err) {
             console.error('Error fetching official versions:', err);
             setOfficialVersions([]);

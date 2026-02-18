@@ -21,11 +21,11 @@ export function useBotChoreNotification() {
     const openDialog = useCallback(() => setIsDialogOpen(true), []);
     const closeDialog = useCallback(() => setIsDialogOpen(false), []);
 
-    // Build a canisterId -> appId map for quick lookup
+    // Build a canisterId -> resolvedAppId map from WASM-resolved types
     const botTypeMap = useMemo(() => {
         const map = {};
         for (const entry of allBotEntries) {
-            map[entry.canisterId.toString()] = entry.appId || '';
+            map[entry.canisterId.toString()] = entry.resolvedAppId || '';
         }
         return map;
     }, [allBotEntries]);
