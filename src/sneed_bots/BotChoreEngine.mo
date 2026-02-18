@@ -1128,21 +1128,20 @@ module {
                         });
                     };
                     case (#Done) {
-                        markTaskCompleted(choreId, true, null);
+                        markTaskCompleted<system>(choreId, true, null);
                     };
                     case (#Error(msg)) {
-                        markTaskCompleted(choreId, false, ?msg);
+                        markTaskCompleted<system>(choreId, false, ?msg);
                     };
                 };
             } catch (e) {
-                markTaskCompleted(choreId, false, ?("Task threw: " # Error.message(e)));
+                markTaskCompleted<system>(choreId, false, ?("Task threw: " # Error.message(e)));
             };
         };
 
         /// Mark a task as completed (success or failure).
-        /// Updates state only — does NOT trigger the conductor.
-        /// The conductor discovers this on its next polling tick.
-        func markTaskCompleted(choreId: Text, succeeded: Bool, error: ?Text) {
+        /// Updates state and nudges the conductor for a safety re-check.
+        func markTaskCompleted<system>(choreId: Text, succeeded: Bool, error: ?Text) {
             let state = getStateOrDefault(choreId);
             let taskId = switch (state.currentTaskId) {
                 case (?id) { id };
@@ -1167,6 +1166,14 @@ module {
                     lastTaskError = error;
                 }
             });
+
+            // Safety net: immediately re-tick conductor after a task completes.
+            // The conductor still owns orchestration, but this avoids a stuck
+            // run if the previously scheduled polling timer is missing/stale.
+            let refreshed = getStateOrDefault(choreId);
+            if (refreshed.conductorActive and not refreshed.stopRequested) {
+                scheduleConductorTick<system>(choreId, 0);
+            };
         };
 
         // ============================================
