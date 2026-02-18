@@ -723,6 +723,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         };
     };
 
+    // Run on initial install (postupgrade handles upgrades)
+    ensurePublisher0Exists();
+
     // ============================================
     // ADMIN MANAGEMENT
     // ============================================

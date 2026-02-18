@@ -25,6 +25,7 @@ export default function SneedAppAdmin() {
     const [publishers, setPublishers] = useState([]);
     const [editingPub, setEditingPub] = useState(null);
     const [editingPubData, setEditingPubData] = useState({});
+    const [editPubPaymentAccount, setEditPubPaymentAccount] = useState({ principal: '', subaccount: null });
     const [newPub, setNewPub] = useState({ name: '', description: '', websiteUrl: '', logoUrl: '' });
     const [newPubPaymentAccount, setNewPubPaymentAccount] = useState({ principal: '', subaccount: null });
     const [newOwnerPrincipal, setNewOwnerPrincipal] = useState('');
@@ -193,13 +194,16 @@ export default function SneedAppAdmin() {
         setLoading(true);
         try {
             const factory = getFactory();
+            const payAccount = editPubPaymentAccount.principal
+                ? accountToBackend(editPubPaymentAccount.principal, editPubPaymentAccount.subaccount)
+                : pub.defaultPaymentAccount;
             const result = await factory.updatePublisher(pub.publisherId, {
                 name: editingPubData.name,
                 description: editingPubData.description,
                 websiteUrl: editingPubData.websiteUrl ? [editingPubData.websiteUrl] : [],
                 logoUrl: editingPubData.logoUrl ? [editingPubData.logoUrl] : [],
                 links: pub.links || [],
-                defaultPaymentAccount: pub.defaultPaymentAccount
+                defaultPaymentAccount: payAccount
             });
             if (result.Err) showError(result.Err);
             else { showSuccess('Publisher updated'); setEditingPub(null); }
@@ -587,7 +591,7 @@ export default function SneedAppAdmin() {
                                         <span style={pillStyle('#f59e0b')}>DAO Cut: {(Number(pub.daoCutBasisPoints) / 100).toFixed(1)}%</span>
                                     </div>
                                     <div style={{ display: 'flex', gap: 6 }}>
-                                        {!isEditing && <button onClick={() => { setEditingPub(Number(pub.publisherId)); setEditingPubData({ name: pub.name, description: pub.description, websiteUrl: pub.websiteUrl?.length > 0 ? pub.websiteUrl[0] : '', logoUrl: pub.logoUrl?.length > 0 ? pub.logoUrl[0] : '' }); }} style={btnSm(appPrimary)}><FaEdit /> Edit</button>}
+                                        {!isEditing && <button onClick={() => { setEditingPub(Number(pub.publisherId)); setEditingPubData({ name: pub.name, description: pub.description, websiteUrl: pub.websiteUrl?.length > 0 ? pub.websiteUrl[0] : '', logoUrl: pub.logoUrl?.length > 0 ? pub.logoUrl[0] : '' }); setEditPubPaymentAccount({ principal: pub.defaultPaymentAccount?.owner?.toText?.() || '', subaccount: null }); }} style={btnSm(appPrimary)}><FaEdit /> Edit</button>}
                                         <button onClick={() => handleVerify(pub.publisherId, !pub.verified)} style={btnSm(pub.verified ? '#ef4444' : '#10b981')}>
                                             {pub.verified ? <><FaBan /> Unverify</> : <><FaCheck /> Verify</>}
                                         </button>
@@ -600,6 +604,17 @@ export default function SneedAppAdmin() {
                                             <div><label style={label}>Name</label><input value={editingPubData.name} onChange={e => setEditingPubData({ ...editingPubData, name: e.target.value })} style={inputStyle} /></div>
                                             <div><label style={label}>Website URL</label><input value={editingPubData.websiteUrl} onChange={e => setEditingPubData({ ...editingPubData, websiteUrl: e.target.value })} style={inputStyle} /></div>
                                             <div style={{ gridColumn: '1 / -1' }}><label style={label}>Description</label><input value={editingPubData.description} onChange={e => setEditingPubData({ ...editingPubData, description: e.target.value })} style={inputStyle} /></div>
+                                            <div style={{ gridColumn: '1 / -1' }}>
+                                                <label style={label}>Default Payment Account (ICRC-1)</label>
+                                                <PrincipalInput
+                                                    value={editPubPaymentAccount.principal}
+                                                    onChange={(val) => setEditPubPaymentAccount(prev => ({ ...prev, principal: val }))}
+                                                    onAccountChange={({ principal, subaccount }) => setEditPubPaymentAccount({ principal, subaccount })}
+                                                    showSubaccountOption={true}
+                                                    placeholder="Principal or ICRC-1 account"
+                                                    style={{ maxWidth: '100%' }}
+                                                />
+                                            </div>
                                         </div>
                                         <div style={{ display: 'flex', gap: 6 }}>
                                             <button onClick={() => handleUpdatePublisher(pub)} disabled={loading} style={btnSm('#10b981')}>{loading ? <FaSpinner className="fa-spin" /> : <FaSave />} Save</button>
