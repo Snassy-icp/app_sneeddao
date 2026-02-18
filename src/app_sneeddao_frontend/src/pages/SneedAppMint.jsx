@@ -35,6 +35,7 @@ export default function SneedAppMint() {
     // State
     const [step, setStep] = useState(0); // 0=version, 1=fund, 2=gas, 3=confirm, 4=success
     const [app, setApp] = useState(null);
+    const [publisher, setPublisher] = useState(null);
     const [versions, setVersions] = useState([]);
     const [selectedVersion, setSelectedVersion] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -84,6 +85,10 @@ export default function SneedAppMint() {
                 ]);
                 if (appInfo.length === 0) { setError('App not found'); setLoading(false); return; }
                 setApp(appInfo[0]);
+                try {
+                    const pub = await factory.getPublisher(appInfo[0].publisherId);
+                    if (pub.length > 0) setPublisher(pub[0]);
+                } catch (_) {}
                 setVersions(versionList);
                 // Auto-select latest version with WASM
                 const latest = versionList.find(v => v.hasWasm);
@@ -189,7 +194,14 @@ export default function SneedAppMint() {
             } else if (result.Err) {
                 const errKey = Object.keys(result.Err)[0];
                 const errVal = result.Err[errKey];
-                throw new Error(`Minting failed: ${errKey}${typeof errVal === 'object' ? ' - ' + JSON.stringify(errVal) : ''}`);
+                const friendlyErrors = {
+                    PublisherNotFound: 'The publisher for this app was not found.',
+                    PublisherNotVerified: 'This app\'s publisher has not been verified yet.',
+                    AppNotFound: 'App not found.',
+                    AppNotEnabled: 'This app is currently disabled.',
+                    InsufficientPayment: 'Insufficient payment balance.',
+                };
+                throw new Error(friendlyErrors[errKey] || `Minting failed: ${errKey}${typeof errVal === 'object' ? ' - ' + JSON.stringify(errVal) : ''}`);
             }
         } catch (e) {
             setError(e.message || 'Minting failed');
@@ -264,11 +276,18 @@ export default function SneedAppMint() {
             <Header />
             <div style={{ maxWidth: 700, margin: '0 auto', padding: '20px 16px 60px' }}>
                 {/* Breadcrumb */}
-                <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
                     <Link to="/sneedapp" style={{ color: theme.colors.secondaryText, textDecoration: 'none' }}>Sneedapp</Link>
                     <span style={{ color: theme.colors.secondaryText }}>/</span>
                     <span style={{ color: appPrimary }}>Mint {app?.name}</span>
                 </div>
+                {publisher && (
+                    <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                        <span style={{ color: theme.colors.secondaryText }}>by</span>
+                        <span style={{ color: theme.colors.primaryText, fontWeight: 500 }}>{publisher.name}</span>
+                        {publisher.verified && <FaCheckCircle style={{ color: '#10b981', fontSize: 11 }} />}
+                    </div>
+                )}
 
                 {/* Step indicator */}
                 {step < 4 && (
@@ -454,6 +473,25 @@ export default function SneedAppMint() {
                                     {pricingInfo ? formatIcp(pricingInfo.applicable) : '...'} ICP
                                 </span>
                             </div>
+                            {publisher && (
+                                <>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${theme.colors.borderColor || '#333'}` }}>
+                                        <span style={{ color: theme.colors.secondaryText }}>Publisher</span>
+                                        <span style={{ color: theme.colors.primaryText, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                            {publisher.name}
+                                            {publisher.verified && <FaCheckCircle style={{ color: '#10b981', fontSize: 10 }} />}
+                                        </span>
+                                    </div>
+                                    {Number(app?.publisherId) !== 0 && (
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${theme.colors.borderColor || '#333'}` }}>
+                                            <span style={{ color: theme.colors.secondaryText }}>Revenue Split</span>
+                                            <span style={{ color: theme.colors.secondaryText, fontSize: 12 }}>
+                                                {(Number(publisher.daoCutBasisPoints) / 100).toFixed(1)}% Sneed DAO / {(100 - Number(publisher.daoCutBasisPoints) / 100).toFixed(1)}% Publisher
+                                            </span>
+                                        </div>
+                                    )}
+                                </>
+                            )}
                         </div>
 
                         {creating && (

@@ -117,6 +117,7 @@ import Swap from './pages/Swap';
 // Sneedapp pages
 import SneedApp from './pages/SneedApp';
 import SneedAppMint from './pages/SneedAppMint';
+import SneedAppPublisher from './pages/SneedAppPublisher';
 import SneedAppAdmin from './pages/admin/SneedAppAdmin';
 
 // Bot pages
@@ -227,6 +228,7 @@ function App() {
                     {/* Sneedapp routes */}
                     <Route path="/sneedapp" element={<SneedApp />} />
                     <Route path="/sneedapp/mint/:appId" element={<SneedAppMint />} />
+                    <Route path="/sneedapp/publisher/:publisherId" element={<SneedAppPublisher />} />
 
                     {/* Bot routes */}
                     <Route path="/trading_bot/:canisterId" element={<TradingBot />} />

@@ -6,7 +6,7 @@ import { createActor as createFactoryActor, canisterId as factoryCanisterId } fr
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
-import { FaRocket, FaCubes, FaExternalLinkAlt, FaStore, FaSpinner, FaChevronDown, FaChevronUp, FaPlus, FaEye, FaCog, FaTag } from 'react-icons/fa';
+import { FaRocket, FaCubes, FaExternalLinkAlt, FaStore, FaSpinner, FaChevronDown, FaChevronUp, FaPlus, FaEye, FaCog, FaTag, FaCheckCircle } from 'react-icons/fa';
 
 const customStyles = `
 @keyframes fadeInUp {
@@ -33,10 +33,12 @@ export default function SneedApp() {
     const navigate = useNavigate();
 
     const [apps, setApps] = useState([]);
+    const [publishers, setPublishers] = useState([]);
     const [wallet, setWallet] = useState([]);
     const [loading, setLoading] = useState(true);
     const [walletExpanded, setWalletExpanded] = useState(true);
     const [mintCounts, setMintCounts] = useState({});
+    const [selectedFamily, setSelectedFamily] = useState(null);
 
     const getAgent = useCallback(() => {
         const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging'
@@ -64,15 +66,18 @@ export default function SneedApp() {
         });
     }, []);
 
-    // Load apps (public, no auth needed)
+    // Load apps and publishers (public, no auth needed)
     useEffect(() => {
         const loadApps = async () => {
             try {
                 const factory = getAnonFactory();
-                const appList = await factory.getApps();
+                const [appList, pubList] = await Promise.all([
+                    factory.getApps(),
+                    factory.getPublishers()
+                ]);
                 setApps(appList.filter(a => a.enabled));
+                setPublishers(pubList);
 
-                // Load mint counts per app
                 const counts = {};
                 for (const app of appList) {
                     try {
@@ -89,6 +94,15 @@ export default function SneedApp() {
         };
         loadApps();
     }, [getAnonFactory]);
+
+    const pubMap = {};
+    publishers.forEach(p => { pubMap[Number(p.publisherId)] = p; });
+
+    const allFamilies = [...new Set(apps.flatMap(a => a.families || []))].sort();
+
+    const filteredApps = selectedFamily
+        ? apps.filter(a => (a.families || []).includes(selectedFamily))
+        : apps;
 
     // Load user wallet
     useEffect(() => {
@@ -169,24 +183,41 @@ export default function SneedApp() {
                     <FaCubes style={{ color: appPrimary }} /> Available Apps
                 </h2>
 
+                {allFamilies.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
+                        <button onClick={() => setSelectedFamily(null)} style={{
+                            padding: '6px 14px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 500,
+                            background: !selectedFamily ? appPrimary : `${appPrimary}15`,
+                            color: !selectedFamily ? '#fff' : appPrimary
+                        }}>All</button>
+                        {allFamilies.map(f => (
+                            <button key={f} onClick={() => setSelectedFamily(f === selectedFamily ? null : f)} style={{
+                                padding: '6px 14px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 500,
+                                background: selectedFamily === f ? '#8b5cf6' : '#8b5cf615',
+                                color: selectedFamily === f ? '#fff' : '#8b5cf6'
+                            }}>{f}</button>
+                        ))}
+                    </div>
+                )}
+
                 {loading ? (
                     <div style={{ textAlign: 'center', padding: 40, color: theme.colors.secondaryText }}>
                         <FaSpinner className="fa-spin" style={{ fontSize: 24, marginBottom: 8 }} />
                         <div>Loading apps...</div>
                     </div>
-                ) : apps.length === 0 ? (
+                ) : filteredApps.length === 0 ? (
                     <div style={{
                         textAlign: 'center', padding: 40, color: theme.colors.secondaryText,
                         background: theme.colors.secondaryBg, borderRadius: 12
                     }}>
-                        No apps available yet. Check back soon!
+                        {selectedFamily ? 'No apps with this family tag.' : 'No apps available yet. Check back soon!'}
                     </div>
                 ) : (
                     <div style={{
-                        display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320, 1fr))',
+                        display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
                         gap: 16, marginBottom: 40
                     }}>
-                        {apps.map((app, i) => (
+                        {filteredApps.map((app, i) => (
                             <div key={app.appId} className="sneedapp-fade-in" style={{
                                 animationDelay: `${i * 0.1}s`,
                                 background: theme.colors.cardGradient, borderRadius: 12,
@@ -215,11 +246,33 @@ export default function SneedApp() {
                                         <div style={{ color: theme.colors.primaryText, fontWeight: 600, fontSize: 16 }}>
                                             {app.name}
                                         </div>
-                                        <div style={{ color: theme.colors.secondaryText, fontSize: 12, marginTop: 2 }}>
-                                            {mintCounts[app.appId] || 0} minted
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                                            {(() => {
+                                                const pub = pubMap[Number(app.publisherId)];
+                                                return pub ? (
+                                                    <span style={{ color: theme.colors.secondaryText, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                        {pub.name}
+                                                        {pub.verified && <FaCheckCircle style={{ color: '#10b981', fontSize: 10 }} />}
+                                                    </span>
+                                                ) : null;
+                                            })()}
+                                            <span style={{ color: theme.colors.secondaryText, fontSize: 12 }}>
+                                                {mintCounts[app.appId] || 0} minted
+                                            </span>
                                         </div>
                                     </div>
                                 </div>
+
+                                {(app.families || []).length > 0 && (
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                        {app.families.map(f => (
+                                            <span key={f} style={{
+                                                padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 500,
+                                                background: '#8b5cf615', color: '#8b5cf6'
+                                            }}>{f}</span>
+                                        ))}
+                                    </div>
+                                )}
 
                                 <p style={{ color: theme.colors.secondaryText, fontSize: 13, margin: 0, lineHeight: 1.5, flex: 1 }}>
                                     {app.description}
