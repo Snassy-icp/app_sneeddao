@@ -2335,9 +2335,8 @@ export default function BotManagementPanel({
                                                                                                 fontSize: '0.73rem',
                                                                                             }}>
                                                                                                 <span style={dotStyle(
-                                                                                                    t.succeeded === true ? '#22c55e'
-                                                                                                        : t.succeeded === false ? (theme.colors.error || '#ef4444')
-                                                                                                        : theme.colors.secondaryText
+                                                                                                    t.succeeded === false ? (theme.colors.error || '#ef4444')
+                                                                                                        : '#22c55e'
                                                                                                 )} />
                                                                                                 <span style={{
                                                                                                     flex: 1, overflow: 'hidden', textOverflow: 'ellipsis',
