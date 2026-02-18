@@ -3628,6 +3628,7 @@ export default function AppsPage() {
                                     v{Number(version.major)}.{Number(version.minor)}.{Number(version.patch)}
                                 </span>
                             )}
+                            {isStakingBot && (
                             <span style={{
                                 ...styles.managerVersion,
                                 backgroundColor: neuronCount > 0 ? '#8b5cf620' : theme.colors.tertiaryBg,
@@ -3635,6 +3636,16 @@ export default function AppsPage() {
                             }}>
                                 🧠 {neuronCount} neuron{neuronCount !== 1 ? 's' : ''}
                             </span>
+                            )}
+                            {!isStakingBot && resolvedAppId && (
+                            <span style={{
+                                ...styles.managerVersion,
+                                backgroundColor: `${theme.colors.accent}20`,
+                                color: theme.colors.accent,
+                            }}>
+                                {resolvedAppId}
+                            </span>
+                            )}
                             {cycles !== null && cycles !== undefined && (
                                 <span 
                                     style={{

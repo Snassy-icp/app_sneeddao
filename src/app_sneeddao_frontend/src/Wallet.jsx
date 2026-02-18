@@ -7127,7 +7127,9 @@ function Wallet() {
                                                             <span className="token-amount">
                                                                 {managerTotalIcp > 0 
                                                                     ? `${managerTotalIcp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} ICP`
-                                                                    : `${neuronCount || 0} neuron${neuronCount !== 1 ? 's' : ''}`
+                                                                    : isStakingBot
+                                                                    ? `${neuronCount || 0} neuron${neuronCount !== 1 ? 's' : ''}`
+                                                                    : appLabel
                                                                 }
                                                             </span>
                                                         </div>
