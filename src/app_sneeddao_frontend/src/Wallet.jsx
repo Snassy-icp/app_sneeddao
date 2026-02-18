@@ -8634,7 +8634,7 @@ function Wallet() {
                                                 
                                                 {/* Expanded Section */}
                                                 {isExpanded && (() => {
-                                                    const activeTab = managerCardTab[canisterId] || 'actions';
+                                                    const activeTab = managerCardTab[canisterId] || 'info';
                                                     const choreStatuses = managerChoreStatuses[canisterId] || [];
                                                     const hasChores = choreStatuses.length > 0;
                                                     return (
@@ -8648,7 +8648,7 @@ function Wallet() {
                                                                 gap: '0',
                                                             }}>
                                                                 {[
-                                                                    { id: 'actions', label: 'Actions' },
+                                                                    { id: 'info', label: 'Info' },
                                                                     { id: 'chores', label: 'Chores', lamp: getAllChoresSummaryLamp(choreStatuses) },
                                                                 ].map(tab => (
                                                                     <button
@@ -8676,16 +8676,45 @@ function Wallet() {
                                                             </div>
                                                         )}
                                                         
-                                                        {/* Actions tab */}
-                                                        {activeTab === 'actions' && (
-                                                        <div style={{ 
-                                                            display: 'flex', 
-                                                            gap: '8px', 
-                                                            flexWrap: 'wrap',
-                                                            justifyContent: 'flex-end',
-                                                            alignItems: 'center',
-                                                        }}>
-                                                            {managerIsController && (
+                                                        {/* Info tab (matches Sneedapp section style) */}
+                                                        {activeTab === 'info' && (
+                                                        <>
+                                                        {managerIsController && (
+                                                            <div style={{ 
+                                                                display: 'flex', 
+                                                                justifyContent: 'flex-end',
+                                                                gap: '8px',
+                                                                marginBottom: '12px',
+                                                                flexWrap: 'wrap',
+                                                            }}>
+                                                                {isAppVersionOutdated && appLatestVersion && (
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setUpgradeSingleBot({ canisterId: Principal.fromText(canisterId), version: managerVersion });
+                                                                            setUpgradeDialogOpen(true);
+                                                                        }}
+                                                                        style={{
+                                                                            background: '#f59e0b',
+                                                                            color: '#fff',
+                                                                            border: 'none',
+                                                                            borderRadius: '6px',
+                                                                            padding: '6px 12px',
+                                                                            cursor: 'pointer',
+                                                                            fontSize: '0.85rem',
+                                                                            fontWeight: '600',
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '6px',
+                                                                            transition: 'all 0.2s ease',
+                                                                        }}
+                                                                        onMouseEnter={(e) => { e.currentTarget.style.background = '#d97706'; }}
+                                                                        onMouseLeave={(e) => { e.currentTarget.style.background = '#f59e0b'; }}
+                                                                    >
+                                                                        <FaArrowUp size={12} />
+                                                                        Upgrade
+                                                                    </button>
+                                                                )}
                                                                 <button
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
@@ -8696,18 +8725,21 @@ function Wallet() {
                                                                         setTransferCanisterModalOpen(true);
                                                                     }}
                                                                     style={{
-                                                                        padding: '8px 16px',
-                                                                        borderRadius: '8px',
-                                                                        backgroundColor: theme.colors.accent,
-                                                                        color: '#fff',
-                                                                        fontSize: '13px',
+                                                                        background: theme.colors.accent,
+                                                                        color: theme.colors.primaryBg,
                                                                         border: 'none',
+                                                                        borderRadius: '6px',
+                                                                        padding: '6px 12px',
                                                                         cursor: 'pointer',
-                                                                        fontWeight: '600',
+                                                                        fontSize: '0.85rem',
+                                                                        fontWeight: '500',
                                                                         display: 'flex',
                                                                         alignItems: 'center',
                                                                         gap: '6px',
+                                                                        transition: 'all 0.2s ease'
                                                                     }}
+                                                                    onMouseEnter={(e) => { e.target.style.background = theme.colors.accentHover; }}
+                                                                    onMouseLeave={(e) => { e.target.style.background = theme.colors.accent; }}
                                                                 >
                                                                     <img 
                                                                         src="send-inverted.png" 
@@ -8716,7 +8748,68 @@ function Wallet() {
                                                                     />
                                                                     Send
                                                                 </button>
-                                                            )}
+                                                            </div>
+                                                        )}
+
+                                                        {/* Canister Info */}
+                                                        <div style={{ 
+                                                            padding: '12px 16px',
+                                                            backgroundColor: theme.colors.tertiaryBg || 'rgba(0,0,0,0.05)',
+                                                            borderRadius: '8px',
+                                                            marginBottom: '12px',
+                                                        }}>
+                                                            <div style={{ 
+                                                                display: 'flex', 
+                                                                justifyContent: 'space-between', 
+                                                                alignItems: 'center',
+                                                                flexWrap: 'wrap',
+                                                                gap: '12px'
+                                                            }}>
+                                                                <div>
+                                                                    <div style={{ color: theme.colors.mutedText, fontSize: '11px', marginBottom: '2px' }}>Canister ID</div>
+                                                                    <div style={{ 
+                                                                        color: theme.colors.secondaryText, 
+                                                                        fontFamily: 'monospace', 
+                                                                        fontSize: '12px',
+                                                                    }}>
+                                                                        {canisterId}
+                                                                    </div>
+                                                                </div>
+                                                                {isStakingBot && (
+                                                                <div style={{ textAlign: 'center' }}>
+                                                                    <div style={{ color: theme.colors.mutedText, fontSize: '10px', textTransform: 'uppercase' }}>Neurons</div>
+                                                                    <div style={{ 
+                                                                        color: managerNeuronCount > 0 ? (theme.colors.success || '#22c55e') : theme.colors.warning || '#f59e0b',
+                                                                        fontWeight: '600',
+                                                                        fontSize: '13px'
+                                                                    }}>
+                                                                        {managerNeuronCount}
+                                                                    </div>
+                                                                </div>
+                                                                )}
+                                                                {!isStakingBot && (
+                                                                <div style={{ textAlign: 'center' }}>
+                                                                    <div style={{ color: theme.colors.mutedText, fontSize: '10px', textTransform: 'uppercase' }}>App</div>
+                                                                    <div style={{ 
+                                                                        color: theme.colors.accent,
+                                                                        fontWeight: '600',
+                                                                        fontSize: '13px'
+                                                                    }}>
+                                                                        {appLabel}
+                                                                    </div>
+                                                                </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Manage + Details + Remove row */}
+                                                        <div style={{ 
+                                                            display: 'flex', 
+                                                            gap: '8px', 
+                                                            flexWrap: 'wrap',
+                                                            justifyContent: 'flex-end',
+                                                            alignItems: 'center',
+                                                        }}>
                                                             <Link
                                                                 to={isStakingBot ? `/icp_neuron_manager/${canisterId}` : isTradingBot ? `/trading_bot/${canisterId}` : `/canister?id=${canisterId}`}
                                                                 style={{
@@ -8735,31 +8828,6 @@ function Wallet() {
                                                                 {isStakingBot ? <FaBrain size={12} /> : isTradingBot ? <FaChartLine size={12} /> : <FaBox size={12} />}
                                                                 {isStakingBot ? 'Manage Neurons' : 'Manage'}
                                                             </Link>
-                                                            {isAppVersionOutdated && appLatestVersion && (
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        setUpgradeSingleBot({ canisterId: Principal.fromText(canisterId), version: managerVersion });
-                                                                        setUpgradeDialogOpen(true);
-                                                                    }}
-                                                                    style={{
-                                                                        padding: '8px 16px',
-                                                                        borderRadius: '8px',
-                                                                        backgroundColor: '#f59e0b',
-                                                                        color: '#fff',
-                                                                        fontSize: '13px',
-                                                                        border: 'none',
-                                                                        cursor: 'pointer',
-                                                                        fontWeight: '600',
-                                                                        display: 'flex',
-                                                                        alignItems: 'center',
-                                                                        gap: '6px',
-                                                                    }}
-                                                                >
-                                                                    <FaArrowUp size={12} />
-                                                                    Upgrade
-                                                                </button>
-                                                            )}
                                                             <Link
                                                                 to={`/canister?id=${canisterId}`}
                                                                 style={{
@@ -8827,6 +8895,7 @@ function Wallet() {
                                                                 </button>
                                                             )}
                                                         </div>
+                                                        </>
                                                         )}
 
                                                         {/* Chores tab */}
