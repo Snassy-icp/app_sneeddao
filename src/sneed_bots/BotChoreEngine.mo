@@ -901,7 +901,7 @@ module {
             let state = getStateOrDefault(choreId);
             let previousTid = state.conductorTimerId;
             let nextSeq = getConductorScheduleSeq(choreId) + 1;
-            emitLog(#Info, choreId, "Conductor reschedule attempt", [
+            emitLog(#Trace, choreId, "Conductor reschedule attempt", [
                 ("delaySecs", Nat.toText(delaySecs)),
                 ("nextSeq", Nat.toText(nextSeq)),
                 ("previousTimerId", switch (previousTid) { case (?tid) Nat.toText(tid); case null "none" }),
@@ -915,7 +915,7 @@ module {
             updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
                 { s with conductorTimerId = ?tid }
             });
-            emitLog(#Info, choreId, "Conductor reschedule committed", [
+            emitLog(#Trace, choreId, "Conductor reschedule committed", [
                 ("delaySecs", Nat.toText(delaySecs)),
                 ("scheduleSeq", Nat.toText(nextSeq)),
                 ("timerId", Nat.toText(tid)),
@@ -926,7 +926,7 @@ module {
                 case (?existingTid) {
                     if (existingTid != tid) {
                         Timer.cancelTimer(existingTid);
-                        emitLog(#Info, choreId, "Conductor prior timer cancelled", [
+                        emitLog(#Trace, choreId, "Conductor prior timer cancelled", [
                             ("cancelledTimerId", Nat.toText(existingTid)),
                             ("replacementTimerId", Nat.toText(tid)),
                         ]);
@@ -941,24 +941,36 @@ module {
         func conductorTick<system>(choreId: Text, scheduleSeq: Nat): async () {
             // Tiny concurrency guard: stale or superseded ticks self-drop.
             if (scheduleSeq != getConductorScheduleSeq(choreId)) {
-                emitLog(#Info, choreId, "Conductor tick dropped: stale schedule sequence", [
+                emitLog(#Debug, choreId, "Conductor tick dropped: stale schedule sequence", [
                     ("scheduleSeq", Nat.toText(scheduleSeq)),
                     ("currentSeq", Nat.toText(getConductorScheduleSeq(choreId))),
                 ]);
                 return;
             };
             if (isConductorTickInFlight(choreId)) {
-                emitLog(#Info, choreId, "Conductor tick dropped: another tick is in flight", [
+                emitLog(#Debug, choreId, "Conductor tick dropped: another tick is in flight", [
                     ("scheduleSeq", Nat.toText(scheduleSeq))
                 ]);
                 return;
             };
             setConductorTickInFlight(choreId, true);
+            // This timer has fired; clear tracked timer id before running body.
+            // If rescheduling fails, runtime invariants can now detect "unscheduled".
+            updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
+                { s with conductorTimerId = null }
+            });
 
             try {
                 await conductorTickBody<system>(choreId);
             } catch (e) {
-                markConductorError(choreId, "Conductor tick wrapper threw: " # Error.message(e));
+                let errMsg = Error.message(e);
+                if (errMsg == "could not perform self call") {
+                    emitLog(#Warning, choreId, "Conductor wrapper self-call failed; will retry", [
+                        ("error", errMsg)
+                    ]);
+                } else {
+                    markConductorError(choreId, "Conductor tick wrapper threw: " # errMsg);
+                };
             };
 
             setConductorTickInFlight(choreId, false);
@@ -1098,7 +1110,16 @@ module {
                             };
                         };
                     } catch (e) {
-                        markConductorError(choreId, "Conductor threw: " # Error.message(e));
+                        let errMsg = Error.message(e);
+                        if (errMsg == "could not perform self call") {
+                            // Transient runtime condition: keep conductor alive and let
+                            // the already-armed heartbeat tick retry on the next cycle.
+                            emitLog(#Warning, choreId, "Conductor self-call failed; will retry on next heartbeat", [
+                                ("error", errMsg)
+                            ]);
+                        } else {
+                            markConductorError(choreId, "Conductor threw: " # errMsg);
+                        };
                     };
                 };
             };
@@ -1320,7 +1341,7 @@ module {
                 refreshed.conductorTimerId == null and
                 not isConductorTickInFlight(choreId)
             ) {
-                emitLog(#Info, choreId, "Task completion nudge: scheduling immediate conductor tick", [
+                emitLog(#Debug, choreId, "Task completion nudge: scheduling immediate conductor tick", [
                     ("taskId", taskId)
                 ]);
                 scheduleConductorTick<system>(choreId, 0);

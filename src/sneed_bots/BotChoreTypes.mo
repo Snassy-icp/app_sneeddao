@@ -276,7 +276,7 @@ module {
     // ============================================
 
     /// Log level for the chore engine log callback.
-    public type ChoreLogLevel = { #Info; #Warning; #Error };
+    public type ChoreLogLevel = { #Trace; #Debug; #Info; #Warning; #Error };
 
     /// Interface for the engine to read/write the bot's stable chore state.
     /// The bot provides getter/setter functions that close over its stable vars.

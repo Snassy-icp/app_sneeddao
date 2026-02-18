@@ -250,6 +250,8 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         setInstances = func(i: [(Text, BotChoreTypes.ChoreInstanceInfo)]): () { choreInstances := i };
         log = ?(func(level: BotChoreTypes.ChoreLogLevel, source: Text, message: Text, tags: [(Text, Text)]): () {
             switch (level) {
+                case (#Trace) { logEngine.logTrace(source, message, null, tags) };
+                case (#Debug) { logEngine.logDebug(source, message, null, tags) };
                 case (#Info) { logEngine.logInfo(source, message, null, tags) };
                 case (#Warning) { logEngine.logWarning(source, message, null, tags) };
                 case (#Error) { logEngine.logError(source, message, null, tags) };
