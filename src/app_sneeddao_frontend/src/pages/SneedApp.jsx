@@ -6,7 +6,9 @@ import { createActor as createFactoryActor, canisterId as factoryCanisterId } fr
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
-import { FaRocket, FaCubes, FaExternalLinkAlt, FaStore, FaSpinner, FaChevronDown, FaChevronUp, FaPlus, FaEye, FaCog, FaTag, FaCheckCircle } from 'react-icons/fa';
+import { getCanisterInfo } from '../utils/BackendUtils';
+import { uint8ArrayToHex } from '../utils/NeuronUtils';
+import { FaRocket, FaCubes, FaExternalLinkAlt, FaStore, FaSpinner, FaChevronDown, FaChevronUp, FaPlus, FaEye, FaCog, FaTag, FaCheckCircle, FaBrain, FaChartLine, FaBox } from 'react-icons/fa';
 
 const customStyles = `
 @keyframes fadeInUp {
@@ -39,6 +41,8 @@ export default function SneedApp() {
     const [walletExpanded, setWalletExpanded] = useState(true);
     const [mintCounts, setMintCounts] = useState({});
     const [selectedFamily, setSelectedFamily] = useState(null);
+    const [resolvedWallet, setResolvedWallet] = useState([]);
+    const [walletLoading, setWalletLoading] = useState(false);
 
     const getAgent = useCallback(() => {
         const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging'
@@ -104,21 +108,59 @@ export default function SneedApp() {
         ? apps.filter(a => (a.families || []).includes(selectedFamily))
         : apps;
 
-    // Load user wallet
+    // Load user wallet with WASM-based app type resolution
     useEffect(() => {
-        if (!isAuthenticated || !identity) { setWallet([]); return; }
+        if (!isAuthenticated || !identity) { setWallet([]); setResolvedWallet([]); return; }
         const loadWallet = async () => {
+            setWalletLoading(true);
             try {
                 const factory = getFactory();
                 if (!factory) return;
                 const entries = await factory.getMyWallet();
                 setWallet(entries);
+
+                // Build WASM hash -> appId map from ALL app versions (including disabled)
+                const allApps = await factory.getApps().catch(() => []);
+                const hashToAppId = {};
+                await Promise.allSettled(allApps.map(async (app) => {
+                    try {
+                        const versions = await factory.getAppVersions(app.appId);
+                        for (const v of (versions || [])) {
+                            const wh = Array.isArray(v.wasmHash) ? (v.wasmHash[0] || '') : (v.wasmHash || '');
+                            if (wh) hashToAppId[wh.toLowerCase()] = app.appId;
+                        }
+                    } catch (_) {}
+                }));
+
+                // Resolve each canister's app type via module hash
+                const resolved = entries.map(e => ({
+                    canisterId: e.canisterId,
+                    appId: e.appId || '',
+                    resolvedAppId: '',
+                    moduleHash: null,
+                }));
+                await Promise.allSettled(resolved.map(async (r) => {
+                    try {
+                        const result = await getCanisterInfo(identity, r.canisterId);
+                        if (result && 'ok' in result) {
+                            const hash = result.ok.module_hash[0] ? uint8ArrayToHex(result.ok.module_hash[0]) : null;
+                            r.moduleHash = hash;
+                            if (hash) {
+                                const appMatch = hashToAppId[hash.toLowerCase()];
+                                if (appMatch) r.resolvedAppId = appMatch;
+                            }
+                        }
+                    } catch (_) {}
+                }));
+                setResolvedWallet(resolved);
             } catch (e) {
                 console.error('Failed to load wallet:', e);
+            } finally {
+                setWalletLoading(false);
             }
         };
         loadWallet();
-    }, [isAuthenticated, identity, getFactory]);
+    }, [isAuthenticated, identity, getFactory, apps]);
 
     const formatIcp = (e8s) => {
         const n = Number(e8s);
@@ -146,15 +188,21 @@ export default function SneedApp() {
         return null;
     };
 
-    // Group wallet entries by appId
+    // Group wallet entries by WASM-resolved appId
     const walletByApp = {};
-    wallet.forEach(entry => {
-        const appId = entry.appId || 'unknown';
+    resolvedWallet.forEach(entry => {
+        const appId = entry.resolvedAppId || entry.appId || 'unknown';
         if (!walletByApp[appId]) walletByApp[appId] = [];
         walletByApp[appId].push(entry);
     });
 
     const getAppInfo = (appId) => apps.find(a => a.appId === appId);
+
+    const getCanisterIcon = (resolvedAppId) => {
+        if (resolvedAppId === 'sneed-icp-staking-bot') return <FaBrain style={{ color: '#f59e0b' }} />;
+        if (resolvedAppId === 'sneed-trading-bot') return <FaChartLine style={{ color: '#10b981' }} />;
+        return <FaBox style={{ color: appPrimary }} />;
+    };
 
     return (
         <div style={{ minHeight: '100vh', background: theme.colors.primaryBg }}>
@@ -329,13 +377,18 @@ export default function SneedApp() {
                                 My Canisters
                             </h2>
                             <span style={{ color: theme.colors.secondaryText, fontSize: 13 }}>
-                                ({wallet.length})
+                                ({resolvedWallet.length})
                             </span>
                             {walletExpanded ? <FaChevronUp style={{ color: theme.colors.secondaryText }} /> : <FaChevronDown style={{ color: theme.colors.secondaryText }} />}
                         </div>
 
                         {walletExpanded && (
-                            wallet.length === 0 ? (
+                            walletLoading ? (
+                                <div style={{ textAlign: 'center', padding: 30, color: theme.colors.secondaryText }}>
+                                    <FaSpinner className="fa-spin" style={{ fontSize: 18, marginBottom: 6 }} />
+                                    <div style={{ fontSize: 13 }}>Identifying canisters...</div>
+                                </div>
+                            ) : resolvedWallet.length === 0 ? (
                                 <div style={{
                                     textAlign: 'center', padding: 30, color: theme.colors.secondaryText,
                                     background: theme.colors.secondaryBg, borderRadius: 12, fontSize: 14
@@ -345,27 +398,30 @@ export default function SneedApp() {
                             ) : (
                                 Object.entries(walletByApp).map(([appId, entries]) => {
                                     const appInfo = getAppInfo(appId);
-                                    const appName = appInfo ? appInfo.name : (appId || 'Legacy');
+                                    const appName = appInfo ? appInfo.name : (appId === 'unknown' ? 'Unknown' : appId);
                                     return (
                                         <div key={appId} style={{ marginBottom: 16 }}>
                                             <h3 style={{
                                                 color: theme.colors.secondaryText, fontSize: 14,
                                                 fontWeight: 600, marginBottom: 8, textTransform: 'uppercase',
-                                                letterSpacing: '0.05em'
+                                                letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: 6
                                             }}>
-                                                {appName} ({entries.length})
+                                                {getCanisterIcon(appId)} {appName} ({entries.length})
                                             </h3>
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                                                 {entries.map(entry => {
-                                                    const cid = entry.canisterId.toText();
-                                                    const viewUrl = appInfo ? getViewUrl(appInfo, cid) : null;
-                                                    const manageUrl = appInfo ? getManageUrl(appInfo, cid) : null;
+                                                    const cid = typeof entry.canisterId === 'string' ? entry.canisterId : entry.canisterId.toText();
+                                                    const resolvedId = entry.resolvedAppId || appId;
+                                                    const info = getAppInfo(resolvedId);
+                                                    const viewUrl = info ? getViewUrl(info, cid) : null;
+                                                    const manageUrl = info ? getManageUrl(info, cid) : null;
                                                     return (
                                                         <div key={cid} style={{
                                                             display: 'flex', alignItems: 'center', gap: 12,
                                                             background: theme.colors.secondaryBg, padding: '12px 16px',
                                                             borderRadius: 10, border: `1px solid ${theme.colors.borderColor || '#333'}`
                                                         }}>
+                                                            {getCanisterIcon(resolvedId)}
                                                             <code style={{
                                                                 color: theme.colors.primaryText, fontSize: 13,
                                                                 flex: 1, wordBreak: 'break-all'

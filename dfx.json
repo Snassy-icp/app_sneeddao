@@ -24,10 +24,6 @@
       "main": "src/sneed_bots/sneed_trading_bot/main.mo",
       "type": "motoko"
     },
-    "sneed_icp_neuron_manager_factory": {
-      "main": "src/sneedapp/main_old.mo",
-      "type": "motoko"
-    },
     "sneedapp": {
       "main": "src/sneedapp/main.mo",
       "type": "motoko"
