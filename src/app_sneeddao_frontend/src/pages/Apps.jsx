@@ -4608,10 +4608,7 @@ export default function AppsPage() {
                             >
                                 <FaExclamationTriangle size={14} style={{ color: '#f59e0b', flexShrink: 0 }} />
                                 <span style={{ flex: 1, fontSize: '13px', color: theme.colors.primaryText }}>
-                                    <strong>{outdatedManagersForBanner.length}</strong> bot{outdatedManagersForBanner.length !== 1 ? 's' : ''} can be upgraded to{' '}
-                                    <span style={{ color: '#8b5cf6', fontWeight: '600' }}>
-                                        v{Number(latestOfficialVersion.major)}.{Number(latestOfficialVersion.minor)}.{Number(latestOfficialVersion.patch)}
-                                    </span>
+                                    <strong>{outdatedManagersForBanner.length}</strong> bot{outdatedManagersForBanner.length !== 1 ? 's' : ''} can be upgraded to newer versions
                                 </span>
                                 <span style={{
                                     padding: '4px 12px',
@@ -5751,7 +5748,7 @@ export default function AppsPage() {
                                                                         } : {}),
                                                                     }}
                                                                     title={isVersionOutdated(manager.version) 
-                                                                        ? `Newer version available: v${Number(latestOfficialVersion.major)}.${Number(latestOfficialVersion.minor)}.${Number(latestOfficialVersion.patch)}`
+                                                                        ? `Newer version available: v${Number(latestOfficialVersion?.major || 0)}.${Number(latestOfficialVersion?.minor || 0)}.${Number(latestOfficialVersion?.patch || 0)}`
                                                                         : undefined
                                                                     }
                                                                 >
