@@ -7,7 +7,7 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
-import { FaRocket, FaCheckCircle, FaExclamationTriangle, FaArrowRight, FaArrowLeft, FaSpinner, FaCopy, FaTag, FaFileAlt, FaGasPump, FaEye } from 'react-icons/fa';
+import { FaRocket, FaCheckCircle, FaExclamationTriangle, FaArrowRight, FaArrowLeft, FaSpinner, FaCopy, FaTag, FaFileAlt, FaEye } from 'react-icons/fa';
 
 const customStyles = `
 @keyframes fadeInUp {
@@ -33,7 +33,7 @@ export default function SneedAppMint() {
     const navigate = useNavigate();
 
     // State
-    const [step, setStep] = useState(0); // 0=version, 1=fund, 2=gas, 3=confirm, 4=success
+    const [step, setStep] = useState(0); // 0=version, 1=fund, 2=confirm, 3=success
     const [app, setApp] = useState(null);
     const [publisher, setPublisher] = useState(null);
     const [versions, setVersions] = useState([]);
@@ -42,15 +42,14 @@ export default function SneedAppMint() {
     const [error, setError] = useState('');
     const [creating, setCreating] = useState(false);
     const [createdCanisterId, setCreatedCanisterId] = useState(null);
+    const [progressMessage, setProgressMessage] = useState('');
 
     // Payment
     const [paymentSubaccount, setPaymentSubaccount] = useState(null);
-    const [userBalance, setUserBalance] = useState(0n);
+    const [userWalletBalance, setUserWalletBalance] = useState(0n);
+    const [depositBalance, setDepositBalance] = useState(0n);
     const [pricingInfo, setPricingInfo] = useState(null);
     const [copied, setCopied] = useState(false);
-
-    // Gas
-    const [extraGasIcp, setExtraGasIcp] = useState('0');
 
     const getFactory = useCallback((authenticated = true) => {
         const opts = {
@@ -121,29 +120,37 @@ export default function SneedAppMint() {
         loadPayment();
     }, [isAuthenticated, identity, app, appId, getFactory]);
 
-    // Refresh balance
-    const refreshBalance = useCallback(async () => {
-        if (!identity || !paymentSubaccount) return;
+    // Refresh balances (wallet + deposit subaccount)
+    const refreshBalances = useCallback(async () => {
+        if (!identity) return;
         try {
             const ledger = getLedger();
             if (!ledger) return;
-            const bal = await ledger.icrc1_balance_of({
-                owner: Principal.fromText(factoryCanisterId),
-                subaccount: [paymentSubaccount]
+            const walletBal = await ledger.icrc1_balance_of({
+                owner: identity.getPrincipal(),
+                subaccount: []
             });
-            setUserBalance(bal);
+            setUserWalletBalance(walletBal);
+
+            if (paymentSubaccount) {
+                const factory = getFactory();
+                if (factory) {
+                    const depBal = await factory.getUserPaymentBalance(identity.getPrincipal());
+                    setDepositBalance(depBal);
+                }
+            }
         } catch (e) {
-            console.error('Failed to get balance:', e);
+            console.error('Failed to get balances:', e);
         }
-    }, [identity, paymentSubaccount, getLedger]);
+    }, [identity, paymentSubaccount, getLedger, getFactory]);
 
     useEffect(() => {
-        if (step === 1 && paymentSubaccount) {
-            refreshBalance();
-            const interval = setInterval(refreshBalance, 5000);
+        if (step === 1 && identity) {
+            refreshBalances();
+            const interval = setInterval(refreshBalances, 5000);
             return () => clearInterval(interval);
         }
-    }, [step, paymentSubaccount, refreshBalance]);
+    }, [step, identity, refreshBalances]);
 
     const formatIcp = (e8s) => {
         const n = Number(e8s);
@@ -156,31 +163,41 @@ export default function SneedAppMint() {
         setTimeout(() => setCopied(false), 2000);
     };
 
-    const requiredAmount = pricingInfo ? Number(pricingInfo.applicable) + ICP_FEE : 0;
-    const hasEnoughFunds = Number(userBalance) >= requiredAmount;
+    const requiredAmount = pricingInfo ? Number(pricingInfo.applicable) : 0;
+    const totalNeeded = requiredAmount + ICP_FEE; // price + transfer fee
+    const currentDeposit = Number(depositBalance);
+    const shortfall = Math.max(0, requiredAmount - currentDeposit);
+    const walletBalance = Number(userWalletBalance);
+    const hasEnoughFunds = shortfall === 0 || walletBalance >= (shortfall + ICP_FEE);
 
     // Mint canister
     const handleMint = async () => {
-        if (!selectedVersion || !identity) return;
+        if (!selectedVersion || !identity || !paymentSubaccount) return;
         setCreating(true);
         setError('');
+        setProgressMessage('');
         try {
-            // Step 1: Transfer ICP to factory payment subaccount
             const ledger = getLedger();
-            const transferResult = await ledger.icrc1_transfer({
-                to: { owner: Principal.fromText(factoryCanisterId), subaccount: [paymentSubaccount] },
-                fee: [BigInt(ICP_FEE)],
-                memo: [],
-                from_subaccount: [],
-                created_at_time: [],
-                amount: BigInt(requiredAmount)
-            });
-            if (transferResult.Err) {
-                throw new Error('Payment failed: ' + JSON.stringify(transferResult.Err));
+            const factory = getFactory();
+
+            // Step 1: If deposit subaccount doesn't have enough, top it up from wallet
+            if (shortfall > 0) {
+                setProgressMessage('Sending payment...');
+                const transferResult = await ledger.icrc1_transfer({
+                    to: { owner: Principal.fromText(factoryCanisterId), subaccount: [paymentSubaccount] },
+                    fee: [BigInt(ICP_FEE)],
+                    memo: [],
+                    from_subaccount: [],
+                    created_at_time: [],
+                    amount: BigInt(shortfall)
+                });
+                if (transferResult.Err) {
+                    throw new Error('Payment failed: ' + JSON.stringify(transferResult.Err));
+                }
             }
 
             // Step 2: Call mintCanister
-            const factory = getFactory();
+            setProgressMessage('Creating canister...');
             const result = await factory.mintCanister(
                 appId,
                 [selectedVersion.major],
@@ -190,7 +207,7 @@ export default function SneedAppMint() {
 
             if (result.Ok) {
                 setCreatedCanisterId(result.Ok.canisterId.toText());
-                setStep(4);
+                setStep(3);
             } else if (result.Err) {
                 const errKey = Object.keys(result.Err)[0];
                 const errVal = result.Err[errKey];
@@ -199,7 +216,7 @@ export default function SneedAppMint() {
                     PublisherNotVerified: 'This app\'s publisher has not been verified yet.',
                     AppNotFound: 'App not found.',
                     AppNotEnabled: 'This app is currently disabled.',
-                    InsufficientPayment: 'Insufficient payment balance.',
+                    InsufficientPayment: 'Insufficient payment. Please try again.',
                 };
                 throw new Error(friendlyErrors[errKey] || `Minting failed: ${errKey}${typeof errVal === 'object' ? ' - ' + JSON.stringify(errVal) : ''}`);
             }
@@ -207,6 +224,7 @@ export default function SneedAppMint() {
             setError(e.message || 'Minting failed');
         } finally {
             setCreating(false);
+            setProgressMessage('');
         }
     };
 
@@ -290,9 +308,9 @@ export default function SneedAppMint() {
                 )}
 
                 {/* Step indicator */}
-                {step < 4 && (
+                {step < 3 && (
                     <div style={{ display: 'flex', gap: 4, marginBottom: 24 }}>
-                        {['Version', 'Fund', 'Gas', 'Confirm'].map((label, i) => (
+                        {['Version', 'Review', 'Confirm'].map((label, i) => (
                             <div key={i} style={{
                                 flex: 1, textAlign: 'center', padding: '8px 0',
                                 borderBottom: `3px solid ${i <= step ? appPrimary : theme.colors.borderColor || '#333'}`,
@@ -368,79 +386,82 @@ export default function SneedAppMint() {
                     </div>
                 )}
 
-                {/* Step 1: Fund Wallet */}
+                {/* Step 1: Review Payment */}
                 {step === 1 && (
                     <div className="mint-fade-in" style={cardStyle}>
                         <h3 style={{ color: theme.colors.primaryText, margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <FaTag style={{ color: appPrimary }} /> Fund Your Payment
+                            <FaTag style={{ color: appPrimary }} /> Review Payment
                         </h3>
+
+                        {/* Price */}
                         <div style={{ marginBottom: 16 }}>
-                            <div style={{ color: theme.colors.secondaryText, fontSize: 13, marginBottom: 4 }}>Price</div>
+                            <div style={{ color: theme.colors.secondaryText, fontSize: 13, marginBottom: 4 }}>Minting Price</div>
                             <div style={{ color: theme.colors.primaryText, fontSize: 20, fontWeight: 600 }}>
                                 {pricingInfo ? formatIcp(pricingInfo.applicable) : '...'} ICP
                                 {pricingInfo?.isPremium && (
-                                    <span style={{ fontSize: 12, color: '#f59e0b', marginLeft: 8 }}>Premium discount</span>
+                                    <span style={{ fontSize: 12, color: '#f59e0b', marginLeft: 8, background: '#f59e0b20', padding: '2px 8px', borderRadius: 4 }}>Premium discount</span>
                                 )}
                             </div>
+                            <div style={{ color: theme.colors.secondaryText, fontSize: 11, marginTop: 4 }}>
+                                + {formatIcp(ICP_FEE)} ICP transfer fee
+                            </div>
                         </div>
 
-                        <div style={{
-                            background: theme.colors.primaryBg, borderRadius: 8, padding: 14, marginBottom: 16
-                        }}>
-                            <div style={{ color: theme.colors.secondaryText, fontSize: 12, marginBottom: 6 }}>
-                                Send ICP to this address:
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <code style={{ color: theme.colors.primaryText, fontSize: 12, wordBreak: 'break-all', flex: 1 }}>
-                                    {factoryCanisterId}
-                                </code>
-                                <button onClick={() => copyToClipboard(factoryCanisterId)} style={{
-                                    background: 'transparent', border: 'none', color: appPrimary, cursor: 'pointer', padding: 4
-                                }}>
-                                    <FaCopy /> {copied ? 'Copied!' : ''}
-                                </button>
-                            </div>
-                            {paymentSubaccount && (
-                                <div style={{ marginTop: 8 }}>
-                                    <div style={{ color: theme.colors.secondaryText, fontSize: 11 }}>Subaccount (your payment slot):</div>
-                                    <code style={{ color: theme.colors.secondaryText, fontSize: 10, wordBreak: 'break-all' }}>
-                                        {Array.from(new Uint8Array(paymentSubaccount)).map(b => b.toString(16).padStart(2, '0')).join('')}
-                                    </code>
-                                </div>
-                            )}
-                        </div>
-
+                        {/* Wallet balance */}
                         <div style={{
                             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                             padding: 12, background: hasEnoughFunds ? `${appPrimary}15` : '#f59e0b15',
-                            borderRadius: 8, marginBottom: 16
+                            borderRadius: 8, marginBottom: 12
                         }}>
                             <div>
-                                <div style={{ color: theme.colors.secondaryText, fontSize: 12 }}>Your balance</div>
+                                <div style={{ color: theme.colors.secondaryText, fontSize: 12 }}>Your Wallet Balance</div>
                                 <div style={{ color: theme.colors.primaryText, fontWeight: 600 }}>
-                                    {formatIcp(userBalance)} ICP
+                                    {formatIcp(userWalletBalance)} ICP
                                 </div>
                             </div>
                             <div>
                                 {hasEnoughFunds ? (
                                     <FaCheckCircle style={{ color: appPrimary, fontSize: 20 }} />
                                 ) : (
-                                    <span style={{ color: '#f59e0b', fontSize: 12 }}>
-                                        Need {formatIcp(requiredAmount)} ICP
+                                    <span style={{ color: '#f59e0b', fontSize: 12, fontWeight: 500 }}>
+                                        Need {formatIcp(shortfall + ICP_FEE)} ICP
                                     </span>
                                 )}
                             </div>
                         </div>
 
+                        {/* Existing deposit (if any) */}
+                        {currentDeposit > 0 && (
+                            <div style={{
+                                padding: 10, background: `${appPrimary}10`, borderRadius: 8,
+                                marginBottom: 12, fontSize: 12, color: theme.colors.secondaryText
+                            }}>
+                                You have <strong style={{ color: appPrimary }}>{formatIcp(depositBalance)} ICP</strong> already deposited.
+                                {shortfall > 0
+                                    ? ` An additional ${formatIcp(shortfall)} ICP will be transferred from your wallet.`
+                                    : ' No additional transfer needed.'}
+                            </div>
+                        )}
+
+                        {/* Revenue split */}
+                        {publisher && Number(app?.publisherId) !== 0 && (
+                            <div style={{
+                                padding: 10, background: theme.colors.primaryBg, borderRadius: 8,
+                                marginBottom: 16, fontSize: 12, color: theme.colors.secondaryText
+                            }}>
+                                Revenue split: {(Number(publisher.daoCutBasisPoints) / 100).toFixed(1)}% Sneed DAO / {(100 - Number(publisher.daoCutBasisPoints) / 100).toFixed(1)}% {publisher.name}
+                            </div>
+                        )}
+
                         <p style={{ color: theme.colors.secondaryText, fontSize: 12, margin: '0 0 16px' }}>
-                            The payment will be taken from your balance on the factory canister. Send ICP to the address above, or if you already have a balance, proceed.
+                            Payment will be sent automatically from your wallet when you confirm minting.
                         </p>
 
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                             <button onClick={() => setStep(0)} style={btnOutline}>
                                 <FaArrowLeft /> Back
                             </button>
-                            <button onClick={() => setStep(3)} disabled={!hasEnoughFunds} style={{
+                            <button onClick={() => setStep(2)} disabled={!hasEnoughFunds} style={{
                                 ...btnPrimary, opacity: hasEnoughFunds ? 1 : 0.5
                             }}>
                                 Next <FaArrowRight />
@@ -449,11 +470,11 @@ export default function SneedAppMint() {
                     </div>
                 )}
 
-                {/* Step 3: Confirm */}
-                {step === 3 && (
+                {/* Step 2: Confirm & Mint */}
+                {step === 2 && (
                     <div className="mint-fade-in" style={cardStyle}>
                         <h3 style={{ color: theme.colors.primaryText, margin: '0 0 20px', display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <FaRocket style={{ color: appPrimary }} /> Confirm Minting
+                            <FaRocket style={{ color: appPrimary }} /> Confirm & Mint
                         </h3>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
@@ -473,31 +494,33 @@ export default function SneedAppMint() {
                                     {pricingInfo ? formatIcp(pricingInfo.applicable) : '...'} ICP
                                 </span>
                             </div>
+                            {shortfall > 0 && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${theme.colors.borderColor || '#333'}` }}>
+                                    <span style={{ color: theme.colors.secondaryText }}>Transfer from wallet</span>
+                                    <span style={{ color: theme.colors.primaryText, fontWeight: 500 }}>
+                                        {formatIcp(shortfall)} ICP + {formatIcp(ICP_FEE)} fee
+                                    </span>
+                                </div>
+                            )}
                             {publisher && (
-                                <>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${theme.colors.borderColor || '#333'}` }}>
-                                        <span style={{ color: theme.colors.secondaryText }}>Publisher</span>
-                                        <span style={{ color: theme.colors.primaryText, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4 }}>
-                                            {publisher.name}
-                                            {publisher.verified && <FaCheckCircle style={{ color: '#10b981', fontSize: 10 }} />}
-                                        </span>
-                                    </div>
-                                    {Number(app?.publisherId) !== 0 && (
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${theme.colors.borderColor || '#333'}` }}>
-                                            <span style={{ color: theme.colors.secondaryText }}>Revenue Split</span>
-                                            <span style={{ color: theme.colors.secondaryText, fontSize: 12 }}>
-                                                {(Number(publisher.daoCutBasisPoints) / 100).toFixed(1)}% Sneed DAO / {(100 - Number(publisher.daoCutBasisPoints) / 100).toFixed(1)}% Publisher
-                                            </span>
-                                        </div>
-                                    )}
-                                </>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${theme.colors.borderColor || '#333'}` }}>
+                                    <span style={{ color: theme.colors.secondaryText }}>Publisher</span>
+                                    <span style={{ color: theme.colors.primaryText, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                        {publisher.name}
+                                        {publisher.verified && <FaCheckCircle style={{ color: '#10b981', fontSize: 10 }} />}
+                                    </span>
+                                </div>
                             )}
                         </div>
+
+                        <p style={{ color: theme.colors.secondaryText, fontSize: 12, margin: '0 0 16px' }}>
+                            Clicking "Mint Canister" will{shortfall > 0 ? ' transfer ICP from your wallet and then' : ''} create a new canister with the selected version.
+                        </p>
 
                         {creating && (
                             <div style={{ textAlign: 'center', padding: 20 }}>
                                 <FaSpinner className="fa-spin" style={{ fontSize: 28, color: appPrimary, marginBottom: 12 }} />
-                                <div style={{ color: theme.colors.primaryText }}>Creating your canister...</div>
+                                <div style={{ color: theme.colors.primaryText }}>{progressMessage || 'Processing...'}</div>
                                 <div style={{ color: theme.colors.secondaryText, fontSize: 12, marginTop: 4 }}>
                                     This may take a moment
                                 </div>
@@ -517,8 +540,8 @@ export default function SneedAppMint() {
                     </div>
                 )}
 
-                {/* Step 4: Success */}
-                {step === 4 && (
+                {/* Step 3: Success */}
+                {step === 3 && (
                     <div className="mint-fade-in" style={{ ...cardStyle, textAlign: 'center' }}>
                         <FaCheckCircle style={{ fontSize: 48, color: '#10b981', marginBottom: 16 }} />
                         <h3 style={{ color: theme.colors.primaryText, margin: '0 0 8px' }}>Canister Created!</h3>
