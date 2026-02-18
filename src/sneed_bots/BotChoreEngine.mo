@@ -895,6 +895,14 @@ module {
 
         /// Schedule a conductor tick after a delay (in seconds).
         func scheduleConductorTick<system>(choreId: Text, delaySecs: Nat) {
+            // Keep only one pending conductor timer per chore.
+            // This avoids timer churn when schedule-first heartbeat is overridden
+            // by the action-specific cadence in the same tick.
+            let state = getStateOrDefault(choreId);
+            switch (state.conductorTimerId) {
+                case (?existingTid) { Timer.cancelTimer(existingTid) };
+                case null {};
+            };
             let nextSeq = getConductorScheduleSeq(choreId) + 1;
             setConductorScheduleSeq(choreId, nextSeq);
             let tid = Timer.setTimer<system>(#seconds delaySecs, func(): async () {
@@ -931,6 +939,7 @@ module {
             };
 
             setConductorTickInFlight(choreId, false);
+
         };
 
         /// Conductor tick body:
@@ -1132,7 +1141,6 @@ module {
                     totalSuccessCount = s.totalSuccessCount + 1;
                 }
             });
-            setConductorTickInFlight(choreId, false);
         };
 
         /// Mark conductor as failed.
@@ -1154,7 +1162,6 @@ module {
                     lastErrorAt = ?Time.now();
                 }
             });
-            setConductorTickInFlight(choreId, false);
         };
 
         /// Mark conductor as stopped (by stop flag).
