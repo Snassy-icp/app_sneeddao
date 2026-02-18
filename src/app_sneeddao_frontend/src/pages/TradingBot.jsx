@@ -18,7 +18,8 @@ import { useAuth } from '../AuthContext';
 import { createActor as createBotActor } from 'external/sneed_trading_bot';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { decodeIcrcAccount, encodeIcrcAccount } from '@dfinity/ledger-icrc';
-import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt, FaSearch, FaGripVertical, FaLock, FaLockOpen, FaPause, FaPlay, FaArrowUp, FaArrowDown, FaPaperPlane, FaExchangeAlt, FaWallet, FaShieldAlt, FaToggleOn, FaToggleOff } from 'react-icons/fa';
+import { computeAccountId } from '../utils/PrincipalUtils';
+import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt, FaSearch, FaGripVertical, FaLock, FaLockOpen, FaPause, FaPlay, FaArrowUp, FaArrowDown, FaPaperPlane, FaExchangeAlt, FaWallet, FaShieldAlt, FaToggleOn, FaToggleOff, FaCopy, FaDownload } from 'react-icons/fa';
 import TokenIcon from '../components/TokenIcon';
 import PrincipalInput from '../components/PrincipalInput';
 import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
@@ -3716,8 +3717,8 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
     // Get the current account's subaccount number (null for main)
     const currentSubaccountNum = selectedAccount === 'main' ? null : Number(selectedAccount);
 
-    // Get the balance of opToken in the currently selected account
-    const opTokenBalance = React.useMemo(() => {
+    // Get the balance of opToken in the currently selected account (for non-fund ops)
+    const opTokenBotBalance = React.useMemo(() => {
         if (!opToken) return null;
         const acctBals = selectedAccount === 'main'
             ? allBalances.find(b => Number(b.subaccountNumber) === 0)
@@ -3730,6 +3731,23 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
         return bal ? bal.balance : 0n;
     }, [opToken, selectedAccount, allBalances]);
 
+    // For fund mode: fetch user wallet balance
+    const [walletBalance, setWalletBalance] = useState(null);
+    useEffect(() => {
+        if (activeOp !== 'fund' || !opToken || !identity) { setWalletBalance(null); return; }
+        let cancelled = false;
+        (async () => {
+            try {
+                const ledger = createLedgerActor(opToken, { agentOptions: { identity } });
+                const bal = await ledger.icrc1_balance_of({ owner: identity.getPrincipal(), subaccount: [] });
+                if (!cancelled) setWalletBalance(bal);
+            } catch { if (!cancelled) setWalletBalance(null); }
+        })();
+        return () => { cancelled = true; };
+    }, [activeOp, opToken, identity]);
+
+    const opTokenBalance = activeOp === 'fund' ? walletBalance : opTokenBotBalance;
+
     const handleExecuteOp = async () => {
         if (!opToken || !opAmount) return;
         setOpExecuting(true); setError(''); setSuccess('');
@@ -3741,7 +3759,28 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
             const tokenPrincipal = Principal.fromText(opToken);
             const fromSub = currentSubaccountNum != null ? [BigInt(currentSubaccountNum)] : [];
 
-            if (activeOp === 'withdraw') {
+            if (activeOp === 'fund') {
+                // ICRC-1 transfer from user wallet to bot account
+                const botPrincipal = Principal.fromText(canisterId);
+                const subEntry = currentSubaccountNum != null ? subaccounts.find(s => Number(s.number) === currentSubaccountNum) : null;
+                const toSub = subEntry?.subaccount ? [new Uint8Array(subEntry.subaccount)] : [];
+                const ledgerActor = createLedgerActor(opToken, { agentOptions: { identity } });
+                const result = await ledgerActor.icrc1_transfer({
+                    to: { owner: botPrincipal, subaccount: toSub },
+                    amount,
+                    fee: [],
+                    memo: [],
+                    from_subaccount: [],
+                    created_at_time: [],
+                });
+                if ('Ok' in result) {
+                    setSuccess(`Funded ${opAmount} ${getSymbol(opToken)} to ${selectedAccount === 'main' ? 'Main Account' : `#${selectedAccount}`}. Block: ${result.Ok.toString()}`);
+                    setActiveOp(null); setOpAmount(''); setOpToken('');
+                    balanceFetchKeyRef.current = ''; loadData();
+                } else {
+                    setError('Fund failed: ' + JSON.stringify(result.Err));
+                }
+            } else if (activeOp === 'withdraw') {
                 // Send to user's wallet
                 const userPrincipal = identity.getPrincipal();
                 const result = await bot.manualSend(tokenPrincipal, fromSub, userPrincipal, [], amount);
@@ -4050,6 +4089,57 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                         )}
                     </div>
                 </div>
+
+                {/* ── Receiving Address Info ── */}
+                {canisterId && (() => {
+                    const botPrincipal = Principal.fromText(canisterId);
+                    const isMain = selectedAccount === 'main';
+                    const subEntry = !isMain ? subaccounts.find(s => String(Number(s.number)) === selectedAccount) : null;
+                    const subBlob = subEntry?.subaccount ? new Uint8Array(subEntry.subaccount) : null;
+                    const icrc1Account = isMain
+                        ? encodeIcrcAccount({ owner: botPrincipal })
+                        : encodeIcrcAccount({ owner: botPrincipal, subaccount: subBlob });
+                    const accountId = computeAccountId(botPrincipal, isMain ? null : subBlob);
+
+                    const copyBtn = (text) => (
+                        <button title="Copy" onClick={() => { navigator.clipboard.writeText(text); setSuccess('Copied!'); setTimeout(() => setSuccess(''), 1500); }}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: accentColor, padding: '2px 4px', fontSize: '0.7rem' }}>
+                            <FaCopy />
+                        </button>
+                    );
+                    const addrRow = (label, value, mono = true) => (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                            <span style={{ fontSize: '0.72rem', color: theme.colors.secondaryText, minWidth: '80px', flexShrink: 0 }}>{label}</span>
+                            <code style={{ fontSize: '0.72rem', color: theme.colors.primaryText, fontFamily: mono ? 'monospace' : 'inherit',
+                                wordBreak: 'break-all', lineHeight: '1.4' }}>{value}</code>
+                            {copyBtn(value)}
+                        </div>
+                    );
+
+                    return (
+                        <div style={{ marginBottom: '10px', padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${borderColor}`, fontSize: '0.78rem' }}>
+                            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: theme.colors.primaryText, marginBottom: '6px' }}>Receiving Addresses</div>
+                            {isMain ? (
+                                <>
+                                    {addrRow('Principal', canisterId)}
+                                    {addrRow('ICRC-1 Account', icrc1Account)}
+                                </>
+                            ) : (
+                                <>
+                                    {addrRow('ICRC-1 Account', icrc1Account)}
+                                    {addrRow('Principal', canisterId)}
+                                    {subBlob && addrRow('Subaccount', Array.from(subBlob).map(b => b.toString(16).padStart(2, '0')).join(''))}
+                                </>
+                            )}
+                            {accountId && addrRow('Account ID', accountId)}
+                            <div style={{ fontSize: '0.68rem', color: theme.colors.mutedText, marginTop: '4px', lineHeight: '1.4' }}>
+                                Use <strong>ICRC-1 Account</strong> or <strong>Principal</strong> to receive tokens from wallets, DEXes, and IC apps.
+                                {' '}<strong>Account ID</strong> is for receiving ICP from centralized exchanges (CEXes) only.
+                            </div>
+                        </div>
+                    );
+                })()}
+
                 {selectedBalances.length === 0 ? (
                     <div style={{ color: theme.colors.mutedText, fontSize: '0.8rem', padding: '8px 0' }}>
                         {balancesLoading ? 'Fetching balances...' : (tokenRegistry.length === 0 ? 'No token balances. Register some tokens above to see balances.' : 'No token balances found for this account.')}
@@ -4203,11 +4293,15 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                         {frozenTokens.size > 0 && <span><FaLock style={{ fontSize: '0.5rem', color: '#3b82f6', marginRight: '3px' }} />Frozen — not traded or moved by any chore</span>}
                     </div>
                 )}
-                {/* ── Operation Buttons (Withdraw / Deposit / Send) ── */}
+                {/* ── Operation Buttons (Fund / Withdraw / Transfer / Send) ── */}
                 <div style={{ marginTop: '10px', display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <button onClick={() => { setActiveOp(activeOp === 'fund' ? null : 'fund'); setOpToken(''); setOpAmount(''); }}
+                        style={{ ...btnStyle, background: activeOp === 'fund' ? `${accentColor}15` : 'none', borderColor: activeOp === 'fund' ? accentColor : `${accentColor}40`, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <FaDownload style={{ fontSize: '0.6rem' }} /> Fund
+                    </button>
                     <button onClick={() => { setActiveOp(activeOp === 'withdraw' ? null : 'withdraw'); setOpToken(''); setOpAmount(''); }}
                         style={{ ...btnStyle, background: activeOp === 'withdraw' ? `${accentColor}15` : 'none', borderColor: activeOp === 'withdraw' ? accentColor : `${accentColor}40`, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <FaWallet style={{ fontSize: '0.6rem' }} /> Withdraw to Wallet
+                        <FaWallet style={{ fontSize: '0.6rem' }} /> Withdraw
                     </button>
                     <button onClick={() => { setActiveOp(activeOp === 'deposit' ? null : 'deposit'); setOpToken(''); setOpAmount(''); setOpTargetSubaccount(''); }}
                         style={{ ...btnStyle, background: activeOp === 'deposit' ? `${accentColor}15` : 'none', borderColor: activeOp === 'deposit' ? accentColor : `${accentColor}40`, display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -4223,11 +4317,14 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                 {activeOp && (
                     <div style={{ marginTop: '10px', padding: '12px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${borderColor}` }}>
                         <div style={{ fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '8px' }}>
+                            {activeOp === 'fund' && <>Fund from Wallet</>}
                             {activeOp === 'withdraw' && <>Withdraw to Your Wallet</>}
                             {activeOp === 'deposit' && <>{selectedAccount === 'main' ? 'Transfer to Subaccount' : 'Transfer Between Accounts'}</>}
                             {activeOp === 'send' && <>Send to External Account</>}
                             <span style={{ fontSize: '0.7rem', color: theme.colors.mutedText, marginLeft: '8px' }}>
-                                (from {selectedAccount === 'main' ? 'Main Account' : (() => { const s = subaccounts.find(s => String(Number(s.number)) === selectedAccount); return s ? s.name : `#${selectedAccount}`; })()})
+                                {activeOp === 'fund'
+                                    ? `(to ${selectedAccount === 'main' ? 'Main Account' : (() => { const s = subaccounts.find(s => String(Number(s.number)) === selectedAccount); return s ? s.name : `#${selectedAccount}`; })()})`
+                                    : `(from ${selectedAccount === 'main' ? 'Main Account' : (() => { const s = subaccounts.find(s => String(Number(s.number)) === selectedAccount); return s ? s.name : `#${selectedAccount}`; })()})`}
                             </span>
                         </div>
 
@@ -4262,7 +4359,7 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                                     Amount
                                     {opToken && opTokenBalance != null && (
                                         <span style={{ marginLeft: '6px', color: theme.colors.secondaryText }}>
-                                            (bal: {formatTokenAmount(opTokenBalance, getDecimals(opToken))})
+                                            ({activeOp === 'fund' ? 'wallet' : 'bal'}: {formatTokenAmount(opTokenBalance, getDecimals(opToken))})
                                         </span>
                                     )}
                                 </label>
@@ -4315,6 +4412,13 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                             )}
                         </div>
 
+                        {/* Fund: show source wallet info */}
+                        {activeOp === 'fund' && identity && (
+                            <div style={{ marginTop: '6px', fontSize: '0.72rem', color: theme.colors.secondaryText }}>
+                                From your wallet: <span style={{ fontFamily: 'monospace', color: accentColor }}>{identity.getPrincipal().toText()}</span>
+                            </div>
+                        )}
+
                         {/* Withdraw: show destination info */}
                         {activeOp === 'withdraw' && identity && (
                             <div style={{ marginTop: '6px', fontSize: '0.72rem', color: theme.colors.secondaryText }}>
@@ -4331,6 +4435,7 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
                                     background: `${accentColor}15`, borderColor: accentColor,
                                 }}>
                                 {opExecuting ? 'Executing...' : (
+                                    activeOp === 'fund' ? 'Fund' :
                                     activeOp === 'withdraw' ? 'Withdraw' :
                                     activeOp === 'deposit' ? 'Transfer' :
                                     'Send'
@@ -6378,6 +6483,7 @@ export default function TradingBot() {
                             isAuthenticated={isAuthenticated}
                             extraInfoContent={<DexSettingsPanel canisterId={canisterId} createBotActor={createBotActor} identity={identity} />}
                             cbEvents={cbEvents}
+                            preferredChoreTypeOrder={['rebalance', 'trade', 'move-funds', 'distribute-funds', 'snapshot']}
                         />
                         <TradingBotLogs
                             canisterId={canisterId}

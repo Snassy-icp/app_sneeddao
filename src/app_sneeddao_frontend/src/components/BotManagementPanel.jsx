@@ -212,6 +212,7 @@ export default function BotManagementPanel({
     isAuthenticated,
     extraInfoContent,
     cbEvents,
+    preferredChoreTypeOrder,
 }) {
     const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
@@ -1794,7 +1795,7 @@ export default function BotManagementPanel({
                                     {/* Chore Type Tabs & Instances */}
                                     {(choreStatuses.length > 0 || choreTypes.length > 0) && (() => {
                                         const choreTypeMap = {};
-                                        const choreTypeOrder = [];
+                                        let choreTypeOrder = [];
                                         // Populate from choreTypes first (preserves registered order, includes zero-instance types)
                                         choreTypes.forEach(ct => {
                                             if (!choreTypeMap[ct.id]) {
@@ -1808,6 +1809,13 @@ export default function BotManagementPanel({
                                             if (!choreTypeMap[tid]) { choreTypeMap[tid] = { typeId: tid, typeName: chore.choreName, instances: [] }; choreTypeOrder.push(tid); }
                                             choreTypeMap[tid].instances.push(chore);
                                         });
+                                        if (preferredChoreTypeOrder) {
+                                            choreTypeOrder.sort((a, b) => {
+                                                const ai = preferredChoreTypeOrder.indexOf(a);
+                                                const bi = preferredChoreTypeOrder.indexOf(b);
+                                                return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+                                            });
+                                        }
                                         const activeTypeId = choreTypeMap[choreActiveTab] ? choreActiveTab : choreTypeOrder[0];
                                         const activeType = choreTypeMap[activeTypeId];
                                         const instances = activeType?.instances || [];
