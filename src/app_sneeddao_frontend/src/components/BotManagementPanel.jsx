@@ -1973,18 +1973,20 @@ export default function BotManagementPanel({
                                                             <div style={cardStyle}>
                                                                 <h3 style={{ color: theme.colors.primaryText, margin: '0 0 12px 0', fontSize: '0.95rem', fontWeight: '600' }}>Status</h3>
                                                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px' }}>
-                                                                    <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+                                                                    <div style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}`, minHeight: '52px' }}>
                                                                         <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>State</div>
                                                                         <div style={{ fontSize: '0.9rem', fontWeight: '600', color: isStopped ? theme.colors.secondaryText : isPaused ? '#f59e0b' : '#22c55e' }}>
                                                                             {isStopped ? 'Stopped' : isPaused ? 'Paused' : 'Running'}
                                                                         </div>
                                                                     </div>
                                                                     {[['Scheduler', schedulerLamp], ['Conductor', conductorLamp], ['Task', taskLamp]].map(([name, lamp]) => (
-                                                                        <div key={name} style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}` }}>
+                                                                        <div key={name} style={{ padding: '10px', background: theme.colors.primaryBg, borderRadius: '8px', border: `1px solid ${theme.colors.border}`, minHeight: '52px' }}>
                                                                             <div style={{ fontSize: '0.75rem', color: theme.colors.secondaryText, marginBottom: '4px' }}>{name}</div>
                                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                                                 <StatusLamp state={lamp.state} size={10} label={lamp.label} />
-                                                                                <span style={{ fontSize: '0.9rem', color: LAMP_COLORS[lamp.state], fontWeight: '500' }}>{lamp.label}</span>
+                                                                                <span style={{ fontSize: '0.9rem', color: LAMP_COLORS[lamp.state], fontWeight: '500',
+                                                                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}
+                                                                                    title={lamp.label}>{lamp.label}</span>
                                                                             </div>
                                                                         </div>
                                                                     ))}

@@ -5170,6 +5170,7 @@ function cbEmptyAction() {
 }
 
 function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatuses }) {
+    const { whitelistedTokens: wlTokens } = useWhitelistTokens();
     const [globalEnabled, setGlobalEnabled] = useState(true);
     const [rules, setRules] = useState([]);
     const [events, setEvents] = useState([]);
@@ -5205,17 +5206,24 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
     const sectionTitle = { fontSize: '0.88rem', fontWeight: 600, color: theme.colors.primaryText, margin: '0 0 8px 0' };
 
     // Token helpers
-    const getTokenDecimals = (principal) => {
-        if (!principal) return 8;
+    const _resolveToken = (principal) => {
+        if (!principal) return null;
         const p = typeof principal === 'string' ? principal : principal.toText?.() || principal.toString?.();
         const entry = tokenRegistry.find(t => (t.ledgerCanisterId?.toText?.() || t.ledgerCanisterId?.toString?.()) === p);
-        return entry ? Number(entry.decimals) : 8;
+        if (entry) return entry;
+        const wl = (wlTokens || []).find(t => (t.ledger_id?.toString?.() || t.ledger_id) === p);
+        return wl ? { symbol: wl.symbol, decimals: wl.decimals ?? 8 } : null;
+    };
+    const getTokenDecimals = (principal) => {
+        const t = _resolveToken(principal);
+        return t ? Number(t.decimals) : 8;
     };
     const tokenSymbol = (principal) => {
         if (!principal) return '?';
+        const t = _resolveToken(principal);
+        if (t) return t.symbol;
         const p = typeof principal === 'string' ? principal : principal.toText?.() || principal.toString?.();
-        const entry = tokenRegistry.find(t => (t.ledgerCanisterId?.toText?.() || t.ledgerCanisterId?.toString?.()) === p);
-        return entry ? entry.symbol : (p?.substring?.(0, 8) + '...');
+        return p?.substring?.(0, 8) + '...';
     };
     const choreInstanceLabel = (instanceId) => {
         if (!instanceId) return '?';
