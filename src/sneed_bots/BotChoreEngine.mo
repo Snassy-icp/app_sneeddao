@@ -983,7 +983,7 @@ module {
         /// 2. Check task timeout and build context
         /// 3. Call conductor callback
         /// 4. Start pending task (if any)
-        /// 5. Override heartbeat timing / finalize based on conductor action
+        /// 5. Finalize run state based on conductor action
         func conductorTickBody<system>(choreId: Text): async () {
             let state = getStateOrDefault(choreId);
 
@@ -1046,7 +1046,7 @@ module {
                     try {
                         let action = d.conduct(context);
 
-                        // Check stop flag AFTER await (could have been set during)
+                        // Check stop flag again after conductor logic (could be set during this tick)
                         let stateAfter = getStateOrDefault(choreId);
                         if (stateAfter.stopRequested) {
                             markConductorStopped(choreId);
@@ -1075,10 +1075,8 @@ module {
 
                         // 6. Handle conductor action
                         switch (action) {
-                            case (#ContinueIn(seconds)) {
+                            case (#ContinueIn(_seconds)) {
                                 // Schedule-first mode: heartbeat already armed above.
-                                // ContinueIn cadence is advisory for conductor logic only.
-                                ignore seconds;
                             };
                             case (#Done) {
                                 // If a task is still running, cancel it
