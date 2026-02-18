@@ -283,8 +283,10 @@ export default function SneedAppMint() {
                     AppNotFound: 'App not found.',
                     AppNotEnabled: 'This app is currently disabled.',
                     InsufficientPayment: 'Insufficient payment. Please try again.',
+                    TransferFailed: 'Internal payment transfer failed. The minting price may be too low to cover canister creation costs. Your deposit is safe — you can try again or contact an admin.',
                 };
-                throw new Error(friendlyErrors[errKey] || `Minting failed: ${errKey}${typeof errVal === 'object' ? ' - ' + JSON.stringify(errVal) : ''}`);
+                const detail = errVal ? (typeof errVal === 'string' ? errVal : JSON.stringify(errVal)) : '';
+                throw new Error(friendlyErrors[errKey] || `Minting failed: ${errKey}${detail ? ' — ' + detail : ''}`);
             }
         } catch (e) {
             setError(e.message || 'Minting failed');

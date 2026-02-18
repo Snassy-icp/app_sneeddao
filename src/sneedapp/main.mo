@@ -1460,34 +1460,32 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 }));
             };
             
-            // Track: Total ICP paid by user
             trackedIcpPaidE8s := applicableFeeE8s;
             
-            // Calculate ICP needed for target cycles based on current CMC rate
             let icpForCyclesE8s = await calculateIcpForCycles(targetCyclesAmount);
-            
-            // If we couldn't get a rate, use a fallback (0.02 ICP ~ 2T at typical rates)
-            let actualIcpForCycles: Nat64 = if (icpForCyclesE8s > 0) {
+            let rawIcpForCycles: Nat64 = if (icpForCyclesE8s > 0) {
                 icpForCyclesE8s;
             } else {
-                2_000_000; // 0.02 ICP fallback
+                2_000_000;
             };
             
-            // Track: ICP used for cycles
+            let totalTransferFees: Nat64 = T.ICP_FEE * 2;
+            
+            // Cap cycles budget so it doesn't exceed the price minus transfer fees
+            let maxForCycles: Nat64 = if (applicableFeeE8s > totalTransferFees + T.ICP_FEE) {
+                applicableFeeE8s - totalTransferFees;
+            } else { 0 };
+            let actualIcpForCycles: Nat64 = if (rawIcpForCycles > maxForCycles) { maxForCycles } else { rawIcpForCycles };
             trackedIcpForCyclesE8s := actualIcpForCycles;
             
-            // Calculate amount for fee destination (total - cycles portion - 2 transfer fees)
-            let feeAmount: Nat64 = if (applicableFeeE8s > actualIcpForCycles + T.ICP_FEE * 2) {
-                applicableFeeE8s - actualIcpForCycles - T.ICP_FEE * 2;
+            let feeAmount: Nat64 = if (applicableFeeE8s > actualIcpForCycles + totalTransferFees) {
+                applicableFeeE8s - actualIcpForCycles - totalTransferFees;
             } else {
                 0;
             };
             
-            // Track: Profit (ICP to fee destination)
             trackedIcpProfitE8s := feeAmount;
-            
-            // Track: Transfer fees (2 transfers)
-            trackedIcpTransferFeesE8s := T.ICP_FEE * 2;
+            trackedIcpTransferFeesE8s := totalTransferFees;
             
             // Step 1: Transfer ICP for cycles to factory's main account (for later CMC top-up)
             if (actualIcpForCycles > 0) {
@@ -2400,14 +2398,18 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             trackedIcpPaidE8s := applicableFeeE8s;
             
             let icpForCycles = await calculateIcpForCycles(targetCyclesAmount);
-            let actualIcpForCycles: Nat64 = if (icpForCycles > 0) { icpForCycles } else { 2_000_000 };
-            trackedIcpForCyclesE8s := actualIcpForCycles;
+            let rawIcpForCycles: Nat64 = if (icpForCycles > 0) { icpForCycles } else { 2_000_000 };
 
             let isSneedDao = app.publisherId == 0;
-            // Publisher 0: 2 transfers (cycles + profit to feeDestination)
-            // Others: 3 transfers (cycles + DAO cut + publisher share)
             let numTransfers: Nat64 = if (isSneedDao) { 2 } else { 3 };
             let totalTransferFees = T.ICP_FEE * numTransfers;
+
+            // Cap cycles budget so it doesn't exceed the price minus transfer fees
+            let maxForCycles: Nat64 = if (applicableFeeE8s > totalTransferFees + T.ICP_FEE) {
+                applicableFeeE8s - totalTransferFees;
+            } else { 0 };
+            let actualIcpForCycles: Nat64 = if (rawIcpForCycles > maxForCycles) { maxForCycles } else { rawIcpForCycles };
+            trackedIcpForCyclesE8s := actualIcpForCycles;
 
             let profit: Nat64 = if (applicableFeeE8s > actualIcpForCycles + totalTransferFees) {
                 applicableFeeE8s - actualIcpForCycles - totalTransferFees;
