@@ -9,7 +9,7 @@ import { principalToSubAccount } from '@dfinity/utils';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
-import { FaRocket, FaCheckCircle, FaExclamationTriangle, FaArrowRight, FaArrowLeft, FaSpinner, FaCopy, FaTag, FaFileAlt, FaEye, FaGasPump } from 'react-icons/fa';
+import { FaRocket, FaCheckCircle, FaExclamationTriangle, FaArrowRight, FaArrowLeft, FaSpinner, FaCopy, FaTag, FaFileAlt, FaEye, FaGasPump, FaCrown } from 'react-icons/fa';
 
 const customStyles = `
 @keyframes fadeInUp {
@@ -462,13 +462,72 @@ export default function SneedAppMint() {
                         {/* Price */}
                         <div style={{ marginBottom: 16 }}>
                             <div style={{ color: theme.colors.secondaryText, fontSize: 13, marginBottom: 4 }}>Minting Price</div>
-                            <div style={{ color: theme.colors.primaryText, fontSize: 20, fontWeight: 600 }}>
-                                {pricingInfo ? formatIcp(pricingInfo.applicable) : '...'} ICP
-                                {pricingInfo?.isPremium && (
-                                    <span style={{ fontSize: 12, color: '#f59e0b', marginLeft: 8, background: '#f59e0b20', padding: '2px 8px', borderRadius: 4 }}>Premium discount</span>
-                                )}
-                            </div>
-                            <div style={{ color: theme.colors.secondaryText, fontSize: 11, marginTop: 4 }}>
+                            {pricingInfo ? (
+                                <>
+                                    <div style={{ color: theme.colors.primaryText, fontSize: 20, fontWeight: 600 }}>
+                                        {formatIcp(pricingInfo.applicable)} ICP
+                                    </div>
+
+                                    {pricingInfo.isPremium && Number(pricingInfo.regular) > Number(pricingInfo.premium) ? (
+                                        <div style={{
+                                            marginTop: 8, padding: '10px 14px', borderRadius: 10,
+                                            background: 'linear-gradient(135deg, #FFD70015, #FFA50010)',
+                                            border: '1px solid #FFD70030',
+                                        }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                                                <FaCrown style={{ color: '#FFD700', fontSize: 13 }} />
+                                                <span style={{ color: '#FFD700', fontSize: 13, fontWeight: 600 }}>Premium Member Discount</span>
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                                                <span style={{ color: theme.colors.secondaryText, textDecoration: 'line-through' }}>
+                                                    {formatIcp(pricingInfo.regular)} ICP
+                                                </span>
+                                                <span style={{ color: '#FFD700', fontWeight: 600 }}>
+                                                    {formatIcp(pricingInfo.applicable)} ICP
+                                                </span>
+                                                <span style={{
+                                                    background: '#22c55e20', color: '#22c55e', padding: '1px 6px',
+                                                    borderRadius: 4, fontSize: 11, fontWeight: 600
+                                                }}>
+                                                    Save {formatIcp(Number(pricingInfo.regular) - Number(pricingInfo.premium))} ICP ({Math.round((1 - Number(pricingInfo.premium) / Number(pricingInfo.regular)) * 100)}% off)
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ) : !pricingInfo.isPremium && Number(pricingInfo.regular) > Number(pricingInfo.premium) ? (
+                                        <div style={{
+                                            marginTop: 8, padding: '10px 14px', borderRadius: 10,
+                                            background: theme.colors.secondaryBg,
+                                            border: `1px solid ${theme.colors.borderColor || '#333'}`,
+                                        }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                                                <FaCrown style={{ color: theme.colors.secondaryText, fontSize: 13 }} />
+                                                <span style={{ color: theme.colors.secondaryText, fontSize: 13, fontWeight: 500 }}>Premium members pay less</span>
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, flexWrap: 'wrap' }}>
+                                                <span style={{ color: theme.colors.secondaryText }}>
+                                                    Premium price: <strong style={{ color: '#FFD700' }}>{formatIcp(pricingInfo.premium)} ICP</strong>
+                                                </span>
+                                                <span style={{
+                                                    background: '#22c55e15', color: '#22c55e', padding: '1px 6px',
+                                                    borderRadius: 4, fontSize: 11, fontWeight: 600
+                                                }}>
+                                                    Save {formatIcp(Number(pricingInfo.regular) - Number(pricingInfo.premium))} ICP
+                                                </span>
+                                            </div>
+                                            <Link to="/premium" style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                                marginTop: 6, fontSize: 12, color: '#FFD700',
+                                                textDecoration: 'none', fontWeight: 500
+                                            }}>
+                                                <FaCrown style={{ fontSize: 10 }} /> Become a Premium member <FaArrowRight style={{ fontSize: 9 }} />
+                                            </Link>
+                                        </div>
+                                    ) : null}
+                                </>
+                            ) : (
+                                <div style={{ color: theme.colors.primaryText, fontSize: 20, fontWeight: 600 }}>...</div>
+                            )}
+                            <div style={{ color: theme.colors.secondaryText, fontSize: 11, marginTop: 8 }}>
                                 + {formatIcp(ICP_FEE)} ICP transfer fee
                             </div>
                         </div>
@@ -653,6 +712,12 @@ export default function SneedAppMint() {
                                     </span>
                                 </div>
                             )}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', marginTop: 4 }}>
+                                <span style={{ color: theme.colors.primaryText, fontWeight: 600 }}>Total from wallet</span>
+                                <span style={{ color: appPrimary, fontWeight: 700, fontSize: 16 }}>
+                                    {formatIcp(totalFromWallet)} ICP
+                                </span>
+                            </div>
                         </div>
 
                         <p style={{ color: theme.colors.secondaryText, fontSize: 12, margin: '0 0 16px' }}>
