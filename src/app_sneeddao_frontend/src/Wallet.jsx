@@ -53,6 +53,7 @@ import priceService from './services/PriceService';
 import ConsolidateModal from './ConsolidateModal';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
+import { createActor as createTradingBotActor } from 'external/sneed_trading_bot';
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
 import { useNaming } from './NamingContext';
 import { useWhitelistTokens } from './contexts/WhitelistTokensContext';
@@ -589,16 +590,18 @@ function Wallet() {
         lowCyclesCanisters: contextLowCyclesCanisters,
         // All bot entries from sneedapp (with appId) — for bot type icon detection
         allBotEntries: contextAllBotEntries,
+        appInfoMap: contextAppInfoMap,
+        allKnownWasmHashes: contextAllKnownWasmHashes,
     } = useWallet();
     const walletLayoutCtx = useWalletLayout();
     const navigate = useNavigate();
     
-    // Build canisterId → appId map for quick lookup (detect trading bots etc.)
+    // Build canisterId → resolvedAppId map from WASM hash matching
     const botAppIdMap = useMemo(() => {
         const map = {};
         for (const entry of (contextAllBotEntries || [])) {
             const cid = typeof entry.canisterId === 'string' ? entry.canisterId : entry.canisterId?.toString?.() || '';
-            if (cid && entry.appId) map[cid] = entry.appId;
+            if (cid && entry.resolvedAppId) map[cid] = entry.resolvedAppId;
         }
         return map;
     }, [contextAllBotEntries]);
@@ -2105,15 +2108,22 @@ function Wallet() {
         }
     }, [trackedCanisters, identity, fetchTrackedCanistersStatus]);
     
-    // Check if a module hash matches any known neuron manager version
+    // Check if a module hash matches any known app version WASM
     const isKnownNeuronManagerHash = useCallback((moduleHash) => {
-        if (!moduleHash || officialVersions.length === 0) return null;
+        if (!moduleHash) return null;
         const hashLower = moduleHash.toLowerCase();
-        return officialVersions.find(v => v.wasmHash.toLowerCase() === hashLower) || null;
-    }, [officialVersions]);
+        // Check comprehensive map from all sneedapp versions
+        const entry = contextAllKnownWasmHashes?.[hashLower];
+        if (entry) return entry.version;
+        // Fallback to legacy officialVersions
+        if (officialVersions.length > 0) {
+            return officialVersions.find(v => v.wasmHash?.toLowerCase() === hashLower) || null;
+        }
+        return null;
+    }, [contextAllKnownWasmHashes, officialVersions]);
     
-    // Fetch neuron manager info for a detected canister
-    const fetchDetectedManagerInfo = useCallback(async (canisterId, existingStatus) => {
+    // Fetch info for a detected sneedapp canister (uses WASM-resolved type for actor)
+    const fetchDetectedManagerInfo = useCallback(async (canisterId, existingStatus, resolvedAppId) => {
         if (!identity) return;
         
         try {
@@ -2125,19 +2135,29 @@ function Wallet() {
                 await agent.fetchRootKey();
             }
             
-            const managerActor = createManagerActor(canisterId, { agent });
-            const [version, neuronIds] = await Promise.all([
-                managerActor.getVersion(),
-                managerActor.getNeuronIds(),
-            ]);
+            const isStakingBot = resolvedAppId === 'sneed-icp-staking-bot' || resolvedAppId === 'icp-staking-bot';
+            let version, neuronCount = 0;
+            if (isStakingBot) {
+                const managerActor = createManagerActor(canisterId, { agent });
+                const [v, neuronIds] = await Promise.all([
+                    managerActor.getVersion(),
+                    managerActor.getNeuronIds(),
+                ]);
+                version = v;
+                neuronCount = neuronIds?.length || 0;
+            } else {
+                const botActor = createTradingBotActor(canisterId, { agent });
+                version = await botActor.getVersion();
+            }
             
-            console.log(`[NM Detection] Fetched manager info for ${canisterId}: v${version.major}.${version.minor}.${version.patch}, ${neuronIds?.length || 0} neurons`);
+            console.log(`[NM Detection] Fetched info for ${canisterId} (${resolvedAppId}): v${version.major}.${version.minor}.${version.patch}`);
             
             setDetectedNeuronManagers(prev => ({
                 ...prev,
                 [canisterId]: {
                     version,
-                    neuronCount: neuronIds?.length || 0,
+                    neuronCount,
+                    resolvedAppId: resolvedAppId || '',
                     cycles: existingStatus?.cycles,
                     memory: existingStatus?.memory,
                     isController: existingStatus?.isController,
@@ -2145,13 +2165,13 @@ function Wallet() {
                 }
             }));
         } catch (err) {
-            console.warn(`[NM Detection] Failed to fetch manager info for ${canisterId}:`, err.message || err);
-            // Mark as detected but invalid - WASM matches but interface doesn't work
+            console.warn(`[NM Detection] Failed to fetch info for ${canisterId} (${resolvedAppId}):`, err.message || err);
             setDetectedNeuronManagers(prev => ({
                 ...prev,
                 [canisterId]: {
                     version: null,
                     neuronCount: 0,
+                    resolvedAppId: resolvedAppId || '',
                     cycles: existingStatus?.cycles,
                     memory: existingStatus?.memory,
                     isController: existingStatus?.isController,
@@ -2161,21 +2181,22 @@ function Wallet() {
         }
     }, [identity]);
     
-    // Detect neuron managers from tracked canisters based on module hash
+    // Detect sneedapp canisters from tracked canisters based on module hash
     useEffect(() => {
-        if (officialVersions.length === 0) return;
+        if (Object.keys(contextAllKnownWasmHashes || {}).length === 0 && officialVersions.length === 0) return;
         
         for (const [canisterId, status] of Object.entries(trackedCanisterStatus)) {
             if (!status?.moduleHash) continue;
-            if (detectedNeuronManagers[canisterId]) continue; // Already detected
+            if (detectedNeuronManagers[canisterId]) continue;
             
-            const matchedVersion = isKnownNeuronManagerHash(status.moduleHash);
-            if (matchedVersion) {
-                console.log(`[NM Detection] Detected ICP staking bot ${canisterId} (v${matchedVersion.major}.${matchedVersion.minor}.${matchedVersion.patch})`);
-                fetchDetectedManagerInfo(canisterId, status);
+            const hashLower = status.moduleHash.toLowerCase();
+            const wasmEntry = contextAllKnownWasmHashes?.[hashLower];
+            if (wasmEntry) {
+                console.log(`[NM Detection] Detected ${wasmEntry.appId} canister ${canisterId}`);
+                fetchDetectedManagerInfo(canisterId, status, wasmEntry.appId);
             }
         }
-    }, [officialVersions, trackedCanisterStatus, detectedNeuronManagers, isKnownNeuronManagerHash, fetchDetectedManagerInfo]);
+    }, [officialVersions, contextAllKnownWasmHashes, trackedCanisterStatus, detectedNeuronManagers, fetchDetectedManagerInfo]);
 
     // --- Chore management from wallet cards ---
     const CHORE_NAMES = {
@@ -2284,11 +2305,12 @@ function Wallet() {
                 [canisterId]: newStatus
             }));
             
-            // If this is a detected neuron manager, refresh its info too
+            // If this is a detected sneedapp canister, refresh its info too
             if (detectedNeuronManagers[canisterId] && moduleHash) {
-                const matchedVersion = isKnownNeuronManagerHash(moduleHash);
-                if (matchedVersion) {
-                    fetchDetectedManagerInfo(canisterId, newStatus);
+                const hashLower = moduleHash.toLowerCase();
+                const wasmEntry = contextAllKnownWasmHashes?.[hashLower];
+                if (wasmEntry) {
+                    fetchDetectedManagerInfo(canisterId, newStatus, wasmEntry.appId);
                 }
             }
             if (contextRefreshTrackedCanisters) {
@@ -7002,15 +7024,20 @@ function Wallet() {
                                     : neuronManagers
                                 ).map((manager) => {
                                     const canisterId = normalizeId(manager.canisterId);
+                                    // Resolve app type from WASM hash (not stored appId)
+                                    const appId = manager.resolvedAppId || botAppIdMap[canisterId] || '';
+                                    const isStakingBot = appId === 'sneed-icp-staking-bot' || appId === 'icp-staking-bot';
+                                    const appInfo = contextAppInfoMap?.[appId];
+                                    const appLabel = appInfo?.name || (isStakingBot ? 'ICP Staking Bot' : (appId || 'Unknown'));
                                     const neuronCount = neuronManagerCounts[canisterId];
                                     const isExpanded = expandedManagerCards[canisterId];
                                     const neuronsData = managerNeurons[canisterId];
                                     const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
                                     
-                                    // Check if this manager has a valid WASM hash
+                                    // WASM hash check against all known app versions
                                     const managerModuleHash = neuronManagerModuleHash[canisterId];
                                     const hasMatchingWasm = managerModuleHash && isKnownNeuronManagerHash(managerModuleHash);
-                                    const isValidManager = manager.version && hasMatchingWasm;
+                                    const isValidManager = manager.version && (hasMatchingWasm || !manager.isInvalid);
                                     
                                     // Calculate total ICP value for this manager (stake + maturity)
                                     let managerTotalIcp = 0;
@@ -7041,7 +7068,10 @@ function Wallet() {
                                                 onClick={() => toggleManagerCard(canisterId)}
                                             >
                                                 <div className="header-logo-column" style={{ alignSelf: 'flex-start', minWidth: '48px', minHeight: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-                                                    <FaBrain size={36} style={{ color: isValidManager === false ? '#ef4444' : theme.colors.mutedText }} />
+                                                    {isStakingBot 
+                                                        ? <FaBrain size={36} style={{ color: isValidManager === false ? '#ef4444' : theme.colors.mutedText }} />
+                                                        : <FaBox size={36} style={{ color: isValidManager === false ? '#ef4444' : theme.colors.accent }} />
+                                                    }
                                                     {neuronManagerIsController[canisterId] && (
                                                         <span 
                                                             style={{ 
@@ -7055,7 +7085,7 @@ function Wallet() {
                                                             <FaCrown size={14} />
                                                         </span>
                                                     )}
-                                                    {officialVersions.length > 0 && !isValidManager && (
+                                                    {(Object.keys(contextAllKnownWasmHashes || {}).length > 0 || officialVersions.length > 0) && !isValidManager && (
                                                         <span 
                                                             style={{ 
                                                                 position: 'absolute', 
@@ -7063,7 +7093,7 @@ function Wallet() {
                                                                 right: 0,
                                                                 color: '#ef4444'
                                                             }}
-                                                            title="WASM hash doesn't match any official ICP staking bot version"
+                                                            title="WASM hash doesn't match any known app version"
                                                         >
                                                             <FaExclamationTriangle size={14} />
                                                         </span>
@@ -7249,8 +7279,8 @@ function Wallet() {
                                                                 <FaSeedling size={12} style={{ marginRight: '4px' }} /> {managerTotalMaturity.toFixed(2)}
                                                             </span>
                                                         )}
-                                                        {/* Neurons icon */}
-                                                        {neuronCount > 0 && (
+                                                        {/* Neurons icon (staking bots only) */}
+                                                        {isStakingBot && neuronCount > 0 && (
                                                             <span 
                                                                 style={{ fontSize: '14px', cursor: 'help', display: 'flex', alignItems: 'center', color: theme.colors.mutedText }} 
                                                                 title={`${neuronCount} neuron${neuronCount > 1 ? 's' : ''}`}
@@ -7434,6 +7464,7 @@ function Wallet() {
                                                                     {canisterId}
                                                                 </div>
                                                             </div>
+                                                            {isStakingBot && (
                                                             <div style={{ textAlign: 'center' }}>
                                                                 <div style={{ color: theme.colors.mutedText, fontSize: '10px', textTransform: 'uppercase' }}>Neurons</div>
                                                                 <div style={{ 
@@ -7444,11 +7475,24 @@ function Wallet() {
                                                                     {neuronCount !== null && neuronCount !== undefined ? neuronCount : '...'}
                                                                 </div>
                                                             </div>
+                                                            )}
+                                                            {!isStakingBot && (
+                                                            <div style={{ textAlign: 'center' }}>
+                                                                <div style={{ color: theme.colors.mutedText, fontSize: '10px', textTransform: 'uppercase' }}>App</div>
+                                                                <div style={{ 
+                                                                    color: theme.colors.accent,
+                                                                    fontWeight: '600',
+                                                                    fontSize: '13px'
+                                                                }}>
+                                                                    {appLabel}
+                                                                </div>
+                                                            </div>
+                                                            )}
                                                         </div>
                                                     </div>
                                                     
-                                                    {/* Neurons List */}
-                                                    {neuronsData?.loading ? (
+                                                    {/* Neurons List (staking bots only) */}
+                                                    {isStakingBot && neuronsData?.loading ? (
                                                         <div style={{ 
                                                             display: 'flex', 
                                                             alignItems: 'center', 
@@ -7459,7 +7503,7 @@ function Wallet() {
                                                             <div className="spinner" style={{ width: '20px', height: '20px' }}></div>
                                                             <span style={{ color: theme.colors.mutedText, fontSize: '13px' }}>Loading neurons...</span>
                                                         </div>
-                                                    ) : neuronsData?.error ? (
+                                                    ) : isStakingBot && neuronsData?.error ? (
                                                         <div style={{ 
                                                             padding: '16px', 
                                                             display: 'flex', 
@@ -7489,7 +7533,7 @@ function Wallet() {
                                                                 View canister details <FaArrowRight size={10} />
                                                             </Link>
                                                         </div>
-                                                    ) : neuronsData?.neurons?.length === 0 ? (
+                                                    ) : isStakingBot && neuronsData?.neurons?.length === 0 ? (
                                                         <div style={{ 
                                                             color: theme.colors.mutedText, 
                                                             fontSize: '13px', 
@@ -7498,7 +7542,7 @@ function Wallet() {
                                                         }}>
                                                             No neurons found. <Link to={`/icp_neuron_manager/${canisterId}`} style={{ color: theme.colors.accent, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Stake ICP <FaArrowRight size={10} /></Link>
                                                         </div>
-                                                    ) : (
+                                                    ) : isStakingBot ? (
                                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                                             {neuronsData?.neurons?.map((neuron) => {
                                                                 const stake = neuron.info ? Number(neuron.info.stake_e8s || 0) / 1e8 : 0;
@@ -7767,7 +7811,7 @@ function Wallet() {
                                                                 );
                                                             })}
                                                         </div>
-                                                    )}
+                                                    ) : null}
                                                     
                                                     {/* Action Buttons */}
                                                     <div style={{ 
@@ -7778,7 +7822,7 @@ function Wallet() {
                                                         justifyContent: 'flex-end'
                                                     }}>
                                                         <Link 
-                                                            to={`/icp_neuron_manager/${canisterId}`}
+                                                            to={isStakingBot ? `/icp_neuron_manager/${canisterId}` : (appId === 'sneed-trading-bot' ? `/trading_bot/${canisterId}` : `/canister?id=${canisterId}`)}
                                                             style={{
                                                                 background: theme.colors.accent,
                                                                 color: '#fff',
@@ -8402,11 +8446,11 @@ function Wallet() {
                                                                 />
                                                             </span>
                                                         </div>
-                                                        {/* Row 2: ICP Staking Bot label + actions */}
+                                                        {/* Row 2: App type label + actions */}
                                                         <div className="header-row-2">
                                                             <div className="amount-symbol">
-                                                                <span className="token-amount" style={{ color: '#8b5cf6' }}>
-                                                                    ICP Staking Bot
+                                                                <span className="token-amount" style={{ color: isStakingBot ? '#8b5cf6' : theme.colors.accent }}>
+                                                                    {appLabel}
                                                                 </span>
                                                             </div>
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto' }}>

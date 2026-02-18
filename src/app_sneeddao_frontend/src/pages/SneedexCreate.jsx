@@ -393,11 +393,20 @@ function SneedexCreate() {
                     await agent.fetchRootKey();
                 }
                 
-                const factory = createFactoryActor(factoryCanisterId, { agent });
-                const walletEntries = await factory.getMyWallet().catch(() => []);
-                const managerIds = (walletEntries || [])
-                    .filter(e => !e.appId || e.appId === '' || e.appId === 'sneed-icp-staking-bot')
-                    .map(e => e.canisterId);
+                // Use WASM-resolved bot entries from WalletContext if available
+                const contextEntries = walletContext?.allBotEntries;
+                let managerIds;
+                if (contextEntries && contextEntries.length > 0) {
+                    managerIds = contextEntries
+                        .filter(e => e.resolvedAppId === 'sneed-icp-staking-bot' || e.resolvedAppId === 'icp-staking-bot')
+                        .map(e => e.canisterId);
+                } else {
+                    const factory = createFactoryActor(factoryCanisterId, { agent });
+                    const walletEntries = await factory.getMyWallet().catch(() => []);
+                    managerIds = (walletEntries || [])
+                        .filter(e => e.appId === 'sneed-icp-staking-bot' || e.appId === 'icp-staking-bot')
+                        .map(e => e.canisterId);
+                }
                 setNeuronManagers(managerIds.map(p => p.toString()));
                 
             } catch (e) {

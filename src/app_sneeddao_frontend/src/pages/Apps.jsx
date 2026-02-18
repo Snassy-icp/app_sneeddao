@@ -17,6 +17,7 @@ import { uint8ArrayToHex } from '../utils/NeuronUtils';
 import { useNavigate } from 'react-router-dom';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
+import { createActor as createTradingBotActor } from 'external/sneed_trading_bot';
 import { getCyclesColor, formatCyclesCompact, getNeuronManagerSettings, getCanisterManagerSettings } from '../utils/NeuronManagerSettings';
 import { buildSnsCanisterToRootMap, fetchSnsCyclesFromRoot, getSnsById } from '../utils/SnsUtils';
 import { getLogoSync } from '../hooks/useLogoCache';
@@ -259,6 +260,7 @@ export default function AppsPage() {
     
     // Official versions and detected neuron managers (for progressive upgrade)
     const [officialVersions, setOfficialVersions] = useState([]);
+    const [allKnownWasmHashes, setAllKnownWasmHashes] = useState({});
     // Detected neuron managers from custom/wallet sections - canisterId -> { version, neuronCount, cycles, memory, isController }
     const [detectedNeuronManagers, setDetectedNeuronManagers] = useState({});
     // Use different thresholds for neuron managers vs general canisters
@@ -395,15 +397,22 @@ export default function AppsPage() {
         return compareVersions(version, latestOfficialVersion) < 0;
     };
     
-    // Check if a module hash matches any known neuron manager version
+    // Check if a module hash matches any known app version WASM (all apps)
     const isKnownNeuronManagerHash = useCallback((moduleHash) => {
-        if (!moduleHash || officialVersions.length === 0) return null;
+        if (!moduleHash) return null;
         const hashLower = moduleHash.toLowerCase();
-        return officialVersions.find(v => v.wasmHash.toLowerCase() === hashLower) || null;
-    }, [officialVersions]);
+        // Check comprehensive map from all sneedapp versions
+        const entry = allKnownWasmHashes?.[hashLower];
+        if (entry) return entry.version;
+        // Fallback to legacy officialVersions
+        if (officialVersions.length > 0) {
+            return officialVersions.find(v => v.wasmHash?.toLowerCase() === hashLower) || null;
+        }
+        return null;
+    }, [allKnownWasmHashes, officialVersions]);
     
-    // Fetch neuron manager info for a detected canister
-    const fetchDetectedManagerInfo = useCallback(async (canisterId, existingStatus) => {
+    // Fetch info for a detected sneedapp canister (uses WASM-resolved type for actor)
+    const fetchDetectedManagerInfo = useCallback(async (canisterId, existingStatus, resolvedAppId) => {
         if (!identity) return;
         
         try {
@@ -415,32 +424,41 @@ export default function AppsPage() {
                 await agent.fetchRootKey();
             }
             
-            const managerActor = createManagerActor(canisterId, { agent });
-            const [version, neuronIds] = await Promise.all([
-                managerActor.getVersion(),
-                managerActor.getNeuronIds(),
-            ]);
+            const isStakingBot = resolvedAppId === 'sneed-icp-staking-bot' || resolvedAppId === 'icp-staking-bot';
+            let version, neuronCount = 0, neuronIds = [];
+            if (isStakingBot) {
+                const managerActor = createManagerActor(canisterId, { agent });
+                [version, neuronIds] = await Promise.all([
+                    managerActor.getVersion(),
+                    managerActor.getNeuronIds(),
+                ]);
+                neuronCount = neuronIds?.length || 0;
+            } else {
+                const botActor = createTradingBotActor(canisterId, { agent });
+                version = await botActor.getVersion();
+            }
             
-            console.log(`[NM Detection] Fetched manager info for ${canisterId}: v${version.major}.${version.minor}.${version.patch}, ${neuronIds?.length || 0} neurons`);
+            console.log(`[NM Detection] Fetched info for ${canisterId} (${resolvedAppId}): v${version.major}.${version.minor}.${version.patch}`);
             
             setDetectedNeuronManagers(prev => ({
                 ...prev,
                 [canisterId]: {
                     version,
-                    neuronCount: neuronIds?.length || 0,
+                    neuronCount,
+                    resolvedAppId: resolvedAppId || '',
                     cycles: existingStatus?.cycles,
                     memory: existingStatus?.memory,
                     isController: existingStatus?.isController,
                 }
             }));
         } catch (err) {
-            console.warn(`[NM Detection] Failed to fetch manager info for ${canisterId}:`, err.message || err);
-            // Still mark as detected but with fallback values
+            console.warn(`[NM Detection] Failed to fetch info for ${canisterId} (${resolvedAppId}):`, err.message || err);
             setDetectedNeuronManagers(prev => ({
                 ...prev,
                 [canisterId]: {
                     version: { major: 0n, minor: 0n, patch: 0n },
                     neuronCount: 0,
+                    resolvedAppId: resolvedAppId || '',
                     cycles: existingStatus?.cycles,
                     memory: existingStatus?.memory,
                     isController: existingStatus?.isController,
@@ -449,34 +467,34 @@ export default function AppsPage() {
         }
     }, [identity]);
     
-    // Detect neuron managers from custom canisters based on module hash
+    // Detect sneedapp canisters from custom/tracked canisters based on module hash
     useEffect(() => {
-        if (officialVersions.length === 0) return;
+        if (officialVersions.length === 0 && Object.keys(allKnownWasmHashes).length === 0) return;
         
-        // Check custom canister statuses
         for (const [canisterId, status] of Object.entries(canisterStatus)) {
             if (!status?.moduleHash) continue;
-            if (detectedNeuronManagers[canisterId]) continue; // Already detected
+            if (detectedNeuronManagers[canisterId]) continue;
             
-            const matchedVersion = isKnownNeuronManagerHash(status.moduleHash);
-            if (matchedVersion) {
-                console.log(`[NM Detection] Detected ICP staking bot ${canisterId} (v${matchedVersion.major}.${matchedVersion.minor}.${matchedVersion.patch})`);
-                fetchDetectedManagerInfo(canisterId, status);
+            const hashLower = status.moduleHash.toLowerCase();
+            const wasmEntry = allKnownWasmHashes?.[hashLower];
+            if (wasmEntry) {
+                console.log(`[NM Detection] Detected ${wasmEntry.appId} canister ${canisterId}`);
+                fetchDetectedManagerInfo(canisterId, status, wasmEntry.appId);
             }
         }
         
-        // Check tracked (wallet) canister statuses
         for (const [canisterId, status] of Object.entries(trackedCanisterStatus)) {
             if (!status?.moduleHash) continue;
-            if (detectedNeuronManagers[canisterId]) continue; // Already detected
+            if (detectedNeuronManagers[canisterId]) continue;
             
-            const matchedVersion = isKnownNeuronManagerHash(status.moduleHash);
-            if (matchedVersion) {
-                console.log(`[NM Detection] Detected neuron manager ${canisterId} (v${matchedVersion.major}.${matchedVersion.minor}.${matchedVersion.patch})`);
-                fetchDetectedManagerInfo(canisterId, status);
+            const hashLower = status.moduleHash.toLowerCase();
+            const wasmEntry = allKnownWasmHashes?.[hashLower];
+            if (wasmEntry) {
+                console.log(`[NM Detection] Detected ${wasmEntry.appId} canister ${canisterId}`);
+                fetchDetectedManagerInfo(canisterId, status, wasmEntry.appId);
             }
         }
-    }, [officialVersions, canisterStatus, trackedCanisterStatus, detectedNeuronManagers, isKnownNeuronManagerHash, fetchDetectedManagerInfo]);
+    }, [officialVersions, allKnownWasmHashes, canisterStatus, trackedCanisterStatus, detectedNeuronManagers, fetchDetectedManagerInfo]);
 
     // Fetch neuron managers
     const fetchNeuronManagers = useCallback(async () => {
@@ -498,17 +516,33 @@ export default function AppsPage() {
             
             const factory = createFactoryActor(factoryCanisterId, { agent });
             
-            // Fetch wallet entries (with appId) and official versions in parallel
-            const [walletEntries, fetchedOfficialVersions] = await Promise.all([
+            // Fetch wallet entries, official versions, and all apps in parallel
+            const [walletEntries, fetchedOfficialVersions, allApps] = await Promise.all([
                 factory.getMyWallet().catch(() => []),
                 factory.getOfficialVersions(),
+                factory.getApps().catch(() => []),
             ]);
 
-            // All sneedapp wallet entries
-            const canisterIds = (walletEntries || []).map(e => e.canisterId);
+            // Build comprehensive wasmHash → {appId, version} map from ALL app versions
+            const wasmHashMap = {};
+            await Promise.allSettled((allApps || []).map(async (app) => {
+                try {
+                    const versions = await factory.getAppVersions(app.appId);
+                    for (const v of (versions || [])) {
+                        if (v.wasmHash) {
+                            wasmHashMap[v.wasmHash.toLowerCase()] = { appId: app.appId, version: v };
+                        }
+                    }
+                } catch (_) {}
+            }));
+            setAllKnownWasmHashes(wasmHashMap);
+
+            const walletEntriesRaw = (walletEntries || []).map(e => ({
+                canisterId: e.canisterId,
+            }));
             
             // Store official versions for use in detecting neuron managers
-            console.log('[NM Detection] Loaded', fetchedOfficialVersions?.length || 0, 'official versions');
+            console.log('[NM Detection] Loaded', fetchedOfficialVersions?.length || 0, 'official versions,', Object.keys(wasmHashMap).length, 'app version hashes');
             setOfficialVersions(fetchedOfficialVersions || []);
             
             // Find latest official version
@@ -517,29 +551,13 @@ export default function AppsPage() {
                 setLatestOfficialVersion(sorted[0]);
             }
             
-            // Fetch current version, neuron count, and cycles from each canister
+            // Fetch canister info (module hash, cycles, controller status) + resolve app type from WASM
             const managersWithInfo = await Promise.all(
-                canisterIds.map(async (canisterIdPrincipal) => {
+                walletEntriesRaw.map(async (walletEntry) => {
+                    const canisterIdPrincipal = walletEntry.canisterId;
                     const canisterId = canisterIdPrincipal.toString();
-                    let isValidManager = true; // Track if getVersion/getNeuronIds succeeded
-                    let currentVersion = null;
-                    let neuronIds = [];
                     
-                    try {
-                        const managerActor = createManagerActor(canisterId, { agent });
-                        [currentVersion, neuronIds] = await Promise.all([
-                            managerActor.getVersion(),
-                            managerActor.getNeuronIds(),
-                        ]);
-                    } catch (err) {
-                        console.warn(`Manager methods failed for ${canisterId}:`, err.message || err);
-                        isValidManager = false;
-                        currentVersion = { major: 0n, minor: 0n, patch: 0n };
-                        neuronIds = [];
-                    }
-                    
-                    // Try to fetch cycles, memory, and module hash (may fail if not controller)
-                    // Need to create actor with effectiveCanisterId for management canister
+                    // Step 1: Get module hash, cycles, memory
                     let cycles = null;
                     let memory = null;
                     let isController = false;
@@ -558,20 +576,65 @@ export default function AppsPage() {
                         memory = Number(status.memory_size);
                         moduleHash = status.module_hash[0] ? uint8ArrayToHex(status.module_hash[0]) : null;
                         isController = true;
-                    } catch (cyclesErr) {
-                        // Not a controller, can't get status
-                        console.log(`Cannot fetch status for ${canisterId} (not a controller)`);
+                    } catch (_) {
+                        // Not a controller -- use backend proxy for module hash
+                        try {
+                            const result = await getCanisterInfo(identity, canisterId);
+                            if (result && 'ok' in result) {
+                                moduleHash = result.ok.module_hash[0] ? uint8ArrayToHex(result.ok.module_hash[0]) : null;
+                            }
+                        } catch (__) {}
+                    }
+                    
+                    // Step 2: Resolve app type from WASM hash
+                    const wasmMatch = moduleHash ? wasmHashMap[moduleHash.toLowerCase()] : null;
+                    const resolvedAppId = wasmMatch?.appId || '';
+                    const isStakingBot = resolvedAppId === 'sneed-icp-staking-bot' || resolvedAppId === 'icp-staking-bot';
+                    
+                    // Step 3: Fetch version/neuronIds using the WASM-resolved actor type
+                    let isValidManager = true;
+                    let currentVersion = null;
+                    let neuronIds = [];
+                    try {
+                        if (isStakingBot) {
+                            const managerActor = createManagerActor(canisterId, { agent });
+                            [currentVersion, neuronIds] = await Promise.all([
+                                managerActor.getVersion(),
+                                managerActor.getNeuronIds(),
+                            ]);
+                        } else if (resolvedAppId) {
+                            const botActor = createTradingBotActor(canisterId, { agent });
+                            currentVersion = await botActor.getVersion();
+                        } else {
+                            // Unknown WASM -- try staking bot first, fall back to trading bot
+                            try {
+                                const managerActor = createManagerActor(canisterId, { agent });
+                                [currentVersion, neuronIds] = await Promise.all([
+                                    managerActor.getVersion(),
+                                    managerActor.getNeuronIds(),
+                                ]);
+                            } catch (_) {
+                                const botActor = createTradingBotActor(canisterId, { agent });
+                                currentVersion = await botActor.getVersion();
+                            }
+                        }
+                    } catch (err) {
+                        console.warn(`Canister methods failed for ${canisterId} (${resolvedAppId || 'unknown'}):`, err.message || err);
+                        isValidManager = false;
+                        currentVersion = { major: 0n, minor: 0n, patch: 0n };
+                        neuronIds = [];
                     }
                     
                     return { 
                         canisterId: canisterIdPrincipal, 
+                        resolvedAppId,
                         version: currentVersion,
                         neuronCount: neuronIds?.length || 0,
                         cycles,
                         memory,
                         isController,
                         moduleHash,
-                        isValidManager, // True if getVersion/getNeuronIds succeeded
+                        isValidManager,
                     };
                 })
             );
@@ -5414,10 +5477,10 @@ export default function AppsPage() {
                                             const canisterId = manager.canisterId.toText();
                                             const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames, verifiedNames, principalCanisterTypes);
                                             
-                                            // Check if this is actually a valid neuron manager via WASM hash
-                                            // Only show as NeuronManagerCard if WASM matches known versions
+                                            const resolvedAppId = manager.resolvedAppId || '';
+                                            const isStakingBot = resolvedAppId === 'sneed-icp-staking-bot' || resolvedAppId === 'icp-staking-bot';
                                             const hasMatchingWasm = manager.moduleHash && isKnownNeuronManagerHash(manager.moduleHash);
-                                            const shouldShowAsManager = hasMatchingWasm;
+                                            const shouldShowAsManager = isStakingBot && hasMatchingWasm;
                                             
                                             if (!shouldShowAsManager) {
                                                 // Show as regular canister card
@@ -5464,7 +5527,7 @@ export default function AppsPage() {
                                                                     boxShadow: canisterHealth !== 'unknown' ? `0 0 6px ${canisterLampColor}` : 'none',
                                                                     zIndex: 2,
                                                                 }}
-                                                                title={`Health: ${canisterHealth}${!manager.moduleHash ? ' (WASM unknown - not controller)' : ' (WASM mismatch)'}`}
+                                                                title={`Health: ${canisterHealth}${hasMatchingWasm ? '' : (!manager.moduleHash ? ' (WASM unknown - not controller)' : ' (WASM mismatch)')}`}
                                                             />
                                                         </div>
                                                         <div>
@@ -5478,8 +5541,10 @@ export default function AppsPage() {
                                                                 showSendMessage={false}
                                                                 showViewProfile={false}
                                                             />
-                                                            <div style={{ fontSize: '11px', color: manager.moduleHash ? '#ef4444' : theme.colors.secondaryText, marginTop: '2px' }}>
-                                                                {manager.moduleHash ? '⚠️ WASM mismatch - not a known ICP staking bot' : '🔒 WASM unknown - need controller access to verify'}
+                                                            <div style={{ fontSize: '11px', color: (!isStakingBot) ? theme.colors.secondaryText : (manager.moduleHash ? '#ef4444' : theme.colors.secondaryText), marginTop: '2px' }}>
+                                                                {hasMatchingWasm 
+                                                                    ? (resolvedAppId || 'Known app version ✓')
+                                                                    : (!manager.moduleHash ? '🔒 WASM unknown' : '⚠️ WASM not recognized')}
                                                             </div>
                                                         </div>
                                                         </div>

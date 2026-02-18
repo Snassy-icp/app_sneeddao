@@ -17,6 +17,7 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'declarations/sneed_lock';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
+import { createActor as createTradingBotActor } from 'external/sneed_trading_bot';
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { uint8ArrayToHex } from './utils/NeuronUtils';
 import { getCanisterInfo } from './utils/BackendUtils';
@@ -150,6 +151,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     
     // Neuron manager detection state for tracked canisters
     const [officialVersions, setOfficialVersions] = useState([]);
+    const [allKnownWasmHashes, setAllKnownWasmHashes] = useState({});
     const fetchCanisterStatusIdRef = useRef(0); // dedup guard for fetchCanisterStatus
     const [trackedCanisterStatus, setTrackedCanisterStatus] = useState({}); // canisterId -> { cycles, memory, moduleHash }
     const [detectedNeuronManagers, setDetectedNeuronManagers] = useState({}); // canisterId -> { version, neuronCount, cycles, memory, isController, isValid }
@@ -161,12 +163,12 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     // All bot entries from sneedapp (with appId) - for bot type icon detection
     const allBotEntries = walletContext?.allBotEntries || [];
 
-    // Build canisterId → appId map for quick lookup (detect trading bots etc.)
+    // Build canisterId → resolvedAppId map from WASM hash matching
     const botAppIdMap = useMemo(() => {
         const map = {};
         for (const entry of allBotEntries) {
             const cid = typeof entry.canisterId === 'string' ? entry.canisterId : entry.canisterId?.toString?.() || '';
-            if (cid && entry.appId) map[cid] = entry.appId;
+            if (cid && entry.resolvedAppId) map[cid] = entry.resolvedAppId;
         }
         return map;
     }, [allBotEntries]);
@@ -244,8 +246,23 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                 }
                 
                 const factory = createFactoryActor(factoryCanisterId, { agent });
-                const fetchedOfficialVersions = await factory.getOfficialVersions();
+                const [fetchedOfficialVersions, allApps] = await Promise.all([
+                    factory.getOfficialVersions(),
+                    factory.getApps().catch(() => []),
+                ]);
                 setOfficialVersions(fetchedOfficialVersions || []);
+                
+                // Build comprehensive wasmHash map from all app versions
+                const wasmMap = {};
+                await Promise.allSettled((allApps || []).map(async (app) => {
+                    try {
+                        const versions = await factory.getAppVersions(app.appId);
+                        for (const v of (versions || [])) {
+                            if (v.wasmHash) wasmMap[v.wasmHash.toLowerCase()] = { appId: app.appId, version: v };
+                        }
+                    } catch (_) {}
+                }));
+                setAllKnownWasmHashes(wasmMap);
             } catch (err) {
                 console.warn('[QuickWallet] Error fetching official versions:', err);
             }
@@ -326,15 +343,20 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         fetchCanisterStatus();
     }, [showPopup, identity, trackedCanistersKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Check if a module hash matches any known neuron manager version
+    // Check if a module hash matches any known app version WASM (all apps)
     const isKnownNeuronManagerHash = useCallback((moduleHash) => {
-        if (!moduleHash || officialVersions.length === 0) return null;
+        if (!moduleHash) return null;
         const hashLower = moduleHash.toLowerCase();
-        return officialVersions.find(v => v.wasmHash.toLowerCase() === hashLower) || null;
-    }, [officialVersions]);
+        const entry = allKnownWasmHashes?.[hashLower];
+        if (entry) return entry.version;
+        if (officialVersions.length > 0) {
+            return officialVersions.find(v => v.wasmHash?.toLowerCase() === hashLower) || null;
+        }
+        return null;
+    }, [allKnownWasmHashes, officialVersions]);
 
-    // Fetch neuron manager info for a detected canister
-    const fetchDetectedManagerInfo = useCallback(async (canisterId, existingStatus) => {
+    // Fetch info for a detected sneedapp canister (uses WASM-resolved type for actor)
+    const fetchDetectedManagerInfo = useCallback(async (canisterId, existingStatus, resolvedAppId) => {
         if (!identity) return;
         
         try {
@@ -346,17 +368,27 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                 await agent.fetchRootKey();
             }
             
-            const managerActor = createManagerActor(canisterId, { agent });
-            const [version, neuronIds] = await Promise.all([
-                managerActor.getVersion(),
-                managerActor.getNeuronIds(),
-            ]);
+            const isStakingBot = resolvedAppId === 'sneed-icp-staking-bot' || resolvedAppId === 'icp-staking-bot';
+            let version, neuronCount = 0;
+            if (isStakingBot) {
+                const managerActor = createManagerActor(canisterId, { agent });
+                const [v, neuronIds] = await Promise.all([
+                    managerActor.getVersion(),
+                    managerActor.getNeuronIds(),
+                ]);
+                version = v;
+                neuronCount = neuronIds?.length || 0;
+            } else {
+                const botActor = createTradingBotActor(canisterId, { agent });
+                version = await botActor.getVersion();
+            }
             
             setDetectedNeuronManagers(prev => ({
                 ...prev,
                 [canisterId]: {
                     version,
-                    neuronCount: neuronIds?.length || 0,
+                    neuronCount,
+                    resolvedAppId: resolvedAppId || '',
                     cycles: existingStatus?.cycles,
                     memory: existingStatus?.memory,
                     isController: existingStatus?.isController,
@@ -364,12 +396,12 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                 }
             }));
         } catch (err) {
-            // Mark as detected but invalid
             setDetectedNeuronManagers(prev => ({
                 ...prev,
                 [canisterId]: {
                     version: null,
                     neuronCount: 0,
+                    resolvedAppId: resolvedAppId || '',
                     cycles: existingStatus?.cycles,
                     memory: existingStatus?.memory,
                     isController: existingStatus?.isController,
@@ -381,18 +413,19 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
 
     // Detect neuron managers from tracked canisters based on module hash
     useEffect(() => {
-        if (officialVersions.length === 0) return;
+        if (officialVersions.length === 0 && Object.keys(allKnownWasmHashes).length === 0) return;
         
         for (const [canisterId, status] of Object.entries(trackedCanisterStatus)) {
             if (!status?.moduleHash) continue;
             if (detectedNeuronManagers[canisterId]) continue; // Already detected
             
-            const matchedVersion = isKnownNeuronManagerHash(status.moduleHash);
-            if (matchedVersion) {
-                fetchDetectedManagerInfo(canisterId, status);
+            const hashLower = status.moduleHash.toLowerCase();
+            const wasmEntry = allKnownWasmHashes?.[hashLower];
+            if (wasmEntry) {
+                fetchDetectedManagerInfo(canisterId, status, wasmEntry.appId);
             }
         }
-    }, [officialVersions, trackedCanisterStatus, detectedNeuronManagers, isKnownNeuronManagerHash, fetchDetectedManagerInfo]);
+    }, [officialVersions, allKnownWasmHashes, trackedCanisterStatus, detectedNeuronManagers, isKnownNeuronManagerHash, fetchDetectedManagerInfo]);
 
     // Helper to format cycles compactly
     const formatCyclesCompact = useCallback((cycles) => {
@@ -2884,9 +2917,10 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                   const status = trackedCanisterStatus[canisterId];
                                   const detectedManager = detectedNeuronManagers[canisterId];
                                   const isNeuronManager = detectedManager?.isValid;
-                                  const appId = botAppIdMap[canisterId] || '';
-                                  const isTradingBot = appId === 'sneed-trading-bot';
-                                  const isKnownBot = isNeuronManager || isTradingBot;
+                                  const resolvedAppId = detectedManager?.resolvedAppId || botAppIdMap[canisterId] || '';
+                                  const isStakingBot = resolvedAppId === 'sneed-icp-staking-bot' || resolvedAppId === 'icp-staking-bot';
+                                  const isTradingBot = !!resolvedAppId && !isStakingBot;
+                                  const isKnownBot = isNeuronManager || !!resolvedAppId;
                                   // Use shared controller status from context
                                   const isController = trackedCanisterIsController[canisterId];
                                   const cycles = status?.cycles;
@@ -2904,7 +2938,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                               canisterId,
                                               isNeuronManager,
                                               isTradingBot,
-                                              appId,
+                                              appId: resolvedAppId,
                                               neuronManagerVersion: detectedManager?.version || null,
                                               neuronCount: detectedManager?.neuronCount || 0,
                                               cycles,

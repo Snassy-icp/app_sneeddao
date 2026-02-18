@@ -170,7 +170,7 @@ export const idlFactory = ({ IDL }) => {
   const Result_5 = IDL.Variant({ 'ok' : IDL.Vec(Neuron), 'err' : IDL.Text });
   const WalletLayout = IDL.Record({
     'apps' : IDL.Vec(IDL.Principal),
-    'staking_bots' : IDL.Vec(IDL.Principal),
+    'sneedapp' : IDL.Vec(IDL.Principal),
     'tokens' : IDL.Vec(IDL.Principal),
     'positions' : IDL.Vec(IDL.Principal),
   });

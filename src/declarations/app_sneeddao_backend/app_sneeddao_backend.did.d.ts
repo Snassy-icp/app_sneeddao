@@ -435,7 +435,7 @@ export interface UserSettingsUpdate {
 }
 export interface WalletLayout {
   'apps' : Array<Principal>,
-  'staking_bots' : Array<Principal>,
+  'sneedapp' : Array<Principal>,
   'tokens' : Array<Principal>,
   'positions' : Array<Principal>,
 }

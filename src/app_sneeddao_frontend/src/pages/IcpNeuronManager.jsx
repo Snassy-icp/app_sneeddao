@@ -762,7 +762,7 @@ function IcpNeuronManager() {
         }
     }, [canisterId, identity]);
 
-    // Fetch official versions from factory
+    // Fetch official versions from factory (app-specific + legacy fallback)
     const fetchOfficialVersions = useCallback(async () => {
         try {
             const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
@@ -775,8 +775,15 @@ function IcpNeuronManager() {
             }
             
             const factory = createFactoryActor(factoryCanisterId, { agent });
-            const versions = await factory.getOfficialVersions();
-            setOfficialVersions(versions);
+            // Try app-specific versions first, fall back to legacy API
+            let versions = [];
+            try {
+                versions = await factory.getAppVersions('sneed-icp-staking-bot');
+            } catch (_) {}
+            if (!versions || versions.length === 0) {
+                versions = await factory.getOfficialVersions();
+            }
+            setOfficialVersions(versions || []);
         } catch (err) {
             console.error('Error fetching official versions:', err);
             setOfficialVersions([]);

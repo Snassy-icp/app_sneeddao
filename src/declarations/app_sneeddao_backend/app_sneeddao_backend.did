@@ -11,7 +11,7 @@ type WalletLayout =
  record {
    apps: vec principal;
    positions: vec principal;
-   staking_bots: vec principal;
+   sneedapp: vec principal;
    tokens: vec principal;
  };
 type UserSettingsUpdate = 
