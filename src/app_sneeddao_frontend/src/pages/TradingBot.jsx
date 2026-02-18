@@ -5115,6 +5115,8 @@ const CB_CONDITION_TYPES = [
     { value: 0, label: 'Price' },
     { value: 1, label: 'Value' },
     { value: 2, label: 'Balance' },
+    { value: 3, label: 'AND Group' },
+    { value: 4, label: 'OR Group' },
 ];
 const CB_OPERATORS = [
     { value: 0, label: 'Greater than' },
@@ -5157,11 +5159,11 @@ const CB_PERIOD_UNITS = [
     { value: 86400, label: 'days' },
 ];
 
-function cbEmptyCondition() {
-    return { conditionType: 0, priceToken1: '', priceToken2: '', balanceToken: '', balanceSubaccount: '',
+function cbEmptyCondition(type = 0) {
+    return { conditionType: type, priceToken1: '', priceToken2: '', balanceToken: '', balanceSubaccount: '',
         valueSources: [], operator: 4, threshold: '', rangeMin: '', rangeMax: '',
         changePercent: '', changeDirection: '2', changePeriodValue: '1', changePeriodUnit: '3600',
-        denominationToken: '' };
+        denominationToken: '', children: [] };
 }
 function cbEmptyAction() {
     return { actionType: 7, token: '', choreInstanceId: '', choreTypeId: '' };
@@ -5322,6 +5324,7 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
             changeDirection: c.changeDirection !== '' && c.changeDirection != null ? [BigInt(c.changeDirection)] : [],
             changePeriodSeconds: periodSeconds ? [BigInt(Math.round(parseFloat(periodSeconds)))] : [],
             denominationToken: c.denominationToken?.length ? [Principal.fromText(c.denominationToken)] : [],
+            children: (c.children || []).map(serializeCondition),
         };
     }
     function serializeAction(a) {
@@ -5374,6 +5377,7 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
             changeDirection: c.changeDirection?.[0] != null ? Number(c.changeDirection[0]).toString() : '2',
             changePeriodValue: pvu.value, changePeriodUnit: pvu.unit,
             denominationToken: denomPid,
+            children: (c.children || []).map(deserializeCondition),
         };
     }
     function deserializeAction(a) {
@@ -5387,6 +5391,7 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
         try {
             const bot = await getReadyBotActor();
             const input = { name: editingRule.name, enabled: editingRule.enabled,
+                topLevelOperator: BigInt(editingRule.topLevelOperator ?? 0),
                 conditions: editingRule.conditions.map(serializeCondition), actions: editingRule.actions.map(serializeAction) };
             if (editingRule.id != null) await bot.updateCircuitBreakerRule(editingRule.id, input);
             else await bot.addCircuitBreakerRule(input);
@@ -5395,12 +5400,41 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
         finally { setSaving(false); }
     };
 
-    const startNewRule = () => setEditingRule({ id: null, name: '', enabled: true, conditions: [cbEmptyCondition()], actions: [cbEmptyAction()] });
+    const startNewRule = () => setEditingRule({ id: null, name: '', enabled: true, topLevelOperator: 0, conditions: [cbEmptyCondition()], actions: [cbEmptyAction()] });
     const startEditRule = (rule) => setEditingRule({ id: Number(rule.id), name: rule.name, enabled: rule.enabled,
+        topLevelOperator: Number(rule.topLevelOperator ?? 0),
         conditions: rule.conditions.map(deserializeCondition), actions: rule.actions.map(deserializeAction) });
 
-    // Condition update helper
-    const updateCond = (ci, patch) => setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...c, ...patch } : c) }));
+    // Deep condition update helper — path is an array of indices into the tree, e.g. [2] = top-level index 2, [1,0] = child 0 of top-level index 1
+    const updateCondAtPath = (path, patch) => {
+        setEditingRule(r => {
+            const applyPatch = (conditions, p) => {
+                if (p.length === 1) return conditions.map((c, i) => i === p[0] ? { ...c, ...patch } : c);
+                return conditions.map((c, i) => i === p[0] ? { ...c, children: applyPatch(c.children || [], p.slice(1)) } : c);
+            };
+            return { ...r, conditions: applyPatch(r.conditions, path) };
+        });
+    };
+    const removeCondAtPath = (path) => {
+        setEditingRule(r => {
+            const applyRemove = (conditions, p) => {
+                if (p.length === 1) return conditions.filter((_, i) => i !== p[0]);
+                return conditions.map((c, i) => i === p[0] ? { ...c, children: applyRemove(c.children || [], p.slice(1)) } : c);
+            };
+            return { ...r, conditions: applyRemove(r.conditions, path) };
+        });
+    };
+    const addCondAtPath = (path, newCond) => {
+        setEditingRule(r => {
+            const applyAdd = (conditions, p) => {
+                if (p.length === 0) return [...conditions, newCond];
+                return conditions.map((c, i) => i === p[0] ? { ...c, children: applyAdd(c.children || [], p.slice(1)) } : c);
+            };
+            return { ...r, conditions: applyAdd(r.conditions, path) };
+        });
+    };
+    // Backward-compat flat helper (top-level only)
+    const updateCond = (ci, patch) => updateCondAtPath([ci], patch);
 
     // ── DSL helpers for rich IF…THEN rule summaries ──
 
@@ -5473,10 +5507,27 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
         return d || ICP_LEDGER;
     };
 
-    // Rich condition text (returns JSX)
+    // Rich condition text (returns JSX, recursive for AND/OR groups)
     const conditionText = (c) => {
         const ct = Number(c.conditionType);
         const op = Number(c.operator);
+
+        // ── AND GROUP ──
+        if (ct === 3) {
+            const children = c.children || [];
+            if (children.length === 0) return <>{kw('AND', accentColor)} {'(empty)'}</>;
+            return <>{kw('(', accentColor)}{children.map((ch, i) => (
+                <span key={i}>{i > 0 && <span style={{ fontWeight: 700, color: accentColor }}>{' AND '}</span>}{conditionText(ch)}</span>
+            ))}{kw(')', accentColor)}</>;
+        }
+        // ── OR GROUP ──
+        if (ct === 4) {
+            const children = c.children || [];
+            if (children.length === 0) return <>{kw('OR', '#e67e22')} {'(empty)'}</>;
+            return <>{kw('(', '#e67e22')}{children.map((ch, i) => (
+                <span key={i}>{i > 0 && <span style={{ fontWeight: 700, color: '#e67e22' }}>{' OR '}</span>}{conditionText(ch)}</span>
+            ))}{kw(')', '#e67e22')}</>;
+        }
 
         // ── PRICE ──
         if (ct === 0) {
@@ -5565,6 +5616,226 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
         }
     };
 
+    // ── Recursive condition editor ──
+    const renderConditionEditor = (cond, path, depth) => {
+        const update = (patch) => updateCondAtPath(path, patch);
+        const isGroup = cond.conditionType === 3 || cond.conditionType === 4;
+        const groupColor = cond.conditionType === 3 ? accentColor : '#e67e22';
+        const depthBg = depth > 0 ? `${theme.colors.border}18` : 'transparent';
+
+        return (
+            <div key={path.join('-')} style={{
+                ...cardSt, position: 'relative',
+                marginLeft: depth > 0 ? '16px' : 0,
+                borderLeft: isGroup ? `3px solid ${groupColor}` : `3px solid ${theme.colors.border}`,
+                background: depthBg,
+            }}>
+                <button title="Remove condition" style={{ position: 'absolute', top: '10px', right: '10px', background: 'none', border: 'none', cursor: 'pointer', color: '#e74c3c', fontSize: '1rem' }}
+                    onClick={() => removeCondAtPath(path)}><FaTrash /></button>
+
+                {/* Row 1: Type + Operator */}
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap' }}>
+                    <div>
+                        <div style={label}>Type</div>
+                        <select value={cond.conditionType} onChange={e => {
+                            const v = Number(e.target.value);
+                            updateCondAtPath(path, { ...cbEmptyCondition(v), conditionType: v, operator: cond.operator });
+                        }} style={sel({ marginTop: '4px', minWidth: '120px' })}>
+                            {CB_CONDITION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                        </select>
+                    </div>
+                    {!isGroup && (
+                        <div>
+                            <div style={label}>Operator</div>
+                            <select value={cond.operator} onChange={e => update({ operator: Number(e.target.value) })}
+                                style={sel({ marginTop: '4px', minWidth: '130px' })}>
+                                {CB_OPERATORS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            </select>
+                        </div>
+                    )}
+                </div>
+
+                {/* ── AND/OR GROUP ── */}
+                {isGroup && (
+                    <div style={{ marginTop: '4px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                            <span style={{ fontWeight: 700, color: groupColor, fontSize: '0.85rem' }}>
+                                {cond.conditionType === 3 ? 'ALL (AND)' : 'ANY (OR)'} of:
+                            </span>
+                            <button style={btnSm({ fontSize: '0.75rem', color: groupColor, borderColor: groupColor })}
+                                onClick={() => addCondAtPath(path, cbEmptyCondition())}><FaPlus /> Add Child</button>
+                        </div>
+                        {(cond.children || []).length === 0 && (
+                            <div style={{ color: theme.colors.secondaryText, fontSize: '0.8rem', fontStyle: 'italic', paddingLeft: '16px' }}>
+                                No child conditions — add at least one.
+                            </div>
+                        )}
+                        {(cond.children || []).map((child, i) => renderConditionEditor(child, [...path, i], depth + 1))}
+                    </div>
+                )}
+
+                {/* ── PRICE ── */}
+                {cond.conditionType === 0 && (
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', marginBottom: '10px', flexWrap: 'wrap' }}>
+                        <div style={{ minWidth: '160px', flex: '0 1 200px' }}>
+                            <div style={label}>Token 1</div>
+                            <TokenSelector value={cond.priceToken1} onChange={v => update({ priceToken1: v })}
+                                allowCustom placeholder="Select token..." style={{ marginTop: '4px' }} />
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', paddingTop: '20px', color: theme.colors.secondaryText, fontWeight: 600 }}>/</div>
+                        <div style={{ minWidth: '160px', flex: '0 1 200px' }}>
+                            <div style={label}>Token 2</div>
+                            <TokenSelector value={cond.priceToken2} onChange={v => update({ priceToken2: v })}
+                                allowCustom placeholder="Select token..." style={{ marginTop: '4px' }} />
+                        </div>
+                    </div>
+                )}
+
+                {/* ── BALANCE ── */}
+                {cond.conditionType === 2 && (
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', marginBottom: '10px', flexWrap: 'wrap' }}>
+                        <div style={{ minWidth: '160px', flex: '0 1 200px' }}>
+                            <div style={label}>Token</div>
+                            <TokenSelector value={cond.balanceToken} onChange={v => update({ balanceToken: v })}
+                                allowCustom placeholder="Select token..." style={{ marginTop: '4px' }} />
+                        </div>
+                        <div>
+                            <div style={label}>Account</div>
+                            <select value={cond.balanceSubaccount} onChange={e => update({ balanceSubaccount: e.target.value })}
+                                style={sel({ marginTop: '4px', minWidth: '150px' })}>
+                                <option value="">Main account</option>
+                                {Array.from({ length: 10 }, (_, i) => i + 1).map(n => <option key={n} value={n}>Subaccount #{n}</option>)}
+                            </select>
+                        </div>
+                    </div>
+                )}
+
+                {/* ── VALUE ── */}
+                {cond.conditionType === 1 && (
+                    <div style={{ marginBottom: '10px' }}>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
+                            <span style={label}>Value Sources</span>
+                            <button style={btnSm({ fontSize: '0.75rem', color: accentColor, borderColor: accentColor })}
+                                onClick={() => update({ valueSources: [...(cond.valueSources || []), { sourceType: 0, token: '', subaccount: '', choreInstanceId: '' }] })}><FaPlus /> Add Source</button>
+                        </div>
+                        {(cond.valueSources || []).map((vs, vi) => (
+                            <div key={vi} style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '6px', paddingLeft: '8px', borderLeft: `2px solid ${theme.colors.border}` }}>
+                                <select value={vs.sourceType} onChange={e => {
+                                    const v = Number(e.target.value);
+                                    update({ valueSources: cond.valueSources.map((s, j) => j === vi ? { ...s, sourceType: v } : s) });
+                                }} style={sel({ minWidth: '180px', fontSize: '0.8rem' })}>
+                                    {CB_VALUE_SRC_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                                </select>
+                                {vs.sourceType === 0 && (
+                                    <>
+                                        <div style={{ minWidth: '140px', flex: '0 1 160px' }}>
+                                            <TokenSelector value={vs.token} onChange={v => update({ valueSources: cond.valueSources.map((s, j) => j === vi ? { ...s, token: v } : s) })}
+                                                allowCustom placeholder="Token..." style={{ width: '100%' }} />
+                                        </div>
+                                        <select value={vs.subaccount} onChange={e => update({ valueSources: cond.valueSources.map((s, j) => j === vi ? { ...s, subaccount: e.target.value } : s) })}
+                                            style={sel({ minWidth: '120px', fontSize: '0.8rem' })}>
+                                            <option value="">Main account</option>
+                                            {Array.from({ length: 10 }, (_, i) => i + 1).map(n => <option key={n} value={n}>Sub #{n}</option>)}
+                                        </select>
+                                    </>
+                                )}
+                                {vs.sourceType === 1 && (
+                                    <select value={vs.choreInstanceId} onChange={e => update({ valueSources: cond.valueSources.map((s, j) => j === vi ? { ...s, choreInstanceId: e.target.value } : s) })}
+                                        style={sel({ minWidth: '180px', fontSize: '0.8rem' })}>
+                                        <option value="">Select portfolio...</option>
+                                        {choreInstances.filter(([, info]) => info.typeId === 'rebalance').map(([id, info]) => (
+                                            <option key={id} value={id}>{info.label || id}</option>))}
+                                    </select>
+                                )}
+                                {vs.sourceType === 2 && (
+                                    <select value={vs.subaccount} onChange={e => update({ valueSources: cond.valueSources.map((s, j) => j === vi ? { ...s, subaccount: e.target.value } : s) })}
+                                        style={sel({ minWidth: '140px', fontSize: '0.8rem' })}>
+                                        <option value="">Main account</option>
+                                        {Array.from({ length: 10 }, (_, i) => i + 1).map(n => <option key={n} value={n}>Sub #{n}</option>)}
+                                    </select>
+                                )}
+                                <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e74c3c', padding: '4px' }}
+                                    onClick={() => update({ valueSources: cond.valueSources.filter((_, j) => j !== vi) })}><FaTrash /></button>
+                            </div>
+                        ))}
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', marginTop: '8px' }}>
+                            <div style={{ minWidth: '160px', flex: '0 1 200px' }}>
+                                <div style={label}>Denomination (default: ICP)</div>
+                                <TokenSelector value={cond.denominationToken} onChange={v => update({ denominationToken: v })}
+                                    allowCustom placeholder="ICP (default)" style={{ marginTop: '4px' }} />
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* ── Operator-specific (thresholds/ranges/% change) — only for leaf conditions ── */}
+                {!isGroup && (cond.operator === 0 || cond.operator === 1) && (() => {
+                    const unitToken = cond.conditionType === 0 ? cond.priceToken2
+                        : cond.conditionType === 1 ? (cond.denominationToken || ICP_LEDGER)
+                        : cond.balanceToken;
+                    const unitSym = tokenSymbol(unitToken);
+                    return (
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '10px', flexWrap: 'wrap' }}>
+                            <span style={label}>Threshold:</span>
+                            <input type="text" value={cond.threshold} placeholder="0.00"
+                                onChange={e => update({ threshold: e.target.value })}
+                                style={inp({ width: '140px' })} />
+                            <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>{unitSym}</span>
+                        </div>
+                    );
+                })()}
+                {!isGroup && (cond.operator === 2 || cond.operator === 3) && (() => {
+                    const unitToken = cond.conditionType === 0 ? cond.priceToken2
+                        : cond.conditionType === 1 ? (cond.denominationToken || ICP_LEDGER)
+                        : cond.balanceToken;
+                    const unitSym = tokenSymbol(unitToken);
+                    return (
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '10px', flexWrap: 'wrap' }}>
+                            <span style={label}>Min:</span>
+                            <input type="text" value={cond.rangeMin} placeholder="0.00"
+                                onChange={e => update({ rangeMin: e.target.value })}
+                                style={inp({ width: '120px' })} />
+                            <span style={label}>Max:</span>
+                            <input type="text" value={cond.rangeMax} placeholder="0.00"
+                                onChange={e => update({ rangeMax: e.target.value })}
+                                style={inp({ width: '120px' })} />
+                            <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>{unitSym}</span>
+                        </div>
+                    );
+                })()}
+                {!isGroup && cond.operator === 4 && (
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '10px', flexWrap: 'wrap' }}>
+                        <div>
+                            <div style={label}>Change %</div>
+                            <input type="text" value={cond.changePercent} placeholder="e.g. 5"
+                                onChange={e => update({ changePercent: e.target.value })}
+                                style={inp({ width: '80px', marginTop: '4px' })} />
+                        </div>
+                        <div>
+                            <div style={label}>Direction</div>
+                            <select value={cond.changeDirection ?? '2'} onChange={e => update({ changeDirection: e.target.value })}
+                                style={sel({ marginTop: '4px', minWidth: '120px' })}>
+                                {CB_CHANGE_DIRS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <div style={label}>Over period</div>
+                            <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+                                <input type="text" value={cond.changePeriodValue} placeholder="1"
+                                    onChange={e => update({ changePeriodValue: e.target.value })}
+                                    style={inp({ width: '60px' })} />
+                                <select value={cond.changePeriodUnit} onChange={e => update({ changePeriodUnit: e.target.value })}
+                                    style={sel({ minWidth: '90px' })}>
+                                    {CB_PERIOD_UNITS.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     if (loading) return <div style={{ padding: '20px', color: theme.colors.secondaryText }}>Loading circuit breaker...</div>;
 
     // ── RULE EDITOR ──
@@ -5595,211 +5866,22 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
 
                 {/* ── CONDITIONS ── */}
                 <div style={{ marginBottom: '20px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
                         <h5 style={sectionTitle}>Conditions</h5>
-                        <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>(all must be true to trigger)</span>
+                        <select value={editingRule.topLevelOperator} onChange={e => setEditingRule(r => ({ ...r, topLevelOperator: Number(e.target.value) }))}
+                            style={sel({ minWidth: '80px', fontWeight: 600 })}>
+                            <option value={0}>ALL (AND)</option>
+                            <option value={1}>ANY (OR)</option>
+                        </select>
+                        <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>
+                            {editingRule.topLevelOperator === 1 ? 'any condition must be true' : 'all must be true to trigger'}
+                        </span>
                         <button style={btnSm({ color: accentColor, borderColor: accentColor, marginLeft: 'auto' })}
                             onClick={() => setEditingRule(r => ({ ...r, conditions: [...r.conditions, cbEmptyCondition()] }))}>
                             <FaPlus /> Add Condition
                         </button>
                     </div>
-                    {editingRule.conditions.map((cond, ci) => (
-                        <div key={ci} style={{ ...cardSt, position: 'relative' }}>
-                            <button title="Remove condition" style={{ position: 'absolute', top: '10px', right: '10px', background: 'none', border: 'none', cursor: 'pointer', color: '#e74c3c', fontSize: '1rem' }}
-                                onClick={() => setEditingRule(r => ({ ...r, conditions: r.conditions.filter((_, i) => i !== ci) }))}><FaTrash /></button>
-
-                            {/* Row 1: Type + Operator */}
-                            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap' }}>
-                                <div>
-                                    <div style={label}>Type</div>
-                                    <select value={cond.conditionType} onChange={e => {
-                                        const v = Number(e.target.value);
-                                        setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci ? { ...cbEmptyCondition(), conditionType: v, operator: c.operator } : c) }));
-                                    }} style={sel({ marginTop: '4px', minWidth: '110px' })}>
-                                        {CB_CONDITION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                                    </select>
-                                </div>
-                                <div>
-                                    <div style={label}>Operator</div>
-                                    <select value={cond.operator} onChange={e => updateCond(ci, { operator: Number(e.target.value) })}
-                                        style={sel({ marginTop: '4px', minWidth: '130px' })}>
-                                        {CB_OPERATORS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                    </select>
-                                </div>
-                            </div>
-
-                            {/* Row 2: Type-specific */}
-                            {cond.conditionType === 0 && (
-                                <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', marginBottom: '10px', flexWrap: 'wrap' }}>
-                                    <div style={{ minWidth: '160px', flex: '0 1 200px' }}>
-                                        <div style={label}>Token 1</div>
-                                        <TokenSelector value={cond.priceToken1} onChange={v => updateCond(ci, { priceToken1: v })}
-                                            allowCustom placeholder="Select token..." style={{ marginTop: '4px' }} />
-                                    </div>
-                                    <div style={{ display: 'flex', alignItems: 'center', paddingTop: '20px', color: theme.colors.secondaryText, fontWeight: 600 }}>/</div>
-                                    <div style={{ minWidth: '160px', flex: '0 1 200px' }}>
-                                        <div style={label}>Token 2</div>
-                                        <TokenSelector value={cond.priceToken2} onChange={v => updateCond(ci, { priceToken2: v })}
-                                            allowCustom placeholder="Select token..." style={{ marginTop: '4px' }} />
-                                    </div>
-                                </div>
-                            )}
-
-                            {cond.conditionType === 2 && (
-                                <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', marginBottom: '10px', flexWrap: 'wrap' }}>
-                                    <div style={{ minWidth: '160px', flex: '0 1 200px' }}>
-                                        <div style={label}>Token</div>
-                                        <TokenSelector value={cond.balanceToken} onChange={v => updateCond(ci, { balanceToken: v })}
-                                            allowCustom placeholder="Select token..." style={{ marginTop: '4px' }} />
-                                    </div>
-                                    <div>
-                                        <div style={label}>Account</div>
-                                        <select value={cond.balanceSubaccount} onChange={e => updateCond(ci, { balanceSubaccount: e.target.value })}
-                                            style={sel({ marginTop: '4px', minWidth: '150px' })}>
-                                            <option value="">Main account</option>
-                                            {choreInstances.filter(([,info]) => info.typeId === 'move-funds').length === 0 ? null :
-                                                Array.from({ length: 10 }, (_, i) => i + 1).map(n => <option key={n} value={n}>Subaccount #{n}</option>)}
-                                        </select>
-                                    </div>
-                                </div>
-                            )}
-
-                            {cond.conditionType === 1 && (
-                                <div style={{ marginBottom: '10px' }}>
-                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
-                                        <span style={label}>Value Sources</span>
-                                        <button style={btnSm({ fontSize: '0.75rem', color: accentColor, borderColor: accentColor })}
-                                            onClick={() => setEditingRule(r => ({
-                                                ...r, conditions: r.conditions.map((c, i) => i === ci
-                                                    ? { ...c, valueSources: [...(c.valueSources || []), { sourceType: 0, token: '', subaccount: '', choreInstanceId: '' }] } : c)
-                                            }))}><FaPlus /> Add Source</button>
-                                    </div>
-                                    {(cond.valueSources || []).map((vs, vi) => (
-                                        <div key={vi} style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '6px', paddingLeft: '8px', borderLeft: `2px solid ${theme.colors.border}` }}>
-                                            <select value={vs.sourceType} onChange={e => {
-                                                const v = Number(e.target.value);
-                                                setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci
-                                                    ? { ...c, valueSources: c.valueSources.map((s, j) => j === vi ? { ...s, sourceType: v } : s) } : c) }));
-                                            }} style={sel({ minWidth: '180px', fontSize: '0.8rem' })}>
-                                                {CB_VALUE_SRC_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                                            </select>
-                                            {vs.sourceType === 0 && (
-                                                <>
-                                                    <div style={{ minWidth: '140px', flex: '0 1 160px' }}>
-                                                        <TokenSelector value={vs.token} onChange={v => setEditingRule(r => ({
-                                                            ...r, conditions: r.conditions.map((c, i) => i === ci
-                                                                ? { ...c, valueSources: c.valueSources.map((s, j) => j === vi ? { ...s, token: v } : s) } : c)
-                                                        }))} allowCustom placeholder="Token..." style={{ width: '100%' }} />
-                                                    </div>
-                                                    <select value={vs.subaccount} onChange={e => setEditingRule(r => ({
-                                                        ...r, conditions: r.conditions.map((c, i) => i === ci
-                                                            ? { ...c, valueSources: c.valueSources.map((s, j) => j === vi ? { ...s, subaccount: e.target.value } : s) } : c)
-                                                    }))} style={sel({ minWidth: '120px', fontSize: '0.8rem' })}>
-                                                        <option value="">Main account</option>
-                                                        {Array.from({ length: 10 }, (_, i) => i + 1).map(n => <option key={n} value={n}>Sub #{n}</option>)}
-                                                    </select>
-                                                </>
-                                            )}
-                                            {vs.sourceType === 1 && (
-                                                <select value={vs.choreInstanceId} onChange={e => setEditingRule(r => ({
-                                                    ...r, conditions: r.conditions.map((c, i) => i === ci
-                                                        ? { ...c, valueSources: c.valueSources.map((s, j) => j === vi ? { ...s, choreInstanceId: e.target.value } : s) } : c)
-                                                }))} style={sel({ minWidth: '180px', fontSize: '0.8rem' })}>
-                                                    <option value="">Select portfolio...</option>
-                                                    {choreInstances.filter(([, info]) => info.typeId === 'rebalance').map(([id, info]) => (
-                                                        <option key={id} value={id}>{info.label || id}</option>))}
-                                                </select>
-                                            )}
-                                            {vs.sourceType === 2 && (
-                                                <select value={vs.subaccount} onChange={e => setEditingRule(r => ({
-                                                    ...r, conditions: r.conditions.map((c, i) => i === ci
-                                                        ? { ...c, valueSources: c.valueSources.map((s, j) => j === vi ? { ...s, subaccount: e.target.value } : s) } : c)
-                                                }))} style={sel({ minWidth: '140px', fontSize: '0.8rem' })}>
-                                                    <option value="">Main account</option>
-                                                    {Array.from({ length: 10 }, (_, i) => i + 1).map(n => <option key={n} value={n}>Sub #{n}</option>)}
-                                                </select>
-                                            )}
-                                            <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e74c3c', padding: '4px' }}
-                                                onClick={() => setEditingRule(r => ({ ...r, conditions: r.conditions.map((c, i) => i === ci
-                                                    ? { ...c, valueSources: c.valueSources.filter((_, j) => j !== vi) } : c) }))}><FaTrash /></button>
-                                        </div>
-                                    ))}
-                                    <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', marginTop: '8px' }}>
-                                        <div style={{ minWidth: '160px', flex: '0 1 200px' }}>
-                                            <div style={label}>Denomination (default: ICP)</div>
-                                            <TokenSelector value={cond.denominationToken} onChange={v => updateCond(ci, { denominationToken: v })}
-                                                allowCustom placeholder="ICP (default)" style={{ marginTop: '4px' }} />
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Row 3: Operator-specific — values stored as human-readable token units */}
-                            {(cond.operator === 0 || cond.operator === 1) && (() => {
-                                const unitToken = cond.conditionType === 0 ? cond.priceToken2
-                                    : cond.conditionType === 1 ? (cond.denominationToken || ICP_LEDGER)
-                                    : cond.balanceToken;
-                                const unitSym = tokenSymbol(unitToken);
-                                return (
-                                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '10px', flexWrap: 'wrap' }}>
-                                        <span style={label}>Threshold:</span>
-                                        <input type="text" value={cond.threshold} placeholder="0.00"
-                                            onChange={e => updateCond(ci, { threshold: e.target.value })}
-                                            style={inp({ width: '140px' })} />
-                                        <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>{unitSym}</span>
-                                    </div>
-                                );
-                            })()}
-                            {(cond.operator === 2 || cond.operator === 3) && (() => {
-                                const unitToken = cond.conditionType === 0 ? cond.priceToken2
-                                    : cond.conditionType === 1 ? (cond.denominationToken || ICP_LEDGER)
-                                    : cond.balanceToken;
-                                const unitSym = tokenSymbol(unitToken);
-                                return (
-                                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '10px', flexWrap: 'wrap' }}>
-                                        <span style={label}>Min:</span>
-                                        <input type="text" value={cond.rangeMin} placeholder="0.00"
-                                            onChange={e => updateCond(ci, { rangeMin: e.target.value })}
-                                            style={inp({ width: '120px' })} />
-                                        <span style={label}>Max:</span>
-                                        <input type="text" value={cond.rangeMax} placeholder="0.00"
-                                            onChange={e => updateCond(ci, { rangeMax: e.target.value })}
-                                            style={inp({ width: '120px' })} />
-                                        <span style={{ fontSize: '0.75rem', color: theme.colors.secondaryText }}>{unitSym}</span>
-                                    </div>
-                                );
-                            })()}
-                            {cond.operator === 4 && (
-                                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '10px', flexWrap: 'wrap' }}>
-                                    <div>
-                                        <div style={label}>Change %</div>
-                                        <input type="text" value={cond.changePercent} placeholder="e.g. 5"
-                                            onChange={e => updateCond(ci, { changePercent: e.target.value })}
-                                            style={inp({ width: '80px', marginTop: '4px' })} />
-                                    </div>
-                                    <div>
-                                        <div style={label}>Direction</div>
-                                        <select value={cond.changeDirection ?? '2'} onChange={e => updateCond(ci, { changeDirection: e.target.value })}
-                                            style={sel({ marginTop: '4px', minWidth: '120px' })}>
-                                            {CB_CHANGE_DIRS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <div style={label}>Over period</div>
-                                        <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
-                                            <input type="text" value={cond.changePeriodValue} placeholder="1"
-                                                onChange={e => updateCond(ci, { changePeriodValue: e.target.value })}
-                                                style={inp({ width: '60px' })} />
-                                            <select value={cond.changePeriodUnit} onChange={e => updateCond(ci, { changePeriodUnit: e.target.value })}
-                                                style={sel({ minWidth: '90px' })}>
-                                                {CB_PERIOD_UNITS.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    ))}
+                    {editingRule.conditions.map((cond, ci) => renderConditionEditor(cond, [ci], 0))}
                 </div>
 
                 {/* ── ACTIONS ── */}
@@ -5920,12 +6002,17 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
                     <div style={{ fontSize: '0.8rem', lineHeight: '1.8' }}>
                         <div style={{ color: theme.colors.secondaryText, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '2px' }}>
                             <span style={{ color: accentColor, fontWeight: 700, fontSize: '0.85rem', marginRight: '4px' }}>IF</span>
-                            {rule.conditions.map((c, i) => (
-                                <span key={i} style={{ display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: '2px' }}>
-                                    {i > 0 && <span style={{ color: accentColor, fontWeight: 700, margin: '0 4px' }}>AND</span>}
-                                    <span style={{ color: theme.colors.primaryText }}>{conditionText(c)}</span>
-                                </span>
-                            ))}
+                            {rule.conditions.map((c, i) => {
+                                const isOr = Number(rule.topLevelOperator ?? 0) === 1;
+                                const connColor = isOr ? '#e67e22' : accentColor;
+                                const connLabel = isOr ? 'OR' : 'AND';
+                                return (
+                                    <span key={i} style={{ display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: '2px' }}>
+                                        {i > 0 && <span style={{ color: connColor, fontWeight: 700, margin: '0 4px' }}>{connLabel}</span>}
+                                        <span style={{ color: theme.colors.primaryText }}>{conditionText(c)}</span>
+                                    </span>
+                                );
+                            })}
                         </div>
                         <div style={{ color: theme.colors.secondaryText, marginTop: '4px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '2px' }}>
                             <span style={{ color: '#e67e22', fontWeight: 700, fontSize: '0.85rem', marginRight: '4px' }}>THEN</span>

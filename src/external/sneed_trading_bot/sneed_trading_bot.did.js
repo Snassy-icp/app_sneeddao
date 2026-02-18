@@ -555,7 +555,8 @@ export const idlFactory = ({ IDL }) => {
         choreInstanceId: IDL.Opt(IDL.Text),
     });
 
-    const CircuitBreakerCondition = IDL.Record({
+    const CircuitBreakerCondition = IDL.Rec();
+    CircuitBreakerCondition.fill(IDL.Record({
         conditionType: IDL.Nat,
         priceToken1: IDL.Opt(IDL.Principal),
         priceToken2: IDL.Opt(IDL.Principal),
@@ -570,7 +571,8 @@ export const idlFactory = ({ IDL }) => {
         changeDirection: IDL.Opt(IDL.Nat),
         changePeriodSeconds: IDL.Opt(IDL.Nat),
         denominationToken: IDL.Opt(IDL.Principal),
-    });
+        children: IDL.Vec(CircuitBreakerCondition),
+    }));
 
     const CircuitBreakerActionConfig = IDL.Record({
         actionType: IDL.Nat,
@@ -583,6 +585,7 @@ export const idlFactory = ({ IDL }) => {
         id: IDL.Nat,
         name: IDL.Text,
         enabled: IDL.Bool,
+        topLevelOperator: IDL.Nat,
         conditions: IDL.Vec(CircuitBreakerCondition),
         actions: IDL.Vec(CircuitBreakerActionConfig),
     });
@@ -590,6 +593,7 @@ export const idlFactory = ({ IDL }) => {
     const CircuitBreakerRuleInput = IDL.Record({
         name: IDL.Text,
         enabled: IDL.Bool,
+        topLevelOperator: IDL.Nat,
         conditions: IDL.Vec(CircuitBreakerCondition),
         actions: IDL.Vec(CircuitBreakerActionConfig),
     });

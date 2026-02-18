@@ -808,6 +808,8 @@ module {
         public let Price: Nat = 0;
         public let Value: Nat = 1;
         public let Balance: Nat = 2;
+        public let AndGroup: Nat = 3;   // Logical AND of children
+        public let OrGroup: Nat = 4;    // Logical OR  of children
     };
 
     // Operator IDs
@@ -854,9 +856,9 @@ module {
         choreInstanceId: ?Text; // for type 1
     };
 
-    /// Unified flat condition record — works for price, value, and balance conditions.
+    /// Unified condition record — works for price, value, balance, AND-group, and OR-group conditions.
     public type CircuitBreakerCondition = {
-        conditionType: Nat;       // 0=price, 1=value, 2=balance
+        conditionType: Nat;       // 0=price, 1=value, 2=balance, 3=AND group, 4=OR group
 
         // Price (type 0): token pair
         priceToken1: ?Principal;
@@ -869,7 +871,7 @@ module {
         // Value (type 1): sum of multiple sources
         valueSources: [CBValueSource];
 
-        // Comparison
+        // Comparison (types 0-2 only)
         operator: Nat;            // 0=greaterThan, 1=lessThan, 2=insideRange, 3=outsideRange, 4=percentChange
         threshold: ?Nat;          // for operators 0,1 (denomination units)
         rangeMin: ?Nat;           // for operators 2,3
@@ -880,6 +882,9 @@ module {
 
         // Denomination (for value conditions)
         denominationToken: ?Principal; // null = ICP
+
+        // AND/OR groups (types 3,4): nested child conditions
+        children: [CircuitBreakerCondition];
     };
 
     /// Action to take when a circuit breaker rule triggers.
@@ -900,11 +905,13 @@ module {
         choreTypeId: ?Text;
     };
 
-    /// A circuit breaker rule with conditions (AND-ed) and actions.
+    /// A circuit breaker rule with conditions and actions.
+    /// topLevelOperator: 0 = AND (all conditions must be true), 1 = OR (any condition must be true).
     public type CircuitBreakerRule = {
         id: Nat;
         name: Text;
         enabled: Bool;
+        topLevelOperator: Nat; // 0=AND, 1=OR
         conditions: [CircuitBreakerCondition];
         actions: [CircuitBreakerActionConfig];
     };
@@ -913,6 +920,7 @@ module {
     public type CircuitBreakerRuleInput = {
         name: Text;
         enabled: Bool;
+        topLevelOperator: Nat; // 0=AND, 1=OR
         conditions: [CircuitBreakerCondition];
         actions: [CircuitBreakerActionConfig];
     };

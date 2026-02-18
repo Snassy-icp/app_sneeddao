@@ -1106,6 +1106,20 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case (0) { evaluatePriceCondition(cond) };
             case (1) { evaluateValueCondition(cond) };
             case (2) { evaluateBalanceCondition(cond) };
+            case (3) { // AND group — all children must be true
+                if (cond.children.size() == 0) return false;
+                for (child in cond.children.vals()) {
+                    if (not evaluateCondition(child)) return false;
+                };
+                true
+            };
+            case (4) { // OR group — any child must be true
+                if (cond.children.size() == 0) return false;
+                for (child in cond.children.vals()) {
+                    if (evaluateCondition(child)) return true;
+                };
+                false
+            };
             case _ { false };
         }
     };
@@ -1116,7 +1130,12 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             case (0) { "Price" };
             case (1) { "Value" };
             case (2) { "Balance" };
+            case (3) { "AND group" };
+            case (4) { "OR group" };
             case _ { "Unknown" };
+        };
+        if (cond.conditionType == 3 or cond.conditionType == 4) {
+            return typeLabel # " (" # Nat.toText(cond.children.size()) # " children) triggered";
         };
         let opLabel = switch (cond.operator) {
             case (0) { ">" };
@@ -1136,18 +1155,23 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
 
         for (rule in circuitBreakerRules.vals()) {
             if (rule.enabled) {
-                var allConditionsMet = true;
                 let condSummaries = Buffer.Buffer<Text>(rule.conditions.size());
+                let isOrMode = rule.topLevelOperator == 1;
 
+                var triggered = if (isOrMode) false else (rule.conditions.size() > 0);
                 for (cond in rule.conditions.vals()) {
-                    if (not evaluateCondition(cond)) {
-                        allConditionsMet := false;
-                    } else {
+                    let result = evaluateCondition(cond);
+                    if (result) {
                         condSummaries.add(conditionSummaryText(cond));
+                    };
+                    if (isOrMode) {
+                        if (result) { triggered := true };
+                    } else {
+                        if (not result) { triggered := false };
                     };
                 };
 
-                if (allConditionsMet and rule.conditions.size() > 0) {
+                if (triggered) {
                     let actionDescs = Buffer.Buffer<Text>(rule.actions.size());
                     for (action in rule.actions.vals()) {
                         let desc = executeCBAction(action, choreId);
@@ -1173,6 +1197,43 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         };
     };
 
+    /// Collect tokens from a single condition (recursing into AND/OR children).
+    func _collectConditionTokens(cond: T.CircuitBreakerCondition, addUnique: (Principal) -> ()) {
+        switch (cond.conditionType) {
+            case (0) { // Price
+                switch (cond.priceToken1) { case (?t) addUnique(t); case null {} };
+                switch (cond.priceToken2) { case (?t) addUnique(t); case null {} };
+            };
+            case (2) { // Balance
+                switch (cond.balanceToken) { case (?t) addUnique(t); case null {} };
+            };
+            case (1) { // Value
+                for (src in cond.valueSources.vals()) {
+                    switch (src.sourceType) {
+                        case (0) { switch (src.token) { case (?t) addUnique(t); case null {} } };
+                        case (1) {
+                            switch (src.choreInstanceId) {
+                                case (?cid) {
+                                    for (tgt in getRebalTargets(cid).vals()) { addUnique(tgt.token) };
+                                };
+                                case null {};
+                            };
+                        };
+                        case (2) { for (e in tokenRegistry.vals()) { addUnique(e.ledgerCanisterId) } };
+                        case _ {};
+                    };
+                };
+                switch (cond.denominationToken) { case (?d) addUnique(d); case null {} };
+            };
+            case (3 or 4) { // AND/OR group — recurse into children
+                for (child in cond.children.vals()) {
+                    _collectConditionTokens(child, addUnique);
+                };
+            };
+            case _ {};
+        };
+    };
+
     /// Collect all tokens referenced in enabled circuit breaker rules.
     /// Used to augment the metadata/price fetch phase so CB conditions can be evaluated.
     func _collectCircuitBreakerTokens(): [Principal] {
@@ -1185,44 +1246,43 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         for (rule in circuitBreakerRules.vals()) {
             if (rule.enabled) {
                 for (cond in rule.conditions.vals()) {
-                    switch (cond.conditionType) {
-                        case (0) { // Price
-                            switch (cond.priceToken1) { case (?t) addUnique(t); case null {} };
-                            switch (cond.priceToken2) { case (?t) addUnique(t); case null {} };
-                        };
-                        case (2) { // Balance
-                            switch (cond.balanceToken) { case (?t) addUnique(t); case null {} };
-                        };
-                        case (1) { // Value
-                            for (src in cond.valueSources.vals()) {
-                                switch (src.sourceType) {
-                                    case (0) { // SpecificToken
-                                        switch (src.token) { case (?t) addUnique(t); case null {} };
-                                    };
-                                    case (1) { // RebalChoreTokens
-                                        switch (src.choreInstanceId) {
-                                            case (?cid) {
-                                                for (tgt in getRebalTargets(cid).vals()) {
-                                                    addUnique(tgt.token);
-                                                };
-                                            };
-                                            case null {};
-                                        };
-                                    };
-                                    case (2) { // AllTokensInAccount — all registry tokens
-                                        for (e in tokenRegistry.vals()) { addUnique(e.ledgerCanisterId) };
-                                    };
-                                    case _ {};
-                                };
-                            };
-                            switch (cond.denominationToken) { case (?d) addUnique(d); case null {} };
-                        };
-                        case _ {};
-                    };
+                    _collectConditionTokens(cond, addUnique);
                 };
             };
         };
         Buffer.toArray(buf)
+    };
+
+    /// Collect pairs from a single condition (recursing into AND/OR children).
+    func _collectConditionPairs(cond: T.CircuitBreakerCondition, addPair: (Principal, Principal) -> (), icpToken: Principal) {
+        switch (cond.conditionType) {
+            case (0) {
+                switch (cond.priceToken1, cond.priceToken2) {
+                    case (?t1, ?t2) { addPair(t1, t2) };
+                    case _ {};
+                };
+            };
+            case (1) {
+                let denomToken = switch (cond.denominationToken) { case (?d) d; case null icpToken };
+                let tokens = _collectValueConditionTokens(cond);
+                for (tok in tokens.vals()) {
+                    addPair(tok, denomToken);
+                    addPair(tok, icpToken);
+                };
+            };
+            case (2) {
+                switch (cond.balanceToken) {
+                    case (?tok) { addPair(tok, icpToken) };
+                    case null {};
+                };
+            };
+            case (3 or 4) {
+                for (child in cond.children.vals()) {
+                    _collectConditionPairs(child, addPair, icpToken);
+                };
+            };
+            case _ {};
+        };
     };
 
     /// Collect all token pairs needed for circuit breaker price evaluation.
@@ -1243,35 +1303,10 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         for (rule in circuitBreakerRules.vals()) {
             if (rule.enabled) {
                 for (cond in rule.conditions.vals()) {
-                    switch (cond.conditionType) {
-                        case (0) { // Price conditions — add the exact pair
-                            switch (cond.priceToken1, cond.priceToken2) {
-                                case (?t1, ?t2) { addPair(t1, t2) };
-                                case _ {};
-                            };
-                        };
-                        case (1) { // Value conditions — need token-to-denom conversions
-                            let denomToken = switch (cond.denominationToken) { case (?d) d; case null icpToken };
-                            let tokens = _collectValueConditionTokens(cond);
-                            for (tok in tokens.vals()) {
-                                addPair(tok, denomToken);
-                                addPair(tok, icpToken);
-                            };
-                        };
-                        case (2) { // Balance conditions — need price for value comparison if threshold-based
-                            switch (cond.balanceToken) {
-                                case (?tok) {
-                                    addPair(tok, icpToken);
-                                };
-                                case null {};
-                            };
-                        };
-                        case _ {};
-                    };
+                    _collectConditionPairs(cond, addPair, icpToken);
                 };
             };
         };
-        // Always ensure ICP/ckUSDC pair is available for USD conversions
         addPair(icpToken, ckusdcToken);
         Buffer.toArray(buf)
     };
@@ -6493,6 +6528,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             id = id;
             name = input.name;
             enabled = input.enabled;
+            topLevelOperator = input.topLevelOperator;
             conditions = input.conditions;
             actions = input.actions;
         };
@@ -6507,7 +6543,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
         circuitBreakerRules := Array.map<T.CircuitBreakerRule, T.CircuitBreakerRule>(circuitBreakerRules, func(r) {
             if (r.id == id) {
                 found := true;
-                { id = id; name = input.name; enabled = input.enabled; conditions = input.conditions; actions = input.actions }
+                { id = id; name = input.name; enabled = input.enabled; topLevelOperator = input.topLevelOperator; conditions = input.conditions; actions = input.actions }
             } else { r }
         });
         if (not found) { Debug.trap("Circuit breaker rule not found: " # Nat.toText(id)) };
