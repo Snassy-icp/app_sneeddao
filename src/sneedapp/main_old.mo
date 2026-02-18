@@ -99,20 +99,15 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // ============================================
 
     type AppInfo = {
-        appId: Text;                    // Unique string slug (e.g., "icp-staking-bot")
-        numericAppId: Nat;              // Auto-incrementing numeric ID
-        publisherId: Nat;               // Publisher that owns this app
+        appId: Text;
         name: Text;
         description: Text;
         iconUrl: ?Text;
         mintPriceE8s: Nat64;
         premiumMintPriceE8s: Nat64;
-        viewUrl: ?Text;
-        manageUrl: ?Text;
-        mintUrl: ?Text;
-        families: [Text];               // Capability tags (subset of publisher's families)
-        paymentAccount: ?T.Account;     // Override publisher's default payment destination
-        daoCutBasisPoints: ?Nat;        // Override publisher's default DAO cut (admin-only)
+        viewUrl: ?Text;       // URL with CANISTER_ID placeholder
+        manageUrl: ?Text;     // URL with CANISTER_ID placeholder
+        mintUrl: ?Text;       // Custom minting page URL (null = generic)
         createdAt: Int;
         enabled: Bool;
     };
@@ -158,16 +153,12 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         canisterId: Principal;
         minter: Principal;
         appId: Text;
-        numericAppId: Nat;
-        publisherId: Nat;
         versionMajor: Nat;
         versionMinor: Nat;
         versionPatch: Nat;
         mintedAt: Int;
         icpPaidE8s: Nat64;
         wasPremium: Bool;
-        daoCutE8s: Nat64;
-        publisherRevenueE8s: Nat64;
     };
 
     type MintLogQuery = {
@@ -204,93 +195,6 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         #InsufficientCycles;
         #CanisterCreationFailed: Text;
         #TransferFailed: Text;
-        #PublisherNotFound;
-        #PublisherNotVerified;
-    };
-
-    // ============================================
-    // PUBLISHER TYPES
-    // ============================================
-
-    type PublisherInfo = {
-        publisherId: Nat;
-        name: Text;
-        description: Text;
-        websiteUrl: ?Text;
-        logoUrl: ?Text;
-        links: [(Text, Text)];          // (label, url) pairs
-        owners: [Principal];
-        verified: Bool;                 // Admin-editable only
-        families: [Text];               // Family tags available for this publisher's apps
-        defaultPaymentAccount: T.Account;
-        daoCutBasisPoints: Nat;         // Default 1000 = 10%, admin-editable only
-        createdAt: Int;
-    };
-
-    type CreatePublisherInput = {
-        name: Text;
-        description: Text;
-        websiteUrl: ?Text;
-        logoUrl: ?Text;
-        links: [(Text, Text)];
-        defaultPaymentAccount: T.Account;
-    };
-
-    type UpdatePublisherInput = {
-        name: Text;
-        description: Text;
-        websiteUrl: ?Text;
-        logoUrl: ?Text;
-        links: [(Text, Text)];
-        defaultPaymentAccount: T.Account;
-    };
-
-    type AddAppInput = {
-        appId: Text;
-        name: Text;
-        description: Text;
-        iconUrl: ?Text;
-        mintPriceE8s: Nat64;
-        premiumMintPriceE8s: Nat64;
-        viewUrl: ?Text;
-        manageUrl: ?Text;
-        mintUrl: ?Text;
-        families: [Text];
-    };
-
-    type UpdateAppInput = {
-        name: Text;
-        description: Text;
-        iconUrl: ?Text;
-        mintPriceE8s: Nat64;
-        premiumMintPriceE8s: Nat64;
-        viewUrl: ?Text;
-        manageUrl: ?Text;
-        mintUrl: ?Text;
-        families: [Text];
-    };
-
-    type PublisherStats = {
-        publisherId: Nat;
-        totalRevenueE8s: Nat;
-        totalWithdrawnE8s: Nat;
-        totalDaoCutE8s: Nat;
-        totalMintCount: Nat;
-    };
-
-    type AppRevenueStats = {
-        numericAppId: Nat;
-        publisherId: Nat;
-        totalRevenueE8s: Nat;
-        totalWithdrawnE8s: Nat;
-        totalDaoCutE8s: Nat;
-        mintCount: Nat;
-    };
-
-    type DaoRevenueStats = {
-        totalDaoCutReceivedE8s: Nat;
-        totalDirectRevenueE8s: Nat;
-        totalRevenueE8s: Nat;
     };
 
     // ============================================
@@ -317,30 +221,6 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     var userWalletStable: [(Principal, [UserCanisterEntry])] = [];
     transient var userWalletMap = HashMap.HashMap<Principal, [UserCanisterEntry]>(10, Principal.equal, Principal.hash);
 
-    // ============================================
-    // PUBLISHER STATE
-    // ============================================
-
-    func natEqual(a: Nat, b: Nat): Bool { a == b };
-    func natHash(n: Nat): Nat32 { Text.hash(Nat.toText(n)) };
-
-    var publishers: [(Nat, PublisherInfo)] = [];
-    var nextPublisherId: Nat = 1; // 0 is reserved for Sneed DAO
-    transient var publisherMap = HashMap.HashMap<Nat, PublisherInfo>(10, natEqual, natHash);
-
-    // App numeric ID tracking
-    var nextAppId: Nat = 0;
-    transient var appByNumericId = HashMap.HashMap<Nat, AppInfo>(10, natEqual, natHash);
-    transient var appByStringId = HashMap.HashMap<Text, Nat>(10, Text.equal, Text.hash);
-
-    // Revenue stats
-    var publisherStatsStable: [(Nat, PublisherStats)] = [];
-    var appRevenueStatsStable: [(Nat, AppRevenueStats)] = [];
-    var totalDaoCutReceivedE8s: Nat = 0;
-    var totalDirectRevenueE8s: Nat = 0;
-    transient var publisherStatsMap = HashMap.HashMap<Nat, PublisherStats>(10, natEqual, natHash);
-    transient var appRevenueStatsMap = HashMap.HashMap<Nat, AppRevenueStats>(10, natEqual, natHash);
-
     // IC Management canister (for updating controllers after spawning)
     transient let ic: T.ManagementCanister = actor("aaaaa-aa");
     
@@ -363,10 +243,6 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         appVersionWasmsStable := Iter.toArray(appVersionWasmsMap.entries());
         mintLogIndexStable := Iter.toArray(mintLogIndexMap.entries());
         userWalletStable := Iter.toArray(userWalletMap.entries());
-        // Save publisher state
-        publishers := Iter.toArray(publisherMap.entries());
-        publisherStatsStable := Iter.toArray(publisherStatsMap.entries());
-        appRevenueStatsStable := Iter.toArray(appRevenueStatsMap.entries());
     };
 
     system func postupgrade() {
@@ -387,20 +263,6 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         mintLogIndexStable := [];
         userWalletMap := HashMap.fromIter(userWalletStable.vals(), userWalletStable.size(), Principal.equal, Principal.hash);
         userWalletStable := [];
-
-        // Restore publisher state
-        publisherMap := HashMap.fromIter<Nat, PublisherInfo>(publishers.vals(), publishers.size(), natEqual, natHash);
-        publishers := [];
-        publisherStatsMap := HashMap.fromIter<Nat, PublisherStats>(publisherStatsStable.vals(), publisherStatsStable.size(), natEqual, natHash);
-        publisherStatsStable := [];
-        appRevenueStatsMap := HashMap.fromIter<Nat, AppRevenueStats>(appRevenueStatsStable.vals(), appRevenueStatsStable.size(), natEqual, natHash);
-        appRevenueStatsStable := [];
-
-        // Rebuild app lookup indexes from apps array
-        rebuildAppIndexes();
-
-        // Ensure publisher 0 (Sneed DAO) exists
-        ensurePublisher0Exists();
         
         // Clean expired entries from premium cache (stable Map persists automatically)
         PremiumClient.cleanCache(premiumCache);
@@ -419,6 +281,8 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 walletAdd(owner, canisterId, "icp-staking-bot");
             };
         };
+        // Note: We keep userRegistrations populated for backward compat during this upgrade cycle.
+        // Future upgrades can clear it once the migration is confirmed.
     };
 
     // ============================================
@@ -548,179 +412,22 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
 
     // -- Mint Log Helpers --
 
-    func addMintLogEntry(
-        canisterId: Principal, minter: Principal,
-        appId: Text, numAppId: Nat, pubId: Nat,
-        major: Nat, minor: Nat, patch: Nat,
-        icpPaidE8s: Nat64, wasPremium: Bool,
-        daoCutE8s: Nat64, publisherRevenueE8s: Nat64
-    ) {
+    func addMintLogEntry(canisterId: Principal, minter: Principal, appId: Text, major: Nat, minor: Nat, patch: Nat, icpPaidE8s: Nat64, wasPremium: Bool) {
         let entry: MintLogEntry = {
             index = mintLogNextIndex;
             canisterId = canisterId;
             minter = minter;
             appId = appId;
-            numericAppId = numAppId;
-            publisherId = pubId;
             versionMajor = major;
             versionMinor = minor;
             versionPatch = patch;
             mintedAt = Time.now();
             icpPaidE8s = icpPaidE8s;
             wasPremium = wasPremium;
-            daoCutE8s = daoCutE8s;
-            publisherRevenueE8s = publisherRevenueE8s;
         };
         mintLog := Array.append(mintLog, [entry]);
         mintLogIndexMap.put(canisterId, mintLogNextIndex);
         mintLogNextIndex += 1;
-    };
-
-    // -- Publisher Helpers --
-
-    func getPublisherById(publisherId: Nat): ?PublisherInfo {
-        publisherMap.get(publisherId);
-    };
-
-    func isPublisherOwner(caller: Principal, publisherId: Nat): Bool {
-        switch (publisherMap.get(publisherId)) {
-            case null { false };
-            case (?pub) {
-                for (owner in pub.owners.vals()) {
-                    if (Principal.equal(owner, caller)) { return true };
-                };
-                false;
-            };
-        };
-    };
-
-    func isPublisherOwnerOrAdmin(caller: Principal, publisherId: Nat): Bool {
-        isAdmin(caller) or isPublisherOwner(caller, publisherId);
-    };
-
-    func isAppManagerAuthorized(caller: Principal, app: AppInfo): Bool {
-        isPublisherOwnerOrAdmin(caller, app.publisherId);
-    };
-
-    func getEffectiveDaoCutBps(app: AppInfo): Nat {
-        switch (app.daoCutBasisPoints) {
-            case (?bps) { bps };
-            case null {
-                switch (publisherMap.get(app.publisherId)) {
-                    case (?pub) { pub.daoCutBasisPoints };
-                    case null { 1000 }; // 10% fallback
-                };
-            };
-        };
-    };
-
-    func getAppByNumericIdHelper(numericAppId: Nat): ?AppInfo {
-        appByNumericId.get(numericAppId);
-    };
-
-    // Rebuild the app lookup indexes from the apps array
-    func rebuildAppIndexes() {
-        appByNumericId := HashMap.HashMap<Nat, AppInfo>(apps.size(), natEqual, natHash);
-        appByStringId := HashMap.HashMap<Text, Nat>(apps.size(), Text.equal, Text.hash);
-        for (app in apps.vals()) {
-            appByNumericId.put(app.numericAppId, app);
-            appByStringId.put(app.appId, app.numericAppId);
-        };
-    };
-
-    // Update app in the apps array and indexes
-    func updateAppInStorage(updatedApp: AppInfo) {
-        apps := Array.map<AppInfo, AppInfo>(apps, func(a) {
-            if (a.numericAppId == updatedApp.numericAppId) { updatedApp } else { a };
-        });
-        appByNumericId.put(updatedApp.numericAppId, updatedApp);
-        appByStringId.put(updatedApp.appId, updatedApp.numericAppId);
-    };
-
-    // -- Stats Update Helpers --
-
-    func getOrInitPublisherStats(publisherId: Nat): PublisherStats {
-        switch (publisherStatsMap.get(publisherId)) {
-            case (?s) { s };
-            case null { { publisherId = publisherId; totalRevenueE8s = 0; totalWithdrawnE8s = 0; totalDaoCutE8s = 0; totalMintCount = 0 } };
-        };
-    };
-
-    func getOrInitAppRevenueStats(numericAppId: Nat, publisherId: Nat): AppRevenueStats {
-        switch (appRevenueStatsMap.get(numericAppId)) {
-            case (?s) { s };
-            case null { { numericAppId = numericAppId; publisherId = publisherId; totalRevenueE8s = 0; totalWithdrawnE8s = 0; totalDaoCutE8s = 0; mintCount = 0 } };
-        };
-    };
-
-    func updateStatsOnMint(publisherId: Nat, numericAppId: Nat, publisherRevenueE8s: Nat, daoCutE8s: Nat) {
-        let ps = getOrInitPublisherStats(publisherId);
-        publisherStatsMap.put(publisherId, {
-            publisherId = ps.publisherId;
-            totalRevenueE8s = ps.totalRevenueE8s + publisherRevenueE8s;
-            totalWithdrawnE8s = ps.totalWithdrawnE8s;
-            totalDaoCutE8s = ps.totalDaoCutE8s + daoCutE8s;
-            totalMintCount = ps.totalMintCount + 1;
-        });
-
-        let ars = getOrInitAppRevenueStats(numericAppId, publisherId);
-        appRevenueStatsMap.put(numericAppId, {
-            numericAppId = ars.numericAppId;
-            publisherId = ars.publisherId;
-            totalRevenueE8s = ars.totalRevenueE8s + publisherRevenueE8s;
-            totalWithdrawnE8s = ars.totalWithdrawnE8s;
-            totalDaoCutE8s = ars.totalDaoCutE8s + daoCutE8s;
-            mintCount = ars.mintCount + 1;
-        });
-    };
-
-    func updateStatsOnWithdrawal(publisherId: Nat, numericAppId: ?Nat, amount: Nat) {
-        let ps = getOrInitPublisherStats(publisherId);
-        publisherStatsMap.put(publisherId, {
-            publisherId = ps.publisherId;
-            totalRevenueE8s = ps.totalRevenueE8s;
-            totalWithdrawnE8s = ps.totalWithdrawnE8s + amount;
-            totalDaoCutE8s = ps.totalDaoCutE8s;
-            totalMintCount = ps.totalMintCount;
-        });
-        switch (numericAppId) {
-            case (?appId) {
-                let ars = getOrInitAppRevenueStats(appId, publisherId);
-                appRevenueStatsMap.put(appId, {
-                    numericAppId = ars.numericAppId;
-                    publisherId = ars.publisherId;
-                    totalRevenueE8s = ars.totalRevenueE8s;
-                    totalWithdrawnE8s = ars.totalWithdrawnE8s + amount;
-                    totalDaoCutE8s = ars.totalDaoCutE8s;
-                    mintCount = ars.mintCount;
-                });
-            };
-            case null {};
-        };
-    };
-
-    // Initialize publisher 0 (Sneed DAO) if it doesn't exist
-    func ensurePublisher0Exists() {
-        switch (publisherMap.get(0)) {
-            case (?_) {}; // already exists
-            case null {
-                let pub0: PublisherInfo = {
-                    publisherId = 0;
-                    name = "Sneed DAO";
-                    description = "Official Sneed DAO apps";
-                    websiteUrl = ?"https://sneed.xyz";
-                    logoUrl = null;
-                    links = [];
-                    owners = admins;
-                    verified = true;
-                    families = ["sneed-bots"];
-                    defaultPaymentAccount = feeDestination;
-                    daoCutBasisPoints = 10000; // 100%
-                    createdAt = Time.now();
-                };
-                publisherMap.put(0, pub0);
-            };
-        };
     };
 
     // ============================================
@@ -896,251 +603,6 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     };
 
     // ============================================
-    // PUBLISHER MANAGEMENT
-    // ============================================
-
-    public query func getPublisher(publisherId: Nat): async ?PublisherInfo {
-        publisherMap.get(publisherId);
-    };
-
-    public query func getPublishers(): async [PublisherInfo] {
-        Iter.toArray(Iter.map<(Nat, PublisherInfo), PublisherInfo>(publisherMap.entries(), func(e) { e.1 }));
-    };
-
-    public query func getVerifiedPublishers(): async [PublisherInfo] {
-        let buf = Buffer.Buffer<PublisherInfo>(publisherMap.size());
-        for ((_, pub) in publisherMap.entries()) {
-            if (pub.verified) { buf.add(pub) };
-        };
-        Buffer.toArray(buf);
-    };
-
-    public query func getPublishersByOwner(owner: Principal): async [PublisherInfo] {
-        let buf = Buffer.Buffer<PublisherInfo>(4);
-        for ((_, pub) in publisherMap.entries()) {
-            let isOwner = Array.find<Principal>(pub.owners, func(o) { Principal.equal(o, owner) });
-            if (isOwner != null) { buf.add(pub) };
-        };
-        Buffer.toArray(buf);
-    };
-
-    public shared ({ caller }) func createPublisher(input: CreatePublisherInput): async { #Ok: Nat; #Err: Text } {
-        if (Principal.isAnonymous(caller)) { return #Err("Anonymous callers cannot create publishers") };
-        let id = nextPublisherId;
-        nextPublisherId += 1;
-        let pub: PublisherInfo = {
-            publisherId = id;
-            name = input.name;
-            description = input.description;
-            websiteUrl = input.websiteUrl;
-            logoUrl = input.logoUrl;
-            links = input.links;
-            owners = [caller];
-            verified = false;
-            families = [];
-            defaultPaymentAccount = input.defaultPaymentAccount;
-            daoCutBasisPoints = 1000; // 10% default
-            createdAt = Time.now();
-        };
-        publisherMap.put(id, pub);
-        #Ok(id);
-    };
-
-    public shared ({ caller }) func updatePublisher(publisherId: Nat, input: UpdatePublisherInput): async { #Ok; #Err: Text } {
-        switch (publisherMap.get(publisherId)) {
-            case null { #Err("Publisher not found") };
-            case (?pub) {
-                if (not isPublisherOwnerOrAdmin(caller, publisherId)) { return #Err("Not authorized") };
-                publisherMap.put(publisherId, {
-                    publisherId = pub.publisherId;
-                    name = input.name;
-                    description = input.description;
-                    websiteUrl = input.websiteUrl;
-                    logoUrl = input.logoUrl;
-                    links = input.links;
-                    owners = pub.owners;
-                    verified = pub.verified;
-                    families = pub.families;
-                    defaultPaymentAccount = input.defaultPaymentAccount;
-                    daoCutBasisPoints = pub.daoCutBasisPoints;
-                    createdAt = pub.createdAt;
-                });
-                #Ok;
-            };
-        };
-    };
-
-    public shared ({ caller }) func addPublisherOwner(publisherId: Nat, newOwner: Principal): async { #Ok; #Err: Text } {
-        switch (publisherMap.get(publisherId)) {
-            case null { #Err("Publisher not found") };
-            case (?pub) {
-                if (not isPublisherOwnerOrAdmin(caller, publisherId)) { return #Err("Not authorized") };
-                let already = Array.find<Principal>(pub.owners, func(o) { Principal.equal(o, newOwner) });
-                if (already != null) { return #Err("Already an owner") };
-                publisherMap.put(publisherId, {
-                    publisherId = pub.publisherId;
-                    name = pub.name;
-                    description = pub.description;
-                    websiteUrl = pub.websiteUrl;
-                    logoUrl = pub.logoUrl;
-                    links = pub.links;
-                    owners = Array.append(pub.owners, [newOwner]);
-                    verified = pub.verified;
-                    families = pub.families;
-                    defaultPaymentAccount = pub.defaultPaymentAccount;
-                    daoCutBasisPoints = pub.daoCutBasisPoints;
-                    createdAt = pub.createdAt;
-                });
-                #Ok;
-            };
-        };
-    };
-
-    public shared ({ caller }) func removePublisherOwner(publisherId: Nat, ownerToRemove: Principal): async { #Ok; #Err: Text } {
-        switch (publisherMap.get(publisherId)) {
-            case null { #Err("Publisher not found") };
-            case (?pub) {
-                if (not isPublisherOwnerOrAdmin(caller, publisherId)) { return #Err("Not authorized") };
-                if (pub.owners.size() <= 1) { return #Err("Cannot remove the last owner") };
-                let newOwners = Array.filter<Principal>(pub.owners, func(o) { not Principal.equal(o, ownerToRemove) });
-                if (newOwners.size() == pub.owners.size()) { return #Err("Principal is not an owner") };
-                publisherMap.put(publisherId, {
-                    publisherId = pub.publisherId;
-                    name = pub.name;
-                    description = pub.description;
-                    websiteUrl = pub.websiteUrl;
-                    logoUrl = pub.logoUrl;
-                    links = pub.links;
-                    owners = newOwners;
-                    verified = pub.verified;
-                    families = pub.families;
-                    defaultPaymentAccount = pub.defaultPaymentAccount;
-                    daoCutBasisPoints = pub.daoCutBasisPoints;
-                    createdAt = pub.createdAt;
-                });
-                #Ok;
-            };
-        };
-    };
-
-    public shared ({ caller }) func addPublisherFamily(publisherId: Nat, family: Text): async { #Ok; #Err: Text } {
-        switch (publisherMap.get(publisherId)) {
-            case null { #Err("Publisher not found") };
-            case (?pub) {
-                if (not isPublisherOwnerOrAdmin(caller, publisherId)) { return #Err("Not authorized") };
-                let already = Array.find<Text>(pub.families, func(f) { f == family });
-                if (already != null) { return #Err("Family already exists") };
-                publisherMap.put(publisherId, {
-                    publisherId = pub.publisherId;
-                    name = pub.name;
-                    description = pub.description;
-                    websiteUrl = pub.websiteUrl;
-                    logoUrl = pub.logoUrl;
-                    links = pub.links;
-                    owners = pub.owners;
-                    verified = pub.verified;
-                    families = Array.append(pub.families, [family]);
-                    defaultPaymentAccount = pub.defaultPaymentAccount;
-                    daoCutBasisPoints = pub.daoCutBasisPoints;
-                    createdAt = pub.createdAt;
-                });
-                #Ok;
-            };
-        };
-    };
-
-    public shared ({ caller }) func removePublisherFamily(publisherId: Nat, family: Text): async { #Ok; #Err: Text } {
-        switch (publisherMap.get(publisherId)) {
-            case null { #Err("Publisher not found") };
-            case (?pub) {
-                if (not isPublisherOwnerOrAdmin(caller, publisherId)) { return #Err("Not authorized") };
-                let newFamilies = Array.filter<Text>(pub.families, func(f) { f != family });
-                publisherMap.put(publisherId, {
-                    publisherId = pub.publisherId;
-                    name = pub.name;
-                    description = pub.description;
-                    websiteUrl = pub.websiteUrl;
-                    logoUrl = pub.logoUrl;
-                    links = pub.links;
-                    owners = pub.owners;
-                    verified = pub.verified;
-                    families = newFamilies;
-                    defaultPaymentAccount = pub.defaultPaymentAccount;
-                    daoCutBasisPoints = pub.daoCutBasisPoints;
-                    createdAt = pub.createdAt;
-                });
-                // Cascade: remove this family from all of this publisher's apps
-                apps := Array.map<AppInfo, AppInfo>(apps, func(a) {
-                    if (a.publisherId == publisherId) {
-                        let updatedApp = {
-                            appId = a.appId; numericAppId = a.numericAppId; publisherId = a.publisherId;
-                            name = a.name; description = a.description; iconUrl = a.iconUrl;
-                            mintPriceE8s = a.mintPriceE8s; premiumMintPriceE8s = a.premiumMintPriceE8s;
-                            viewUrl = a.viewUrl; manageUrl = a.manageUrl; mintUrl = a.mintUrl;
-                            families = Array.filter<Text>(a.families, func(f) { f != family });
-                            paymentAccount = a.paymentAccount; daoCutBasisPoints = a.daoCutBasisPoints;
-                            createdAt = a.createdAt; enabled = a.enabled;
-                        };
-                        appByNumericId.put(updatedApp.numericAppId, updatedApp);
-                        updatedApp;
-                    } else { a };
-                });
-                #Ok;
-            };
-        };
-    };
-
-    // Admin-only publisher mutations
-    public shared ({ caller }) func verifyPublisher(publisherId: Nat): async () {
-        assert(isAdmin(caller));
-        switch (publisherMap.get(publisherId)) {
-            case null { assert(false) };
-            case (?pub) {
-                publisherMap.put(publisherId, {
-                    publisherId = pub.publisherId; name = pub.name; description = pub.description;
-                    websiteUrl = pub.websiteUrl; logoUrl = pub.logoUrl; links = pub.links;
-                    owners = pub.owners; verified = true; families = pub.families;
-                    defaultPaymentAccount = pub.defaultPaymentAccount;
-                    daoCutBasisPoints = pub.daoCutBasisPoints; createdAt = pub.createdAt;
-                });
-            };
-        };
-    };
-
-    public shared ({ caller }) func unverifyPublisher(publisherId: Nat): async () {
-        assert(isAdmin(caller));
-        switch (publisherMap.get(publisherId)) {
-            case null { assert(false) };
-            case (?pub) {
-                publisherMap.put(publisherId, {
-                    publisherId = pub.publisherId; name = pub.name; description = pub.description;
-                    websiteUrl = pub.websiteUrl; logoUrl = pub.logoUrl; links = pub.links;
-                    owners = pub.owners; verified = false; families = pub.families;
-                    defaultPaymentAccount = pub.defaultPaymentAccount;
-                    daoCutBasisPoints = pub.daoCutBasisPoints; createdAt = pub.createdAt;
-                });
-            };
-        };
-    };
-
-    public shared ({ caller }) func setPublisherDaoCut(publisherId: Nat, basisPoints: Nat): async () {
-        assert(isAdmin(caller));
-        assert(basisPoints <= 10000);
-        switch (publisherMap.get(publisherId)) {
-            case null { assert(false) };
-            case (?pub) {
-                publisherMap.put(publisherId, {
-                    publisherId = pub.publisherId; name = pub.name; description = pub.description;
-                    websiteUrl = pub.websiteUrl; logoUrl = pub.logoUrl; links = pub.links;
-                    owners = pub.owners; verified = pub.verified; families = pub.families;
-                    defaultPaymentAccount = pub.defaultPaymentAccount;
-                    daoCutBasisPoints = basisPoints; createdAt = pub.createdAt;
-                });
-            };
-        };
-    };
-
-    // ============================================
     // MANAGER WASM MANAGEMENT
     // ============================================
 
@@ -1293,44 +755,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         Blob.fromArray(Array.freeze(subaccount));
     };
 
-    // Encode a Nat as 8-byte big-endian into a mutable array at the given offset
-    func encodeNatBigEndian8(arr: [var Nat8], offset: Nat, n: Nat) {
-        var val = n;
-        var i = 7 : Nat;
-        loop {
-            arr[offset + i] := Nat8.fromNat(val % 256);
-            val := val / 256;
-            if (i == 0) { return };
-            i -= 1;
-        };
-    };
-
-    // Subaccount for publisher revenue: [0x50("P"), publisherId:8 bytes BE, zeros:23 bytes]
-    func publisherRevenueSubaccount(publisherId: Nat): Blob {
-        let sub = Array.init<Nat8>(32, 0);
-        sub[0] := 0x50; // "P"
-        encodeNatBigEndian8(sub, 1, publisherId);
-        Blob.fromArray(Array.freeze(sub));
-    };
-
-    // Subaccount for app-specific revenue: [0x41("A"), publisherId:8 bytes BE, appNumericId:8 bytes BE, zeros:15 bytes]
-    func appRevenueSubaccount(publisherId: Nat, appNumericId: Nat): Blob {
-        let sub = Array.init<Nat8>(32, 0);
-        sub[0] := 0x41; // "A"
-        encodeNatBigEndian8(sub, 1, publisherId);
-        encodeNatBigEndian8(sub, 9, appNumericId);
-        Blob.fromArray(Array.freeze(sub));
-    };
-
-    // Get the revenue subaccount for an app (app-specific if it has a payment override, otherwise publisher-level)
-    func getRevenueSubaccount(app: AppInfo): Blob {
-        switch (app.paymentAccount) {
-            case (?_) { appRevenueSubaccount(app.publisherId, app.numericAppId) };
-            case null { publisherRevenueSubaccount(app.publisherId) };
-        };
-    };
-
-    // Get the subaccount where user should send payment (unchanged - one per user)
+    // Get the subaccount where user should send payment
     public query func getPaymentSubaccount(user: Principal): async Blob {
         principalToSubaccount(user);
     };
@@ -1640,7 +1065,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                     await* PremiumClient.isPremium(premiumCache, premCanisterId, caller);
                 };
             };
-            addMintLogEntry(canisterId, caller, "icp-staking-bot", 0, 0, currentVersion.major, currentVersion.minor, currentVersion.patch, trackedIcpPaidE8s, isPremiumMember, trackedIcpProfitE8s, 0);
+            addMintLogEntry(canisterId, caller, "icp-staking-bot", currentVersion.major, currentVersion.minor, currentVersion.patch, trackedIcpPaidE8s, isPremiumMember);
 
             #Ok({
                 canisterId = canisterId;
@@ -1793,229 +1218,82 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // MULTI-APP: APP REGISTRY
     // ============================================
 
-    public query func getApps(): async [AppInfo] { apps };
-
-    public query func getApp(appId: Text): async ?AppInfo { getAppById(appId) };
-
-    public query func getAppByNumericId(numericAppId: Nat): async ?AppInfo { appByNumericId.get(numericAppId) };
-
-    public query func getAppsByPublisher(publisherId: Nat): async [AppInfo] {
-        Array.filter<AppInfo>(apps, func(a) { a.publisherId == publisherId });
+    // Get all apps (public)
+    public query func getApps(): async [AppInfo] {
+        apps;
     };
 
-    public query func getAppsByFamily(family: Text): async [AppInfo] {
-        Array.filter<AppInfo>(apps, func(a) {
-            Array.find<Text>(a.families, func(f) { f == family }) != null;
+    // Get single app by ID (public)
+    public query func getApp(appId: Text): async ?AppInfo {
+        getAppById(appId);
+    };
+
+    // Add a new app (admin only)
+    public shared ({ caller }) func addApp(app: AppInfo): async () {
+        assert(isAdminOrGovernance(caller));
+        // Check for duplicate appId
+        let existing = getAppById(app.appId);
+        assert(existing == null); // appId must be unique
+        apps := Array.append(apps, [app]);
+    };
+
+    // Update an existing app (admin only)
+    public shared ({ caller }) func updateApp(appId: Text, app: AppInfo): async () {
+        assert(isAdminOrGovernance(caller));
+        assert(app.appId == appId); // Can't change appId
+        apps := Array.map<AppInfo, AppInfo>(apps, func(a) {
+            if (a.appId == appId) { app } else { a };
         });
     };
 
-    // Add a new app (publisher owner or admin)
-    public shared ({ caller }) func addApp(publisherId: Nat, input: AddAppInput): async { #Ok: Nat; #Err: Text } {
-        if (not isPublisherOwnerOrAdmin(caller, publisherId)) { return #Err("Not authorized") };
-        if (getAppById(input.appId) != null) { return #Err("App ID already exists") };
-        switch (publisherMap.get(publisherId)) {
-            case null { return #Err("Publisher not found") };
-            case (?pub) {
-                // Validate families are subset of publisher's families
-                for (fam in input.families.vals()) {
-                    if (Array.find<Text>(pub.families, func(f) { f == fam }) == null) {
-                        return #Err("Family '" # fam # "' not in publisher's families");
-                    };
-                };
-            };
-        };
-        let numId = nextAppId;
-        nextAppId += 1;
-        let app: AppInfo = {
-            appId = input.appId;
-            numericAppId = numId;
-            publisherId = publisherId;
-            name = input.name;
-            description = input.description;
-            iconUrl = input.iconUrl;
-            mintPriceE8s = input.mintPriceE8s;
-            premiumMintPriceE8s = input.premiumMintPriceE8s;
-            viewUrl = input.viewUrl;
-            manageUrl = input.manageUrl;
-            mintUrl = input.mintUrl;
-            families = input.families;
-            paymentAccount = null;
-            daoCutBasisPoints = null;
-            createdAt = Time.now();
-            enabled = false;
-        };
-        apps := Array.append(apps, [app]);
-        appByNumericId.put(numId, app);
-        appByStringId.put(input.appId, numId);
-        #Ok(numId);
-    };
-
-    // Update app info (publisher owner or admin)
-    public shared ({ caller }) func updateApp(numericAppId: Nat, input: UpdateAppInput): async { #Ok; #Err: Text } {
-        switch (appByNumericId.get(numericAppId)) {
-            case null { #Err("App not found") };
-            case (?app) {
-                if (not isPublisherOwnerOrAdmin(caller, app.publisherId)) { return #Err("Not authorized") };
-                // Validate families
-                switch (publisherMap.get(app.publisherId)) {
-                    case null {};
-                    case (?pub) {
-                        for (fam in input.families.vals()) {
-                            if (Array.find<Text>(pub.families, func(f) { f == fam }) == null) {
-                                return #Err("Family '" # fam # "' not in publisher's families");
-                            };
-                        };
-                    };
-                };
-                let updated: AppInfo = {
-                    appId = app.appId;
-                    numericAppId = app.numericAppId;
-                    publisherId = app.publisherId;
-                    name = input.name;
-                    description = input.description;
-                    iconUrl = input.iconUrl;
-                    mintPriceE8s = input.mintPriceE8s;
-                    premiumMintPriceE8s = input.premiumMintPriceE8s;
-                    viewUrl = input.viewUrl;
-                    manageUrl = input.manageUrl;
-                    mintUrl = input.mintUrl;
-                    families = input.families;
-                    paymentAccount = app.paymentAccount;
-                    daoCutBasisPoints = app.daoCutBasisPoints;
-                    createdAt = app.createdAt;
-                    enabled = app.enabled;
-                };
-                updateAppInStorage(updated);
-                #Ok;
-            };
-        };
-    };
-
     // Remove an app (admin only)
-    public shared ({ caller }) func removeApp(numericAppId: Nat): async { #Ok; #Err: Text } {
+    public shared ({ caller }) func removeApp(appId: Text): async () {
         assert(isAdmin(caller));
-        switch (appByNumericId.get(numericAppId)) {
-            case null { #Err("App not found") };
-            case (?app) {
-                apps := Array.filter<AppInfo>(apps, func(a) { a.numericAppId != numericAppId });
-                appByNumericId.delete(numericAppId);
-                appByStringId.delete(app.appId);
-                #Ok;
-            };
-        };
+        apps := Array.filter<AppInfo>(apps, func(a) { a.appId != appId });
     };
 
-    // Enable/disable minting (publisher owner or admin)
-    public shared ({ caller }) func setAppEnabled(numericAppId: Nat, enabled: Bool): async { #Ok; #Err: Text } {
-        switch (appByNumericId.get(numericAppId)) {
-            case null { #Err("App not found") };
-            case (?app) {
-                if (not isPublisherOwnerOrAdmin(caller, app.publisherId)) { return #Err("Not authorized") };
-                updateAppInStorage({
-                    appId = app.appId; numericAppId = app.numericAppId; publisherId = app.publisherId;
-                    name = app.name; description = app.description; iconUrl = app.iconUrl;
-                    mintPriceE8s = app.mintPriceE8s; premiumMintPriceE8s = app.premiumMintPriceE8s;
-                    viewUrl = app.viewUrl; manageUrl = app.manageUrl; mintUrl = app.mintUrl;
-                    families = app.families; paymentAccount = app.paymentAccount;
-                    daoCutBasisPoints = app.daoCutBasisPoints; createdAt = app.createdAt;
+    // Enable/disable minting for an app (admin only)
+    public shared ({ caller }) func setAppEnabled(appId: Text, enabled: Bool): async () {
+        assert(isAdminOrGovernance(caller));
+        apps := Array.map<AppInfo, AppInfo>(apps, func(a) {
+            if (a.appId == appId) {
+                {
+                    appId = a.appId;
+                    name = a.name;
+                    description = a.description;
+                    iconUrl = a.iconUrl;
+                    mintPriceE8s = a.mintPriceE8s;
+                    premiumMintPriceE8s = a.premiumMintPriceE8s;
+                    viewUrl = a.viewUrl;
+                    manageUrl = a.manageUrl;
+                    mintUrl = a.mintUrl;
+                    createdAt = a.createdAt;
                     enabled = enabled;
-                });
-                #Ok;
-            };
-        };
-    };
-
-    // Set pricing (publisher owner or admin)
-    public shared ({ caller }) func setAppPricing(numericAppId: Nat, mintPrice: Nat64, premiumMintPrice: Nat64): async { #Ok; #Err: Text } {
-        switch (appByNumericId.get(numericAppId)) {
-            case null { #Err("App not found") };
-            case (?app) {
-                if (not isPublisherOwnerOrAdmin(caller, app.publisherId)) { return #Err("Not authorized") };
-                updateAppInStorage({
-                    appId = app.appId; numericAppId = app.numericAppId; publisherId = app.publisherId;
-                    name = app.name; description = app.description; iconUrl = app.iconUrl;
-                    mintPriceE8s = mintPrice; premiumMintPriceE8s = premiumMintPrice;
-                    viewUrl = app.viewUrl; manageUrl = app.manageUrl; mintUrl = app.mintUrl;
-                    families = app.families; paymentAccount = app.paymentAccount;
-                    daoCutBasisPoints = app.daoCutBasisPoints; createdAt = app.createdAt;
-                    enabled = app.enabled;
-                });
-                #Ok;
-            };
-        };
-    };
-
-    // Set app payment account override (publisher owner or admin)
-    public shared ({ caller }) func setAppPaymentAccount(numericAppId: Nat, account: ?T.Account): async { #Ok; #Err: Text } {
-        switch (appByNumericId.get(numericAppId)) {
-            case null { #Err("App not found") };
-            case (?app) {
-                if (not isPublisherOwnerOrAdmin(caller, app.publisherId)) { return #Err("Not authorized") };
-                updateAppInStorage({
-                    appId = app.appId; numericAppId = app.numericAppId; publisherId = app.publisherId;
-                    name = app.name; description = app.description; iconUrl = app.iconUrl;
-                    mintPriceE8s = app.mintPriceE8s; premiumMintPriceE8s = app.premiumMintPriceE8s;
-                    viewUrl = app.viewUrl; manageUrl = app.manageUrl; mintUrl = app.mintUrl;
-                    families = app.families; paymentAccount = account;
-                    daoCutBasisPoints = app.daoCutBasisPoints; createdAt = app.createdAt;
-                    enabled = app.enabled;
-                });
-                #Ok;
-            };
-        };
-    };
-
-    // Set app DAO cut override (admin only)
-    public shared ({ caller }) func setAppDaoCut(numericAppId: Nat, basisPoints: ?Nat): async () {
-        assert(isAdmin(caller));
-        switch (appByNumericId.get(numericAppId)) {
-            case null { assert(false) };
-            case (?app) {
-                switch (basisPoints) {
-                    case (?bps) { assert(bps <= 10000) };
-                    case null {};
                 };
-                updateAppInStorage({
-                    appId = app.appId; numericAppId = app.numericAppId; publisherId = app.publisherId;
-                    name = app.name; description = app.description; iconUrl = app.iconUrl;
-                    mintPriceE8s = app.mintPriceE8s; premiumMintPriceE8s = app.premiumMintPriceE8s;
-                    viewUrl = app.viewUrl; manageUrl = app.manageUrl; mintUrl = app.mintUrl;
-                    families = app.families; paymentAccount = app.paymentAccount;
-                    daoCutBasisPoints = basisPoints; createdAt = app.createdAt;
-                    enabled = app.enabled;
-                });
-            };
-        };
+            } else { a };
+        });
     };
 
-    // Set app families (publisher owner or admin)
-    public shared ({ caller }) func setAppFamilies(numericAppId: Nat, families: [Text]): async { #Ok; #Err: Text } {
-        switch (appByNumericId.get(numericAppId)) {
-            case null { #Err("App not found") };
-            case (?app) {
-                if (not isPublisherOwnerOrAdmin(caller, app.publisherId)) { return #Err("Not authorized") };
-                switch (publisherMap.get(app.publisherId)) {
-                    case null { return #Err("Publisher not found") };
-                    case (?pub) {
-                        for (fam in families.vals()) {
-                            if (Array.find<Text>(pub.families, func(f) { f == fam }) == null) {
-                                return #Err("Family '" # fam # "' not in publisher's families");
-                            };
-                        };
-                    };
+    // Set pricing for an app (admin only)
+    public shared ({ caller }) func setAppPricing(appId: Text, mintPrice: Nat64, premiumMintPrice: Nat64): async () {
+        assert(isAdminOrGovernance(caller));
+        apps := Array.map<AppInfo, AppInfo>(apps, func(a) {
+            if (a.appId == appId) {
+                {
+                    appId = a.appId;
+                    name = a.name;
+                    description = a.description;
+                    iconUrl = a.iconUrl;
+                    mintPriceE8s = mintPrice;
+                    premiumMintPriceE8s = premiumMintPrice;
+                    viewUrl = a.viewUrl;
+                    manageUrl = a.manageUrl;
+                    mintUrl = a.mintUrl;
+                    createdAt = a.createdAt;
+                    enabled = a.enabled;
                 };
-                updateAppInStorage({
-                    appId = app.appId; numericAppId = app.numericAppId; publisherId = app.publisherId;
-                    name = app.name; description = app.description; iconUrl = app.iconUrl;
-                    mintPriceE8s = app.mintPriceE8s; premiumMintPriceE8s = app.premiumMintPriceE8s;
-                    viewUrl = app.viewUrl; manageUrl = app.manageUrl; mintUrl = app.mintUrl;
-                    families = families; paymentAccount = app.paymentAccount;
-                    daoCutBasisPoints = app.daoCutBasisPoints; createdAt = app.createdAt;
-                    enabled = app.enabled;
-                });
-                #Ok;
-            };
-        };
+            } else { a };
+        });
     };
 
     // ============================================
@@ -2049,17 +1327,11 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         appVersionWasmsMap.get(makeVersionKey(appId, major, minor, patch)) != null;
     };
 
-    // Check authorization for app version management via string appId
-    func assertAppVersionAuth(caller: Principal, appId: Text) {
-        switch (getAppById(appId)) {
-            case null { assert(false) };
-            case (?app) { assert(isPublisherOwnerOrAdmin(caller, app.publisherId)) };
-        };
-    };
-
-    // Add a new version (publisher owner or admin) - inserted at the beginning (newest first)
+    // Add a new version (admin only) - inserted at the beginning (newest first)
     public shared ({ caller }) func addAppVersion(appId: Text, input: AppVersionInput): async () {
-        assertAppVersionAuth(caller, appId);
+        assert(isAdminOrGovernance(caller));
+        // Ensure app exists
+        assert(getAppById(appId) != null);
         let version: AppVersion = {
             major = input.major;
             minor = input.minor;
@@ -2079,9 +1351,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         setVersionsForApp(appId, Array.append([version], existing));
     };
 
-    // Update version metadata (publisher owner or admin)
+    // Update version metadata (admin only) - does NOT change WASM blob
     public shared ({ caller }) func updateAppVersion(appId: Text, major: Nat, minor: Nat, patch: Nat, input: AppVersionInput): async () {
-        assertAppVersionAuth(caller, appId);
+        assert(isAdminOrGovernance(caller));
         let versions = getVersionsForApp(appId);
         let key = makeVersionKey(appId, major, minor, patch);
         let currentWasmSize = switch (appVersionWasmsMap.get(key)) {
@@ -2105,9 +1377,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         }));
     };
 
-    // Remove a version (publisher owner or admin)
+    // Remove a version (admin only)
     public shared ({ caller }) func removeAppVersion(appId: Text, major: Nat, minor: Nat, patch: Nat): async () {
-        assertAppVersionAuth(caller, appId);
+        assert(isAdmin(caller));
         let versions = getVersionsForApp(appId);
         setVersionsForApp(appId, Array.filter<AppVersion>(versions, func(v) {
             not (v.major == major and v.minor == minor and v.patch == patch);
@@ -2117,9 +1389,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         appVersionWasmsMap.delete(key);
     };
 
-    // Upload WASM blob for a version (publisher owner or admin)
+    // Upload WASM blob for a version (admin only)
     public shared ({ caller }) func uploadAppVersionWasm(appId: Text, major: Nat, minor: Nat, patch: Nat, wasm: Blob): async () {
-        assertAppVersionAuth(caller, appId);
+        assert(isAdminOrGovernance(caller));
         // Ensure version exists
         assert(findVersion(appId, major, minor, patch) != null);
         let key = makeVersionKey(appId, major, minor, patch);
@@ -2143,9 +1415,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         }));
     };
 
-    // Clear WASM blob for a version (publisher owner or admin)
+    // Clear WASM blob for a version to free memory (admin only)
     public shared ({ caller }) func clearAppVersionWasm(appId: Text, major: Nat, minor: Nat, patch: Nat): async () {
-        assertAppVersionAuth(caller, appId);
+        assert(isAdminOrGovernance(caller));
         let key = makeVersionKey(appId, major, minor, patch);
         appVersionWasmsMap.delete(key);
         // Update wasmSize to 0
@@ -2314,16 +1586,12 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         versionMinor: ?Nat,
         versionPatch: ?Nat
     ): async MintResult {
-        // 1. Validate app and publisher
+        // 1. Validate app
         let app = switch (getAppById(appId)) {
             case null { return #Err(#AppNotFound) };
             case (?a) { a };
         };
         if (not app.enabled) { return #Err(#AppDisabled) };
-        let publisher = switch (publisherMap.get(app.publisherId)) {
-            case null { return #Err(#PublisherNotFound) };
-            case (?p) { p };
-        };
 
         // 2. Resolve version
         let version = switch (versionMajor, versionMinor, versionPatch) {
@@ -2359,8 +1627,6 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         var trackedIcpProfitE8s: Nat64 = 0;
         var trackedIcpTransferFeesE8s: Nat64 = 0;
         var trackedCyclesReceivedFromCmc: Nat = 0;
-        var trackedDaoCutE8s: Nat64 = 0;
-        var trackedPublisherRevenueE8s: Nat64 = 0;
         let cyclesBalanceBefore = Cycles.balance();
         var wasPremium = false;
 
@@ -2399,17 +1665,12 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             let icpForCycles = await calculateIcpForCycles(targetCyclesAmount);
             let actualIcpForCycles: Nat64 = if (icpForCycles > 0) { icpForCycles } else { 2_000_000 };
             trackedIcpForCyclesE8s := actualIcpForCycles;
-
-            let isSneedDao = app.publisherId == 0;
-            // Publisher 0: 2 transfers (cycles + profit to feeDestination)
-            // Others: 3 transfers (cycles + DAO cut + publisher share)
-            let numTransfers: Nat64 = if (isSneedDao) { 2 } else { 3 };
-            let totalTransferFees = T.ICP_FEE * numTransfers;
-
-            let profit: Nat64 = if (applicableFeeE8s > actualIcpForCycles + totalTransferFees) {
-                applicableFeeE8s - actualIcpForCycles - totalTransferFees;
+            
+            let feeAmount: Nat64 = if (applicableFeeE8s > actualIcpForCycles + T.ICP_FEE * 2) {
+                applicableFeeE8s - actualIcpForCycles - T.ICP_FEE * 2;
             } else { 0 };
-            trackedIcpTransferFeesE8s := totalTransferFees;
+            trackedIcpProfitE8s := feeAmount;
+            trackedIcpTransferFeesE8s := T.ICP_FEE * 2;
             
             // Transfer ICP for cycles to factory's main account
             if (actualIcpForCycles > 0) {
@@ -2426,67 +1687,20 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                     case (#Ok(_)) {};
                 };
             };
-
-            if (isSneedDao) {
-                // Publisher 0: all profit goes to feeDestination
-                trackedIcpProfitE8s := profit;
-                trackedDaoCutE8s := profit;
-                trackedPublisherRevenueE8s := 0;
-                if (profit > 0) {
-                    let feeTransfer = await ledger.icrc1_transfer({
-                        to = feeDestination;
-                        fee = ?Nat64.toNat(T.ICP_FEE);
-                        memo = null;
-                        from_subaccount = ?userSubaccount;
-                        created_at_time = null;
-                        amount = Nat64.toNat(profit);
-                    });
-                    switch (feeTransfer) {
-                        case (#Err(_)) {};
-                        case (#Ok(_)) {};
-                    };
-                };
-            } else {
-                // Non-DAO publisher: split profit between DAO cut and publisher share
-                let effectiveCutBps = getEffectiveDaoCutBps(app);
-                let daoCut: Nat64 = Nat64.fromNat((Nat64.toNat(profit) * effectiveCutBps) / 10000);
-                let publisherShare: Nat64 = profit - daoCut;
-                
-                trackedIcpProfitE8s := profit;
-                trackedDaoCutE8s := daoCut;
-                trackedPublisherRevenueE8s := publisherShare;
-
-                // Transfer DAO cut to feeDestination
-                if (daoCut > 0) {
-                    let daoCutTransfer = await ledger.icrc1_transfer({
-                        to = feeDestination;
-                        fee = ?Nat64.toNat(T.ICP_FEE);
-                        memo = null;
-                        from_subaccount = ?userSubaccount;
-                        created_at_time = null;
-                        amount = Nat64.toNat(daoCut);
-                    });
-                    switch (daoCutTransfer) {
-                        case (#Err(_)) {};
-                        case (#Ok(_)) {};
-                    };
-                };
-
-                // Transfer publisher share to revenue subaccount
-                if (publisherShare > 0) {
-                    let revSubaccount = getRevenueSubaccount(app);
-                    let pubTransfer = await ledger.icrc1_transfer({
-                        to = { owner = Principal.fromActor(this); subaccount = ?revSubaccount };
-                        fee = ?Nat64.toNat(T.ICP_FEE);
-                        memo = null;
-                        from_subaccount = ?userSubaccount;
-                        created_at_time = null;
-                        amount = Nat64.toNat(publisherShare);
-                    });
-                    switch (pubTransfer) {
-                        case (#Err(_)) {};
-                        case (#Ok(_)) {};
-                    };
+            
+            // Transfer remaining ICP to fee destination
+            if (feeAmount > 0) {
+                let feeTransfer = await ledger.icrc1_transfer({
+                    to = feeDestination;
+                    fee = ?Nat64.toNat(T.ICP_FEE);
+                    memo = null;
+                    from_subaccount = ?userSubaccount;
+                    created_at_time = null;
+                    amount = Nat64.toNat(feeAmount);
+                });
+                switch (feeTransfer) {
+                    case (#Err(_)) {}; // Log but don't fail
+                    case (#Ok(_)) {};
                 };
             };
             
@@ -2542,9 +1756,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             walletAdd(caller, newCanisterId, appId);
 
             // Record in immutable mint log
-            addMintLogEntry(newCanisterId, caller, appId, app.numericAppId, app.publisherId, version.major, version.minor, version.patch, trackedIcpPaidE8s, wasPremium, trackedDaoCutE8s, trackedPublisherRevenueE8s);
+            addMintLogEntry(newCanisterId, caller, appId, version.major, version.minor, version.patch, trackedIcpPaidE8s, wasPremium);
 
-            // Record in old creation log (backward compat)
+            // Record in old creation log too (for backward compat)
             let createdAt = Time.now();
             let logEntry: T.CreationLogEntry = {
                 canisterId = newCanisterId;
@@ -2571,21 +1785,12 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             financialLog := Array.append(financialLog, [financialEntry]);
             financialLogNextIndex += 1;
             
-            // Update aggregate statistics
             totalIcpPaidE8s += Nat64.toNat(trackedIcpPaidE8s);
             totalIcpForCyclesE8s += Nat64.toNat(trackedIcpForCyclesE8s);
             totalIcpProfitE8s += Nat64.toNat(trackedIcpProfitE8s);
             totalIcpTransferFeesE8s += Nat64.toNat(trackedIcpTransferFeesE8s);
             totalCyclesReceivedFromCmc += trackedCyclesReceivedFromCmc;
             totalCyclesSpentOnCreation += canisterCreationCycles;
-
-            // Update publisher/app revenue stats
-            if (app.publisherId == 0) {
-                totalDirectRevenueE8s += Nat64.toNat(trackedDaoCutE8s);
-            } else {
-                totalDaoCutReceivedE8s += Nat64.toNat(trackedDaoCutE8s);
-            };
-            updateStatsOnMint(app.publisherId, app.numericAppId, Nat64.toNat(trackedPublisherRevenueE8s), Nat64.toNat(trackedDaoCutE8s));
 
             #Ok({
                 canisterId = newCanisterId;
@@ -2613,110 +1818,6 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             premium = app.premiumMintPriceE8s;
             applicable = if (isPremiumMember) { app.premiumMintPriceE8s } else { app.mintPriceE8s };
             isPremium = isPremiumMember;
-        };
-    };
-
-    // ============================================
-    // PUBLISHER REVENUE & WITHDRAWAL
-    // ============================================
-
-    public func getPublisherRevenueBalance(publisherId: Nat): async Nat {
-        let sub = publisherRevenueSubaccount(publisherId);
-        await ledger.icrc1_balance_of({
-            owner = Principal.fromActor(this);
-            subaccount = ?sub;
-        });
-    };
-
-    public func getAppRevenueBalance(publisherId: Nat, numericAppId: Nat): async Nat {
-        let sub = appRevenueSubaccount(publisherId, numericAppId);
-        await ledger.icrc1_balance_of({
-            owner = Principal.fromActor(this);
-            subaccount = ?sub;
-        });
-    };
-
-    public query func getPublisherRevenueSubaccount(publisherId: Nat): async Blob {
-        publisherRevenueSubaccount(publisherId);
-    };
-
-    public query func getAppRevenueSubaccount(publisherId: Nat, numericAppId: Nat): async Blob {
-        appRevenueSubaccount(publisherId, numericAppId);
-    };
-
-    public query func getEffectiveDaoCutForApp(appId: Text): async Nat {
-        switch (getAppById(appId)) {
-            case null { 1000 };
-            case (?app) { getEffectiveDaoCutBps(app) };
-        };
-    };
-
-    // Withdraw publisher revenue to publisher's defaultPaymentAccount
-    public shared ({ caller }) func withdrawPublisherFunds(publisherId: Nat): async { #Ok: Nat; #Err: Text } {
-        if (not isPublisherOwner(caller, publisherId)) { return #Err("Not authorized") };
-        let publisher = switch (publisherMap.get(publisherId)) {
-            case null { return #Err("Publisher not found") };
-            case (?p) { p };
-        };
-        let sub = publisherRevenueSubaccount(publisherId);
-        let fee = Nat64.toNat(T.ICP_FEE);
-        let balance = await ledger.icrc1_balance_of({
-            owner = Principal.fromActor(this);
-            subaccount = ?sub;
-        });
-        if (balance <= fee) { return #Err("Insufficient balance to cover transfer fee") };
-        let withdrawAmount = balance - fee;
-        let result = await ledger.icrc1_transfer({
-            to = publisher.defaultPaymentAccount;
-            fee = ?fee;
-            memo = null;
-            from_subaccount = ?sub;
-            created_at_time = null;
-            amount = withdrawAmount;
-        });
-        switch (result) {
-            case (#Err(_)) { #Err("Transfer failed") };
-            case (#Ok(_)) {
-                updateStatsOnWithdrawal(publisherId, null, withdrawAmount);
-                #Ok(withdrawAmount);
-            };
-        };
-    };
-
-    // Withdraw app-specific revenue to app's paymentAccount
-    public shared ({ caller }) func withdrawAppFunds(publisherId: Nat, numericAppId: Nat): async { #Ok: Nat; #Err: Text } {
-        if (not isPublisherOwner(caller, publisherId)) { return #Err("Not authorized") };
-        let app = switch (appByNumericId.get(numericAppId)) {
-            case null { return #Err("App not found") };
-            case (?a) { a };
-        };
-        if (app.publisherId != publisherId) { return #Err("App does not belong to this publisher") };
-        let dest = switch (app.paymentAccount) {
-            case null { return #Err("App has no payment account override; use withdrawPublisherFunds") };
-            case (?account) { account };
-        };
-        let sub = appRevenueSubaccount(publisherId, numericAppId);
-        let fee = Nat64.toNat(T.ICP_FEE);
-        let balance = await ledger.icrc1_balance_of({
-            owner = Principal.fromActor(this);
-            subaccount = ?sub;
-        });
-        if (balance <= fee) { return #Err("Insufficient balance to cover transfer fee") };
-        let withdrawAmount = balance - fee;
-        let result = await ledger.icrc1_transfer({
-            to = dest;
-            fee = ?fee;
-            memo = null;
-            from_subaccount = ?sub;
-            created_at_time = null;
-            amount = withdrawAmount;
-        });
-        switch (result) {
-            case (#Err(_)) { #Err("Transfer failed") };
-            case (#Ok(_)) {
-                updateStatsOnWithdrawal(publisherId, ?numericAppId, withdrawAmount);
-                #Ok(withdrawAmount);
-            };
         };
     };
 
@@ -3031,145 +2132,118 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     };
 
     // ============================================
-    // REVENUE STATS
+    // DATA EXPORT / BACKUP (for migration to new sneedapp)
     // ============================================
 
-    public query func getPublisherStats(publisherId: Nat): async ?PublisherStats {
-        publisherStatsMap.get(publisherId);
-    };
-
-    public query func getAllPublisherStats(): async [PublisherStats] {
-        Iter.toArray(Iter.map<(Nat, PublisherStats), PublisherStats>(publisherStatsMap.entries(), func(e) { e.1 }));
-    };
-
-    public query func getAppRevenueStats(numericAppId: Nat): async ?AppRevenueStats {
-        appRevenueStatsMap.get(numericAppId);
-    };
-
-    public query func getDaoRevenueStats(): async DaoRevenueStats {
-        {
-            totalDaoCutReceivedE8s = totalDaoCutReceivedE8s;
-            totalDirectRevenueE8s = totalDirectRevenueE8s;
-            totalRevenueE8s = totalDaoCutReceivedE8s + totalDirectRevenueE8s;
-        };
-    };
-
-    // ============================================
-    // DATA IMPORT (from old sneedapp canister)
-    // ============================================
-
-    // Import user wallet entries from the old canister.
-    // Merges into existing data — safe to call multiple times.
-    public shared ({ caller }) func importUserWallets(wallets: [(Principal, [{ canisterId: Principal; appId: Text }])]) : async Nat {
+    // User wallet data — the most critical data to preserve
+    // (getAllWallets already exists but is listed here for completeness)
+    public query ({ caller }) func exportUserWallets(): async [(Principal, [UserCanisterEntry])] {
         assert(isAdmin(caller));
-        var count: Nat = 0;
-        for ((user, entries) in wallets.vals()) {
-            for (entry in entries.vals()) {
-                walletAdd(user, entry.canisterId, entry.appId);
-                count += 1;
-            };
-        };
-        count;
+        Iter.toArray(userWalletMap.entries());
     };
 
-    // Import old-format mint log entries (pre-publisher).
-    // Assigns publisherId=0 and numericAppId=0 for all legacy entries.
-    public shared ({ caller }) func importMintLog(entries: [{
-        index: Nat;
-        canisterId: Principal;
-        minter: Principal;
-        appId: Text;
-        versionMajor: Nat;
-        versionMinor: Nat;
-        versionPatch: Nat;
-        mintedAt: Int;
-        icpPaidE8s: Nat64;
-        wasPremium: Bool;
-    }]) : async Nat {
+    // Full mint log — immutable audit trail
+    public query ({ caller }) func exportMintLog(): async [MintLogEntry] {
         assert(isAdmin(caller));
-        var count: Nat = 0;
-        for (e in entries.vals()) {
-            let numId = switch (appByStringId.get(e.appId)) {
-                case (?n) { n };
-                case null { 0 };
-            };
-            let entry: MintLogEntry = {
-                index = mintLogNextIndex;
-                canisterId = e.canisterId;
-                minter = e.minter;
-                appId = e.appId;
-                numericAppId = numId;
-                publisherId = 0;
-                versionMajor = e.versionMajor;
-                versionMinor = e.versionMinor;
-                versionPatch = e.versionPatch;
-                mintedAt = e.mintedAt;
-                icpPaidE8s = e.icpPaidE8s;
-                wasPremium = e.wasPremium;
-                daoCutE8s = e.icpPaidE8s;
-                publisherRevenueE8s = 0;
-            };
-            mintLog := Array.append(mintLog, [entry]);
-            mintLogIndexMap.put(e.canisterId, mintLogNextIndex);
-            mintLogNextIndex += 1;
-            count += 1;
-        };
-        count;
+        mintLog;
     };
 
-    // Import creation log entries
-    public shared ({ caller }) func importCreationLog(entries: [T.CreationLogEntry]) : async Nat {
+    // Creation log — audit trail of created canisters
+    public query ({ caller }) func exportCreationLog(): async [T.CreationLogEntry] {
         assert(isAdmin(caller));
-        for (e in entries.vals()) {
-            creationLog := Array.append(creationLog, [{
-                canisterId = e.canisterId;
-                caller = e.caller;
-                createdAt = e.createdAt;
-                index = creationLogNextIndex;
-            }]);
-            creationLogNextIndex += 1;
-        };
-        entries.size();
+        creationLog;
     };
 
-    // Import financial log entries
-    public shared ({ caller }) func importFinancialLog(entries: [T.FinancialLogEntry]) : async Nat {
+    // Financial log — ICP/cycles tracking per creation
+    public query ({ caller }) func exportFinancialLog(): async [T.FinancialLogEntry] {
         assert(isAdmin(caller));
-        for (e in entries.vals()) {
-            financialLog := Array.append(financialLog, [{
-                canisterId = e.canisterId;
-                index = financialLogNextIndex;
-                createdAt = e.createdAt;
-                icpPaidE8s = e.icpPaidE8s;
-                icpForCyclesE8s = e.icpForCyclesE8s;
-                icpProfitE8s = e.icpProfitE8s;
-                icpTransferFeesE8s = e.icpTransferFeesE8s;
-                cyclesReceivedFromCmc = e.cyclesReceivedFromCmc;
-                cyclesSpentOnCreation = e.cyclesSpentOnCreation;
-                cyclesBalanceBefore = e.cyclesBalanceBefore;
-                cyclesBalanceAfter = e.cyclesBalanceAfter;
-            }]);
-            financialLogNextIndex += 1;
-        };
-        entries.size();
+        financialLog;
     };
 
-    // Import aggregate stats (adds to current values)
-    public shared ({ caller }) func importAggregateStats(stats: {
+    // App registry — all apps and their configuration
+    public query ({ caller }) func exportApps(): async [AppInfo] {
+        assert(isAdmin(caller));
+        apps;
+    };
+
+    // App versions — raw metadata (not AppVersionInfo, but AppVersion with full data)
+    public query ({ caller }) func exportAppVersions(): async [(Text, [AppVersion])] {
+        assert(isAdmin(caller));
+        appVersions;
+    };
+
+    // WASM blobs — export a single version's WASM by key ("appId:major.minor.patch")
+    public query ({ caller }) func exportAppVersionWasm(key: Text): async ?Blob {
+        assert(isAdmin(caller));
+        appVersionWasmsMap.get(key);
+    };
+
+    // All WASM blob keys (so you can iterate and call exportAppVersionWasm for each)
+    public query ({ caller }) func exportAppVersionWasmKeys(): async [Text] {
+        assert(isAdmin(caller));
+        Iter.toArray(appVersionWasmsMap.keys());
+    };
+
+    // Official versions registry
+    public query ({ caller }) func exportOfficialVersions(): async [T.OfficialVersion] {
+        assert(isAdmin(caller));
+        officialVersions;
+    };
+
+    // Aggregate stats — running totals
+    public query ({ caller }) func exportAggregateStats(): async {
         totalIcpPaidE8s: Nat;
         totalIcpForCyclesE8s: Nat;
         totalIcpProfitE8s: Nat;
         totalIcpTransferFeesE8s: Nat;
         totalCyclesReceivedFromCmc: Nat;
         totalCyclesSpentOnCreation: Nat;
-    }) : async () {
+        mintLogNextIndex: Nat;
+        creationLogNextIndex: Nat;
+        financialLogNextIndex: Nat;
+    } {
         assert(isAdmin(caller));
-        totalIcpPaidE8s += stats.totalIcpPaidE8s;
-        totalIcpForCyclesE8s += stats.totalIcpForCyclesE8s;
-        totalIcpProfitE8s += stats.totalIcpProfitE8s;
-        totalIcpTransferFeesE8s += stats.totalIcpTransferFeesE8s;
-        totalCyclesReceivedFromCmc += stats.totalCyclesReceivedFromCmc;
-        totalCyclesSpentOnCreation += stats.totalCyclesSpentOnCreation;
+        {
+            totalIcpPaidE8s = totalIcpPaidE8s;
+            totalIcpForCyclesE8s = totalIcpForCyclesE8s;
+            totalIcpProfitE8s = totalIcpProfitE8s;
+            totalIcpTransferFeesE8s = totalIcpTransferFeesE8s;
+            totalCyclesReceivedFromCmc = totalCyclesReceivedFromCmc;
+            totalCyclesSpentOnCreation = totalCyclesSpentOnCreation;
+            mintLogNextIndex = mintLogNextIndex;
+            creationLogNextIndex = creationLogNextIndex;
+            financialLogNextIndex = financialLogNextIndex;
+        };
+    };
+
+    // Configuration values
+    public query ({ caller }) func exportConfig(): async {
+        admins: [Principal];
+        sneedGovernance: ?Principal;
+        feeDestination: T.Account;
+        paymentRequired: Bool;
+        creationFeeE8s: Nat64;
+        premiumCreationFeeE8s: Nat64;
+        targetCyclesAmount: Nat;
+        canisterCreationCycles: Nat;
+        sneedPremiumCanisterId: ?Principal;
+        currentVersion: T.Version;
+        authorizedForCallers: [Principal];
+    } {
+        assert(isAdmin(caller));
+        {
+            admins = admins;
+            sneedGovernance = sneedGovernance;
+            feeDestination = feeDestination;
+            paymentRequired = paymentRequired;
+            creationFeeE8s = creationFeeE8s;
+            premiumCreationFeeE8s = premiumCreationFeeE8s;
+            targetCyclesAmount = targetCyclesAmount;
+            canisterCreationCycles = canisterCreationCycles;
+            sneedPremiumCanisterId = sneedPremiumCanisterId;
+            currentVersion = currentVersion;
+            authorizedForCallers = Iter.toArray(authorizedForCallers.keys());
+        };
     };
 
     // ============================================

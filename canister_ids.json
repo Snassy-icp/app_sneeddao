@@ -15,8 +15,11 @@
     "ic": "pojsz-fqaaa-aaaad-adoga-cai",
     "staging": "pojsz-fqaaa-aaaad-adoga-cai"
   },
-  "sneedapp": {
+  "sneed_icp_neuron_manager_factory": {
     "ic": "sfamc-kyaaa-aaaau-adnpq-cai",
+    "staging": "34e6r-ayaaa-aaaad-adkoa-cai"
+  },
+  "sneedapp": {
     "staging": "34e6r-ayaaa-aaaad-adkoa-cai"
   },
   "sneed_lock": {
