@@ -277,6 +277,7 @@ export default function BotManagementPanel({
     const choreTickRef = useRef(null);
     const [choreRunTracker, setChoreRunTracker] = useState({});
     const prevChoreSnapshotRef = useRef({});
+    const [dismissedErrors, setDismissedErrors] = useState({});
     const [creatingInstance, setCreatingInstance] = useState(false);
     const [newInstanceLabel, setNewInstanceLabel] = useState('');
     const [renamingInstance, setRenamingInstance] = useState(null);
@@ -850,9 +851,10 @@ export default function BotManagementPanel({
         };
     }, [choreStatuses, getReadyBotActor]);
 
-    // Track conductor run history across polls for the run-status card
+    // Track conductor run history across polls for the run-status card.
+    // Detects task transitions by comparing currentTask across polls so that
+    // fast-completing tasks still get their start times captured.
     useEffect(() => {
-        const prev = prevChoreSnapshotRef.current;
         setChoreRunTracker(tracker => {
             const next = { ...tracker };
             for (const chore of choreStatuses) {
@@ -867,6 +869,49 @@ export default function BotManagementPanel({
                 const lastError = chore.lastTaskError?.[0] || null;
 
                 const run = next[id];
+
+                // Helper: flush run.currentTask into completedTasks when the
+                // active task changes (the old task must have finished).
+                const flushPrevTask = (updated) => {
+                    const prev = run?.currentTask;
+                    if (prev && prev.taskId !== taskId && !updated._seenCompletedIds.includes(prev.taskId)) {
+                        updated.completedTasks.push({
+                            taskId: prev.taskId,
+                            startedAtMs: prev.startedAtMs,
+                            endedAtMs: Date.now(),
+                            succeeded: null,
+                            error: null,
+                        });
+                        updated._seenCompletedIds.push(prev.taskId);
+                    }
+                };
+
+                // Helper: record lastCompletedTaskId info — either update an
+                // entry already flushed above, or add a new one for tasks we
+                // never saw as currentTask.
+                const recordLastCompleted = (updated) => {
+                    if (!lastCompId || updated._seenCompletedIds.includes(lastCompId)) return;
+                    updated.completedTasks.push({
+                        taskId: lastCompId,
+                        startedAtMs: null,
+                        endedAtMs: Date.now(),
+                        succeeded: lastSucceeded,
+                        error: lastError,
+                    });
+                    updated._seenCompletedIds.push(lastCompId);
+                };
+
+                // Helper: back-fill succeeded/error onto an entry that was
+                // flushed by task transition but whose lastCompleted info
+                // arrived in the same poll.
+                const backfillStatus = (updated) => {
+                    if (!lastCompId) return;
+                    const entry = updated.completedTasks.find(t => t.taskId === lastCompId && t.succeeded === null);
+                    if (entry) {
+                        entry.succeeded = lastSucceeded;
+                        entry.error = lastError;
+                    }
+                };
 
                 if (isActive) {
                     const isNewRun = !run || !run.isRunning || String(condStartNs) !== String(run._condStartNs);
@@ -886,17 +931,9 @@ export default function BotManagementPanel({
                             completedTasks: [...run.completedTasks],
                             _seenCompletedIds: [...run._seenCompletedIds],
                         };
-                        if (lastCompId && !updated._seenCompletedIds.includes(lastCompId)) {
-                            const startTime = run.currentTask?.taskId === lastCompId ? run.currentTask.startedAtMs : null;
-                            updated.completedTasks.push({
-                                taskId: lastCompId,
-                                startedAtMs: startTime,
-                                endedAtMs: Date.now(),
-                                succeeded: lastSucceeded,
-                                error: lastError,
-                            });
-                            updated._seenCompletedIds.push(lastCompId);
-                        }
+                        flushPrevTask(updated);
+                        recordLastCompleted(updated);
+                        backfillStatus(updated);
                         updated.currentTask = taskId ? { taskId, startedAtMs: taskStartMs } : null;
                         next[id] = updated;
                     }
@@ -906,17 +943,9 @@ export default function BotManagementPanel({
                         completedTasks: [...run.completedTasks],
                         _seenCompletedIds: [...run._seenCompletedIds],
                     };
-                    if (lastCompId && !updated._seenCompletedIds.includes(lastCompId)) {
-                        const startTime = run.currentTask?.taskId === lastCompId ? run.currentTask.startedAtMs : null;
-                        updated.completedTasks.push({
-                            taskId: lastCompId,
-                            startedAtMs: startTime,
-                            endedAtMs: Date.now(),
-                            succeeded: lastSucceeded,
-                            error: lastError,
-                        });
-                        updated._seenCompletedIds.push(lastCompId);
-                    }
+                    flushPrevTask(updated);
+                    recordLastCompleted(updated);
+                    backfillStatus(updated);
                     updated.currentTask = null;
                     updated.isRunning = false;
                     updated.conductorEndedAtMs = Date.now();
@@ -2165,21 +2194,41 @@ export default function BotManagementPanel({
                                                                     </div>
                                                                 </div>
 
-                                                                {/* Last error display */}
-                                                                {chore.lastError && chore.lastError.length > 0 && (
-                                                                    <div style={{
-                                                                        marginTop: '10px', padding: '10px',
-                                                                        background: `${theme.colors.error || '#ef4444'}10`,
-                                                                        border: `1px solid ${theme.colors.error || '#ef4444'}25`,
-                                                                        borderRadius: '8px', fontSize: '0.8rem',
-                                                                        color: theme.colors.error || '#ef4444',
-                                                                    }}>
-                                                                        <strong>Last error:</strong> {chore.lastError[0]}
-                                                                        {chore.lastErrorAt && chore.lastErrorAt.length > 0 && (
-                                                                            <span style={{ opacity: 0.7 }}> ({fmtTime(chore.lastErrorAt)})</span>
-                                                                        )}
-                                                                    </div>
-                                                                )}
+                                                                {/* Last error display — dismissable per error instance */}
+                                                                {(() => {
+                                                                    if (!chore.lastError || chore.lastError.length === 0) return null;
+                                                                    const errorKey = `${chore.lastError[0]}|${chore.lastErrorAt?.[0] ?? ''}`;
+                                                                    if (dismissedErrors[chore.choreId] === errorKey) return null;
+                                                                    return (
+                                                                        <div style={{
+                                                                            marginTop: '10px', padding: '10px',
+                                                                            background: `${theme.colors.error || '#ef4444'}10`,
+                                                                            border: `1px solid ${theme.colors.error || '#ef4444'}25`,
+                                                                            borderRadius: '8px', fontSize: '0.8rem',
+                                                                            color: theme.colors.error || '#ef4444',
+                                                                            display: 'flex', alignItems: 'flex-start', gap: '8px',
+                                                                        }}>
+                                                                            <div style={{ flex: 1 }}>
+                                                                                <strong>Last error:</strong> {chore.lastError[0]}
+                                                                                {chore.lastErrorAt && chore.lastErrorAt.length > 0 && (
+                                                                                    <span style={{ opacity: 0.7 }}> ({fmtTime(chore.lastErrorAt)})</span>
+                                                                                )}
+                                                                            </div>
+                                                                            <button
+                                                                                onClick={() => setDismissedErrors(prev => ({ ...prev, [chore.choreId]: errorKey }))}
+                                                                                title="Dismiss"
+                                                                                style={{
+                                                                                    background: 'none', border: 'none', cursor: 'pointer',
+                                                                                    color: theme.colors.error || '#ef4444', fontSize: '1rem',
+                                                                                    padding: '0 2px', lineHeight: 1, opacity: 0.7,
+                                                                                    flexShrink: 0,
+                                                                                }}
+                                                                                onMouseEnter={e => e.currentTarget.style.opacity = 1}
+                                                                                onMouseLeave={e => e.currentTarget.style.opacity = 0.7}
+                                                                            >&times;</button>
+                                                                        </div>
+                                                                    );
+                                                                })()}
 
                                                                 {/* Conductor run card — persistent across tasks, survives conductor completion */}
                                                                 {(() => {
@@ -2187,7 +2236,7 @@ export default function BotManagementPanel({
                                                                     if (!run) return null;
                                                                     void choreTickNow; // reference to trigger re-renders each tick
                                                                     const elapsedStr = (startMs, endMs) => {
-                                                                        if (!startMs) return '--:--';
+                                                                        if (!startMs) return '< 0:01';
                                                                         const end = endMs || Date.now();
                                                                         const sec = Math.max(0, Math.floor((end - startMs) / 1000));
                                                                         const h = Math.floor(sec / 3600);
