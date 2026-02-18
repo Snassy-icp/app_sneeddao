@@ -7026,8 +7026,9 @@ function Wallet() {
                                     // Resolve app type from WASM hash (not stored appId)
                                     const appId = manager.resolvedAppId || botAppIdMap[canisterId] || '';
                                     const isStakingBot = appId === 'sneed-icp-staking-bot' || appId === 'icp-staking-bot';
+                                    const isTradingBot = appId === 'sneed-trading-bot';
                                     const appInfo = contextAppInfoMap?.[appId];
-                                    const appLabel = appInfo?.name || (isStakingBot ? 'ICP Staking Bot' : (appId || 'Unknown'));
+                                    const appLabel = appInfo?.name || (isStakingBot ? 'ICP Staking Bot' : isTradingBot ? 'Sneed Trading Bot' : (appId || 'Unknown'));
                                     const appLatestVersion = appId ? contextLatestVersionByApp?.[appId] : null;
                                     const isAppVersionOutdated = appLatestVersion && manager.version && compareVersions(manager.version, appLatestVersion) < 0;
                                     const neuronCount = neuronManagerCounts[canisterId];
@@ -7071,6 +7072,8 @@ function Wallet() {
                                                 <div className="header-logo-column" style={{ alignSelf: 'flex-start', minWidth: '48px', minHeight: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
                                                     {isStakingBot 
                                                         ? <FaBrain size={36} style={{ color: isValidManager === false ? '#ef4444' : theme.colors.mutedText }} />
+                                                        : isTradingBot
+                                                        ? <FaChartLine size={36} style={{ color: isValidManager === false ? '#ef4444' : '#10b981' }} />
                                                         : <FaBox size={36} style={{ color: isValidManager === false ? '#ef4444' : theme.colors.accent }} />
                                                     }
                                                     {neuronManagerIsController[canisterId] && (
@@ -8403,8 +8406,9 @@ function Wallet() {
                                     const detectedManager = detectedNeuronManagers[canisterId];
                                     const trackedResolvedAppId = detectedManager?.resolvedAppId || botAppIdMap[canisterId] || '';
                                     const isStakingBot = trackedResolvedAppId === 'sneed-icp-staking-bot' || trackedResolvedAppId === 'icp-staking-bot';
+                                    const isTradingBot = trackedResolvedAppId === 'sneed-trading-bot';
                                     const trackedAppInfo = contextAppInfoMap?.[trackedResolvedAppId];
-                                    const appLabel = trackedAppInfo?.name || (isStakingBot ? 'ICP Staking Bot' : (trackedResolvedAppId || 'Unknown'));
+                                    const appLabel = trackedAppInfo?.name || (isStakingBot ? 'ICP Staking Bot' : isTradingBot ? 'Sneed Trading Bot' : (trackedResolvedAppId || 'Unknown'));
                                     const appLatestVersion = trackedResolvedAppId ? contextLatestVersionByApp?.[trackedResolvedAppId] : null;
                                     
                                     if (detectedManager && detectedManager.isValid) {
@@ -8425,7 +8429,12 @@ function Wallet() {
                                                     onClick={() => setExpandedCanisterCards(prev => ({ ...prev, [canisterId]: !prev[canisterId] }))}
                                                 >
                                                     <div className="header-logo-column" style={{ alignSelf: 'flex-start', minWidth: '48px', minHeight: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-                                                        <FaBrain size={36} style={{ color: '#8b5cf6' }} />
+                                                        {isStakingBot 
+                                                            ? <FaBrain size={36} style={{ color: '#8b5cf6' }} />
+                                                            : isTradingBot
+                                                            ? <FaChartLine size={36} style={{ color: '#10b981' }} />
+                                                            : <FaBox size={36} style={{ color: theme.colors.accent }} />
+                                                        }
                                                         {managerIsController && (
                                                             <span 
                                                                 style={{ 
@@ -8558,7 +8567,8 @@ function Wallet() {
                                                                     v{Number(managerVersion.major)}.{Number(managerVersion.minor)}.{Number(managerVersion.patch)}
                                                                 </span>
                                                             )}
-                                                            {/* Neurons badge */}
+                                                            {/* Neurons badge (staking bots only) */}
+                                                            {isStakingBot && (
                                                             <span 
                                                                 style={{
                                                                     background: managerNeuronCount > 0 ? `#8b5cf620` : theme.colors.tertiaryBg,
@@ -8574,6 +8584,7 @@ function Wallet() {
                                                             >
                                                                 <FaBrain size={10} /> {managerNeuronCount} neuron{managerNeuronCount !== 1 ? 's' : ''}
                                                             </span>
+                                                            )}
                                                             {/* Cycles badge */}
                                                             {managerCycles !== undefined && managerCycles !== null && (
                                                                 <span 
@@ -8705,11 +8716,11 @@ function Wallet() {
                                                                 </button>
                                                             )}
                                                             <Link
-                                                                to={`/icp_neuron_manager/${canisterId}`}
+                                                                to={isStakingBot ? `/icp_neuron_manager/${canisterId}` : isTradingBot ? `/trading_bot/${canisterId}` : `/canister?id=${canisterId}`}
                                                                 style={{
                                                                     padding: '8px 16px',
                                                                     borderRadius: '8px',
-                                                                    backgroundColor: '#8b5cf6',
+                                                                    backgroundColor: isStakingBot ? '#8b5cf6' : isTradingBot ? '#10b981' : theme.colors.accent,
                                                                     color: '#fff',
                                                                     fontSize: '13px',
                                                                     textDecoration: 'none',
@@ -8719,8 +8730,8 @@ function Wallet() {
                                                                     gap: '6px',
                                                                 }}
                                                             >
-                                                                <FaBrain size={12} />
-                                                                Manage Neurons
+                                                                {isStakingBot ? <FaBrain size={12} /> : isTradingBot ? <FaChartLine size={12} /> : <FaBox size={12} />}
+                                                                {isStakingBot ? 'Manage Neurons' : 'Manage'}
                                                             </Link>
                                                             {isAppVersionOutdated && appLatestVersion && (
                                                                 <button
@@ -9037,7 +9048,12 @@ function Wallet() {
                                                     onClick={() => setExpandedCanisterCards(prev => ({ ...prev, [canisterId]: !prev[canisterId] }))}
                                                 >
                                                     <div className="header-logo-column" style={{ alignSelf: 'flex-start', minWidth: '48px', minHeight: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-                                                        <FaBrain size={36} style={{ color: '#f59e0b' }} />
+                                                        {isStakingBot 
+                                                            ? <FaBrain size={36} style={{ color: '#f59e0b' }} />
+                                                            : isTradingBot
+                                                            ? <FaChartLine size={36} style={{ color: '#f59e0b' }} />
+                                                            : <FaBox size={36} style={{ color: '#f59e0b' }} />
+                                                        }
                                                         {managerIsController && (
                                                             <span 
                                                                 style={{ 
@@ -9272,11 +9288,7 @@ function Wallet() {
                                         );
                                     }
                                     
-                                    // Check if this is a known trading bot via allBotEntries
-                                    const trackedAppId = botAppIdMap[canisterId] || '';
-                                    const isTradingBot = trackedAppId === 'sneed-trading-bot';
-
-                                    // Regular canister card
+                                    // Regular canister card (isTradingBot/isStakingBot already in scope from above)
                                     return (
                                         <DraggableWalletCard key={canisterId} dragType={DRAG_TYPE_APP} itemId={canisterId} onDrop={handleAppDrop}>
                                         <div 
@@ -9385,7 +9397,7 @@ function Wallet() {
                                                                         canisterId,
                                                                         isNeuronManager: false,
                                                                         isTradingBot,
-                                                                        appId: trackedAppId,
+                                                                        appId: trackedResolvedAppId,
                                                                         neuronManagerVersion: null,
                                                                         neuronCount: 0,
                                                                         cycles,

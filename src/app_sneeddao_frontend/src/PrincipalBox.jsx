@@ -2737,6 +2737,9 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                   // Get display name for canister
                                   const displayInfo = getPrincipalDisplayName(canisterIdStr);
                                   const displayName = displayInfo?.name || `${canisterIdStr.slice(0, 5)}...${canisterIdStr.slice(-5)}`;
+                                  const resolvedAppId = manager.resolvedAppId || botAppIdMap[canisterIdStr] || '';
+                                  const isStakingBot = resolvedAppId === 'sneed-icp-staking-bot' || resolvedAppId === 'icp-staking-bot';
+                                  const isTradingBot = resolvedAppId === 'sneed-trading-bot';
                                   
                                   // Calculate ICP value for this manager
                                   let managerIcpTotal = 0;
@@ -2761,12 +2764,14 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                           className="compact-wallet-token"
                                           onClick={() => openDappDetailModal({
                                               canisterId: canisterIdStr,
-                                              isNeuronManager: true,
+                                              isNeuronManager: isStakingBot,
+                                              isTradingBot,
+                                              appId: resolvedAppId,
                                               neuronManagerVersion: manager.version,
-                                              neuronCount: neurons.length,
-                                              cycles: null, // Will be fetched on modal open via auto-refresh
+                                              neuronCount: isStakingBot ? neurons.length : 0,
+                                              cycles: null,
                                               memory: null,
-                                              isController: neuronManagerIsController[canisterIdStr] ?? true, // Default to true like Wallet.jsx
+                                              isController: neuronManagerIsController[canisterIdStr] ?? true,
                                           })}
                                           style={{
                                               display: 'flex',
@@ -2801,7 +2806,13 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                                       justifyContent: 'center'
                                                   }}
                                               >
-                                                  <FaBrain size={14} style={{ color: theme.colors.accent }} />
+                                                  {isTradingBot ? (
+                                                      <FaChartLine size={13} style={{ color: '#10b981' }} />
+                                                  ) : isStakingBot ? (
+                                                      <FaBrain size={14} style={{ color: theme.colors.accent }} />
+                                                  ) : (
+                                                      <FaBox size={12} style={{ color: theme.colors.mutedText }} />
+                                                  )}
                                               </div>
                                               {/* Crown only if user is a controller */}
                                               {neuronManagerIsController[canisterIdStr] && (
@@ -2848,6 +2859,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                                       showSendMessage={false}
                                                       showViewProfile={false}
                                                   />
+                                                  {isStakingBot && (
                                                   <span style={{ 
                                                       color: theme.colors.mutedText,
                                                       fontSize: '11px',
@@ -2855,6 +2867,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                                                   }}>
                                                       {neurons.length}n
                                                   </span>
+                                                  )}
                                                   {/* Chore status lamp */}
                                                   {managerChoreStatuses[canisterIdStr] && managerChoreStatuses[canisterIdStr].length > 0 && (() => {
                                                       const overallState = getAllChoresSummaryLamp(managerChoreStatuses[canisterIdStr]);

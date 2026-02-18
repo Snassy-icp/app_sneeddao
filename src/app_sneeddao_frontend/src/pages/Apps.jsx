@@ -12,7 +12,7 @@ import { createActor as createBackendActor, canisterId as BACKEND_CANISTER_ID } 
 import { usePremiumStatus } from '../hooks/usePremiumStatus';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext, getCanisterTypeIcon, isSnsCanisterType, SnsPill } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
-import { FaPlus, FaTrash, FaCube, FaSpinner, FaChevronDown, FaChevronRight, FaBrain, FaFolder, FaFolderOpen, FaEdit, FaCheck, FaTimes, FaCrown, FaLock, FaStar, FaArrowRight, FaWallet, FaQuestionCircle, FaBox, FaExclamationTriangle, FaBolt } from 'react-icons/fa';
+import { FaPlus, FaTrash, FaCube, FaSpinner, FaChevronDown, FaChevronRight, FaBrain, FaFolder, FaFolderOpen, FaEdit, FaCheck, FaTimes, FaCrown, FaLock, FaStar, FaArrowRight, FaWallet, FaQuestionCircle, FaBox, FaExclamationTriangle, FaBolt, FaChartLine } from 'react-icons/fa';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
 import { useNavigate } from 'react-router-dom';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
@@ -3547,6 +3547,9 @@ export default function AppsPage() {
         const cycles = managerInfo?.cycles;
         const memory = managerInfo?.memory;
         const isController = managerInfo?.isController;
+        const resolvedAppId = managerInfo?.resolvedAppId || '';
+        const isStakingBot = resolvedAppId === 'sneed-icp-staking-bot' || resolvedAppId === 'icp-staking-bot';
+        const isTradingBot = resolvedAppId === 'sneed-trading-bot';
         
         // Compute health status similar to neuron managers section
         const healthStatus = getManagerHealthStatus({ cycles, version }, neuronManagerCycleSettings);
@@ -3564,7 +3567,7 @@ export default function AppsPage() {
             >
                 <div style={styles.managerInfo}>
                     <div style={{ ...styles.managerIcon, position: 'relative' }}>
-                        <FaBrain size={18} />
+                        {isStakingBot ? <FaBrain size={18} /> : isTradingBot ? <FaChartLine size={18} style={{ color: '#10b981' }} /> : <FaBox size={18} />}
                         {isController && (
                             <FaCrown 
                                 size={10} 
@@ -3661,19 +3664,19 @@ export default function AppsPage() {
                 </div>
                 <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
                     <Link
-                        to={`/icp_neuron_manager/${canisterId}`}
+                        to={isStakingBot ? `/icp_neuron_manager/${canisterId}` : isTradingBot ? `/trading_bot/${canisterId}` : `/canister?id=${canisterId}`}
                         style={{
                             ...styles.viewLink,
-                            backgroundColor: '#8b5cf615',
-                            color: '#8b5cf6',
+                            backgroundColor: isStakingBot ? '#8b5cf615' : isTradingBot ? '#10b98115' : `${theme.colors.accent}15`,
+                            color: isStakingBot ? '#8b5cf6' : isTradingBot ? '#10b981' : theme.colors.accent,
                             padding: '6px 8px',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
                         }}
-                        title="Manage neurons"
+                        title={isStakingBot ? 'Manage neurons' : 'Manage'}
                     >
-                        <FaBrain size={12} />
+                        {isStakingBot ? <FaBrain size={12} /> : isTradingBot ? <FaChartLine size={12} /> : <FaBox size={12} />}
                     </Link>
                     <Link
                         to={`/canister?id=${canisterId}`}
@@ -4234,7 +4237,7 @@ export default function AppsPage() {
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: theme.colors.secondaryText, fontSize: '0.9rem' }}>
                             <FaBrain size={14} style={{ color: '#9b59b6' }} />
-                            <span><strong style={{ color: '#9b59b6' }}>{neuronManagers.length}</strong> ICP staking bots</span>
+                            <span><strong style={{ color: '#9b59b6' }}>{neuronManagers.length}</strong> Sneedapp</span>
                         </div>
                         <Link 
                             to="/help/dapp-manager" 
@@ -5498,6 +5501,7 @@ export default function AppsPage() {
                                             const hasMatchingWasm = manager.moduleHash && isKnownNeuronManagerHash(manager.moduleHash);
                                             const shouldShowAsManager = isStakingBot && hasMatchingWasm;
                                             
+                                            const isTradingBot = resolvedAppId === 'sneed-trading-bot';
                                             if (!shouldShowAsManager) {
                                                 // Show as regular canister card
                                                 const canisterHealth = getCanisterHealthStatus(canisterId, { [canisterId]: { cycles: manager.cycles } }, cycleSettings);
@@ -5517,7 +5521,7 @@ export default function AppsPage() {
                                                     >
                                                         <div style={styles.canisterInfo}>
                                                         <div style={{ ...styles.canisterIcon, position: 'relative' }}>
-                                                            {getCanisterTypeIcon(displayInfo?.canisterTypes, 18, theme.colors.accent)}
+                                                            {isTradingBot ? <FaChartLine size={18} style={{ color: '#10b981' }} /> : getCanisterTypeIcon(displayInfo?.canisterTypes, 18, theme.colors.accent)}
                                                             {manager.isController && (
                                                                 <FaCrown 
                                                                     size={10} 
@@ -5684,7 +5688,7 @@ export default function AppsPage() {
                                                 >
                                                     <div style={styles.managerInfo}>
                                                         <div style={{ ...styles.managerIcon, position: 'relative' }}>
-                                                            <FaBrain size={18} />
+                                                            {isStakingBot ? <FaBrain size={18} /> : isTradingBot ? <FaChartLine size={18} style={{ color: '#10b981' }} /> : <FaBox size={18} />}
                                                             {manager.isController && (
                                                                 <FaCrown 
                                                                     size={10} 
@@ -5743,6 +5747,7 @@ export default function AppsPage() {
                                                                     {isVersionOutdated(manager.version) && '⚠️ '}
                                                                     {manager.version ? `v${Number(manager.version.major)}.${Number(manager.version.minor)}.${Number(manager.version.patch)}` : '...'}
                                                                 </span>
+                                                                {isStakingBot && (
                                                                 <span style={{
                                                                     ...styles.managerVersion,
                                                                     backgroundColor: manager.neuronCount != null && manager.neuronCount > 0 ? '#8b5cf620' : theme.colors.tertiaryBg,
@@ -5750,6 +5755,7 @@ export default function AppsPage() {
                                                                 }}>
                                                                     🧠 {manager.neuronCount != null ? `${manager.neuronCount} neuron${manager.neuronCount !== 1 ? 's' : ''}` : '...'}
                                                                 </span>
+                                                                )}
                                                                 {manager.cycles !== null && (
                                                                     <span 
                                                                         style={{
@@ -5779,19 +5785,19 @@ export default function AppsPage() {
                                                     </div>
                                                     <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
                                                         <Link
-                                                            to={`/icp_neuron_manager/${canisterId}`}
+                                                            to={isStakingBot ? `/icp_neuron_manager/${canisterId}` : isTradingBot ? `/trading_bot/${canisterId}` : `/canister?id=${canisterId}`}
                                                             style={{
                                                                 ...styles.viewLink,
-                                                                backgroundColor: '#8b5cf615',
-                                                                color: '#8b5cf6',
+                                                                backgroundColor: isStakingBot ? '#8b5cf615' : isTradingBot ? '#10b98115' : `${theme.colors.accent}15`,
+                                                                color: isStakingBot ? '#8b5cf6' : isTradingBot ? '#10b981' : theme.colors.accent,
                                                                 padding: '6px 8px',
                                                                 display: 'flex',
                                                                 alignItems: 'center',
                                                                 justifyContent: 'center',
                                                             }}
-                                                            title="Manage neurons"
+                                                            title={isStakingBot ? 'Manage neurons' : 'Manage'}
                                                         >
-                                                            <FaBrain size={12} />
+                                                            {isStakingBot ? <FaBrain size={12} /> : isTradingBot ? <FaChartLine size={12} /> : <FaBox size={12} />}
                                                         </Link>
                                                         <Link
                                                             to={`/canister?id=${canisterId}`}
