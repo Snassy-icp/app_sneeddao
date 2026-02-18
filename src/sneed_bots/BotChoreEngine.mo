@@ -895,22 +895,31 @@ module {
 
         /// Schedule a conductor tick after a delay (in seconds).
         func scheduleConductorTick<system>(choreId: Text, delaySecs: Nat) {
-            // Keep only one pending conductor timer per chore.
-            // This avoids timer churn when schedule-first heartbeat is overridden
-            // by the action-specific cadence in the same tick.
+            // Keep at most one pending conductor timer per chore.
+            // Important: only advance sequence and swap timer after successful setTimer.
+            // If setTimer fails, we preserve the current timer/sequence.
             let state = getStateOrDefault(choreId);
-            switch (state.conductorTimerId) {
-                case (?existingTid) { Timer.cancelTimer(existingTid) };
-                case null {};
-            };
+            let previousTid = state.conductorTimerId;
             let nextSeq = getConductorScheduleSeq(choreId) + 1;
-            setConductorScheduleSeq(choreId, nextSeq);
             let tid = Timer.setTimer<system>(#seconds delaySecs, func(): async () {
                 await conductorTick<system>(choreId, nextSeq);
             });
+
+            // Commit sequence/timer swap only after timer creation succeeds.
+            setConductorScheduleSeq(choreId, nextSeq);
             updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
                 { s with conductorTimerId = ?tid }
             });
+
+            // Retire previously tracked timer after successful swap.
+            switch (previousTid) {
+                case (?existingTid) {
+                    if (existingTid != tid) {
+                        Timer.cancelTimer(existingTid);
+                    };
+                };
+                case null {};
+            };
         };
 
         /// One tick of the conductor loop.
@@ -962,8 +971,10 @@ module {
             };
 
             // 1. Schedule the next poll early as a heartbeat.
-            // The action-specific branch below may override this cadence.
-            scheduleConductorTick<system>(choreId, 10);
+            // This is the only reschedule point in normal flow (schedule-first).
+            // Keep the cadence modestly slower while polling tasks.
+            let heartbeatDelay = if (state.taskActive) { 10 } else { 5 };
+            scheduleConductorTick<system>(choreId, heartbeatDelay);
 
             let def = findDefinition(choreId);
             switch (def) {
@@ -1039,8 +1050,9 @@ module {
                         // 6. Handle conductor action
                         switch (action) {
                             case (#ContinueIn(seconds)) {
-                                // Override the early heartbeat with the intended cadence.
-                                scheduleConductorTick<system>(choreId, seconds);
+                                // Schedule-first mode: heartbeat already armed above.
+                                // ContinueIn cadence is advisory for conductor logic only.
+                                ignore seconds;
                             };
                             case (#Done) {
                                 // If a task is still running, cancel it
@@ -1127,6 +1139,10 @@ module {
         /// Mark conductor as successfully completed.
         func markConductorDone(choreId: Text) {
             let state = getStateOrDefault(choreId);
+            switch (state.conductorTimerId) {
+                case (?tid) { Timer.cancelTimer(tid) };
+                case null {};
+            };
             emitLog(#Info, choreId, "Run completed successfully", [
                 ("totalRuns", Nat.toText(state.totalRunCount + 1)),
                 ("totalSuccess", Nat.toText(state.totalSuccessCount + 1)),
@@ -1146,6 +1162,10 @@ module {
         /// Mark conductor as failed.
         func markConductorError(choreId: Text, msg: Text) {
             let state = getStateOrDefault(choreId);
+            switch (state.conductorTimerId) {
+                case (?tid) { Timer.cancelTimer(tid) };
+                case null {};
+            };
             emitLog(#Error, choreId, "Run failed: " # msg, [
                 ("totalRuns", Nat.toText(state.totalRunCount + 1)),
                 ("totalFailures", Nat.toText(state.totalFailureCount + 1)),
@@ -1166,6 +1186,11 @@ module {
 
         /// Mark conductor as stopped (by stop flag).
         func markConductorStopped(choreId: Text) {
+            let state = getStateOrDefault(choreId);
+            switch (state.conductorTimerId) {
+                case (?tid) { Timer.cancelTimer(tid) };
+                case null {};
+            };
             updateState(choreId, func(s: BotChoreTypes.ChoreRuntimeState): BotChoreTypes.ChoreRuntimeState {
                 {
                     s with
