@@ -4,10 +4,12 @@ import { HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
+import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
+import { principalToSubAccount } from '@dfinity/utils';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
-import { FaRocket, FaCheckCircle, FaExclamationTriangle, FaArrowRight, FaArrowLeft, FaSpinner, FaCopy, FaTag, FaFileAlt, FaEye } from 'react-icons/fa';
+import { FaRocket, FaCheckCircle, FaExclamationTriangle, FaArrowRight, FaArrowLeft, FaSpinner, FaCopy, FaTag, FaFileAlt, FaEye, FaGasPump } from 'react-icons/fa';
 
 const customStyles = `
 @keyframes fadeInUp {
@@ -25,6 +27,7 @@ const appSecondary = '#22d3ee';
 const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 const E8S = 100_000_000;
 const ICP_FEE = 10_000;
+const TOP_UP_MEMO = new Uint8Array([0x54, 0x50, 0x55, 0x50, 0x00, 0x00, 0x00, 0x00]);
 
 export default function SneedAppMint() {
     const { appId } = useParams();
@@ -33,7 +36,7 @@ export default function SneedAppMint() {
     const navigate = useNavigate();
 
     // State
-    const [step, setStep] = useState(0); // 0=version, 1=fund, 2=confirm, 3=success
+    const [step, setStep] = useState(0); // 0=version, 1=review, 2=gas, 3=confirm, 4=success
     const [app, setApp] = useState(null);
     const [publisher, setPublisher] = useState(null);
     const [versions, setVersions] = useState([]);
@@ -50,6 +53,10 @@ export default function SneedAppMint() {
     const [depositBalance, setDepositBalance] = useState(0n);
     const [pricingInfo, setPricingInfo] = useState(null);
     const [copied, setCopied] = useState(false);
+
+    // Gas (cycles top-up)
+    const [extraGasIcp, setExtraGasIcp] = useState('');
+    const [conversionRate, setConversionRate] = useState(null);
 
     const getFactory = useCallback((authenticated = true) => {
         const opts = {
@@ -152,6 +159,34 @@ export default function SneedAppMint() {
         }
     }, [step, identity, refreshBalances]);
 
+    // Fetch ICP→cycles conversion rate from CMC
+    useEffect(() => {
+        const fetchRate = async () => {
+            try {
+                const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging'
+                    ? 'https://ic0.app' : 'http://localhost:4943';
+                const agent = HttpAgent.createSync({ host });
+                if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                    await agent.fetchRootKey();
+                }
+                const cmc = createCmcActor(CMC_CANISTER_ID, { agent });
+                const response = await cmc.get_icp_xdr_conversion_rate();
+                const xdrPerIcp = Number(response.data.xdr_permyriad_per_icp) / 10000;
+                setConversionRate({ cyclesPerIcp: xdrPerIcp * 1_000_000_000_000 });
+            } catch (_) {}
+        };
+        fetchRate();
+    }, []);
+
+    const extraGasE8s = extraGasIcp ? Math.floor(parseFloat(extraGasIcp) * E8S) : 0;
+    const extraGasCycles = conversionRate ? (extraGasE8s / E8S) * conversionRate.cyclesPerIcp : 0;
+
+    const formatCycles = (cycles) => {
+        if (cycles >= 1_000_000_000_000) return (cycles / 1_000_000_000_000).toFixed(2) + ' T';
+        if (cycles >= 1_000_000_000) return (cycles / 1_000_000_000).toFixed(2) + ' B';
+        return cycles.toLocaleString();
+    };
+
     const formatIcp = (e8s) => {
         const n = Number(e8s);
         return (n / E8S).toFixed(n % E8S === 0 ? 0 : 4);
@@ -164,11 +199,11 @@ export default function SneedAppMint() {
     };
 
     const requiredAmount = pricingInfo ? Number(pricingInfo.applicable) : 0;
-    const totalNeeded = requiredAmount + ICP_FEE; // price + transfer fee
     const currentDeposit = Number(depositBalance);
     const shortfall = Math.max(0, requiredAmount - currentDeposit);
     const walletBalance = Number(userWalletBalance);
-    const hasEnoughFunds = shortfall === 0 || walletBalance >= (shortfall + ICP_FEE);
+    const totalFromWallet = shortfall + (shortfall > 0 ? ICP_FEE : 0) + extraGasE8s + (extraGasE8s > 0 ? ICP_FEE : 0);
+    const hasEnoughFunds = walletBalance >= totalFromWallet;
 
     // Mint canister
     const handleMint = async () => {
@@ -206,8 +241,39 @@ export default function SneedAppMint() {
             );
 
             if (result.Ok) {
-                setCreatedCanisterId(result.Ok.canisterId.toText());
-                setStep(3);
+                const newCanisterId = result.Ok.canisterId;
+                const newCanisterIdText = newCanisterId.toText();
+                setCreatedCanisterId(newCanisterIdText);
+
+                // Step 3: Top up with extra gas if specified
+                if (extraGasE8s > 0) {
+                    setProgressMessage('Topping up canister with gas...');
+                    try {
+                        const subaccount = principalToSubAccount(newCanisterId);
+                        const topUpTransfer = await ledger.icrc1_transfer({
+                            to: { owner: Principal.fromText(CMC_CANISTER_ID), subaccount: [subaccount] },
+                            amount: BigInt(extraGasE8s),
+                            fee: [BigInt(ICP_FEE)],
+                            memo: [TOP_UP_MEMO],
+                            from_subaccount: [],
+                            created_at_time: [],
+                        });
+                        if (topUpTransfer.Ok !== undefined) {
+                            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging'
+                                ? 'https://icp0.io' : 'http://localhost:4943';
+                            const agent = HttpAgent.createSync({ host, identity });
+                            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                                await agent.fetchRootKey();
+                            }
+                            const cmc = createCmcActor(CMC_CANISTER_ID, { agent });
+                            await cmc.notify_top_up({ canister_id: newCanisterId, block_index: topUpTransfer.Ok });
+                        }
+                    } catch (topUpErr) {
+                        console.error('Gas top-up failed (canister was still created):', topUpErr);
+                    }
+                }
+
+                setStep(4);
             } else if (result.Err) {
                 const errKey = Object.keys(result.Err)[0];
                 const errVal = result.Err[errKey];
@@ -308,9 +374,9 @@ export default function SneedAppMint() {
                 )}
 
                 {/* Step indicator */}
-                {step < 3 && (
+                {step < 4 && (
                     <div style={{ display: 'flex', gap: 4, marginBottom: 24 }}>
-                        {['Version', 'Review', 'Confirm'].map((label, i) => (
+                        {['Version', 'Review', 'Gas', 'Confirm'].map((label, i) => (
                             <div key={i} style={{
                                 flex: 1, textAlign: 'center', padding: '8px 0',
                                 borderBottom: `3px solid ${i <= step ? appPrimary : theme.colors.borderColor || '#333'}`,
@@ -470,8 +536,76 @@ export default function SneedAppMint() {
                     </div>
                 )}
 
-                {/* Step 2: Confirm & Mint */}
+                {/* Step 2: Gas (optional) */}
                 {step === 2 && (
+                    <div className="mint-fade-in" style={cardStyle}>
+                        <h3 style={{ color: theme.colors.primaryText, margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <FaGasPump style={{ color: appPrimary }} /> Extra Gas (Optional)
+                        </h3>
+
+                        <div style={{
+                            padding: 12, background: `${appPrimary}10`, borderRadius: 8, marginBottom: 16,
+                            fontSize: 12, color: theme.colors.secondaryText, lineHeight: 1.5
+                        }}>
+                            Your canister will receive base gas (cycles) as part of the minting process. You can optionally add extra ICP to top up the canister with additional cycles.
+                        </div>
+
+                        <div style={{ marginBottom: 16 }}>
+                            <label style={{ color: theme.colors.secondaryText, fontSize: 13, display: 'block', marginBottom: 6 }}>
+                                Extra Gas Amount
+                            </label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    placeholder="0"
+                                    value={extraGasIcp}
+                                    onChange={(e) => setExtraGasIcp(e.target.value)}
+                                    style={{
+                                        flex: 1, padding: '10px 12px', borderRadius: 8,
+                                        background: theme.colors.primaryBg, color: theme.colors.primaryText,
+                                        border: `1px solid ${theme.colors.borderColor || '#333'}`,
+                                        fontSize: 14, outline: 'none'
+                                    }}
+                                />
+                                <span style={{ color: theme.colors.primaryText, fontWeight: 600 }}>ICP</span>
+                            </div>
+                            {extraGasE8s > 0 && conversionRate && (
+                                <div style={{ color: appPrimary, fontSize: 12, marginTop: 6 }}>
+                                    ≈ +{formatCycles(extraGasCycles)} cycles
+                                </div>
+                            )}
+                        </div>
+
+                        {conversionRate && (
+                            <div style={{ color: theme.colors.secondaryText, fontSize: 11, marginBottom: 16 }}>
+                                Current rate: 1 ICP ≈ {formatCycles(conversionRate.cyclesPerIcp)} cycles
+                            </div>
+                        )}
+
+                        {extraGasE8s > 0 && !hasEnoughFunds && (
+                            <div style={{
+                                padding: 10, background: '#f59e0b15', borderRadius: 8, marginBottom: 16,
+                                fontSize: 12, color: '#f59e0b', display: 'flex', alignItems: 'center', gap: 6
+                            }}>
+                                <FaExclamationTriangle />
+                                Not enough ICP in wallet for gas top-up. Reduce the amount or remove it.
+                            </div>
+                        )}
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <button onClick={() => setStep(1)} style={btnOutline}>
+                                <FaArrowLeft /> Back
+                            </button>
+                            <button onClick={() => setStep(3)} style={btnPrimary}>
+                                {extraGasE8s > 0 ? 'Next' : 'Skip'} <FaArrowRight />
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* Step 3: Confirm & Mint */}
+                {step === 3 && (
                     <div className="mint-fade-in" style={cardStyle}>
                         <h3 style={{ color: theme.colors.primaryText, margin: '0 0 20px', display: 'flex', alignItems: 'center', gap: 8 }}>
                             <FaRocket style={{ color: appPrimary }} /> Confirm & Mint
@@ -502,6 +636,14 @@ export default function SneedAppMint() {
                                     </span>
                                 </div>
                             )}
+                            {extraGasE8s > 0 && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${theme.colors.borderColor || '#333'}` }}>
+                                    <span style={{ color: theme.colors.secondaryText }}>Extra Gas</span>
+                                    <span style={{ color: theme.colors.primaryText, fontWeight: 500 }}>
+                                        {formatIcp(extraGasE8s)} ICP (~{formatCycles(extraGasCycles)})
+                                    </span>
+                                </div>
+                            )}
                             {publisher && (
                                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${theme.colors.borderColor || '#333'}` }}>
                                     <span style={{ color: theme.colors.secondaryText }}>Publisher</span>
@@ -514,7 +656,7 @@ export default function SneedAppMint() {
                         </div>
 
                         <p style={{ color: theme.colors.secondaryText, fontSize: 12, margin: '0 0 16px' }}>
-                            Clicking "Mint Canister" will{shortfall > 0 ? ' transfer ICP from your wallet and then' : ''} create a new canister with the selected version.
+                            Clicking "Mint Canister" will{shortfall > 0 ? ' transfer ICP from your wallet,' : ''}{extraGasE8s > 0 ? ' top up with extra gas,' : ''} and create a new canister with the selected version.
                         </p>
 
                         {creating && (
@@ -529,7 +671,7 @@ export default function SneedAppMint() {
 
                         {!creating && (
                             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                <button onClick={() => setStep(1)} style={btnOutline}>
+                                <button onClick={() => setStep(2)} style={btnOutline}>
                                     <FaArrowLeft /> Back
                                 </button>
                                 <button onClick={handleMint} style={btnPrimary}>
@@ -540,8 +682,8 @@ export default function SneedAppMint() {
                     </div>
                 )}
 
-                {/* Step 3: Success */}
-                {step === 3 && (
+                {/* Step 4: Success */}
+                {step === 4 && (
                     <div className="mint-fade-in" style={{ ...cardStyle, textAlign: 'center' }}>
                         <FaCheckCircle style={{ fontSize: 48, color: '#10b981', marginBottom: 16 }} />
                         <h3 style={{ color: theme.colors.primaryText, margin: '0 0 8px' }}>Canister Created!</h3>
