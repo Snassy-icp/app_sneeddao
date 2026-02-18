@@ -5639,7 +5639,13 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
                         <div style={label}>Type</div>
                         <select value={cond.conditionType} onChange={e => {
                             const v = Number(e.target.value);
-                            updateCondAtPath(path, { ...cbEmptyCondition(v), conditionType: v, operator: cond.operator });
+                            const wasGroup = cond.conditionType === 3 || cond.conditionType === 4;
+                            const isNowGroup = v === 3 || v === 4;
+                            if (wasGroup && isNowGroup) {
+                                update({ conditionType: v });
+                            } else {
+                                updateCondAtPath(path, { ...cbEmptyCondition(v), conditionType: v, operator: cond.operator });
+                            }
                         }} style={sel({ marginTop: '4px', minWidth: '120px' })}>
                             {CB_CONDITION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                         </select>
@@ -5942,14 +5948,17 @@ function CircuitBreakerPanel({ getReadyBotActor, theme, accentColor, choreStatus
                 </div>
 
                 {/* Save / Cancel */}
-                <div style={{ display: 'flex', gap: '10px', paddingTop: '4px', borderTop: `1px solid ${theme.colors.border}`, paddingTop: '12px' }}>
-                    <button onClick={handleSaveRule} disabled={saving || !editingRule.name}
-                        style={btnSm({ background: accentColor, color: '#fff', borderColor: accentColor, opacity: saving || !editingRule.name ? 0.5 : 1, padding: '8px 20px' })}>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', borderTop: `1px solid ${theme.colors.border}`, paddingTop: '12px' }}>
+                    <button onClick={handleSaveRule} disabled={saving || !editingRule.name?.trim()}
+                        style={btnSm({ background: accentColor, color: '#fff', borderColor: accentColor, opacity: saving || !editingRule.name?.trim() ? 0.5 : 1, padding: '8px 20px' })}>
                         <FaSave /> {saving ? 'Saving...' : 'Save Rule'}
                     </button>
                     <button onClick={() => { setEditingRule(null); setError(null); }} style={btnSm({ padding: '8px 20px' })}>
                         <FaTimes /> Cancel
                     </button>
+                    {!editingRule.name?.trim() && (
+                        <span style={{ fontSize: '0.78rem', color: '#e74c3c' }}>Rule name is required</span>
+                    )}
                 </div>
             </div>
         );
