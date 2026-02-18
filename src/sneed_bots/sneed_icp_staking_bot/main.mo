@@ -2439,7 +2439,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             defaultIntervalSeconds = 30 * 24 * 60 * 60; // 30 days (monthly, well within 6-month deadline)
             defaultMaxIntervalSeconds = null; // No randomization for confirm following
             defaultTaskTimeoutSeconds = 600; // 10 minutes (confirming many topics can take time)
-            conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
+            conduct = func(ctx: BotChoreTypes.ConductorContext): BotChoreTypes.ConductorAction {
                 // If a task is still running, just poll again
                 if (ctx.isTaskRunning) {
                     return #ContinueIn(10);
@@ -2495,7 +2495,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             defaultIntervalSeconds = 24 * 60 * 60; // 1 day
             defaultMaxIntervalSeconds = null; // No randomization for refresh stake
             defaultTaskTimeoutSeconds = 300; // 5 minutes per neuron refresh
-            conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
+            conduct = func(ctx: BotChoreTypes.ConductorContext): BotChoreTypes.ConductorAction {
                 // If a task is still running, just poll again
                 if (ctx.isTaskRunning) {
                     return #ContinueIn(10);
@@ -2550,7 +2550,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             defaultIntervalSeconds = 7 * 24 * 60 * 60; // 7 days (weekly)
             defaultMaxIntervalSeconds = null; // No randomization for collect maturity
             defaultTaskTimeoutSeconds = 300; // 5 minutes per neuron
-            conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
+            conduct = func(ctx: BotChoreTypes.ConductorContext): BotChoreTypes.ConductorAction {
                 let instanceId = ctx.choreId;
                 let src = "chore:" # instanceId;
                 // If a task is still running, just poll again
@@ -2609,7 +2609,7 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
             defaultIntervalSeconds = 24 * 60 * 60; // 1 day
             defaultMaxIntervalSeconds = null; // No randomization for distribution
             defaultTaskTimeoutSeconds = 600; // 10 minutes per distribution list
-            conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
+            conduct = func(ctx: BotChoreTypes.ConductorContext): BotChoreTypes.ConductorAction {
                 let instanceId = ctx.choreId;
                 let src = "chore:" # instanceId;
                 // If a task is still running, just poll again

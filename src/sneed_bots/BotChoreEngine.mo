@@ -1044,7 +1044,7 @@ module {
 
                     // 4. Call the conductor function
                     try {
-                        let action = await d.conduct(context);
+                        let action = d.conduct(context);
 
                         // Check stop flag AFTER await (could have been set during)
                         let stateAfter = getStateOrDefault(choreId);
@@ -1110,16 +1110,7 @@ module {
                             };
                         };
                     } catch (e) {
-                        let errMsg = Error.message(e);
-                        if (errMsg == "could not perform self call") {
-                            // Transient runtime condition: keep conductor alive and let
-                            // the already-armed heartbeat tick retry on the next cycle.
-                            emitLog(#Warning, choreId, "Conductor self-call failed; will retry on next heartbeat", [
-                                ("error", errMsg)
-                            ]);
-                        } else {
-                            markConductorError(choreId, "Conductor threw: " # errMsg);
-                        };
+                        markConductorError(choreId, "Conductor threw: " # Error.message(e));
                     };
                 };
             };
@@ -1338,11 +1329,11 @@ module {
             if (
                 refreshed.conductorActive and
                 not refreshed.stopRequested and
-                refreshed.conductorTimerId == null and
                 not isConductorTickInFlight(choreId)
             ) {
                 emitLog(#Debug, choreId, "Task completion nudge: scheduling immediate conductor tick", [
-                    ("taskId", taskId)
+                    ("taskId", taskId),
+                    ("existingConductorTimerId", switch (refreshed.conductorTimerId) { case (?tid) Nat.toText(tid); case null "none" }),
                 ]);
                 scheduleConductorTick<system>(choreId, 0);
             };

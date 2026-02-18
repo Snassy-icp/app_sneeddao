@@ -4538,7 +4538,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             defaultIntervalSeconds = 300; // 5 minutes
             defaultMaxIntervalSeconds = ?600; // Up to 10 minutes for randomization
             defaultTaskTimeoutSeconds = 300; // 5 minutes per action
-            conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
+            conduct = func(ctx: BotChoreTypes.ConductorContext): BotChoreTypes.ConductorAction {
                 let instanceId = ctx.choreId;
                 let src = "chore:" # instanceId;
 
@@ -4758,7 +4758,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             defaultIntervalSeconds = 3600; // 1 hour
             defaultMaxIntervalSeconds = ?7200; // Up to 2 hours for randomization
             defaultTaskTimeoutSeconds = 600; // 10 minutes
-            conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
+            conduct = func(ctx: BotChoreTypes.ConductorContext): BotChoreTypes.ConductorAction {
                 let instanceId = ctx.choreId;
                 let src = "chore:" # instanceId;
 
@@ -4945,7 +4945,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             defaultIntervalSeconds = 3600; // 1 hour
             defaultMaxIntervalSeconds = null;
             defaultTaskTimeoutSeconds = 300;
-            conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
+            conduct = func(ctx: BotChoreTypes.ConductorContext): BotChoreTypes.ConductorAction {
                 let instanceId = ctx.choreId;
                 let src = "chore:" # instanceId;
 
@@ -5021,7 +5021,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             defaultIntervalSeconds = 24 * 60 * 60; // 1 day
             defaultMaxIntervalSeconds = null;
             defaultTaskTimeoutSeconds = 600;
-            conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
+            conduct = func(ctx: BotChoreTypes.ConductorContext): BotChoreTypes.ConductorAction {
                 let instanceId = ctx.choreId;
                 let src = "chore:" # instanceId;
 
@@ -5085,7 +5085,7 @@ shared (deployer) persistent actor class TradingBotCanister() = this {
             defaultIntervalSeconds = 3600; // 1 hour
             defaultMaxIntervalSeconds = null;
             defaultTaskTimeoutSeconds = 600; // 10 minutes
-            conduct = func(ctx: BotChoreTypes.ConductorContext): async BotChoreTypes.ConductorAction {
+            conduct = func(ctx: BotChoreTypes.ConductorContext): BotChoreTypes.ConductorAction {
                 let instanceId = ctx.choreId;
                 let src = "chore:" # instanceId;
 

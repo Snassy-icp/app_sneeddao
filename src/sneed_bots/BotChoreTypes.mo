@@ -173,10 +173,11 @@ module {
         /// Timed-out tasks are marked as failed and the conductor can recover.
         defaultTaskTimeoutSeconds: Nat;
         /// The conductor function. Called repeatedly by the engine to orchestrate the chore.
+        /// This should stay synchronous and lightweight; async/outcall work belongs in tasks.
         /// Receives context about the current run (including task state) and returns an action
         /// telling the engine when to call it again (or that it's done/failed).
         /// To start a task, call engine.setPendingTask() before returning.
-        conduct: (ConductorContext) -> async ConductorAction;
+        conduct: (ConductorContext) -> ConductorAction;
     };
 
     // ============================================
