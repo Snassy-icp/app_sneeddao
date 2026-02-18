@@ -1986,6 +1986,23 @@ export const WalletProvider = ({ children }) => {
                     if (isValidCanister && isStakingBot) {
                         fetchManagerNeuronsData(canisterId);
                     }
+                    
+                    // Fetch chore statuses for non-staking bots directly
+                    // (staking bots get chores fetched inside fetchManagerNeuronsData)
+                    if (isValidCanister && !isStakingBot) {
+                        try {
+                            const botActor = resolvedAppId
+                                ? createTradingBotActor(canisterIdPrincipal, { agent })
+                                : createManagerActor(canisterIdPrincipal, { agent });
+                            const choreStatuses = await botActor.getChoreStatuses();
+                            if (choreStatuses && choreStatuses.length > 0) {
+                                setManagerChoreStatuses(prev => ({
+                                    ...prev,
+                                    [canisterId]: choreStatuses,
+                                }));
+                            }
+                        } catch (_) {}
+                    }
                 });
             } else {
                 setNeuronManagers([]);
