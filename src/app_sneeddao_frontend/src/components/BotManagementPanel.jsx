@@ -822,7 +822,7 @@ export default function BotManagementPanel({
             const ms = Number(c.nextScheduledRunAt[0]) / 1_000_000;
             return (ms - now) > 0 && (ms - now) < IMMINENT_MS;
         });
-        const anyRunning = choreStatuses.some(c => c.enabled && !('Idle' in c.conductorStatus));
+        const anyRunning = choreStatuses.some(c => !('Idle' in c.conductorStatus));
         if (anyImminent || anyRunning) {
             if (!choreTickRef.current) choreTickRef.current = setInterval(() => setChoreTickNow(Date.now()), 1000);
         } else {
@@ -2185,9 +2185,10 @@ export default function BotManagementPanel({
                                                                 {(() => {
                                                                     const run = choreRunTracker[chore.choreId];
                                                                     if (!run) return null;
+                                                                    void choreTickNow; // reference to trigger re-renders each tick
                                                                     const elapsedStr = (startMs, endMs) => {
                                                                         if (!startMs) return '--:--';
-                                                                        const end = endMs || choreTickNow;
+                                                                        const end = endMs || Date.now();
                                                                         const sec = Math.max(0, Math.floor((end - startMs) / 1000));
                                                                         const h = Math.floor(sec / 3600);
                                                                         const m = Math.floor((sec % 3600) / 60);
