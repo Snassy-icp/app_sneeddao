@@ -8398,10 +8398,14 @@ function Wallet() {
                                         return `${(bytes / 1024).toFixed(0)} KB`;
                                     };
                                     
-                                    // Check if this canister is a detected neuron manager
+                                    // Resolve app type from WASM for this tracked canister
                                     const detectedManager = detectedNeuronManagers[canisterId];
+                                    const trackedResolvedAppId = detectedManager?.resolvedAppId || botAppIdMap[canisterId] || '';
+                                    const isStakingBot = trackedResolvedAppId === 'sneed-icp-staking-bot' || trackedResolvedAppId === 'icp-staking-bot';
+                                    const trackedAppInfo = contextAppInfoMap?.[trackedResolvedAppId];
+                                    const appLabel = trackedAppInfo?.name || (isStakingBot ? 'ICP Staking Bot' : (trackedResolvedAppId || 'Unknown'));
+                                    
                                     if (detectedManager && detectedManager.isValid) {
-                                        // Render as valid neuron manager card
                                         const managerVersion = detectedManager.version;
                                         const managerNeuronCount = detectedManager.neuronCount || 0;
                                         const managerCycles = detectedManager.cycles;
