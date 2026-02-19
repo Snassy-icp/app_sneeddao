@@ -1910,10 +1910,7 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                                             onChange={(e) => {
                                                                 if (t.locked) return;
                                                                 const v = e.target.value;
-                                                                const num = parseFloat(v);
-                                                                if (!isNaN(num) && v.trim() !== '' && num >= 0 && num <= 100) {
-                                                                    setLinkedTarget(i, num);
-                                                                } else {
+                                                                if (v === '' || /^[0-9]*\.?[0-9]*$/.test(v)) {
                                                                     const arr = [...editingTargets]; arr[i] = { ...arr[i], targetBps: v }; setEditingTargets(arr);
                                                                 }
                                                             }}
@@ -1921,6 +1918,10 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
                                                                 if (t.locked) return;
                                                                 const num = parseFloat(editingTargets[i].targetBps);
                                                                 if (!isNaN(num)) setLinkedTarget(i, Math.max(0, Math.min(100, num)));
+                                                                else setLinkedTarget(i, 0);
+                                                            }}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') e.target.blur();
                                                             }}
                                                             disabled={!!t.locked}
                                                             style={{ ...inputStyle, width: '60px', fontSize: '0.75rem', textAlign: 'right', opacity: t.locked ? 0.5 : 1 }}

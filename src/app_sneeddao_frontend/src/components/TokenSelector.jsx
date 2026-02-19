@@ -519,11 +519,24 @@ function TokenSelector({
                                     />
                                     <div style={{ flex: 1, minWidth: 0 }}>
                                         <div style={{ 
-                                            fontWeight: '600', 
-                                            color: theme.colors.primaryText,
-                                            fontSize: '0.9rem'
+                                            display: 'flex', alignItems: 'center', gap: '6px',
                                         }}>
-                                            {token.symbol}
+                                            <span style={{
+                                                fontWeight: '600', 
+                                                color: theme.colors.primaryText,
+                                                fontSize: '0.9rem'
+                                            }}>
+                                                {token.symbol}
+                                            </span>
+                                            <span style={{
+                                                fontSize: '0.65rem',
+                                                color: theme.colors.mutedText,
+                                                opacity: 0.6,
+                                                fontFamily: 'monospace',
+                                                letterSpacing: '-0.3px',
+                                            }}>
+                                                {(() => { const id = token.ledger_id.toString(); return id.length > 16 ? id.slice(0, 7) + '..' + id.slice(-5) : id; })()}
+                                            </span>
                                         </div>
                                         <div style={{ 
                                             fontSize: '0.8rem', 
