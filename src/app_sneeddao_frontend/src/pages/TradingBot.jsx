@@ -23,7 +23,7 @@ import { createActor as createBotActor } from 'external/sneed_trading_bot';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { decodeIcrcAccount, encodeIcrcAccount } from '@dfinity/ledger-icrc';
 import { computeAccountId } from '../utils/PrincipalUtils';
-import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt, FaSearch, FaGripVertical, FaLock, FaLockOpen, FaPause, FaPlay, FaArrowUp, FaArrowDown, FaPaperPlane, FaExchangeAlt, FaWallet, FaShieldAlt, FaToggleOn, FaToggleOff, FaCopy, FaDownload, FaArrowRight, FaChevronDown, FaChevronUp, FaTag, FaGlobe, FaEyeSlash } from 'react-icons/fa';
+import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt, FaSearch, FaGripVertical, FaLock, FaLockOpen, FaPause, FaPlay, FaArrowUp, FaArrowDown, FaPaperPlane, FaExchangeAlt, FaWallet, FaShieldAlt, FaToggleOn, FaToggleOff, FaCopy, FaDownload, FaArrowRight, FaChevronDown, FaChevronUp, FaTag, FaGlobe, FaEyeSlash, FaRobot } from 'react-icons/fa';
 import TokenIcon from '../components/TokenIcon';
 import PrincipalInput from '../components/PrincipalInput';
 import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
@@ -6575,8 +6575,17 @@ export default function TradingBot() {
                             justifyContent: 'center',
                             boxShadow: `0 8px 32px ${ACCENT}50`,
                             flexShrink: 0,
+                            position: 'relative',
                         }}>
-                            <FaChartLine style={{ color: '#fff', fontSize: '1.6rem' }} />
+                            <FaRobot style={{ color: '#fff', fontSize: '1.6rem' }} />
+                            <FaChartLine style={{
+                                color: '#fff',
+                                fontSize: '0.8rem',
+                                position: 'absolute',
+                                top: '8px',
+                                right: '8px',
+                                opacity: 0.85,
+                            }} />
                         </div>
                         <div style={{ minWidth: 0, flex: 1 }}>
                             <div style={{
@@ -6879,7 +6888,7 @@ export default function TradingBot() {
                             accentColor={ACCENT}
                             accentColorSecondary={ACCENT_SECONDARY}
                             botName="Trading Bot"
-                            botIcon={<FaChartLine style={{ color: ACCENT, fontSize: '16px' }} />}
+                            botIcon={<span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}><FaRobot style={{ color: ACCENT, fontSize: '16px' }} /><FaChartLine style={{ color: ACCENT, fontSize: '8px', position: 'absolute', top: '-2px', right: '-6px', opacity: 0.85 }} /></span>}
                             appId={APP_ID}
                             permissionLabels={PERMISSION_LABELS}
                             permissionDescriptions={PERMISSION_DESCRIPTIONS}
