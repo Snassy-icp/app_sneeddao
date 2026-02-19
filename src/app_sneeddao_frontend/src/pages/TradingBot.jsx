@@ -2576,10 +2576,10 @@ function TradeLogViewer({ getReadyBotActor, theme, accentColor }) {
                                     ) : (
                                         <>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                <strong>In:</strong> <TokenIcon canisterId={toStr(e.inputToken)} size={16} /> {formatTokenAmount(e.inputAmount, inputDec)} {inSym}
+                                                <strong>Sold:</strong> <TokenIcon canisterId={toStr(e.inputToken)} size={16} /> {formatTokenAmount(e.inputAmount, inputDec)} {inSym}
                                             </div>
                                             {e.outputToken?.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                <strong>Out:</strong> <TokenIcon canisterId={toStr(e.outputToken[0])} size={16} /> {optVal(e.outputAmount) != null ? formatTokenAmount(optVal(e.outputAmount), outputDec) : '—'} {outSym}
+                                                <strong>Bought:</strong> <TokenIcon canisterId={toStr(e.outputToken[0])} size={16} /> {optVal(e.outputAmount) != null ? formatTokenAmount(optVal(e.outputAmount), outputDec) : '—'} {outSym}
                                             </div>}
                                         </>
                                     )}
