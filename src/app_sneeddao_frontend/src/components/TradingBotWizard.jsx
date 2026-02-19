@@ -439,7 +439,8 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
     const [sellAMaxPrice, setSellAMaxPrice] = useState('');
     const [sellBMinPrice, setSellBMinPrice] = useState('');
     const [sellBMaxPrice, setSellBMaxPrice] = useState('');
-    const [tradeSize, setTradeSize] = useState('');
+    const [tradeSizeA, setTradeSizeA] = useState('');
+    const [tradeSizeB, setTradeSizeB] = useState('');
     const [intervalMinutes, setIntervalMinutes] = useState('5');
     const [enableStopLoss, setEnableStopLoss] = useState(false);
     const [stopLossPrice, setStopLossPrice] = useState('');
@@ -481,7 +482,7 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
     const fundDecimals = fundMeta?.decimals ?? getTokenMetadataSync(fundToken)?.decimals ?? 8;
 
     const canProceedStep1 = tokenA && tokenB && tokenA !== tokenB;
-    const canProceedStep2 = sellAMinPrice && sellAMaxPrice && sellBMinPrice && sellBMaxPrice && tradeSize && Number(tradeSize) > 0 && (!enableStopLoss || (stopLossPrice && Number(stopLossPrice) > 0));
+    const canProceedStep2 = sellAMinPrice && sellAMaxPrice && sellBMinPrice && sellBMaxPrice && tradeSizeA && Number(tradeSizeA) > 0 && tradeSizeB && Number(tradeSizeB) > 0 && (!enableStopLoss || (stopLossPrice && Number(stopLossPrice) > 0));
 
     const formatBal = (raw, dec) => raw == null ? '...' : (Number(raw) / Math.pow(10, dec)).toLocaleString(undefined, { maximumFractionDigits: dec });
 
@@ -501,8 +502,8 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
 
             const priceDenomToken = tokenB;
             const priceDec = decB;
-            const tradeDec = decA;
-            const rawTradeSize = BigInt(Math.floor(Number(tradeSize) * Math.pow(10, tradeDec)));
+            const rawTradeSizeA = BigInt(Math.floor(Number(tradeSizeA) * Math.pow(10, decA)));
+            const rawTradeSizeB = BigInt(Math.floor(Number(tradeSizeB) * Math.pow(10, decB)));
 
             const toRawPrice = (humanPrice) => BigInt(Math.floor(Number(humanPrice) * Math.pow(10, priceDec)));
 
@@ -514,7 +515,7 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
                     actionType: 0, enabled: true,
                     inputToken: Principal.fromText(slInput),
                     outputToken: [Principal.fromText(slOutput)],
-                    minAmount: rawTradeSize, maxAmount: rawTradeSize,
+                    minAmount: 0n, maxAmount: 0n,
                     amountMode: 1, balancePercent: [10000],
                     preferredDex: [], sourceSubaccount: [], targetSubaccount: [],
                     destinationOwner: [], destinationSubaccount: [],
@@ -532,7 +533,7 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
                 actionType: 0, enabled: true,
                 inputToken: Principal.fromText(tokenA),
                 outputToken: [Principal.fromText(tokenB)],
-                minAmount: rawTradeSize, maxAmount: rawTradeSize,
+                minAmount: rawTradeSizeA, maxAmount: rawTradeSizeA,
                 amountMode: 0, balancePercent: [],
                 preferredDex: [], sourceSubaccount: [], targetSubaccount: [],
                 destinationOwner: [], destinationSubaccount: [],
@@ -549,8 +550,7 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
                 actionType: 0, enabled: true,
                 inputToken: Principal.fromText(tokenB),
                 outputToken: [Principal.fromText(tokenA)],
-                minAmount: BigInt(Math.floor(Number(tradeSize) * Math.pow(10, decB))),
-                maxAmount: BigInt(Math.floor(Number(tradeSize) * Math.pow(10, decB))),
+                minAmount: rawTradeSizeB, maxAmount: rawTradeSizeB,
                 amountMode: 0, balancePercent: [],
                 preferredDex: [], sourceSubaccount: [], targetSubaccount: [],
                 destinationOwner: [], destinationSubaccount: [],
@@ -646,8 +646,14 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
                                 <AmountInput label={`Max price (${symB})`} value={sellBMaxPrice} onChange={setSellBMaxPrice} theme={theme} />
                             </div>
                         </div>
-                        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
-                            <AmountInput label="Trade size per execution" value={tradeSize} onChange={setTradeSize} theme={theme} />
+                        <div style={{ padding: '12px', background: theme.colors.primaryBg, borderRadius: '10px', border: `1px solid ${theme.colors.border}`, marginBottom: '12px' }}>
+                            <div style={{ fontSize: '0.82rem', fontWeight: '600', color: theme.colors.primaryText, marginBottom: '8px' }}>
+                                Trade size per execution
+                            </div>
+                            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                                <AmountInput label={`Sell ${symA} amount (${symA})`} value={tradeSizeA} onChange={setTradeSizeA} theme={theme} />
+                                <AmountInput label={`Sell ${symB} amount (${symB})`} value={tradeSizeB} onChange={setTradeSizeB} theme={theme} />
+                            </div>
                             <AmountInput label="Check interval (minutes)" value={intervalMinutes} onChange={setIntervalMinutes} theme={theme} placeholder="5" />
                         </div>
                         <div style={{ padding: '12px', background: enableStopLoss ? '#ef444410' : theme.colors.primaryBg, borderRadius: '10px', border: `1px solid ${enableStopLoss ? '#ef444430' : theme.colors.border}`, marginBottom: '4px' }}>
@@ -699,8 +705,9 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
                             <SummaryRow label="Strategy" value="Range Trade" theme={theme} />
                             <SummaryRow label="Pair" value={`${symA} / ${symB}`} theme={theme} />
                             <SummaryRow label={`Sell ${symA} range`} value={`${sellAMinPrice} – ${sellAMaxPrice} ${symB}`} theme={theme} />
+                            <SummaryRow label={`Sell ${symA} size`} value={`${tradeSizeA} ${symA}`} theme={theme} />
                             <SummaryRow label={`Sell ${symB} range`} value={`${sellBMinPrice} – ${sellBMaxPrice} ${symB}`} theme={theme} />
-                            <SummaryRow label="Trade size" value={tradeSize} theme={theme} />
+                            <SummaryRow label={`Sell ${symB} size`} value={`${tradeSizeB} ${symB}`} theme={theme} />
                             <SummaryRow label="Interval" value={`Every ${intervalMinutes} min`} theme={theme} />
                             {enableStopLoss && <SummaryRow label="Stop loss" value={`Sell all ${stopLossSellToken === 'A' ? symA : symB} below ${stopLossPrice} ${symB}`} theme={theme} />}
                         </div>
