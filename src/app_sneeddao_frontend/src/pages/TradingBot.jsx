@@ -253,6 +253,54 @@ const shortPrincipal = (p) => {
 };
 
 // ============================================
+// SHARED PRICE HELPER — two-hop denom pricing via PriceService
+// ============================================
+
+/**
+ * Fetch prices for a set of tokens denominated in a chosen denomination token.
+ * Uses PriceService (shared singleton with memory + localStorage cache).
+ *
+ * @param {string[]} tokenIds - Canister IDs of tokens to price
+ * @param {string} denomTokenId - Canister ID of the denomination token
+ * @param {(id: string) => number} decFor - Returns decimals for a given token ID
+ * @returns {Promise<Record<string, number|null>>} tokenId → price in denom units, or null
+ */
+async function fetchDenomPrices(tokenIds, denomTokenId, decFor) {
+    for (const tid of tokenIds) priceService.setTokenDecimals(tid, decFor(tid));
+    if (denomTokenId && denomTokenId !== ICP_LEDGER) priceService.setTokenDecimals(denomTokenId, decFor(denomTokenId));
+
+    const getIcpPrice = async (tid) => {
+        if (tid === ICP_LEDGER) return 1;
+        const fiatPeg = FIAT_USD_PEG[tid];
+        if (fiatPeg != null) {
+            const icpUsd = await priceService.getICPUSDPrice();
+            return icpUsd > 0 ? fiatPeg / icpUsd : null;
+        }
+        return await priceService.getTokenICPPrice(tid, decFor(tid));
+    };
+
+    const [tokenResults, denomIcpPriceRaw] = await Promise.all([
+        Promise.all(tokenIds.map(async (tid) => {
+            try { return { tid, icpPrice: await getIcpPrice(tid) }; }
+            catch (_) { return { tid, icpPrice: null }; }
+        })),
+        denomTokenId !== ICP_LEDGER ? getIcpPrice(denomTokenId).catch(() => null) : Promise.resolve(1),
+    ]);
+
+    const denomIcpPrice = (denomIcpPriceRaw != null && isFinite(denomIcpPriceRaw) && denomIcpPriceRaw > 0) ? denomIcpPriceRaw : null;
+    const prices = {};
+    for (const { tid, icpPrice } of tokenResults) {
+        if (tid === denomTokenId) { prices[tid] = 1; continue; }
+        if (icpPrice != null && denomIcpPrice != null && denomIcpPrice > 0) {
+            prices[tid] = icpPrice / denomIcpPrice;
+        } else {
+            prices[tid] = null;
+        }
+    }
+    return prices;
+}
+
+// ============================================
 // TOKEN METADATA — backed by the site-wide shared cache (IndexedDB + memory)
 // ============================================
 import {
@@ -1323,37 +1371,8 @@ function RebalancerConfigPanel({ instanceId, getReadyBotActor, theme, accentColo
         priceFetchRef.current = key;
         setPricesLoading(true);
         try {
-            const decFor = (id) => tokenMeta[id]?.decimals ?? 8;
-            // Set decimals in PriceService
-            for (const tid of targetTokenIds) priceService.setTokenDecimals(tid, decFor(tid));
-            if (denomKey !== ICP_LEDGER) priceService.setTokenDecimals(denomKey, decFor(denomKey));
-
-            const getIcpPrice = async (tid) => {
-                if (tid === ICP_LEDGER) return 1;
-                const fiatPeg = FIAT_USD_PEG[tid];
-                if (fiatPeg != null) {
-                    const icpUsd = await priceService.getICPUSDPrice();
-                    if (icpUsd > 0) return fiatPeg / icpUsd;
-                    return null;
-                }
-                return await priceService.getTokenICPPrice(tid, decFor(tid));
-            };
-
-            const [tokenResults, denomIcpPriceRaw] = await Promise.all([
-                Promise.all(targetTokenIds.map(async (tid) => {
-                    try { return { tid, icpPrice: await getIcpPrice(tid) }; }
-                    catch (_) { return { tid, icpPrice: null }; }
-                })),
-                denomKey !== ICP_LEDGER ? getIcpPrice(denomKey).catch(() => null) : Promise.resolve(1),
-            ]);
-            const denomIcpPrice = (denomIcpPriceRaw != null && isFinite(denomIcpPriceRaw) && denomIcpPriceRaw > 0) ? denomIcpPriceRaw : null;
-            const prices = {};
-            for (const { tid, icpPrice } of tokenResults) {
-                if (tid === denomKey) { prices[tid] = 1; continue; }
-                if (icpPrice != null && denomIcpPrice != null) {
-                    prices[tid] = icpPrice / denomIcpPrice;
-                } else { prices[tid] = null; }
-            }
+            const decFor = (id) => tokenMeta[id]?.decimals ?? (getTokenMetadataSync(id)?.decimals ?? 8);
+            const prices = await fetchDenomPrices(targetTokenIds, denomKey, decFor);
             setDenomPrices(prices);
         } catch (e) { console.warn('Failed to fetch rebalance prices:', e); }
         finally { setPricesLoading(false); }
@@ -3565,13 +3584,10 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
         return () => { cancelled = true; };
     }, [canisterId, tokenRegistry, subaccounts, identity]);
 
-    // Fetch denomination prices using frontend-only PriceService (fast, cached)
-    // Uses two-hop via ICP: get each token's ICP price + denom token's ICP price, then divide.
-    // tokenMeta provides accurate decimals for any token we've seen.
+    // Fetch denomination prices using shared fetchDenomPrices helper (PriceService-backed)
     const denomCacheKeyRef = useRef('');
     useEffect(() => {
         if (!denomToken || tokenRegistry.length === 0) { setDenomPrices({}); return; }
-        // Stable key: denom + sorted token IDs + denomination decimals (so we re-fetch if metadata loads)
         const ids = tokenRegistry.map(t => typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId)).sort().join(',');
         const denomDec = tokenMeta[denomToken]?.decimals;
         const cacheKey = `${denomToken}:${ids}:d${denomDec ?? '?'}`;
@@ -3581,76 +3597,26 @@ function AccountsPanel({ getReadyBotActor, theme, accentColor, canisterId }) {
         setLoadingPrices(true);
         (async () => {
             try {
-                // Build a decimals lookup from registry + tokenMeta (tokenMeta is authoritative)
                 const decFor = (id) => {
                     const meta = tokenMeta[id];
                     if (meta?.decimals != null) return Number(meta.decimals);
+                    const cached = getTokenMetadataSync(id);
+                    if (cached?.decimals != null) return Number(cached.decimals);
                     const regEntry = tokenRegistry.find(t => {
                         const k = typeof t.ledgerCanisterId === 'string' ? t.ledgerCanisterId : t.ledgerCanisterId?.toText?.() || String(t.ledgerCanisterId);
                         return k === id;
                     });
                     if (regEntry?.decimals != null) return Number(regEntry.decimals);
-                    return 8; // safe default
+                    return 8;
                 };
-
                 const tokenIds = ids.split(',');
-                // Set decimals in PriceService for all tokens we'll query
-                for (const tid of tokenIds) {
-                    priceService.setTokenDecimals(tid, decFor(tid));
-                }
-                if (denomToken && denomToken !== ICP_LEDGER) {
-                    priceService.setTokenDecimals(denomToken, decFor(denomToken));
-                }
-
-                // Helper: get a token's ICP price, using fiat-peg derivation for stablecoins
-                // (avoids relying on potentially illiquid/nonexistent individual token/ICP pools)
-                const getIcpPrice = async (tid, dec) => {
-                    if (tid === ICP_LEDGER) return 1;
-                    const fiatPeg = FIAT_USD_PEG[tid];
-                    if (fiatPeg != null) {
-                        // Derive from the liquid ICP/USDC pool: tokenIcpPrice = fiatUsdPeg / icpUsdPrice
-                        const icpUsd = await priceService.getICPUSDPrice();
-                        if (icpUsd > 0) return fiatPeg / icpUsd;
-                        return null;
-                    }
-                    return await priceService.getTokenICPPrice(tid, dec);
-                };
-
-                // Fetch all token->ICP prices in parallel
-                const icpPricePromises = tokenIds.map(async (tid) => {
-                    try {
-                        const p = await getIcpPrice(tid, decFor(tid));
-                        return { tid, icpPrice: p };
-                    } catch (_) { return { tid, icpPrice: null }; }
-                });
-                // Fetch denomination token -> ICP price
-                let denomIcpPrice = 1;
-                if (denomToken !== ICP_LEDGER) {
-                    try {
-                        denomIcpPrice = await getIcpPrice(denomToken, decFor(denomToken));
-                    } catch (_) { denomIcpPrice = null; }
-                }
-                const results = await Promise.all(icpPricePromises);
-                if (cancelled) return;
-                // Sanity-check denom price
-                if (denomIcpPrice != null && (denomIcpPrice <= 0 || !isFinite(denomIcpPrice))) {
-                    denomIcpPrice = null;
-                }
-                const prices = {};
-                for (const { tid, icpPrice } of results) {
-                    if (tid === denomToken) { prices[tid] = 1; continue; }
-                    if (icpPrice != null && denomIcpPrice != null && denomIcpPrice > 0) {
-                        prices[tid] = icpPrice / denomIcpPrice;
-                    } else {
-                        prices[tid] = null;
-                    }
-                }
+                const prices = await fetchDenomPrices(tokenIds, denomToken, decFor);
                 if (!cancelled) setDenomPrices(prices);
             } catch (e) { console.warn('Failed to fetch denom prices:', e); }
             finally { if (!cancelled) setLoadingPrices(false); }
         })();
         return () => { cancelled = true; };
-    }, [denomToken, tokenRegistry, tokenMeta]); // tokenMeta included for accurate decimals
+    }, [denomToken, tokenRegistry, tokenMeta]);
 
     // --- Subaccount handlers ---
     const handleCreate = async () => {
