@@ -296,6 +296,24 @@ module {
         clearBotkeys : shared () -> async ();
     };
     
+    // ============================================
+    // TRADING BOT TYPES (for verification and display)
+    // ============================================
+    
+    public type TradingBotVersion = {
+        major : Nat;
+        minor : Nat;
+        patch : Nat;
+    };
+    
+    public type TradingBotActor = actor {
+        getVersion : shared query () -> async TradingBotVersion;
+        getCanisterPrincipal : shared query () -> async Principal;
+        getBotkeySnapshot : shared () -> async [(Principal, [Nat])];
+        restoreBotkeySnapshot : shared ([(Principal, [Nat])]) -> async ();
+        clearBotkeys : shared () -> async ();
+    };
+    
     // Canister info response for frontend display
     public type CanisterInfo = {
         canister_id : Principal;

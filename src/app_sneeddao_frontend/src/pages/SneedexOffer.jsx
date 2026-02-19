@@ -5,7 +5,7 @@ import SwapModal from '../components/SwapModal';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { FaArrowLeft, FaClock, FaGavel, FaUser, FaCubes, FaBrain, FaCoins, FaCheck, FaTimes, FaExternalLinkAlt, FaSync, FaWallet, FaChevronDown, FaChevronUp, FaMicrochip, FaMemory, FaBolt, FaLock, FaUserCheck, FaRobot, FaExclamationTriangle, FaExchangeAlt, FaShoppingCart } from 'react-icons/fa';
+import { FaArrowLeft, FaClock, FaGavel, FaUser, FaCubes, FaBrain, FaCoins, FaCheck, FaTimes, FaExternalLinkAlt, FaSync, FaWallet, FaChevronDown, FaChevronUp, FaMicrochip, FaMemory, FaBolt, FaLock, FaUserCheck, FaRobot, FaExclamationTriangle, FaExchangeAlt, FaShoppingCart, FaChartLine } from 'react-icons/fa';
 import { getLogoSync } from '../hooks/useLogoCache';
 
 // Fallback logo service — serves logos for most ICP tokens by canister ID
@@ -33,6 +33,7 @@ import {
     SNEEDEX_CANISTER_ID,
     CANISTER_KIND_UNKNOWN,
     CANISTER_KIND_ICP_NEURON_MANAGER,
+    CANISTER_KIND_TRADING_BOT,
     CANISTER_KIND_NAMES
 } from '../utils/SneedexUtils';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
@@ -1310,6 +1311,17 @@ function SneedexOffer() {
                                     background: theme.colors.cardBg,
                                 }}
                             />
+                        </span>
+                    );
+                }
+                if (canisterKind === CANISTER_KIND_TRADING_BOT) {
+                    return (
+                        <span style={{ 
+                            width: 24, height: 24, borderRadius: '50%',
+                            background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                            <FaChartLine style={{ color: '#fff', fontSize: 13 }} />
                         </span>
                     );
                 }
@@ -2628,7 +2640,7 @@ function SneedexOffer() {
                                 ) : (Object.keys(tokenPrices).length > 0 || icpPrice) && offer.assets.some(a => 
                                     ('SNSNeuron' in a.asset) || 
                                     ('ICRC1Token' in a.asset) || 
-                                    ('Canister' in a.asset && Number(a.asset.Canister.canister_kind?.[0] || 0) === CANISTER_KIND_ICP_NEURON_MANAGER)
+                                    ('Canister' in a.asset && (Number(a.asset.Canister.canister_kind?.[0] || 0) === CANISTER_KIND_ICP_NEURON_MANAGER || Number(a.asset.Canister.canister_kind?.[0] || 0) === CANISTER_KIND_TRADING_BOT))
                                 ) ? (
                                     <span style={{ 
                                         marginLeft: '12px', 
@@ -2969,7 +2981,7 @@ function SneedexOffer() {
                                                             {details.type === 'Canister' && (
                                                                 details.title 
                                                                     ? details.title 
-                                                                    : (details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER ? 'ICP Staking Bot' : 'App')
+                                                                    : (details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER ? 'ICP Staking Bot' : details.canister_kind === CANISTER_KIND_TRADING_BOT ? 'Trading Bot' : 'App')
                                                             )}
                                                             {details.type === 'SNSNeuron' && (() => {
                                                                 // Find SNS name from snsData

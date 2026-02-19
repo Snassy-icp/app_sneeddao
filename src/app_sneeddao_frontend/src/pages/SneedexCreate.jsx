@@ -6,7 +6,7 @@ import { usePremiumStatus } from '../hooks/usePremiumStatus';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
 import { useAdminCheck } from '../hooks/useAdminCheck';
-import { FaArrowLeft, FaPlus, FaTrash, FaCubes, FaBrain, FaCoins, FaCheck, FaExclamationTriangle, FaServer, FaRobot, FaWallet, FaSync, FaPencilAlt, FaChevronDown, FaChevronUp, FaUnlock } from 'react-icons/fa';
+import { FaArrowLeft, FaPlus, FaTrash, FaCubes, FaBrain, FaCoins, FaCheck, FaExclamationTriangle, FaServer, FaRobot, FaWallet, FaSync, FaPencilAlt, FaChevronDown, FaChevronUp, FaUnlock, FaChartLine } from 'react-icons/fa';
 import { Principal } from '@dfinity/principal';
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { IDL } from '@dfinity/candid';
@@ -21,6 +21,7 @@ import {
     SNEEDEX_CANISTER_ID,
     CANISTER_KIND_UNKNOWN,
     CANISTER_KIND_ICP_NEURON_MANAGER,
+    CANISTER_KIND_TRADING_BOT,
     CANISTER_KIND_NAMES,
     MAX_CANISTER_TITLE_LENGTH,
     MAX_CANISTER_DESCRIPTION_LENGTH
@@ -32,6 +33,7 @@ import { createActor as createBackendActor } from 'declarations/app_sneeddao_bac
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneedapp';
 import { createActor as createNeuronManagerActor } from 'declarations/sneed_icp_neuron_manager';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
+import { createActor as createTradingBotActor } from 'external/sneed_trading_bot';
 import { createActor as createGovernanceActor } from 'external/sns_governance';
 import { getAllSnses, startBackgroundSnsFetch, fetchSnsLogo, getSnsById } from '../utils/SnsUtils';
 import { normalizeId } from '../utils/IdUtils';
@@ -197,6 +199,7 @@ function SneedexCreate() {
     const [userCanisters, setUserCanisters] = useState([]); // Array of canister ID strings (from canister groups)
     const [walletCanisters, setWalletCanisters] = useState([]); // Array of canister ID strings (from tracked_canisters)
     const [neuronManagers, setNeuronManagers] = useState([]); // Array of canister ID strings
+    const [tradingBots, setTradingBots] = useState([]); // Array of canister ID strings
     const [loadingCanisters, setLoadingCanisters] = useState(true);
     
     // Derived token info from selected ledger (with custom token fallback)
@@ -408,6 +411,21 @@ function SneedexCreate() {
                         .map(e => e.canisterId);
                 }
                 setNeuronManagers(managerIds.map(p => p.toString()));
+                
+                // Fetch trading bots
+                let tradingBotIds;
+                if (contextEntries && contextEntries.length > 0) {
+                    tradingBotIds = contextEntries
+                        .filter(e => e.resolvedAppId === 'sneed-trading-bot')
+                        .map(e => e.canisterId);
+                } else {
+                    const factory2 = createFactoryActor(factoryCanisterId, { agent });
+                    const walletEntries2 = await factory2.getMyWallet().catch(() => []);
+                    tradingBotIds = (walletEntries2 || [])
+                        .filter(e => e.appId === 'sneed-trading-bot')
+                        .map(e => e.canisterId);
+                }
+                setTradingBots(tradingBotIds.map(p => p.toString()));
                 
             } catch (e) {
                 console.error('Failed to fetch user canisters:', e);
@@ -899,6 +917,89 @@ function SneedexCreate() {
         }
     }, [identity]);
     
+    const verifyTradingBot = useCallback(async (canisterId) => {
+        if (!canisterId) return { verified: false, message: 'No canister id' };
+        
+        try {
+            setVerifyingCanisterKind(true);
+            setCanisterKindVerified(null);
+            
+            const host = getHost();
+            const agent = HttpAgent.createSync({ host, identity });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const canisterPrincipal = Principal.fromText(canisterId);
+            
+            // Get module hash if we're a controller
+            let moduleHash = null;
+            try {
+                const managementCanister = Actor.createActor(managementIdlFactory, {
+                    agent,
+                    canisterId: MANAGEMENT_CANISTER_ID,
+                    callTransform: (methodName, args, callConfig) => ({
+                        ...callConfig,
+                        effectiveCanisterId: canisterPrincipal,
+                    }),
+                });
+                const status = await managementCanister.canister_status({ canister_id: canisterPrincipal });
+                if (status.module_hash && status.module_hash.length > 0) {
+                    moduleHash = uint8ArrayToHex(status.module_hash[0]);
+                }
+            } catch (e) {
+                console.log('Could not get canister status (may not be controller):', e.message);
+            }
+            
+            const sneedexActor = await createSneedexActor(identity);
+            const versionResult = await sneedexActor.verifyTradingBot(canisterPrincipal);
+            
+            if ('Err' in versionResult) {
+                setCanisterKindVerified(versionResult.Err);
+                return { verified: false, message: versionResult.Err };
+            }
+            
+            const version = versionResult.Ok;
+            const versionStr = `${Number(version.major)}.${Number(version.minor)}.${Number(version.patch)}`;
+            
+            let officialVersion = null;
+            let wasmVerified = false;
+            
+            if (moduleHash) {
+                try {
+                    const factory = createFactoryActor(factoryCanisterId, { agent });
+                    const officialVersionResult = await factory.getOfficialVersionByHash(moduleHash);
+                    if (officialVersionResult && officialVersionResult.length > 0) {
+                        officialVersion = officialVersionResult[0];
+                        const officialVersionStr = `${Number(officialVersion.major)}.${Number(officialVersion.minor)}.${Number(officialVersion.patch)}`;
+                        wasmVerified = (officialVersionStr === versionStr);
+                    }
+                } catch (e) {
+                    console.log('Could not check official versions:', e.message);
+                }
+            }
+            
+            const verificationInfo = {
+                verified: true,
+                version: version,
+                versionStr: versionStr,
+                moduleHash: moduleHash,
+                officialVersion: officialVersion,
+                wasmVerified: wasmVerified,
+            };
+            
+            setCanisterKindVerified(verificationInfo);
+            return verificationInfo;
+            
+        } catch (e) {
+            const msg = 'Failed to verify: ' + (e.message || 'Unknown error');
+            setCanisterKindVerified(msg);
+            return { verified: false, message: msg };
+        } finally {
+            setVerifyingCanisterKind(false);
+        }
+    }, [identity]);
+    
     // Fetch neuron manager info (list of ICP neurons inside)
     const fetchNeuronManagerInfo = useCallback(async (canisterId) => {
         if (!canisterId || !identity) return;
@@ -1183,17 +1284,21 @@ function SneedexCreate() {
         let asset;
         
         try {
-            if (newAssetType === 'canister' || newAssetType === 'neuron_manager') {
+            if (newAssetType === 'canister' || newAssetType === 'neuron_manager' || newAssetType === 'trading_bot') {
                 if (!newAssetCanisterId.trim()) {
-                    setError(newAssetType === 'neuron_manager' ? 'Please enter an ICP Staking Bot app canister id' : 'Please enter an app canister id');
+                    setError(newAssetType === 'neuron_manager' ? 'Please enter an ICP Staking Bot app canister id' : newAssetType === 'trading_bot' ? 'Please enter a Trading Bot canister id' : 'Please enter an app canister id');
                     return;
                 }
                 // Validate principal
                 Principal.fromText(newAssetCanisterId.trim());
                 
-                // For neuron_manager type, verification is required
+                // For neuron_manager and trading_bot types, verification is required
                 if (newAssetType === 'neuron_manager' && !canisterKindVerified?.verified) {
                     setError('Please verify the app canister is an ICP Staking Bot first');
+                    return;
+                }
+                if (newAssetType === 'trading_bot' && !canisterKindVerified?.verified) {
+                    setError('Please verify the canister is a Trading Bot first');
                     return;
                 }
                 
@@ -1208,7 +1313,9 @@ function SneedexCreate() {
                 }
                 
                 // Determine canister kind based on asset type
-                const canisterKind = newAssetType === 'neuron_manager' ? CANISTER_KIND_ICP_NEURON_MANAGER : CANISTER_KIND_UNKNOWN;
+                const canisterKind = newAssetType === 'neuron_manager' ? CANISTER_KIND_ICP_NEURON_MANAGER 
+                    : newAssetType === 'trading_bot' ? CANISTER_KIND_TRADING_BOT 
+                    : CANISTER_KIND_UNKNOWN;
                 const displayTitle = newAssetCanisterTitle.trim() || `${newAssetCanisterId.trim().slice(0, 10)}...`;
                 
                 // For neuron managers, store the total ICP
@@ -1221,6 +1328,8 @@ function SneedexCreate() {
                     ? `${(Number(totalIcpE8s) / 1e8).toFixed(2)} ICP (Staking Bot)`
                     : newAssetType === 'neuron_manager' 
                     ? `ICP Staking Bot: ${displayTitle}`
+                    : newAssetType === 'trading_bot'
+                    ? `Trading Bot: ${displayTitle}`
                         : `App: ${displayTitle}`;
                 
                 asset = { 
@@ -1346,18 +1455,20 @@ function SneedexCreate() {
         setError('');
         
         if (asset.type === 'canister') {
-            // Use 'neuron_manager' type if canister_kind indicates it's a neuron manager
+            // Use specific type if canister_kind indicates a known bot type
             if (asset.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER) {
                 setNewAssetType('neuron_manager');
+            } else if (asset.canister_kind === CANISTER_KIND_TRADING_BOT) {
+                setNewAssetType('trading_bot');
             } else {
-            setNewAssetType('canister');
+                setNewAssetType('canister');
             }
             setNewAssetCanisterId(asset.canister_id);
             setNewAssetCanisterKind(asset.canister_kind || 0);
             setNewAssetCanisterTitle(asset.title || '');
             setNewAssetCanisterDescription(asset.description || '');
             // Mark as verified if it was previously added
-            if (asset.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER) {
+            if (asset.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER || asset.canister_kind === CANISTER_KIND_TRADING_BOT) {
                 setCanisterKindVerified({ verified: true, message: 'Previously verified' });
             }
         } else if (asset.type === 'neuron') {
@@ -1845,6 +1956,17 @@ function SneedexCreate() {
                                 borderRadius: '50%',
                                 padding: '1px',
                             }} />
+                        </div>
+                    );
+                }
+                if (asset.canister_kind === CANISTER_KIND_TRADING_BOT) {
+                    return (
+                        <div style={{ 
+                            width: size, height: size, borderRadius: '50%',
+                            background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                            <FaChartLine style={{ color: '#fff', fontSize: size * 0.55 }} />
                         </div>
                     );
                 }
@@ -3057,6 +3179,8 @@ function SneedexCreate() {
                                                         {asset.type === 'canister' && (
                                                             asset.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER && asset.totalIcpE8s
                                                                 ? `${(Number(asset.totalIcpE8s) / 1e8).toFixed(2)} ICP`
+                                                                : asset.canister_kind === CANISTER_KIND_TRADING_BOT
+                                                                ? (asset.title || 'Trading Bot')
                                                                 : (asset.title || 'App')
                                                         )}
                                                         {asset.type === 'neuron' && (
@@ -3072,6 +3196,11 @@ function SneedexCreate() {
                                                                 {asset.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER && (
                                                                     <span style={{ color: theme.colors.accent, fontSize: '0.75rem' }}>
                                                                         Staking Bot •
+                                                                    </span>
+                                                                )}
+                                                                {asset.canister_kind === CANISTER_KIND_TRADING_BOT && (
+                                                                    <span style={{ color: '#11998e', fontSize: '0.75rem' }}>
+                                                                        Trading Bot •
                                                                     </span>
                                                                 )}
                                                                 <PrincipalDisplay 
@@ -3269,6 +3398,7 @@ function SneedexCreate() {
                                     {[
                                         { type: 'canister', icon: FaServer, label: 'App', gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
                                         { type: 'neuron_manager', icon: FaRobot, label: 'ICP Staking Bot', gradient: 'linear-gradient(135deg, #f5af19 0%, #f12711 100%)' },
+                                        { type: 'trading_bot', icon: FaChartLine, label: 'Trading Bot', gradient: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)' },
                                         { type: 'neuron', icon: FaBrain, label: 'SNS Neuron', gradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
                                         { type: 'token', icon: FaCoins, label: 'ICRC1 Token', gradient: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' },
                                     ].map(({ type, icon: Icon, label, gradient }) => {
@@ -3283,6 +3413,8 @@ function SneedexCreate() {
                                                     // Reset canister-related state when switching types
                                                     if (type === 'neuron_manager') {
                                                         setNewAssetCanisterKind(CANISTER_KIND_ICP_NEURON_MANAGER);
+                                                    } else if (type === 'trading_bot') {
+                                                        setNewAssetCanisterKind(CANISTER_KIND_TRADING_BOT);
                                                     } else if (type === 'canister') {
                                                         setNewAssetCanisterKind(CANISTER_KIND_UNKNOWN);
                                                     }
@@ -3355,10 +3487,10 @@ function SneedexCreate() {
                                     })}
                                 </div>
                                 
-                                {(newAssetType === 'canister' || newAssetType === 'neuron_manager') && (
+                                {(newAssetType === 'canister' || newAssetType === 'neuron_manager' || newAssetType === 'trading_bot') && (
                                     <div style={styles.formGroup}>
                                         <label style={styles.label}>
-                                            {newAssetType === 'neuron_manager' ? 'Select ICP Staking Bot' : 'Select App'}
+                                            {newAssetType === 'neuron_manager' ? 'Select ICP Staking Bot' : newAssetType === 'trading_bot' ? 'Select Trading Bot' : 'Select App'}
                                         </label>
                                         
                                         {loadingCanisters ? (
@@ -3369,8 +3501,82 @@ function SneedexCreate() {
                                                 borderRadius: '8px',
                                                 fontSize: '0.9rem'
                                             }}>
-                                                {newAssetType === 'neuron_manager' ? 'Loading your ICP Staking Bots...' : 'Loading your apps...'}
+                                                {newAssetType === 'neuron_manager' ? 'Loading your ICP Staking Bots...' : newAssetType === 'trading_bot' ? 'Loading your Trading Bots...' : 'Loading your apps...'}
                                             </div>
+                                        ) : newAssetType === 'trading_bot' ? (
+                                            // Trading Bot selection
+                                            tradingBots.length > 0 ? (
+                                            <>
+                                                <select
+                                                    style={{
+                                                        ...styles.input,
+                                                        cursor: 'pointer',
+                                                    }}
+                                                    value={newAssetCanisterId}
+                                                    onChange={(e) => {
+                                                        const selectedId = e.target.value;
+                                                        setNewAssetCanisterId(selectedId);
+                                                        setNewAssetCanisterKind(CANISTER_KIND_TRADING_BOT);
+                                                        if (selectedId) {
+                                                            verifyTradingBot(selectedId);
+                                                        }
+                                                    }}
+                                                >
+                                                    <option value="">Select a Trading Bot...</option>
+                                                    {tradingBots.map(canisterId => (
+                                                        <option key={canisterId} value={canisterId}>
+                                                            {getCanisterName(canisterId)}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                
+                                                <div style={{ 
+                                                    marginTop: '8px', 
+                                                    fontSize: '0.8rem', 
+                                                    color: theme.colors.mutedText 
+                                                }}>
+                                                    Or enter a Trading Bot canister id manually:
+                                                </div>
+                                                <input
+                                                    type="text"
+                                                    placeholder="e.g., abc12-defgh-xxxxx-xxxxx-cai"
+                                                    style={{ ...styles.input, marginTop: '4px' }}
+                                                    value={newAssetCanisterId}
+                                                    onChange={(e) => {
+                                                        setNewAssetCanisterId(e.target.value);
+                                                        setNewAssetCanisterKind(CANISTER_KIND_TRADING_BOT);
+                                                        setCanisterKindVerified(null);
+                                                    }}
+                                                />
+                                            </>
+                                            ) : (
+                                                <>
+                                                    <div style={{ 
+                                                        padding: '12px', 
+                                                        background: `${theme.colors.accent}10`,
+                                                        borderRadius: '8px',
+                                                        marginBottom: '8px',
+                                                        fontSize: '0.85rem',
+                                                        color: theme.colors.secondaryText,
+                                                    }}>
+                                                        <strong style={{ color: theme.colors.accent }}>💡 Tip:</strong> You don't have any Trading Bots registered yet.
+                                                        Create one on the{' '}
+                                                        <Link to="/apps" style={{ color: theme.colors.accent }}>Apps page</Link>{' '}
+                                                        or enter an existing one manually below.
+                                                    </div>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="e.g., abc12-defgh-xxxxx-xxxxx-cai"
+                                                        style={styles.input}
+                                                        value={newAssetCanisterId}
+                                                        onChange={(e) => {
+                                                            setNewAssetCanisterId(e.target.value);
+                                                            setNewAssetCanisterKind(CANISTER_KIND_TRADING_BOT);
+                                                            setCanisterKindVerified(null);
+                                                        }}
+                                                    />
+                                                </>
+                                            )
                                         ) : newAssetType === 'neuron_manager' ? (
                                             // Neuron Manager selection - only show neuron managers
                                             neuronManagers.length > 0 ? (
@@ -3447,8 +3653,8 @@ function SneedexCreate() {
                                                 </>
                                             )
                                         ) : (
-                                            // Regular Canister selection - exclude neuron managers
-                                            (userCanisters.length > 0 || walletCanisters.filter(id => !neuronManagers.includes(id)).length > 0) ? (
+                                            // Regular Canister selection - exclude neuron managers and trading bots
+                                            (userCanisters.length > 0 || walletCanisters.filter(id => !neuronManagers.includes(id) && !tradingBots.includes(id)).length > 0) ? (
                                             <>
                                                 <select
                                                     style={{
@@ -3465,10 +3671,10 @@ function SneedexCreate() {
                                                 >
                                                     <option value="">Select an app...</option>
                                                     
-                                                    {userCanisters.filter(id => !neuronManagers.includes(id)).length > 0 && (
+                                                    {userCanisters.filter(id => !neuronManagers.includes(id) && !tradingBots.includes(id)).length > 0 && (
                                                         <optgroup label="📦 Registered Apps">
                                                             {userCanisters
-                                                                .filter(id => !neuronManagers.includes(id))
+                                                                .filter(id => !neuronManagers.includes(id) && !tradingBots.includes(id))
                                                                 .map(canisterId => (
                                                                 <option key={canisterId} value={canisterId}>
                                                                     {getCanisterName(canisterId)}
@@ -3477,10 +3683,10 @@ function SneedexCreate() {
                                                         </optgroup>
                                                     )}
                                                     
-                                                    {walletCanisters.filter(id => !neuronManagers.includes(id)).length > 0 && (
+                                                    {walletCanisters.filter(id => !neuronManagers.includes(id) && !tradingBots.includes(id)).length > 0 && (
                                                         <optgroup label="💼 Wallet Apps">
                                                             {walletCanisters
-                                                                .filter(id => !neuronManagers.includes(id))
+                                                                .filter(id => !neuronManagers.includes(id) && !tradingBots.includes(id))
                                                                 .map(canisterId => (
                                                                 <option key={canisterId} value={canisterId}>
                                                                     {getCanisterName(canisterId)}
@@ -3583,8 +3789,8 @@ function SneedexCreate() {
                                             </div>
                                         )}
                                         
-                                        {/* Neuron Manager Verification for neuron_manager asset type */}
-                                        {newAssetType === 'neuron_manager' && newAssetCanisterId && (
+                                        {/* Bot Verification for neuron_manager and trading_bot asset types */}
+                                        {(newAssetType === 'neuron_manager' || newAssetType === 'trading_bot') && newAssetCanisterId && (
                                                 <div style={{ marginTop: '8px' }}>
                                                     {canisterKindVerified?.verified ? (
                                                         <div style={{ 
@@ -3600,7 +3806,7 @@ function SneedexCreate() {
                                                                 fontSize: '0.9rem',
                                                                 marginBottom: '8px',
                                                             }}>
-                                                                <FaCheck /> Verified as ICP Staking Bot
+                                                                <FaCheck /> Verified as {newAssetType === 'trading_bot' ? 'Trading Bot' : 'ICP Staking Bot'}
                                                             </div>
                                                             <div style={{ fontSize: '0.85rem', color: theme.colors.secondaryText }}>
                                                                 <div>Version: <strong>{canisterKindVerified.versionStr}</strong></div>
@@ -3648,7 +3854,7 @@ function SneedexCreate() {
                                                     </div>
                                                 ) : (
                                                     <button
-                                                        onClick={() => verifyICPNeuronManager(newAssetCanisterId)}
+                                                        onClick={() => newAssetType === 'trading_bot' ? verifyTradingBot(newAssetCanisterId) : verifyICPNeuronManager(newAssetCanisterId)}
                                                         disabled={!newAssetCanisterId || verifyingCanisterKind}
                                                         style={{
                                                             ...styles.secondaryButton,
@@ -3658,15 +3864,15 @@ function SneedexCreate() {
                                                             opacity: (!newAssetCanisterId || verifyingCanisterKind) ? 0.5 : 1,
                                                         }}
                                                     >
-                                                                <FaRobot /> Verify as Staking Bot
+                                                                {newAssetType === 'trading_bot' ? <><FaChartLine /> Verify as Trading Bot</> : <><FaRobot /> Verify as Staking Bot</>}
                                                     </button>
                                             )}
                                         </div>
                                         )}
                                         
                                         {/* Title and Description */}
-                                        {/* Title - only for generic canisters, not neuron managers */}
-                                        {newAssetType !== 'neuron_manager' && (
+                                        {/* Title - only for generic canisters, not bot types */}
+                                        {newAssetType !== 'neuron_manager' && newAssetType !== 'trading_bot' && (
                                         <div style={styles.formGroup}>
                                             <label style={styles.label}>
                                                 Title (optional)
@@ -3705,6 +3911,8 @@ function SneedexCreate() {
                                             <textarea
                                                 placeholder={newAssetType === 'neuron_manager' 
                                                     ? "Describe your ICP Staking Bot, specific notes, and why it's valuable..."
+                                                    : newAssetType === 'trading_bot'
+                                                    ? "Describe your Trading Bot's strategy, configured chores, tokens traded, and why it's valuable..."
                                                     : "Describe what this app does, its features, why it's valuable..."
                                                 }
                                                 maxLength={MAX_CANISTER_DESCRIPTION_LENGTH}
@@ -3721,7 +3929,7 @@ function SneedexCreate() {
                                         </div>
                                         
                                         {/* Neuron Manager Info Display - shows neurons inside the manager */}
-                                        {canisterKindVerified?.verified && (
+                                        {newAssetType === 'neuron_manager' && canisterKindVerified?.verified && (
                                             <div style={{
                                                 marginTop: '16px',
                                                 padding: '16px',
@@ -4547,6 +4755,8 @@ function SneedexCreate() {
                                                             {asset.type === 'canister' && (
                                                                 asset.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER && asset.totalIcpE8s
                                                                     ? `${(Number(asset.totalIcpE8s) / 1e8).toFixed(2)} ICP (Staking Bot)`
+                                                                    : asset.canister_kind === CANISTER_KIND_TRADING_BOT
+                                                                    ? `Trading Bot: ${asset.title || asset.canister_id?.slice(0, 10) + '...'}`
                                                                     : (asset.title || asset.display)
                                                             )}
                                                             {asset.type === 'neuron' && (

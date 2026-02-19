@@ -8,11 +8,13 @@ export { SNEEDEX_CANISTER_ID };
 // Canister kind IDs (must match backend)
 export const CANISTER_KIND_UNKNOWN = 0;
 export const CANISTER_KIND_ICP_NEURON_MANAGER = 1;
+export const CANISTER_KIND_TRADING_BOT = 2;
 
 // Canister kind names for display
 export const CANISTER_KIND_NAMES = {
     [CANISTER_KIND_UNKNOWN]: 'Generic Canister',
     [CANISTER_KIND_ICP_NEURON_MANAGER]: 'ICP Staking Bot',
+    [CANISTER_KIND_TRADING_BOT]: 'Trading Bot',
 };
 
 // Validation constants (must match backend)
@@ -249,7 +251,7 @@ export const getAssetDetails = (assetEntry) => {
         return {
             type: 'Canister',
             canister_id: asset.Canister.canister_id.toString(),
-            canister_kind: canisterKind, // 0 = unknown, 1 = ICP Neuron Manager
+            canister_kind: canisterKind, // 0 = unknown, 1 = ICP Neuron Manager, 2 = Trading Bot
             controllers_snapshot: asset.Canister.controllers_snapshot[0]?.map(p => p.toString()) || [],
             cached_total_stake_e8s: cachedTotalStakeE8s, // For neuron managers: total staked ICP (no maturity)
             title,

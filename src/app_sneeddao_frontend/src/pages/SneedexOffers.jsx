@@ -3,7 +3,7 @@ import Header from '../components/Header';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { FaSearch, FaFilter, FaGavel, FaClock, FaTag, FaCubes, FaBrain, FaCoins, FaArrowRight, FaSync, FaGlobe, FaLock, FaRobot, FaChevronLeft, FaChevronRight, FaChevronDown, FaChevronUp, FaTimes, FaUnlock, FaExchangeAlt } from 'react-icons/fa';
+import { FaSearch, FaFilter, FaGavel, FaClock, FaTag, FaCubes, FaBrain, FaCoins, FaArrowRight, FaSync, FaGlobe, FaLock, FaRobot, FaChevronLeft, FaChevronRight, FaChevronDown, FaChevronUp, FaTimes, FaUnlock, FaExchangeAlt, FaChartLine } from 'react-icons/fa';
 import { getLogoSync } from '../hooks/useLogoCache';
 import TokenSelector from '../components/TokenSelector';
 import PrincipalInput from '../components/PrincipalInput';
@@ -18,6 +18,7 @@ import {
     getAssetType,
     getAssetDetails,
     CANISTER_KIND_ICP_NEURON_MANAGER,
+    CANISTER_KIND_TRADING_BOT,
     formatUsd,
     calculateUsdValue
 } from '../utils/SneedexUtils';
@@ -656,8 +657,9 @@ function SneedexOffers() {
             const hasType = offer.assets.some(a => {
                 const type = getAssetType(a.asset);
                 const details = getAssetDetails(a);
-                if (filterType === 'canister') return type === 'Canister' && details.canister_kind !== CANISTER_KIND_ICP_NEURON_MANAGER;
+                if (filterType === 'canister') return type === 'Canister' && details.canister_kind !== CANISTER_KIND_ICP_NEURON_MANAGER && details.canister_kind !== CANISTER_KIND_TRADING_BOT;
                 if (filterType === 'neuron_manager') return type === 'Canister' && details.canister_kind === CANISTER_KIND_ICP_NEURON_MANAGER;
+                if (filterType === 'trading_bot') return type === 'Canister' && details.canister_kind === CANISTER_KIND_TRADING_BOT;
                 if (filterType === 'neuron') return type === 'SNSNeuron';
                 if (filterType === 'token') return type === 'ICRC1Token';
                 return true;
@@ -1729,6 +1731,7 @@ function SneedexOffers() {
                                     <option value="all">All Assets</option>
                                     <option value="canister">Apps</option>
                                     <option value="neuron_manager">ICP Staking Bots</option>
+                                    <option value="trading_bot">Trading Bots</option>
                                     <option value="neuron">SNS Neurons</option>
                                     <option value="token">ICRC1 Tokens</option>
                                 </select>
@@ -2249,6 +2252,10 @@ function SneedexOffers() {
                                                     }
                                                         return `${titleLine}ICP Staking Bot\nApp canister id: ${details.canister_id}`;
                                                 }
+                                                if (details.type === 'Canister' && details.canister_kind === CANISTER_KIND_TRADING_BOT) {
+                                                    const titleLine = details.title ? `${details.title}\n` : '';
+                                                        return `${titleLine}Trading Bot\nCanister id: ${details.canister_id}`;
+                                                }
                                                 if (details.type === 'Canister') {
                                                     const titleLine = details.title ? `${details.title}\n` : '';
                                                         return `${titleLine}App canister id: ${details.canister_id}`;
@@ -2299,7 +2306,18 @@ function SneedexOffers() {
                                                             }
                                                         </>
                                                     )}
-                                                    {details.type === 'Canister' && details.canister_kind !== CANISTER_KIND_ICP_NEURON_MANAGER && (
+                                                    {details.type === 'Canister' && details.canister_kind === CANISTER_KIND_TRADING_BOT && (
+                                                        <>
+                                                            <FaChartLine style={{ color: '#11998e' }} />
+                                                            {details.title 
+                                                                ? (details.title.length > 12 
+                                                                    ? details.title.slice(0, 12) + '…' 
+                                                                    : details.title)
+                                                                : 'Trading Bot'
+                                                            }
+                                                        </>
+                                                    )}
+                                                    {details.type === 'Canister' && details.canister_kind !== CANISTER_KIND_ICP_NEURON_MANAGER && details.canister_kind !== CANISTER_KIND_TRADING_BOT && (
                                                         <>
                                                             <FaCubes style={{ color: theme.colors.accent }} />
                                                             {details.title 

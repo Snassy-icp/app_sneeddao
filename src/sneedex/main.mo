@@ -553,6 +553,46 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
         } catch (_) {};
     };
     
+    /// Snapshot botkeys and clear them during escrow for a Trading Bot.
+    /// Similar to neuron manager flow but without neuron hotkeys.
+    func snapshotAndCleanTradingBot(canisterId : Principal) : async () {
+        try {
+            let bot : T.TradingBotActor = actor(Principal.toText(canisterId));
+            
+            var botkeys : [(Principal, [Nat])] = [];
+            try {
+                botkeys := await bot.getBotkeySnapshot();
+            } catch (_) {};
+            
+            putEscrowSnapshot(canisterId, {
+                neuron_hotkeys = [];
+                botkeys = botkeys;
+            });
+            
+            try {
+                await bot.clearBotkeys();
+            } catch (_) {};
+        } catch (_) {};
+    };
+    
+    /// Restore botkeys from escrow snapshot for a Trading Bot.
+    func restoreTradingBotState(canisterId : Principal) : async () {
+        switch (getEscrowSnapshot(canisterId)) {
+            case null {};
+            case (?snapshot) {
+                try {
+                    let bot : T.TradingBotActor = actor(Principal.toText(canisterId));
+                    if (snapshot.botkeys.size() > 0) {
+                        try {
+                            await bot.restoreBotkeySnapshot(snapshot.botkeys);
+                        } catch (_) {};
+                    };
+                } catch (_) {};
+                removeEscrowSnapshot(canisterId);
+            };
+        };
+    };
+    
     /// Restore neuron hotkeys and botkeys from escrow snapshot.
     /// Called during reclaim BEFORE the canister controllers are released,
     /// since Sneedex needs to still be a controller to call these methods.
@@ -702,12 +742,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 for (entry in offer.assets.vals()) {
                                     switch (entry.asset) {
                                         case (#Canister(asset)) {
-                                            // Clean up escrow snapshot for neuron managers (don't restore - buyer gets clean canister)
-                                            let isNeuronManager = switch (asset.canister_kind) {
-                                                case (?kind) { kind == T.CANISTER_KIND_ICP_NEURON_MANAGER };
-                                                case null { false };
-                                            };
-                                            if (isNeuronManager) {
+                                            // Clean up escrow snapshot for bot types (don't restore - buyer gets clean canister)
+                                            let ckind = switch (asset.canister_kind) { case (?k) { k }; case null { 0 } };
+                                            if (ckind == T.CANISTER_KIND_ICP_NEURON_MANAGER or ckind == T.CANISTER_KIND_TRADING_BOT) {
                                                 removeEscrowSnapshot(asset.canister_id);
                                             };
                                             
@@ -896,14 +933,12 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     if (entry.escrowed) {
                         switch (entry.asset) {
                             case (#Canister(asset)) {
-                                // For neuron managers: restore hotkeys + botkeys BEFORE releasing controllers
-                                // (Sneedex must still be a controller to call the restore methods)
-                                let isNeuronManager = switch (asset.canister_kind) {
-                                    case (?kind) { kind == T.CANISTER_KIND_ICP_NEURON_MANAGER };
-                                    case null { false };
-                                };
-                                if (isNeuronManager) {
+                                // Restore botkeys BEFORE releasing controllers
+                                let ckind = switch (asset.canister_kind) { case (?k) { k }; case null { 0 } };
+                                if (ckind == T.CANISTER_KIND_ICP_NEURON_MANAGER) {
                                     await restoreNeuronManagerState(asset.canister_id);
+                                } else if (ckind == T.CANISTER_KIND_TRADING_BOT) {
+                                    await restoreTradingBotState(asset.canister_id);
                                 };
                                 
                                 switch (asset.controllers_snapshot) {
@@ -1383,6 +1418,17 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
             #Ok(version);
         } catch (_e) {
             #Err("Failed to verify canister as ICP Staking Bot. getVersion() call failed.");
+        };
+    };
+    
+    /// Verify if a canister is a Trading Bot by calling getVersion()
+    public shared func verifyTradingBot(canisterId : Principal) : async { #Ok : T.TradingBotVersion; #Err : Text } {
+        try {
+            let bot : T.TradingBotActor = actor(Principal.toText(canisterId));
+            let version = await bot.getVersion();
+            #Ok(version);
+        } catch (_e) {
+            #Err("Failed to verify canister as Trading Bot. getVersion() call failed.");
         };
     };
     
@@ -1901,14 +1947,15 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                             await deregisterCanisterFromWallet(caller, canisterAsset.canister_id, canisterAsset.canister_kind);
                                         });
                                         
-                                        // If it's a neuron manager, snapshot and clear neuron hotkeys + botkeys (best effort, non-blocking)
-                                        let isNeuronMgr = switch (canisterAsset.canister_kind) {
-                                            case (?kind) { kind == T.CANISTER_KIND_ICP_NEURON_MANAGER };
-                                            case null { false };
-                                        };
-                                        if (isNeuronMgr) {
+                                        // Snapshot and clear botkeys for known bot types (best effort, non-blocking)
+                                        let canisterKindVal = switch (canisterAsset.canister_kind) { case (?k) { k }; case null { 0 } };
+                                        if (canisterKindVal == T.CANISTER_KIND_ICP_NEURON_MANAGER) {
                                             ignore Timer.setTimer<system>(#seconds 1, func () : async () {
                                                 await snapshotAndCleanNeuronManager(canisterAsset.canister_id);
+                                            });
+                                        } else if (canisterKindVal == T.CANISTER_KIND_TRADING_BOT) {
+                                            ignore Timer.setTimer<system>(#seconds 1, func () : async () {
+                                                await snapshotAndCleanTradingBot(canisterAsset.canister_id);
                                             });
                                         };
                                         
@@ -2654,12 +2701,9 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 for (entry in offer.assets.vals()) {
                                     switch (entry.asset) {
                                         case (#Canister(asset)) {
-                                            // Clean up escrow snapshot for neuron managers (don't restore - buyer gets clean canister)
-                                            let isNeuronManager = switch (asset.canister_kind) {
-                                                case (?kind) { kind == T.CANISTER_KIND_ICP_NEURON_MANAGER };
-                                                case null { false };
-                                            };
-                                            if (isNeuronManager) {
+                                            // Clean up escrow snapshot for bot types (don't restore - buyer gets clean canister)
+                                            let ckind = switch (asset.canister_kind) { case (?k) { k }; case null { 0 } };
+                                            if (ckind == T.CANISTER_KIND_ICP_NEURON_MANAGER or ckind == T.CANISTER_KIND_TRADING_BOT) {
                                                 removeEscrowSnapshot(asset.canister_id);
                                             };
                                             
@@ -2962,13 +3006,12 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                     if (entry.escrowed) {
                         switch (entry.asset) {
                             case (#Canister(asset)) {
-                                // For neuron managers: restore hotkeys + botkeys BEFORE releasing controllers
-                                let isNeuronManager = switch (asset.canister_kind) {
-                                    case (?kind) { kind == T.CANISTER_KIND_ICP_NEURON_MANAGER };
-                                    case null { false };
-                                };
-                                if (isNeuronManager) {
+                                // Restore botkeys BEFORE releasing controllers
+                                let ckind = switch (asset.canister_kind) { case (?k) { k }; case null { 0 } };
+                                if (ckind == T.CANISTER_KIND_ICP_NEURON_MANAGER) {
                                     await restoreNeuronManagerState(asset.canister_id);
+                                } else if (ckind == T.CANISTER_KIND_TRADING_BOT) {
+                                    await restoreTradingBotState(asset.canister_id);
                                 };
                                 
                                 switch (asset.controllers_snapshot) {
@@ -4172,14 +4215,14 @@ shared (deployer) persistent actor class Sneedex(initConfig : ?T.Config) = this 
                                 };
                             };
                             case (#Canister(asset)) {
-                                // For neuron managers: restore hotkeys + botkeys BEFORE releasing controllers
-                                let isNeuronManager = switch (asset.canister_kind) {
-                                    case (?kind) { kind == T.CANISTER_KIND_ICP_NEURON_MANAGER };
-                                    case null { false };
-                                };
-                                if (isNeuronManager) {
+                                // Restore botkeys BEFORE releasing controllers
+                                let ckind = switch (asset.canister_kind) { case (?k) { k }; case null { 0 } };
+                                if (ckind == T.CANISTER_KIND_ICP_NEURON_MANAGER) {
                                     await restoreNeuronManagerState(asset.canister_id);
                                     message := message # "Neuron manager state restored (hotkeys + botkeys)\n";
+                                } else if (ckind == T.CANISTER_KIND_TRADING_BOT) {
+                                    await restoreTradingBotState(asset.canister_id);
+                                    message := message # "Trading bot state restored (botkeys)\n";
                                 };
                                 
                                 switch (asset.controllers_snapshot) {
