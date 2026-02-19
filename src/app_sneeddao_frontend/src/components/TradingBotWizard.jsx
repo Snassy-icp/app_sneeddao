@@ -39,6 +39,24 @@ const wizardStyles = `
     0%, 100% { opacity: 0; transform: scale(0) rotate(0deg); }
     50% { opacity: 1; transform: scale(1) rotate(180deg); }
 }
+@keyframes sparkleOrbit {
+    0%   { transform: rotate(0deg) translateX(var(--orbit-r, 60px)) rotate(0deg) scale(0); opacity: 0; }
+    15%  { opacity: 1; transform: rotate(40deg) translateX(var(--orbit-r, 60px)) rotate(-40deg) scale(1); }
+    85%  { opacity: 1; transform: rotate(300deg) translateX(var(--orbit-r, 60px)) rotate(-300deg) scale(1); }
+    100% { transform: rotate(360deg) translateX(var(--orbit-r, 60px)) rotate(-360deg) scale(0); opacity: 0; }
+}
+@keyframes sparkleTwinkle {
+    0%, 100% { opacity: 0; transform: scale(0) rotate(0deg); }
+    20% { opacity: 1; transform: scale(1.2) rotate(90deg); }
+    50% { opacity: 0.6; transform: scale(0.8) rotate(180deg); }
+    80% { opacity: 1; transform: scale(1.1) rotate(270deg); }
+}
+@keyframes sparkleDrift {
+    0%   { opacity: 0; transform: translateY(0px) scale(0); }
+    20%  { opacity: 1; transform: translateY(-8px) scale(1); }
+    80%  { opacity: 0.8; transform: translateY(-30px) scale(0.7); }
+    100% { opacity: 0; transform: translateY(-40px) scale(0); }
+}
 .wizard-fade-in { animation: wizardFadeInUp 0.4s ease-out forwards; }
 .wizard-float { animation: wizardFloat 3s ease-in-out infinite; }
 .wizard-bubble-pop { animation: bubblePop 0.35s ease-out forwards; }
@@ -49,29 +67,82 @@ const wizardStyles = `
 }
 `;
 
-function WizardMascot({ message, theme, size = 'large', showSparkles = false }) {
+const SPARKLE_COLORS = [ACCENT, ACCENT_SECONDARY, '#fcd34d', '#a78bfa', '#38bdf8', '#f9a8d4'];
+
+function SparkleField({ size }) {
+    const r = size === 'large' ? 75 : 50;
+    const starSize = size === 'large' ? 10 : 7;
+    return (
+        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 1 }}>
+            {/* Orbiting sparkles */}
+            {[0, 1, 2, 3, 4].map(i => (
+                <div key={`orb-${i}`} style={{
+                    position: 'absolute', top: '50%', left: '50%',
+                    width: 0, height: 0,
+                    '--orbit-r': `${r + i * 6}px`,
+                    animation: `sparkleOrbit ${4 + i * 0.7}s ease-in-out infinite`,
+                    animationDelay: `${i * 0.8}s`,
+                }}>
+                    <svg width={starSize} height={starSize} viewBox="0 0 24 24" style={{ marginLeft: -starSize / 2, marginTop: -starSize / 2, display: 'block' }}>
+                        <path d="M12 0l3.09 7.26L22.18 8.4l-5.09 4.96 1.2 7.01L12 16.77l-6.29 3.6 1.2-7.01L1.82 8.4l7.09-1.14z"
+                            fill={SPARKLE_COLORS[i % SPARKLE_COLORS.length]} />
+                    </svg>
+                </div>
+            ))}
+            {/* Twinkling dots around the wizard */}
+            {[
+                { top: '5%', left: '15%', delay: '0s', dur: '2.5s', s: 5, c: SPARKLE_COLORS[0] },
+                { top: '12%', right: '12%', delay: '0.4s', dur: '3s', s: 6, c: SPARKLE_COLORS[1] },
+                { top: '35%', left: '5%', delay: '1.1s', dur: '2.8s', s: 4, c: SPARKLE_COLORS[3] },
+                { top: '30%', right: '5%', delay: '0.7s', dur: '2.2s', s: 5, c: SPARKLE_COLORS[2] },
+                { bottom: '40%', left: '10%', delay: '1.8s', dur: '3.2s', s: 4, c: SPARKLE_COLORS[4] },
+                { bottom: '45%', right: '8%', delay: '0.2s', dur: '2.6s', s: 5, c: SPARKLE_COLORS[5] },
+                { top: '0%', left: '45%', delay: '1.5s', dur: '2.4s', s: 4, c: SPARKLE_COLORS[2] },
+            ].map((sp, i) => (
+                <div key={`tw-${i}`} style={{
+                    position: 'absolute', ...Object.fromEntries(Object.entries(sp).filter(([k]) => ['top', 'left', 'right', 'bottom'].includes(k))),
+                    width: sp.s, height: sp.s, borderRadius: '50%', background: sp.c,
+                    animation: `sparkleTwinkle ${sp.dur} ease-in-out infinite`,
+                    animationDelay: sp.delay,
+                    boxShadow: `0 0 ${sp.s * 2}px ${sp.c}80`,
+                }} />
+            ))}
+            {/* Rising drift particles */}
+            {[0, 1, 2].map(i => (
+                <div key={`drift-${i}`} style={{
+                    position: 'absolute',
+                    bottom: '35%',
+                    left: `${30 + i * 20}%`,
+                    width: 3 + i, height: 3 + i, borderRadius: '50%',
+                    background: SPARKLE_COLORS[(i + 3) % SPARKLE_COLORS.length],
+                    animation: `sparkleDrift ${2.5 + i * 0.5}s ease-out infinite`,
+                    animationDelay: `${i * 1.1}s`,
+                    boxShadow: `0 0 6px ${SPARKLE_COLORS[(i + 3) % SPARKLE_COLORS.length]}60`,
+                }} />
+            ))}
+        </div>
+    );
+}
+
+function WizardMascot({ message, theme, size = 'large' }) {
     const isLarge = size === 'large';
     const imgSize = isLarge ? 140 : 90;
     return (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: isLarge ? '16px' : '10px', position: 'relative' }}>
-            {showSparkles && (
-                <>
-                    <div style={{ position: 'absolute', top: -8, right: '30%', width: 8, height: 8, background: ACCENT, borderRadius: '50%', animation: 'sparkle 2s ease-in-out infinite', animationDelay: '0s' }} />
-                    <div style={{ position: 'absolute', top: '10%', left: '25%', width: 6, height: 6, background: ACCENT_SECONDARY, borderRadius: '50%', animation: 'sparkle 2s ease-in-out infinite', animationDelay: '0.7s' }} />
-                    <div style={{ position: 'absolute', bottom: '30%', right: '20%', width: 5, height: 5, background: '#fcd34d', borderRadius: '50%', animation: 'sparkle 2s ease-in-out infinite', animationDelay: '1.4s' }} />
-                </>
-            )}
-            <div className="wizard-float" style={{ position: 'relative' }}>
-                <img
-                    src={WIZARD_SVG_URL}
-                    alt="Bot Wizard"
-                    style={{
-                        width: imgSize,
-                        height: imgSize,
-                        filter: 'drop-shadow(0 4px 20px rgba(16, 185, 129, 0.3))',
-                        maxWidth: 'none',
-                    }}
-                />
+            <div style={{ position: 'relative', width: imgSize + 40, height: imgSize + 20 }}>
+                <SparkleField size={size} />
+                <div className="wizard-float" style={{ position: 'relative', zIndex: 2, display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%' }}>
+                    <img
+                        src={WIZARD_SVG_URL}
+                        alt="Bot Wizard"
+                        style={{
+                            width: imgSize,
+                            height: imgSize,
+                            filter: 'drop-shadow(0 4px 20px rgba(16, 185, 129, 0.35)) drop-shadow(0 0 8px rgba(16, 185, 129, 0.15))',
+                            maxWidth: 'none',
+                        }}
+                    />
+                </div>
             </div>
             {message && (
                 <div className="wizard-bubble-pop" style={{
@@ -343,7 +414,7 @@ function DCAWizard({ theme, onComplete, onBack, getReadyBotActor, canisterId, id
     if (deploySuccess) {
         return (
             <div className="wizard-fade-in" style={{ textAlign: 'center' }}>
-                <WizardMascot message="Your DCA bot is live! It will automatically buy on schedule. You can always adjust settings from the Chores tab." theme={theme} showSparkles />
+                <WizardMascot message="Your DCA bot is live! It will automatically buy on schedule. You can always adjust settings from the Chores tab." theme={theme} />
                 <div style={{ marginTop: '1.5rem' }}>
                     <button onClick={onComplete} style={btnPrimary(theme)}>
                         Done <FaCheck size={12} />
@@ -596,7 +667,7 @@ function RangeTradeWizard({ theme, onComplete, onBack, getReadyBotActor, caniste
     if (deploySuccess) {
         return (
             <div className="wizard-fade-in" style={{ textAlign: 'center' }}>
-                <WizardMascot message={`Your range trading bot for ${symA}/${symB} is live! It will trade when prices hit your ranges.`} theme={theme} showSparkles />
+                <WizardMascot message={`Your range trading bot for ${symA}/${symB} is live! It will trade when prices hit your ranges.`} theme={theme} />
                 <div style={{ marginTop: '1.5rem' }}>
                     <button onClick={onComplete} style={btnPrimary(theme)}>Done <FaCheck size={12} /></button>
                 </div>
@@ -852,7 +923,7 @@ function RebalanceWizard({ theme, onComplete, onBack, getReadyBotActor, canister
     if (deploySuccess) {
         return (
             <div className="wizard-fade-in" style={{ textAlign: 'center' }}>
-                <WizardMascot message="Your self-balancing portfolio is live! The rebalancer will keep your allocations on target." theme={theme} showSparkles />
+                <WizardMascot message="Your self-balancing portfolio is live! The rebalancer will keep your allocations on target." theme={theme} />
                 <div style={{ marginTop: '1.5rem' }}>
                     <button onClick={onComplete} style={btnPrimary(theme)}>Done <FaCheck size={12} /></button>
                 </div>
@@ -1097,7 +1168,6 @@ export default function TradingBotWizard({ isOpen, onClose, getReadyBotActor, ca
                                 }
                                 theme={theme}
                                 size="large"
-                                showSparkles={!hasTokens}
                             />
                         </div>
                         <h3 style={{
