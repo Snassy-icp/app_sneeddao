@@ -8,6 +8,7 @@
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { HttpAgent, Actor } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import Header from '../components/Header';
 import BotManagementPanel from '../components/BotManagementPanel';
@@ -16,12 +17,13 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 import { useNaming } from '../NamingContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
+import { setPrincipalNickname, setPrincipalNameFor } from '../utils/BackendUtils';
 // Trading bot Candid declarations — aligned with staking bot API for shared BotManagementPanel.
 import { createActor as createBotActor } from 'external/sneed_trading_bot';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { decodeIcrcAccount, encodeIcrcAccount } from '@dfinity/ledger-icrc';
 import { computeAccountId } from '../utils/PrincipalUtils';
-import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt, FaSearch, FaGripVertical, FaLock, FaLockOpen, FaPause, FaPlay, FaArrowUp, FaArrowDown, FaPaperPlane, FaExchangeAlt, FaWallet, FaShieldAlt, FaToggleOn, FaToggleOff, FaCopy, FaDownload, FaArrowRight } from 'react-icons/fa';
+import { FaChartLine, FaPlus, FaTrash, FaEdit, FaSave, FaTimes, FaSyncAlt, FaSearch, FaGripVertical, FaLock, FaLockOpen, FaPause, FaPlay, FaArrowUp, FaArrowDown, FaPaperPlane, FaExchangeAlt, FaWallet, FaShieldAlt, FaToggleOn, FaToggleOff, FaCopy, FaDownload, FaArrowRight, FaChevronDown, FaChevronUp, FaTag, FaGlobe, FaEyeSlash } from 'react-icons/fa';
 import TokenIcon from '../components/TokenIcon';
 import PrincipalInput from '../components/PrincipalInput';
 import { useWhitelistTokens } from '../contexts/WhitelistTokensContext';
@@ -47,6 +49,36 @@ const tradingBotStyles = `
 // Trading bot accent colors — green/teal for trading
 const ACCENT = '#10b981';
 const ACCENT_SECONDARY = '#34d399';
+
+// Management canister IDL for fetching controller info
+const MANAGEMENT_CANISTER_ID = Principal.fromText('aaaaa-aa');
+const managementCanisterIdlFactory = ({ IDL }) => {
+    const definite_canister_settings = IDL.Record({
+        'controllers': IDL.Vec(IDL.Principal),
+        'freezing_threshold': IDL.Nat,
+        'memory_allocation': IDL.Nat,
+        'compute_allocation': IDL.Nat,
+        'reserved_cycles_limit': IDL.Nat,
+        'log_visibility': IDL.Variant({ 'controllers': IDL.Null, 'public': IDL.Null }),
+        'wasm_memory_limit': IDL.Nat,
+    });
+    const canister_status_result = IDL.Record({
+        'status': IDL.Variant({ 'running': IDL.Null, 'stopping': IDL.Null, 'stopped': IDL.Null }),
+        'settings': definite_canister_settings,
+        'module_hash': IDL.Opt(IDL.Vec(IDL.Nat8)),
+        'memory_size': IDL.Nat,
+        'cycles': IDL.Nat,
+        'idle_cycles_burned_per_day': IDL.Nat,
+        'query_stats': IDL.Record({
+            'num_calls_total': IDL.Nat, 'num_instructions_total': IDL.Nat,
+            'request_payload_bytes_total': IDL.Nat, 'response_payload_bytes_total': IDL.Nat,
+        }),
+        'reserved_cycles': IDL.Nat,
+    });
+    return IDL.Service({
+        'canister_status': IDL.Func([IDL.Record({ 'canister_id': IDL.Principal })], [canister_status_result], []),
+    });
+};
 
 // Trading Bot app ID (registered in the Sneedapp factory)
 const APP_ID = 'sneed-trading-bot';
@@ -6405,20 +6437,59 @@ export default function TradingBot() {
     const { canisterId } = useParams();
     const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
-    const { principalNames, principalNicknames } = useNaming();
+    const { principalNames, principalNicknames, fetchAllNames } = useNaming();
     const [cbEvents, setCbEvents] = useState(null);
+    const [controllers, setControllers] = useState([]);
+
+    // Naming state
+    const [showNamingSection, setShowNamingSection] = useState(false);
+    const [nicknameInput, setNicknameInput] = useState('');
+    const [publicNameInput, setPublicNameInput] = useState('');
+    const [savingNickname, setSavingNickname] = useState(false);
+    const [savingPublicName, setSavingPublicName] = useState(false);
+    const [namingError, setNamingError] = useState('');
+    const [namingSuccess, setNamingSuccess] = useState('');
 
     const displayInfo = canisterId ? getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames) : null;
+
+    const isController = identity && controllers.length > 0 &&
+        controllers.some(c => c.toString() === identity.getPrincipal().toString());
+
+    // Fetch controllers from the management canister
+    useEffect(() => {
+        if (!isAuthenticated || !canisterId || !identity) return;
+        (async () => {
+            try {
+                const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                const host = isLocal ? 'http://localhost:4943' : 'https://icp0.io';
+                const agent = HttpAgent.createSync({ host, identity });
+                if (isLocal) await agent.fetchRootKey();
+                const canisterPrincipal = Principal.fromText(canisterId);
+                const mgmt = Actor.createActor(managementCanisterIdlFactory, {
+                    agent,
+                    canisterId: MANAGEMENT_CANISTER_ID,
+                    callTransform: (methodName, args, callConfig) => ({
+                        ...callConfig,
+                        effectiveCanisterId: canisterPrincipal,
+                    }),
+                });
+                const result = await mgmt.canister_status({ canister_id: canisterPrincipal });
+                setControllers(result.settings.controllers);
+            } catch (_) {
+                setControllers([]);
+            }
+        })();
+    }, [isAuthenticated, canisterId, identity]);
 
     // Load recent CB events for chore status indicators
     useEffect(() => {
         if (!isAuthenticated || !canisterId) return;
         (async () => {
             try {
-                const { HttpAgent } = await import('@dfinity/agent');
+                const { HttpAgent: HA } = await import('@dfinity/agent');
                 const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
                 const host = isLocal ? 'http://localhost:4943' : 'https://ic0.app';
-                const agent = HttpAgent.createSync({ identity, host });
+                const agent = HA.createSync({ identity, host });
                 if (isLocal) await agent.fetchRootKey();
                 const bot = createBotActor(canisterId, { agent });
                 if (bot?.getCircuitBreakerLog) {
@@ -6428,6 +6499,28 @@ export default function TradingBot() {
             } catch (_) { /* CB may not be available on older versions */ }
         })();
     }, [isAuthenticated, canisterId, identity]);
+
+    const namingCardStyle = {
+        background: theme.colors.cardGradient || theme.colors.cardBackground,
+        borderRadius: '14px',
+        padding: '1.25rem',
+        marginBottom: '1rem',
+        border: `1px solid ${theme.colors.border}`,
+        boxShadow: theme.colors.cardShadow || 'none',
+    };
+
+    const namingButtonStyle = {
+        background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT_SECONDARY})`,
+        color: '#fff',
+        border: 'none',
+        borderRadius: '10px',
+        padding: '0.65rem 1.25rem',
+        fontSize: '0.9rem',
+        fontWeight: '600',
+        cursor: 'pointer',
+        transition: 'all 0.2s',
+        boxShadow: `0 4px 12px ${ACCENT}30`,
+    };
 
     if (!canisterId) {
         return (
@@ -6538,11 +6631,240 @@ export default function TradingBot() {
                         >
                             Learn how it works <FaArrowRight size={10} />
                         </Link>
+                        {isAuthenticated && (
+                            <>
+                                <span style={{ color: theme.colors.border }}>|</span>
+                                <button
+                                    onClick={() => setShowNamingSection(!showNamingSection)}
+                                    style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        color: ACCENT,
+                                        fontSize: '0.85rem',
+                                        cursor: 'pointer',
+                                        padding: 0,
+                                        fontWeight: '500',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                    }}
+                                >
+                                    {showNamingSection ? (
+                                        <>Hide naming options <FaChevronUp size={10} /></>
+                                    ) : (
+                                        <>{isController ? 'Name this bot' : 'Set nickname'} <FaChevronDown size={10} /></>
+                                    )}
+                                </button>
+                            </>
+                        )}
                     </div>
                 </div>
             </div>
 
             <main style={{ maxWidth: '900px', margin: '0 auto', padding: '1.5rem 1rem 3.75rem' }}>
+                {/* Naming Section */}
+                {showNamingSection && isAuthenticated && (
+                    <div className="trading-bot-fade-in" style={{
+                        ...namingCardStyle,
+                        marginBottom: '1.25rem',
+                        background: `linear-gradient(135deg, ${ACCENT}08 0%, ${theme.colors.cardGradient || theme.colors.secondaryBg} 100%)`,
+                        border: `1px solid ${ACCENT}20`,
+                    }}>
+                        <h3 style={{
+                            color: theme.colors.primaryText,
+                            marginBottom: '0.5rem',
+                            fontSize: '1rem',
+                            fontWeight: '600',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px'
+                        }}>
+                            <span style={{
+                                width: '28px', height: '28px', borderRadius: '8px',
+                                background: `${ACCENT}20`,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}>
+                                <FaTag size={13} color={ACCENT} />
+                            </span>
+                            Name Your Trading Bot
+                        </h3>
+                        <p style={{ color: theme.colors.secondaryText, fontSize: '0.82rem', margin: '0 0 1rem 0', lineHeight: '1.5' }}>
+                            Give your bot a personal name so you can identify it easily across the app.
+                        </p>
+
+                        {namingError && (
+                            <div style={{
+                                color: theme.colors.error || '#ef4444',
+                                fontSize: '13px',
+                                marginBottom: '12px',
+                                padding: '8px 12px',
+                                backgroundColor: `${theme.colors.error || '#ef4444'}20`,
+                                borderRadius: '6px',
+                            }}>
+                                {namingError}
+                            </div>
+                        )}
+
+                        {namingSuccess && (
+                            <div style={{
+                                color: theme.colors.success || '#22c55e',
+                                fontSize: '13px',
+                                marginBottom: '12px',
+                                padding: '8px 12px',
+                                backgroundColor: `${theme.colors.success || '#22c55e'}20`,
+                                borderRadius: '6px',
+                            }}>
+                                {namingSuccess}
+                            </div>
+                        )}
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            {/* Nickname (private) */}
+                            <div>
+                                <label style={{
+                                    color: theme.colors.secondaryText,
+                                    fontSize: '13px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    marginBottom: '6px',
+                                }}>
+                                    <FaEyeSlash size={11} color={theme.colors.mutedText} />
+                                    Private Nickname
+                                    <span style={{ color: theme.colors.mutedText, fontWeight: '400' }}>— only you can see this</span>
+                                </label>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <input
+                                        type="text"
+                                        value={nicknameInput}
+                                        onChange={(e) => setNicknameInput(e.target.value)}
+                                        placeholder={displayInfo?.nickname || 'e.g., My DCA Bot'}
+                                        style={{
+                                            flex: 1,
+                                            padding: '10px 12px',
+                                            borderRadius: '8px',
+                                            border: `1px solid ${theme.colors.border}`,
+                                            backgroundColor: theme.colors.primaryBg,
+                                            color: theme.colors.primaryText,
+                                            fontSize: '14px',
+                                        }}
+                                    />
+                                    <button
+                                        onClick={async () => {
+                                            if (!nicknameInput.trim()) return;
+                                            setSavingNickname(true);
+                                            setNamingError('');
+                                            setNamingSuccess('');
+                                            try {
+                                                await setPrincipalNickname(identity, canisterId, nicknameInput.trim());
+                                                setNamingSuccess('Nickname saved!');
+                                                setNicknameInput('');
+                                                if (fetchAllNames) fetchAllNames();
+                                            } catch (err) {
+                                                setNamingError(`Failed to save nickname: ${err.message}`);
+                                            } finally {
+                                                setSavingNickname(false);
+                                            }
+                                        }}
+                                        disabled={savingNickname || !nicknameInput.trim()}
+                                        style={{
+                                            ...namingButtonStyle,
+                                            opacity: (savingNickname || !nicknameInput.trim()) ? 0.6 : 1,
+                                        }}
+                                    >
+                                        {savingNickname ? '...' : 'Save'}
+                                    </button>
+                                </div>
+                                {displayInfo?.nickname && (
+                                    <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginTop: '4px' }}>
+                                        Current: "{displayInfo.nickname}"
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Public Name (controllers only) */}
+                            {isController && (
+                                <div>
+                                    <label style={{
+                                        color: theme.colors.secondaryText,
+                                        fontSize: '13px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        marginBottom: '6px',
+                                    }}>
+                                        <FaGlobe size={11} color={ACCENT} />
+                                        Public Name
+                                        <span style={{ color: '#f59e0b', fontWeight: '500', fontSize: '12px' }}>— visible to everyone</span>
+                                    </label>
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <input
+                                            type="text"
+                                            value={publicNameInput}
+                                            onChange={(e) => setPublicNameInput(e.target.value)}
+                                            placeholder={displayInfo?.name || "e.g., Alice's Trading Bot"}
+                                            style={{
+                                                flex: 1,
+                                                padding: '10px 12px',
+                                                borderRadius: '8px',
+                                                border: `1px solid ${theme.colors.border}`,
+                                                backgroundColor: theme.colors.primaryBg,
+                                                color: theme.colors.primaryText,
+                                                fontSize: '14px',
+                                            }}
+                                        />
+                                        <button
+                                            onClick={async () => {
+                                                if (!publicNameInput.trim()) return;
+                                                setSavingPublicName(true);
+                                                setNamingError('');
+                                                setNamingSuccess('');
+                                                try {
+                                                    await setPrincipalNameFor(identity, canisterId, publicNameInput.trim());
+                                                    setNamingSuccess('Public name saved! Everyone will see this name.');
+                                                    setPublicNameInput('');
+                                                    if (fetchAllNames) fetchAllNames();
+                                                } catch (err) {
+                                                    setNamingError(`Failed to save public name: ${err.message}`);
+                                                } finally {
+                                                    setSavingPublicName(false);
+                                                }
+                                            }}
+                                            disabled={savingPublicName || !publicNameInput.trim()}
+                                            style={{
+                                                ...namingButtonStyle,
+                                                opacity: (savingPublicName || !publicNameInput.trim()) ? 0.6 : 1,
+                                            }}
+                                        >
+                                            {savingPublicName ? '...' : 'Save'}
+                                        </button>
+                                    </div>
+                                    {displayInfo?.name && (
+                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginTop: '4px' }}>
+                                            Current: "{displayInfo.name}"
+                                        </div>
+                                    )}
+                                    <div style={{
+                                        marginTop: '8px',
+                                        padding: '8px 12px',
+                                        borderRadius: '8px',
+                                        background: `#f59e0b10`,
+                                        border: `1px solid #f59e0b25`,
+                                        fontSize: '0.78rem',
+                                        color: theme.colors.secondaryText,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                    }}>
+                                        <FaGlobe size={10} color="#f59e0b" />
+                                        This name will be visible to anyone who views this canister across the app.
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 {/* Authentication check */}
                 {!isAuthenticated ? (
                     <div style={{

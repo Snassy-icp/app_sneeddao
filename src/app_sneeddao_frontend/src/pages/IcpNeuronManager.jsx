@@ -14,7 +14,7 @@ import { useAuth } from '../AuthContext';
 import { useNaming } from '../NamingContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { setPrincipalNickname, setPrincipalNameFor } from '../utils/BackendUtils';
-import { FaGasPump, FaRobot, FaBrain, FaArrowRight, FaSync, FaChevronDown, FaChevronUp, FaShieldAlt, FaWallet } from 'react-icons/fa';
+import { FaGasPump, FaRobot, FaBrain, FaArrowRight, FaSync, FaChevronDown, FaChevronUp, FaShieldAlt, FaWallet, FaTag, FaGlobe, FaEyeSlash } from 'react-icons/fa';
 import PrincipalInput from '../components/PrincipalInput';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
 import { encodeIcrcAccount, decodeIcrcAccount } from '@dfinity/ledger-icrc';
@@ -3201,7 +3201,7 @@ function IcpNeuronManager() {
                             {showNamingSection ? (
                                 <>Hide naming options <FaChevronUp size={10} /></>
                             ) : (
-                                <>{isController ? 'Set name or nickname' : 'Set nickname'} <FaChevronDown size={10} /></>
+                                <>{isController ? 'Name this bot' : 'Set nickname'} <FaChevronDown size={10} /></>
                             )}
                         </button>
                     </div>
@@ -3220,7 +3220,7 @@ function IcpNeuronManager() {
                     }}>
                         <h3 style={{ 
                             color: theme.colors.primaryText, 
-                            marginBottom: '1rem', 
+                            marginBottom: '0.5rem', 
                             fontSize: '1rem',
                             fontWeight: '600',
                             display: 'flex',
@@ -3235,10 +3235,14 @@ function IcpNeuronManager() {
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                fontSize: '14px'
-                            }}>🏷️</span>
-                            Name This Staking Bot
+                            }}>
+                                <FaTag size={13} color={neuronPrimary} />
+                            </span>
+                            Name Your Staking Bot
                         </h3>
+                        <p style={{ color: theme.colors.secondaryText, fontSize: '0.82rem', margin: '0 0 1rem 0', lineHeight: '1.5' }}>
+                            Give your bot a personal name so you can identify it easily across the app.
+                        </p>
                         
                         {namingError && (
                             <div style={{ 
@@ -3269,8 +3273,17 @@ function IcpNeuronManager() {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                             {/* Nickname (private, only you see it) */}
                             <div>
-                                <label style={{ color: theme.colors.secondaryText, fontSize: '13px', display: 'block', marginBottom: '6px' }}>
-                                    Private Nickname <span style={{ color: theme.colors.mutedText }}>(only you can see this)</span>
+                                <label style={{
+                                    color: theme.colors.secondaryText,
+                                    fontSize: '13px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    marginBottom: '6px',
+                                }}>
+                                    <FaEyeSlash size={11} color={theme.colors.mutedText} />
+                                    Private Nickname
+                                    <span style={{ color: theme.colors.mutedText, fontWeight: '400' }}>— only you can see this</span>
                                 </label>
                                 <div style={{ display: 'flex', gap: '8px' }}>
                                     <input
@@ -3281,7 +3294,7 @@ function IcpNeuronManager() {
                                         style={{
                                             flex: 1,
                                             padding: '10px 12px',
-                                            borderRadius: '6px',
+                                            borderRadius: '8px',
                                             border: `1px solid ${theme.colors.border}`,
                                             backgroundColor: theme.colors.primaryBg,
                                             color: theme.colors.primaryText,
@@ -3324,19 +3337,28 @@ function IcpNeuronManager() {
                             {/* Public Name (everyone sees it) - only controllers can set */}
                             {isController && (
                             <div>
-                                <label style={{ color: theme.colors.secondaryText, fontSize: '13px', display: 'block', marginBottom: '6px' }}>
-                                    Public Name <span style={{ color: theme.colors.mutedText }}>(visible to everyone)</span>
+                                <label style={{
+                                    color: theme.colors.secondaryText,
+                                    fontSize: '13px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    marginBottom: '6px',
+                                }}>
+                                    <FaGlobe size={11} color={neuronPrimary} />
+                                    Public Name
+                                    <span style={{ color: '#f59e0b', fontWeight: '500', fontSize: '12px' }}>— visible to everyone</span>
                                 </label>
                                 <div style={{ display: 'flex', gap: '8px' }}>
                                     <input
                                         type="text"
                                         value={publicNameInput}
                                         onChange={(e) => setPublicNameInput(e.target.value)}
-                                        placeholder={displayInfo?.name || 'e.g., Alice\'s Staking Bot'}
+                                        placeholder={displayInfo?.name || "e.g., Alice's Staking Bot"}
                                         style={{
                                             flex: 1,
                                             padding: '10px 12px',
-                                            borderRadius: '6px',
+                                            borderRadius: '8px',
                                             border: `1px solid ${theme.colors.border}`,
                                             backgroundColor: theme.colors.primaryBg,
                                             color: theme.colors.primaryText,
@@ -3351,7 +3373,7 @@ function IcpNeuronManager() {
                                             setNamingSuccess('');
                                             try {
                                                 await setPrincipalNameFor(identity, canisterId, publicNameInput.trim());
-                                                setNamingSuccess('Public name saved!');
+                                                setNamingSuccess('Public name saved! Everyone will see this name.');
                                                 setPublicNameInput('');
                                                 if (fetchAllNames) fetchAllNames();
                                             } catch (err) {
@@ -3374,6 +3396,21 @@ function IcpNeuronManager() {
                                         Current: "{displayInfo.name}"
                                     </div>
                                 )}
+                                <div style={{
+                                    marginTop: '8px',
+                                    padding: '8px 12px',
+                                    borderRadius: '8px',
+                                    background: `#f59e0b10`,
+                                    border: `1px solid #f59e0b25`,
+                                    fontSize: '0.78rem',
+                                    color: theme.colors.secondaryText,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                }}>
+                                    <FaGlobe size={10} color="#f59e0b" />
+                                    This name will be visible to anyone who views this canister across the app.
+                                </div>
                             </div>
                             )}
                         </div>
